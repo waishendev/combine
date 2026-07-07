@@ -68,6 +68,26 @@ class PublicOrderHistoryController extends Controller
 
         $orders = $ordersQuery->paginate($perPage);
 
+        $allBookingIds = collect($orders->items())
+            ->flatMap(fn (Order $order) => $order->items->pluck('booking_id'))
+            ->filter()
+            ->unique()
+            ->values();
+        $packageClaimMap = [];
+        if ($allBookingIds->isNotEmpty()) {
+            $usages = \App\Models\Booking\CustomerServicePackageUsage::query()
+                ->whereIn('booking_id', $allBookingIds->all())
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->with('customerServicePackage.servicePackage:id,name')
+                ->get();
+            foreach ($usages as $usage) {
+                $bsId = (int) $usage->booking_service_id;
+                if ($bsId > 0) {
+                    $packageClaimMap[$bsId] = $usage->customerServicePackage?->servicePackage?->name ?? 'Package';
+                }
+            }
+        }
+
         $reviewSettings = $this->reviewService->settings();
         $reviewsEnabled = (bool) ($reviewSettings['enabled'] ?? false);
         $reviewWindowDays = (int) ($reviewSettings['review_window_days'] ?? 30);
@@ -86,7 +106,7 @@ class PublicOrderHistoryController extends Controller
                 'receipt_public_url' => $this->resolveReceiptUrl($order, $request),
                 'items' => $order->items
                     ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
-                    ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
+                    ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled, $packageClaimMap) {
                         $thumbnail = $this->resolveOrderItemThumbnail($item);
                         $productType = $item->product?->type;
                         $review = $item->review;
@@ -123,6 +143,7 @@ class PublicOrderHistoryController extends Controller
                         'review_id' => $review?->id,
                         'reviewed_at' => $reviewedAt,
                         'can_review' => $canReview,
+                        'package_applied_name' => $packageClaimMap[(int) ($item->booking_service_id ?? 0)] ?? null,
                     ];
                 })->values(),
             ])->all(),

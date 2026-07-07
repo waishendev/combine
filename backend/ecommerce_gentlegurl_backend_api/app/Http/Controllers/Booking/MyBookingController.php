@@ -46,6 +46,8 @@ class MyBookingController extends Controller
 
         $claimsByBooking = CustomerServicePackageUsage::query()
             ->whereIn('booking_id', $bookings->pluck('id')->all())
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->with('customerServicePackage.servicePackage:id,name')
             ->orderByDesc('id')
             ->get()
             ->groupBy('booking_id');
@@ -105,6 +107,17 @@ class MyBookingController extends Controller
                     if ($claims->contains(fn ($claim) => $claim->status === 'reserved')) return 'reserved';
                     if ($claims->contains(fn ($claim) => $claim->status === 'released')) return 'released';
                     return null;
+                })(),
+                'package_claims' => (function () use ($claimsByBooking, $booking) {
+                    $claims = $claimsByBooking->get($booking->id) ?? collect();
+                    return $claims->map(fn ($claim) => [
+                        'usage_id' => (int) $claim->id,
+                        'customer_service_package_id' => (int) $claim->customer_service_package_id,
+                        'package_name' => $claim->customerServicePackage?->servicePackage?->name ?? 'Package',
+                        'booking_service_id' => (int) $claim->booking_service_id,
+                        'status' => (string) $claim->status,
+                        'used_qty' => (int) $claim->used_qty,
+                    ])->values()->all();
                 })(),
                 'service_name' => $booking->service?->name,
                 'service_cn_name' => $booking->service?->cn_name,

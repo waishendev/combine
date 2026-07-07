@@ -517,6 +517,12 @@ $protectedRoutes = function () {
             ->middleware('permission:pos.checkout');
         Route::post('/appointments/{id}/release-package', [PosController::class, 'releasePackageForAppointment'])
             ->middleware('permission:pos.checkout');
+        Route::get('/appointments/{id}/eligible-packages', [PosController::class, 'eligiblePackagesForAppointment'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage');
+        Route::post('/appointments/{id}/batch-apply-packages', [PosController::class, 'batchApplyPackagesToAppointment'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage');
+        Route::post('/appointments/{id}/batch-release-packages', [PosController::class, 'batchReleasePackagesForAppointment'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage');
         Route::post('/appointments/{id}/mark-completed', [PosController::class, 'markAppointmentCompleted']);
         Route::post('/appointments/{id}/reschedule', [PosController::class, 'rescheduleAppointment']);
         Route::post('/appointments/{id}/send-confirmation-email', [PosController::class, 'sendBookingConfirmationEmail'])
@@ -550,6 +556,9 @@ $protectedRoutes = function () {
             Route::delete('/cart/service-items/{itemId}', [PosController::class, 'removeServiceCartItem']);
             Route::patch('/cart/service-items/{itemId}/price', [PosController::class, 'updateServiceCartItemPrice']);
             Route::post('/cart/service-items/{itemId}/release-package-claim', [PosController::class, 'releaseServiceItemPackageClaim']);
+            Route::get('/cart/service-items/{itemId}/eligible-packages', [PosController::class, 'eligiblePackagesForServiceCartItem']);
+            Route::post('/cart/service-items/{itemId}/batch-apply-packages', [PosController::class, 'batchApplyPackagesToServiceCartItem']);
+            Route::post('/cart/service-items/{itemId}/batch-release-packages', [PosController::class, 'batchReleasePackagesForServiceCartItem']);
             Route::post('/checkout', [PosController::class, 'checkout']);
         });
     });

@@ -88,6 +88,57 @@ class CustomerServicePackageService
         });
     }
 
+    public function reserveFromSpecificPackage(int $customerId, int $bookingServiceId, int $customerServicePackageId, string $source = 'POS', ?int $sourceRefId = null, int $usedQty = 1, ?string $notes = null): CustomerServicePackageUsage
+    {
+        return DB::transaction(function () use ($customerId, $bookingServiceId, $customerServicePackageId, $source, $sourceRefId, $usedQty, $notes) {
+            $usedQty = max(1, $usedQty);
+
+            if ($sourceRefId) {
+                $existingClaim = CustomerServicePackageUsage::query()
+                    ->where('customer_id', $customerId)
+                    ->where('booking_service_id', $bookingServiceId)
+                    ->where('used_from', strtoupper($source))
+                    ->where('used_ref_id', $sourceRefId)
+                    ->whereIn('status', ['reserved', 'consumed'])
+                    ->first();
+
+                if ($existingClaim) {
+                    throw new \RuntimeException('This item has already been claimed from a package.');
+                }
+            }
+
+            $balance = CustomerServicePackageBalance::query()
+                ->where('customer_service_package_id', $customerServicePackageId)
+                ->where('booking_service_id', $bookingServiceId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $reservedQty = (int) CustomerServicePackageUsage::query()
+                ->where('customer_service_package_id', $customerServicePackageId)
+                ->where('booking_service_id', $bookingServiceId)
+                ->where('status', 'reserved')
+                ->sum('used_qty');
+
+            $available = max(0, (int) $balance->remaining_qty - $reservedQty);
+            if ($available < $usedQty) {
+                throw new \RuntimeException('Not enough balance in the selected package.');
+            }
+
+            return CustomerServicePackageUsage::create([
+                'customer_service_package_id' => $customerServicePackageId,
+                'customer_id' => $customerId,
+                'booking_id' => $sourceRefId,
+                'booking_service_id' => $bookingServiceId,
+                'used_qty' => $usedQty,
+                'used_from' => strtoupper($source),
+                'used_ref_id' => $sourceRefId,
+                'status' => 'reserved',
+                'reserved_at' => now(),
+                'notes' => $notes,
+            ])->load(['customerServicePackage', 'bookingService']);
+        });
+    }
+
     public function consumeNow(int $customerId, int $bookingServiceId, string $source = 'ADMIN', ?int $sourceRefId = null, int $usedQty = 1, ?string $notes = null): CustomerServicePackageUsage
     {
         return DB::transaction(function () use ($customerId, $bookingServiceId, $source, $sourceRefId, $usedQty, $notes) {

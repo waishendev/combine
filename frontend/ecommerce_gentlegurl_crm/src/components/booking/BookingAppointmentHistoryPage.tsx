@@ -69,6 +69,7 @@ export type AppointmentHistoryRow = {
   service_photos?: BookingServicePhoto[]
   payment_proofs?: PaymentProof[]
   logs?: Array<{ id: number; actor_type: string; actor_id?: number | null; action: string; meta?: unknown; created_at?: string | null }>
+  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number }>
 }
 
 type ApiPage = {
@@ -279,11 +280,17 @@ function TableCustomerCell({ row }: { row: AppointmentHistoryRow }) {
 function TableServiceCell({ row }: { row: AppointmentHistoryRow }) {
   const serviceName = row.service?.name || '—'
   const addonCount = row.add_ons?.length ?? 0
+  const hasPackageCoverage = (row.package_claims?.length ?? 0) > 0 || (row.package_offset ?? 0) > 0.001
 
   return (
     <div className="min-w-0">
       <p className="line-clamp-2 font-medium leading-snug text-slate-900" title={row.service?.name ?? undefined}>
         {serviceName}
+        {hasPackageCoverage && (
+          <span className="ml-1.5 inline-flex rounded bg-emerald-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-emerald-700">
+            PKG
+          </span>
+        )}
       </p>
       {row.service?.cn_name ? (
         <p className="mt-0.5 truncate text-xs text-slate-500" title={row.service.cn_name}>

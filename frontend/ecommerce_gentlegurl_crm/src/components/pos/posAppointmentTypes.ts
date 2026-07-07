@@ -146,7 +146,7 @@ export type PosAppointmentDetail = {
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; share_percent: number }>
   service_total: number
-  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; quantity?: number; line_gross_amount?: number; gross_amount?: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; price_finalized?: boolean; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; quantity?: number; line_gross_amount?: number; gross_amount?: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; price_finalized?: boolean; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   settled_service_amount?: number | null
   is_range_priced?: boolean
@@ -177,6 +177,7 @@ export type PosAppointmentDetail = {
   can_apply_package?: boolean
   package_disabled_reason?: string | null
   eligible_package_count?: number
+  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number }>
   payment_history?: Array<{ order_id?: number; order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
   receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
   deposit_transactions?: PosDepositTransaction[]

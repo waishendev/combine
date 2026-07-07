@@ -45,6 +45,11 @@
                                 @if (!empty($item['variant_cn_name']))
                                     <div style="font-size: 12px; color: #666; margin-top: 2px;">{{ $item['variant_cn_name'] }}</div>
                                 @endif
+                                @if (!empty($item['package_covered']))
+                                    <div style="font-size: 11px; color: #047857; margin-top: 3px; font-weight: 600;">
+                                        &#x1F4E6; Covered by {{ $item['package_name'] ?? 'Package' }}
+                                    </div>
+                                @endif
                             </td>
                             <td style="padding: 8px 4px; border-bottom: 1px solid #efefef; text-align:center;">{{ $item['qty'] }}</td>
                             <td style="padding: 8px 4px; border-bottom: 1px solid #efefef; text-align:right;">RM {{ number_format((float) $item['line_total'], 2) }}</td>

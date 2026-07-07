@@ -486,7 +486,9 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                                 />
                               )}
                               {String(item.line_type ?? "").toLowerCase() === "service" ? (
-                                <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
+                                <p className="text-xs font-medium text-emerald-700">Covered by {item.package_applied_name ?? 'Package'}</p>
+                              ) : item.package_applied_name ? (
+                                <p className="text-xs font-medium text-emerald-700">Covered by {item.package_applied_name}</p>
                               ) : null}
                               <BookingProductOptionsList options={bookingProductOptions} />
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>

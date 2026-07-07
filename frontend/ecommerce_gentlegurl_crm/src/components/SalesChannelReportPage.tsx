@@ -59,6 +59,7 @@ type BookingRow = {
   booking_no: string | null
   package_name: string | null
   package_cn_name?: string | null
+  package_applied?: boolean
   gross_amount: number
   discount: number
   net_amount: number
@@ -150,6 +151,8 @@ type OrderDetailLine = {
   discount_remark?: string | null
   staff_name?: string | null
   assigned_staff_name?: string | null
+  package_applied?: boolean
+  package_name?: string | null
   price_override?: {
     original_unit_price?: number | string | null
     original_unit_price_snapshot?: number | string | null
@@ -958,7 +961,14 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
                   <td className="px-4 py-2 border border-gray-200"><PaymentMethodCell method={row.payment_method} payments={row.payments} /></td>
-                  <td className="px-4 py-2 border border-gray-200">{labelize(row.type)}</td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    {labelize(row.type)}
+                    {(row.package_applied || normalizeBookingType(row.type) === 'package_purchase') && (
+                      <span className="ml-1.5 inline-flex rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        Pkg: Yes
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 border border-gray-200">{row.booking_no ?? '—'}</td>
                   <td className="px-4 py-2 border border-gray-200">
                     <ReportNameStack name={row.package_name} cnName={row.package_cn_name} />
@@ -1138,7 +1148,14 @@ export default function SalesChannelReportPage({
                           return (
                           <tr key={line.id} className={`align-top ${line.isChildLine ? 'bg-indigo-50/40' : ''}`}>
                             <td className="px-3 py-3">
-                              <p className="text-xs font-semibold uppercase text-slate-400">{line.type_label}</p>
+                              <p className="text-xs font-semibold uppercase text-slate-400">
+                                {line.type_label}
+                                {line.package_applied && (
+                                  <span className="ml-1.5 inline-flex rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold normal-case text-emerald-700">
+                                    [PKG] {line.package_name ?? 'Package'}
+                                  </span>
+                                )}
+                              </p>
                               {line.isChildLine && line.parentName ? <p className="mt-1 text-xs text-indigo-700">Add-on for {line.parentName}</p> : null}
                               <p className="mt-1 font-semibold text-slate-900">{lineName.name}</p>
                               {lineName.context ? <p className="mt-0.5 text-xs text-slate-500">Service: {lineName.context}</p> : null}

@@ -25,6 +25,7 @@ export type OrderItemSummary = {
   review_id?: number | null;
   reviewed_at?: string | null;
   can_review?: boolean | null;
+  package_applied_name?: string | null;
 };
 
 export type OrderSummary = {

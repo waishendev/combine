@@ -241,6 +241,7 @@ export type BookingRecord = {
     requested_at?: string | null;
   } | null;
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null;
+  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number }>;
   latest_payment?: {
     id: number;
     status: string;

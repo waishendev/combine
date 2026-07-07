@@ -472,6 +472,7 @@ class PosController extends Controller
             ->findOrFail($id);
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $packageClaims = $this->resolvePerLinePackageClaims($booking, $summary);
         $history = $this->resolveAppointmentPaymentHistory((int) $booking->id);
         $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
         $holdOrder = $this->resolveHoldDepositOrderForReview($booking);
@@ -555,6 +556,10 @@ class PosController extends Controller
             'addon_paid_settlement' => (float) $summary['addon_paid_settlement'],
             'addon_balance_due' => (float) $summary['addon_balance_due'],
             'package_status' => $summary['package_status'],
+            'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
+            'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
+            'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
+            'package_claims' => $packageClaims,
             'payment_history' => $history,
             'receipts' => $history,
             'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
@@ -665,6 +670,461 @@ class PosController extends Controller
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
         ], __('Package claim released for appointment.'));
+    }
+
+    public function eligiblePackagesForAppointment(Request $request, int $id)
+    {
+        $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+
+        if (! $booking->customer_id) {
+            return $this->respond(['packages' => [], 'current_claims' => [], 'appointment_lines' => []]);
+        }
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $mainServices = collect($summary['main_services'] ?? []);
+        $allLines = [];
+
+        foreach ($mainServices as $idx => $service) {
+            $serviceId = (int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0);
+            if ($serviceId > 0) {
+                $allLines[] = [
+                    'line_type' => 'main_service',
+                    'line_index' => $idx,
+                    'booking_service_id' => $serviceId,
+                    'service_name' => (string) ($service['name'] ?? 'Service'),
+                    'cn_name' => $service['cn_name'] ?? null,
+                ];
+            }
+
+            foreach (($service['add_ons'] ?? []) as $addonIdx => $addon) {
+                $addonServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+                if ($addonServiceId > 0) {
+                    $allLines[] = [
+                        'line_type' => 'addon',
+                        'line_index' => $addonIdx,
+                        'booking_service_id' => $addonServiceId,
+                        'service_name' => (string) ($addon['name'] ?? 'Add-on'),
+                        'cn_name' => $addon['cn_name'] ?? null,
+                        'parent_service_index' => $idx,
+                    ];
+                }
+            }
+        }
+
+        $customerId = (int) $booking->customer_id;
+        $currentClaims = CustomerServicePackageUsage::query()
+            ->where(function ($q) use ($booking) {
+                $q->where('booking_id', (int) $booking->id)
+                    ->orWhere(function ($q2) use ($booking) {
+                        $q2->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id);
+                    });
+            })
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->get();
+
+        return $this->respond($this->buildEligiblePackagesPayload($customerId, $allLines, $currentClaims));
+    }
+
+    public function eligiblePackagesForServiceCartItem(Request $request, int $itemId)
+    {
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->serviceItems()->with(['bookingService', 'customer'])->findOrFail($itemId);
+
+        if (! $item->customer_id) {
+            return $this->respond(['packages' => [], 'current_claims' => [], 'appointment_lines' => []]);
+        }
+
+        $allLines = $this->resolveServiceCartItemPackageLines($item);
+        $currentClaims = CustomerServicePackageUsage::query()
+            ->where('used_from', 'POS')
+            ->where('used_ref_id', (int) $item->id)
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->get();
+
+        return $this->respond($this->buildEligiblePackagesPayload((int) $item->customer_id, $allLines, $currentClaims));
+    }
+
+    public function batchApplyPackagesToServiceCartItem(Request $request, int $itemId)
+    {
+        $this->mergeJsonPayload($request);
+        $validated = $request->validate([
+            'applications' => ['required', 'array', 'min:1'],
+            'applications.*.customer_service_package_id' => ['required', 'integer'],
+            'applications.*.booking_service_id' => ['required', 'integer'],
+            'applications.*.line_type' => ['required', 'string', 'in:main_service,addon'],
+            'applications.*.line_index' => ['required', 'integer', 'min:0'],
+            'applications.*.used_qty' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->serviceItems()->with(['bookingService', 'customer'])->findOrFail($itemId);
+
+        if (! $item->customer_id) {
+            return $this->respondError(__('Package can only be applied for members.'), 422);
+        }
+
+        $customerId = (int) $item->customer_id;
+        $applications = collect($validated['applications']);
+
+        try {
+            DB::transaction(function () use ($applications, $customerId, $item) {
+                foreach ($applications as $application) {
+                    $packageId = (int) $application['customer_service_package_id'];
+                    $bookingServiceId = (int) $application['booking_service_id'];
+                    $usedQty = (int) ($application['used_qty'] ?? 1);
+
+                    CustomerServicePackage::query()
+                        ->where('id', $packageId)
+                        ->where('customer_id', $customerId)
+                        ->where('status', 'active')
+                        ->where(function ($q) {
+                            $q->whereNull('expires_at')->orWhere('expires_at', '>=', now());
+                        })
+                        ->firstOrFail();
+
+                    $this->customerServicePackageService->reserveFromSpecificPackage(
+                        $customerId,
+                        $bookingServiceId,
+                        $packageId,
+                        'POS',
+                        (int) $item->id,
+                        $usedQty,
+                        'Applied from POS service cart item (batch)',
+                    );
+                }
+            });
+        } catch (\Throwable $e) {
+            return $this->respondError($e->getMessage() ?: __('Unable to apply packages.'), 422);
+        }
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load([
+                'items.variant.product',
+                'items.product',
+                'serviceItems.bookingService',
+                'serviceItems.assignedStaff',
+                'serviceItems.customer:id,name',
+                'packageItems.servicePackage',
+                'packageItems.customer:id,name',
+                'appointmentSettlementItems.booking.service',
+                'appointmentSettlementItems.booking.customer',
+                'appointmentSettlementItems.booking.staff',
+            ])),
+        ], __('Packages applied successfully.'));
+    }
+
+    public function batchReleasePackagesForServiceCartItem(Request $request, int $itemId)
+    {
+        $this->mergeJsonPayload($request);
+        $validated = $request->validate([
+            'releases' => ['required', 'array', 'min:1'],
+            'releases.*.usage_id' => ['required', 'integer'],
+        ]);
+
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->serviceItems()->findOrFail($itemId);
+        $usageIds = collect($validated['releases'])->pluck('usage_id')->map(fn ($v) => (int) $v)->all();
+
+        $released = CustomerServicePackageUsage::query()
+            ->whereIn('id', $usageIds)
+            ->where('used_from', 'POS')
+            ->where('used_ref_id', (int) $item->id)
+            ->where('status', 'reserved')
+            ->update([
+                'status' => 'released',
+                'released_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load([
+                'items.variant.product',
+                'items.product',
+                'serviceItems.bookingService',
+                'serviceItems.assignedStaff',
+                'serviceItems.customer:id,name',
+                'packageItems.servicePackage',
+                'packageItems.customer:id,name',
+                'appointmentSettlementItems.booking.service',
+                'appointmentSettlementItems.booking.customer',
+                'appointmentSettlementItems.booking.staff',
+            ])),
+            'released_count' => (int) $released,
+        ], __('Package claims released.'));
+    }
+
+    protected function resolveServiceCartItemPackageLines(PosCartServiceItem $item): array
+    {
+        $lines = [];
+        $rawItems = collect((array) ($item->addon_items_json ?? []));
+        $mainBlocks = $rawItems
+            ->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) === 'main_service')
+            ->values();
+
+        if ($mainBlocks->isNotEmpty()) {
+            foreach ($mainBlocks as $idx => $service) {
+                $serviceId = (int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0);
+                if ($serviceId <= 0) {
+                    continue;
+                }
+
+                $lines[] = [
+                    'line_type' => 'main_service',
+                    'line_index' => $idx,
+                    'booking_service_id' => $serviceId,
+                    'service_name' => (string) ($service['name'] ?? $service['label'] ?? $item->service_name_snapshot ?? 'Service'),
+                    'cn_name' => $service['cn_name'] ?? $service['cn_label'] ?? $service['linked_cn_name'] ?? null,
+                ];
+
+                foreach (collect((array) ($service['addon_items'] ?? []))->values() as $addonIdx => $addon) {
+                    $addonServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+                    if ($addonServiceId <= 0) {
+                        continue;
+                    }
+                    $lines[] = [
+                        'line_type' => 'addon',
+                        'line_index' => $addonIdx,
+                        'booking_service_id' => $addonServiceId,
+                        'service_name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                        'cn_name' => $addon['cn_name'] ?? $addon['cn_label'] ?? $addon['linked_cn_name'] ?? null,
+                        'parent_service_index' => $idx,
+                    ];
+                }
+            }
+
+            return $lines;
+        }
+
+        $serviceId = (int) $item->booking_service_id;
+        if ($serviceId > 0) {
+            $lines[] = [
+                'line_type' => 'main_service',
+                'line_index' => 0,
+                'booking_service_id' => $serviceId,
+                'service_name' => (string) ($item->service_name_snapshot ?? $item->bookingService?->name ?? 'Service'),
+                'cn_name' => $item->bookingService?->cn_name,
+            ];
+        }
+
+        foreach ($rawItems
+            ->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) !== 'main_service')
+            ->filter(fn ($row) => (int) ($row['id'] ?? 0) > 0)
+            ->values() as $addonIdx => $addon) {
+            $addonServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+            if ($addonServiceId <= 0) {
+                continue;
+            }
+            $lines[] = [
+                'line_type' => 'addon',
+                'line_index' => $addonIdx,
+                'booking_service_id' => $addonServiceId,
+                'service_name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                'cn_name' => $addon['cn_name'] ?? $addon['cn_label'] ?? $addon['linked_cn_name'] ?? null,
+                'parent_service_index' => 0,
+            ];
+        }
+
+        return $lines;
+    }
+
+    protected function buildEligiblePackagesPayload(int $customerId, array $allLines, $currentClaims): array
+    {
+        $customerPackages = CustomerServicePackage::query()
+            ->with(['servicePackage', 'balances.bookingService'])
+            ->where('customer_id', $customerId)
+            ->where('status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('expires_at')
+                    ->orWhere('expires_at', '>=', now());
+            })
+            ->orderBy('created_at')
+            ->get();
+
+        $packages = $customerPackages->map(function (CustomerServicePackage $pkg) use ($allLines, $currentClaims) {
+            $items = $pkg->balances->map(function (CustomerServicePackageBalance $balance) use ($pkg) {
+                $reservedQty = (int) CustomerServicePackageUsage::query()
+                    ->where('customer_service_package_id', $pkg->id)
+                    ->where('booking_service_id', $balance->booking_service_id)
+                    ->where('status', 'reserved')
+                    ->sum('used_qty');
+
+                return [
+                    'booking_service_id' => (int) $balance->booking_service_id,
+                    'service_name' => (string) ($balance->bookingService?->name ?? 'Service'),
+                    'total_qty' => (int) $balance->total_qty,
+                    'used_qty' => (int) $balance->used_qty,
+                    'remaining_qty' => (int) $balance->remaining_qty,
+                    'reserved_qty' => $reservedQty,
+                    'available_qty' => max(0, (int) $balance->remaining_qty - $reservedQty),
+                ];
+            });
+
+            $eligibleLines = collect($allLines)->map(function (array $line) use ($items, $currentClaims, $pkg) {
+                $matchingItem = $items->first(fn ($item) => $item['booking_service_id'] === $line['booking_service_id']);
+                $alreadyAppliedThisPackage = $currentClaims
+                    ->where('customer_service_package_id', $pkg->id)
+                    ->where('booking_service_id', $line['booking_service_id'])
+                    ->isNotEmpty();
+                $claimedOnBooking = $currentClaims
+                    ->where('booking_service_id', $line['booking_service_id'])
+                    ->isNotEmpty();
+
+                if (! $matchingItem) {
+                    return [
+                        ...$line,
+                        'can_apply' => false,
+                        'already_applied' => $alreadyAppliedThisPackage,
+                        'reason' => 'Package does not include this service',
+                        'available_qty' => 0,
+                    ];
+                }
+
+                if ($claimedOnBooking && ! $alreadyAppliedThisPackage) {
+                    return [
+                        ...$line,
+                        'can_apply' => false,
+                        'already_applied' => false,
+                        'reason' => 'Already covered by another package',
+                        'available_qty' => $matchingItem['available_qty'],
+                    ];
+                }
+
+                $canApply = ! $alreadyAppliedThisPackage && $matchingItem['available_qty'] > 0;
+                $reason = null;
+                if ($alreadyAppliedThisPackage) {
+                    $reason = null;
+                } elseif ($matchingItem['available_qty'] <= 0) {
+                    $reason = 'No balance remaining';
+                }
+
+                return [
+                    ...$line,
+                    'can_apply' => $canApply,
+                    'already_applied' => $alreadyAppliedThisPackage,
+                    'reason' => $reason,
+                    'available_qty' => $matchingItem['available_qty'],
+                ];
+            })->values()->all();
+
+            $hasAnyRelevantLine = collect($eligibleLines)->contains(fn ($line) =>
+                $line['can_apply'] || $line['already_applied'] || $line['available_qty'] > 0
+            );
+
+            return [
+                'customer_service_package_id' => (int) $pkg->id,
+                'package_name' => (string) ($pkg->servicePackage?->name ?? 'Package'),
+                'status' => (string) $pkg->status,
+                'started_at' => optional($pkg->started_at)?->toIso8601String(),
+                'expires_at' => optional($pkg->expires_at)?->toIso8601String(),
+                'items' => $items->values()->all(),
+                'eligible_lines' => $eligibleLines,
+                'has_relevant_lines' => $hasAnyRelevantLine,
+            ];
+        })->values()->all();
+
+        $currentClaimsMapped = $currentClaims->map(fn (CustomerServicePackageUsage $usage) => [
+            'usage_id' => (int) $usage->id,
+            'customer_service_package_id' => (int) $usage->customer_service_package_id,
+            'booking_service_id' => (int) $usage->booking_service_id,
+            'status' => (string) $usage->status,
+            'used_qty' => (int) $usage->used_qty,
+        ])->values()->all();
+
+        return [
+            'packages' => $packages,
+            'current_claims' => $currentClaimsMapped,
+            'appointment_lines' => $allLines,
+        ];
+    }
+    public function batchApplyPackagesToAppointment(Request $request, int $id)
+    {
+        $this->mergeJsonPayload($request);
+        $validated = $request->validate([
+            'applications' => ['required', 'array', 'min:1'],
+            'applications.*.customer_service_package_id' => ['required', 'integer'],
+            'applications.*.booking_service_id' => ['required', 'integer'],
+            'applications.*.line_type' => ['required', 'string', 'in:main_service,addon'],
+            'applications.*.line_index' => ['required', 'integer', 'min:0'],
+            'applications.*.used_qty' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
+
+        if (! $booking->customer_id) {
+            return $this->respondError(__('Package can only be applied for members.'), 422);
+        }
+
+        $customerId = (int) $booking->customer_id;
+        $applications = collect($validated['applications']);
+
+        try {
+            DB::transaction(function () use ($applications, $customerId, $booking) {
+                foreach ($applications as $application) {
+                    $packageId = (int) $application['customer_service_package_id'];
+                    $bookingServiceId = (int) $application['booking_service_id'];
+                    $usedQty = (int) ($application['used_qty'] ?? 1);
+
+                    $pkg = CustomerServicePackage::query()
+                        ->where('id', $packageId)
+                        ->where('customer_id', $customerId)
+                        ->where('status', 'active')
+                        ->where(function ($q) {
+                            $q->whereNull('expires_at')->orWhere('expires_at', '>=', now());
+                        })
+                        ->firstOrFail();
+
+                    $usage = $this->customerServicePackageService->reserveFromSpecificPackage(
+                        $customerId,
+                        $bookingServiceId,
+                        $packageId,
+                        'POS',
+                        (int) $booking->id,
+                        $usedQty,
+                        'Applied from POS appointment (batch)',
+                    );
+                }
+            });
+        } catch (\Throwable $e) {
+            return $this->respondError($e->getMessage() ?: __('Unable to apply packages.'), 422);
+        }
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Packages applied successfully.'));
+    }
+
+    public function batchReleasePackagesForAppointment(Request $request, int $id)
+    {
+        $this->mergeJsonPayload($request);
+        $validated = $request->validate([
+            'releases' => ['required', 'array', 'min:1'],
+            'releases.*.usage_id' => ['required', 'integer'],
+        ]);
+
+        $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
+        $usageIds = collect($validated['releases'])->pluck('usage_id')->map(fn ($v) => (int) $v)->all();
+
+        $released = CustomerServicePackageUsage::query()
+            ->whereIn('id', $usageIds)
+            ->where(function ($q) use ($booking) {
+                $q->where('booking_id', (int) $booking->id)
+                    ->orWhere(function ($q2) use ($booking) {
+                        $q2->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id);
+                    });
+            })
+            ->where('status', 'reserved')
+            ->update([
+                'status' => 'released',
+                'released_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+            'released_count' => (int) $released,
+        ], __('Package claims released.'));
     }
 
     public function collectAppointmentPayment(Request $request, int $id)
@@ -869,21 +1329,25 @@ class PosController extends Controller
             $discountCursor = 0;
             foreach ($mainSettlementItems as $mainIdx => $mainLine) {
                 $serviceBalanceDue = max(0, (float) ($mainLine['balance_due'] ?? 0));
-                if ($serviceBalanceDue <= 0.0001) {
+                $serviceGross = max(0, (float) ($mainLine['extra_price'] ?? $mainLine['gross_amount'] ?? 0));
+                $isPackageCoveredLine = $serviceBalanceDue <= 0.0001 && $serviceGross > 0.0001;
+                if ($serviceBalanceDue <= 0.0001 && ! $isPackageCoveredLine) {
                     continue;
                 }
-                $serviceDiscount = (float) ($lineDiscounts[$discountCursor++] ?? 0);
-                $serviceLineNet = max(0, round($serviceBalanceDue - $serviceDiscount, 2));
+                $serviceDiscount = $isPackageCoveredLine ? 0.0 : (float) ($lineDiscounts[$discountCursor++] ?? 0);
+                $serviceLineNet = $isPackageCoveredLine ? 0.0 : max(0, round($serviceBalanceDue - $serviceDiscount, 2));
+                $serviceName = (string) ($mainLine['name'] ?? ($booking->service?->name ?: 'Service'));
+                $serviceLabel = 'Final Settlement - ' . $serviceName;
                 $serviceOrderItem = OrderItem::query()->create([
                     'order_id' => (int) $order->id,
                     'line_type' => 'booking_settlement',
-                    'product_name_snapshot' => 'Final Settlement - ' . (string) ($mainLine['name'] ?? ($booking->service?->name ?: 'Service')),
-                    'display_name_snapshot' => 'Final Settlement - ' . (string) ($mainLine['name'] ?? ($booking->service?->name ?: 'Service')),
+                    'product_name_snapshot' => $serviceLabel,
+                    'display_name_snapshot' => $serviceLabel,
                     'quantity' => 1,
-                    'price_snapshot' => $serviceBalanceDue,
-                    'unit_price_snapshot' => $serviceBalanceDue,
-                    'line_total' => $serviceBalanceDue,
-                    'line_total_snapshot' => $serviceBalanceDue,
+                    'price_snapshot' => $isPackageCoveredLine ? $serviceGross : $serviceBalanceDue,
+                    'unit_price_snapshot' => $isPackageCoveredLine ? $serviceGross : $serviceBalanceDue,
+                    'line_total' => $isPackageCoveredLine ? $serviceGross : $serviceBalanceDue,
+                    'line_total_snapshot' => $serviceGross,
                     'effective_unit_price' => $serviceLineNet,
                     'effective_line_total' => $serviceLineNet,
                     'discount_type' => $serviceDiscount > 0 ? $discountType : null,
@@ -895,6 +1359,10 @@ class PosController extends Controller
                     'booking_id' => (int) $booking->id,
                     'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id),
                 ]);
+
+                if ($isPackageCoveredLine) {
+                    continue;
+                }
 
                 $serviceLineKey = (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, (int) $mainIdx));
                 $serviceSplits = $resolveLineSplits($serviceLineKey, $mainLine['staff_splits'] ?? [], $bookingSplits);
@@ -911,10 +1379,15 @@ class PosController extends Controller
 
             foreach ($addonSettlementItems as $addonIdx => $addon) {
                 $addonAmount = max(0, (float) ($addon['balance_due'] ?? 0));
-                $addonDiscount = (float) ($lineDiscounts[$discountCursor++] ?? 0);
-                $addonLineNet = max(0, round($addonAmount - $addonDiscount, 2));
+                $addonGross = max(0, (float) ($addon['gross_amount'] ?? $addon['line_gross_amount'] ?? $addon['extra_price'] ?? 0));
+                $isPackageCoveredLine = $addonAmount <= 0.0001 && $addonGross > 0.0001;
+                if ($addonAmount <= 0.0001 && ! $isPackageCoveredLine) {
+                    continue;
+                }
+                $addonDiscount = $isPackageCoveredLine ? 0.0 : (float) ($lineDiscounts[$discountCursor++] ?? 0);
+                $addonLineNet = $isPackageCoveredLine ? 0.0 : max(0, round($addonAmount - $addonDiscount, 2));
                 $addonQty = max(1, (int) ($addon['quantity'] ?? 1));
-                $addonUnitGross = $addonQty > 0 ? round($addonAmount / $addonQty, 2) : $addonAmount;
+                $addonUnitGross = $addonQty > 0 ? round(($isPackageCoveredLine ? $addonGross : $addonAmount) / $addonQty, 2) : ($isPackageCoveredLine ? $addonGross : $addonAmount);
                 $addonUnitNet = $addonQty > 0 ? round($addonLineNet / $addonQty, 2) : $addonLineNet;
                 $addonOrderItem = OrderItem::query()->create([
                     'order_id' => (int) $order->id,
@@ -923,10 +1396,10 @@ class PosController extends Controller
                     'display_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
                     'variant_name_snapshot' => 'Booking Add-on Settlement',
                     'quantity' => $addonQty,
-                    'price_snapshot' => $addonAmount,
+                    'price_snapshot' => $isPackageCoveredLine ? $addonGross : $addonAmount,
                     'unit_price_snapshot' => $addonUnitGross,
-                    'line_total' => $addonAmount,
-                    'line_total_snapshot' => $addonAmount,
+                    'line_total' => $isPackageCoveredLine ? $addonGross : $addonAmount,
+                    'line_total_snapshot' => $addonGross,
                     'effective_unit_price' => $addonUnitNet,
                     'effective_line_total' => $addonLineNet,
                     'discount_type' => $addonDiscount > 0 ? $discountType : null,
@@ -936,8 +1409,12 @@ class PosController extends Controller
                     'discount_remark' => $addonDiscount > 0 ? $discountRemark : null,
                     'locked' => true,
                     'booking_id' => (int) $booking->id,
-                    'booking_service_id' => (int) $booking->service_id,
+                    'booking_service_id' => (int) ($addon['linked_booking_service_id'] ?? 0) ?: null,
                 ]);
+
+                if ($isPackageCoveredLine) {
+                    continue;
+                }
 
                 $addonLineKey = (string) ($addon['line_key'] ?? $this->appointmentSettlementLineKey('addon', (array) $addon, (int) $addonIdx));
                 $addonSplits = $resolveLineSplits($addonLineKey, $addon['staff_splits'] ?? [], $bookingSplits);
@@ -6537,7 +7014,7 @@ class PosController extends Controller
                     'item_type' => 'service',
                 ]);
 
-                $claimStatus = $serviceClaimStatuses[(int) $serviceItem->id] ?? null;
+                $claimStatus = $serviceClaimStatuses[(int) $serviceItem->id]['status'] ?? null;
                 $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
                 $depositContribution = ! $claimedByPackage
                     ? (float) ($depositByServiceItemId[(int) $serviceItem->id] ?? 0)
@@ -7601,7 +8078,30 @@ class PosController extends Controller
 
         $pdf = $this->invoiceService->buildPdf($order);
 
-        $itemsPayload = $order->items->flatMap(function (OrderItem $item) {
+        $bookingForReceipt = $this->resolveBookingForReceiptEmail($order);
+        $packageClaimsByBsId = [];
+        if ($bookingForReceipt) {
+            $usages = \App\Models\Booking\CustomerServicePackageUsage::query()
+                ->where(function ($q) use ($bookingForReceipt) {
+                    $q->where('booking_id', (int) $bookingForReceipt->id)
+                        ->orWhere(function ($q2) use ($bookingForReceipt) {
+                            $q2->where('used_from', 'POS')
+                                ->where('used_ref_id', (int) $bookingForReceipt->id);
+                        });
+                })
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->with('customerServicePackage.servicePackage')
+                ->get();
+            foreach ($usages as $usage) {
+                $bsId = (int) $usage->booking_service_id;
+                if ($bsId > 0) {
+                    $pkgName = $usage->customerServicePackage?->servicePackage?->name ?? null;
+                    $packageClaimsByBsId[$bsId] = $pkgName;
+                }
+            }
+        }
+
+        $itemsPayload = $order->items->flatMap(function (OrderItem $item) use ($packageClaimsByBsId) {
             $row = $this->invoiceService->mapOrderItemToInvoiceRow($item);
             $quantity = max(1, (int) ($row['quantity'] ?? 1));
             $bookingProductOptions = collect($row['selected_booking_product_options'] ?? [])
@@ -7610,10 +8110,15 @@ class PosController extends Controller
                 ->values();
             $optionLineTotal = (float) $bookingProductOptions->sum(fn (array $option) => (float) ($option['extra_price'] ?? 0) * $quantity);
 
+            $bsId = (int) ($item->booking_service_id ?? 0);
+            $pkgCovered = $bsId > 0 && isset($packageClaimsByBsId[$bsId]);
+
             $lines = [[
                 ...$this->invoiceService->mapInvoiceRowToEmailItem($row),
                 'qty' => $quantity,
                 'line_total' => max(0, (float) $row['line_total'] - $optionLineTotal),
+                'package_covered' => $pkgCovered,
+                'package_name' => $pkgCovered ? ($packageClaimsByBsId[$bsId] ?? null) : null,
             ]];
 
             foreach ($bookingProductOptions as $option) {
@@ -7636,7 +8141,7 @@ class PosController extends Controller
         $placedAt = $order->placed_at?->toDateTimeString() ?? $order->created_at?->toDateTimeString() ?? now()->toDateTimeString();
         $pdfFilename = 'Invoice-' . $orderNumber . '.pdf';
 
-        $booking = $this->resolveBookingForReceiptEmail($order);
+        $booking = $bookingForReceipt;
 
         if ($booking) {
             Mail::to($validated['email'])->send(new BookingSettlementReceiptMail(
@@ -7853,6 +8358,11 @@ class PosController extends Controller
     {
         $isStaffUser = !empty($cart->staffUser?->staff_id);
 
+        $cart->loadMissing([
+            'appointmentSettlementItems.booking',
+            'serviceItems.bookingService',
+        ]);
+
         $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
 
         $items = $cart->items->map(function (PosCartItem $item) use ($isStaffUser, $cartPricing) {
@@ -7925,7 +8435,11 @@ class PosController extends Controller
         $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($depositByServiceItemId, $depositAddonByServiceItemId, $depositOverrideByServiceItemId, $serviceClaimStatuses) {
             $lineTotal = ((float) $item->price_snapshot) * (int) $item->qty;
             $serviceType = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
-            $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
+            $claimInfo = $serviceClaimStatuses[(int) $item->id] ?? null;
+            $claimStatus = $claimInfo['status'] ?? null;
+            $claimPackageName = $claimInfo['package_name'] ?? null;
+            $claimUsageId = isset($claimInfo['usage_id']) ? (int) $claimInfo['usage_id'] : null;
+            $claimPackageId = isset($claimInfo['customer_service_package_id']) ? (int) $claimInfo['customer_service_package_id'] : null;
             $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
             $depositContribution = $claimedByPackage ? 0.0 : (float) ($depositByServiceItemId[(int) $item->id] ?? 0);
 
@@ -8015,6 +8529,9 @@ class PosController extends Controller
                 'deposit_addon_total' => (float) $depositAddonTotal,
                 'deposit_payable_total' => (float) $depositPayableTotal,
                 'package_claim_status' => $claimStatus,
+                'package_claim_name' => $claimPackageName,
+                'package_claim_usage_id' => $claimUsageId,
+                'package_claim_package_id' => $claimPackageId,
                 'claimed_by_package' => $claimedByPackage,
                 'customer_id' => $item->customer_id ? (int) $item->customer_id : null,
                 'customer_name' => $item->customer_id ? (string) ($item->customer?->name ?? '') : null,
@@ -8132,6 +8649,7 @@ class PosController extends Controller
                 + (float) $addonSettlementItems->sum(fn (array $row) => (float) ($row['line_total_after_discount'] ?? $row['balance_due'] ?? 0)),
                 2,
             );
+            $packageClaims = $this->resolvePerLinePackageClaims($booking, $summary);
             $hasPerLineDiscounts = ! empty($this->normalizeAppointmentSettlementDiscountLines($item->discount_lines ?? []));
             $discountAmount = $hasPerLineDiscounts
                 ? round((float) $mainSettlementItems->sum('discount_amount') + (float) $addonSettlementItems->sum('discount_amount'), 2)
@@ -8192,6 +8710,7 @@ class PosController extends Controller
                 'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
                 'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
                 'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
+                'package_claims' => $packageClaims,
             ];
         })->filter()->values();
 
@@ -8428,7 +8947,7 @@ class PosController extends Controller
                 ])
                 ->values()
                 ->all();
-            $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
+            $claimStatus = ($serviceClaimStatuses[(int) $item->id] ?? [])['status'] ?? null;
             $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
             $itemCandidates = [];
 
@@ -8552,11 +9071,22 @@ class PosController extends Controller
             return [];
         }
 
+        // Settlement package claims use used_ref_id = booking_id. Those IDs can collide with
+        // pos_cart_service_items.id, which would incorrectly attach a settlement claim to a deposit line.
+        $settlementBookingIds = $cart->appointmentSettlementItems
+            ?->pluck('booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all() ?? [];
+
         $claims = CustomerServicePackageUsage::query()
+            ->with(['customerServicePackage.servicePackage'])
             ->where('used_from', 'POS')
             ->whereIn('used_ref_id', $serviceItemIds->all())
             ->whereIn('status', ['reserved', 'consumed', 'released'])
-            ->get(['used_ref_id', 'status']);
+            ->get(['id', 'customer_service_package_id', 'used_ref_id', 'booking_service_id', 'status']);
 
         $priority = ['released' => 1, 'reserved' => 2, 'consumed' => 3];
         $map = [];
@@ -8567,10 +9097,25 @@ class PosController extends Controller
                 continue;
             }
 
+            if (in_array($itemId, $settlementBookingIds, true)) {
+                continue;
+            }
+
+            $serviceItem = $cart->serviceItems->firstWhere('id', $itemId);
+            if ($serviceItem && (int) ($claim->booking_service_id ?? 0) !== (int) $serviceItem->booking_service_id) {
+                continue;
+            }
+
             $incoming = $priority[$claim->status] ?? 0;
-            $existing = $priority[$map[$itemId] ?? ''] ?? 0;
+            $existing = $priority[$map[$itemId]['status'] ?? ''] ?? 0;
             if ($incoming >= $existing) {
-                $map[$itemId] = $claim->status;
+                $map[$itemId] = [
+                    'usage_id' => (int) $claim->id,
+                    'customer_service_package_id' => (int) $claim->customer_service_package_id,
+                    'booking_service_id' => (int) $claim->booking_service_id,
+                    'status' => $claim->status,
+                    'package_name' => (string) ($claim->customerServicePackage?->servicePackage?->name ?? 'Package'),
+                ];
             }
         }
 
@@ -9297,6 +9842,8 @@ class PosController extends Controller
         $guestName = trim((string) ($booking->guest_name ?? ''));
         $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
 
+        $packageClaims = $this->resolvePerLinePackageClaims($booking, $summary);
+
         return [
             'id' => (int) $booking->id,
             'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
@@ -9342,10 +9889,39 @@ class PosController extends Controller
             'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
             'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
             'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
+            'package_claims' => $packageClaims,
             'receipts' => $receiptHistory,
             'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
             ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
         ];
+    }
+
+    protected function resolvePerLinePackageClaims(Booking $booking, array $summary): array
+    {
+        $claims = CustomerServicePackageUsage::query()
+            ->with(['customerServicePackage.servicePackage'])
+            ->where(function ($q) use ($booking) {
+                $q->where('booking_id', (int) $booking->id)
+                    ->orWhere(function ($q2) use ($booking) {
+                        $q2->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id);
+                    });
+            })
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->get();
+
+        if ($claims->isEmpty()) {
+            return [];
+        }
+
+        return $claims->map(fn (CustomerServicePackageUsage $usage) => [
+            'usage_id' => (int) $usage->id,
+            'customer_service_package_id' => (int) $usage->customer_service_package_id,
+            'package_name' => (string) ($usage->customerServicePackage?->servicePackage?->name ?? 'Package'),
+            'booking_service_id' => (int) $usage->booking_service_id,
+            'status' => (string) $usage->status,
+            'used_qty' => (int) $usage->used_qty,
+        ])->values()->all();
     }
 
 
@@ -10104,15 +10680,54 @@ class PosController extends Controller
         }
 
         $coveredByPackage = $packageUsage !== null && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true);
-        $packageOffset = $coveredByPackage ? max(0.0, $originalServiceAmount) : 0.0;
+        $claimedServiceIds = collect($this->resolvePerLinePackageClaims($booking, []))
+            ->pluck('booking_service_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+        if ($claimedServiceIds->isNotEmpty()) {
+            $mainServiceIds = $mainServices
+                ->map(fn (array $service) => (int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0))
+                ->filter(fn (int $id) => $id > 0)
+                ->unique()
+                ->values();
+            $mainPackageOffset = (float) $mainServices
+                ->filter(fn (array $service) => $claimedServiceIds->contains((int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0)))
+                ->sum(fn (array $service) => max(0.0, (float) ($service['extra_price'] ?? 0)));
+            $addonPackageOffset = (float) $addonItems
+                ->filter(function (array $addon) use ($claimedServiceIds, $mainServiceIds) {
+                    $addonServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+                    if ($addonServiceId <= 0 || $mainServiceIds->contains($addonServiceId)) {
+                        return false;
+                    }
+
+                    return $claimedServiceIds->contains($addonServiceId);
+                })
+                ->sum(fn (array $addon) => max(0.0, (float) ($addon['line_gross_amount'] ?? $this->addonQuantityService->lineGrossAmount($addon))));
+            $packageOffset = round($mainPackageOffset + $addonPackageOffset, 2);
+        } else {
+            $packageOffset = $coveredByPackage ? max(0.0, $originalServiceAmount) : 0.0;
+        }
         $packageEligibility = $this->resolveAppointmentPackageEligibility($booking, $packageUsage);
 
-        $serviceOutstandingRows = $mainSettlementItems->map(function (array $item, int $idx) use ($depositPaid, $packageOffset) {
+        $serviceOutstandingRows = $mainSettlementItems->map(function (array $item, int $idx) use ($depositPaid, $claimedServiceIds, $coveredByPackage, $originalServiceAmount) {
             $lineAmount = max(0, (float) ($item['extra_price'] ?? 0));
             $linePaid = max(0, (float) ($item['paid_amount'] ?? 0));
             $lineOutstanding = max(0, $lineAmount - $linePaid);
-            if (($item['is_original'] ?? false) === true) {
-                $lineOutstanding = max(0, $lineOutstanding - $depositPaid - $packageOffset);
+            $serviceId = (int) ($item['linked_booking_service_id'] ?? $item['id'] ?? 0);
+            $isOriginal = ($item['is_original'] ?? false) === true;
+
+            if ($claimedServiceIds->isNotEmpty()) {
+                if ($claimedServiceIds->contains($serviceId)) {
+                    $lineOutstanding = 0;
+                }
+                if ($isOriginal) {
+                    $lineOutstanding = max(0, $lineOutstanding - $depositPaid);
+                }
+            } elseif ($isOriginal) {
+                $legacyPackageOffset = $coveredByPackage ? max(0.0, $originalServiceAmount) : 0.0;
+                $lineOutstanding = max(0, $lineOutstanding - $depositPaid - $legacyPackageOffset);
             }
 
             return [
@@ -10120,6 +10735,21 @@ class PosController extends Controller
                 'line_key' => $this->appointmentSettlementLineKey('service', $item, $idx),
                 'balance_due' => round($lineOutstanding, 2),
             ];
+        })->values();
+        $addonSettlementItems = $addonSettlementItems->map(function (array $addon) use ($claimedServiceIds) {
+            if ($claimedServiceIds->isEmpty()) {
+                return $addon;
+            }
+
+            $addonServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+            if ($addonServiceId > 0 && $claimedServiceIds->contains($addonServiceId)) {
+                return [
+                    ...$addon,
+                    'balance_due' => 0.0,
+                ];
+            }
+
+            return $addon;
         })->values();
         $serviceBalanceDue = round((float) $serviceOutstandingRows->sum('balance_due'), 2);
         $addonBalanceDue = round((float) $addonSettlementItems->sum('balance_due'), 2);
@@ -10172,14 +10802,6 @@ class PosController extends Controller
 
     protected function resolveAppointmentPackageEligibility(Booking $booking, ?CustomerServicePackageUsage $packageUsage = null): array
     {
-        if ($packageUsage && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true)) {
-            return [
-                'can_apply_package' => false,
-                'package_disabled_reason' => null,
-                'eligible_package_count' => 0,
-            ];
-        }
-
         if (! $booking->customer_id) {
             return [
                 'can_apply_package' => false,
@@ -10196,13 +10818,45 @@ class PosController extends Controller
             ];
         }
 
-        $eligibleCount = $this->countAvailablePackageBalance((int) $booking->customer_id, (int) $booking->service_id);
+        $serviceIds = $this->resolveAppointmentMainServiceIds($booking);
+
+        $claimedServiceIds = collect($this->resolvePerLinePackageClaims($booking, []))
+            ->pluck('booking_service_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique();
+
+        $eligibleCount = 0;
+        foreach ($serviceIds as $serviceId) {
+            if ($claimedServiceIds->contains($serviceId)) {
+                continue;
+            }
+            $eligibleCount += $this->countAvailablePackageBalance((int) $booking->customer_id, $serviceId);
+        }
 
         return [
             'can_apply_package' => $eligibleCount > 0,
             'package_disabled_reason' => $eligibleCount > 0 ? null : __('No eligible package available.'),
             'eligible_package_count' => $eligibleCount,
         ];
+    }
+
+    protected function resolveAppointmentMainServiceIds(Booking $booking): \Illuminate\Support\Collection
+    {
+        $ids = collect([(int) ($booking->service_id ?? 0)]);
+
+        foreach ((array) ($booking->addon_items_json ?? []) as $item) {
+            if (strtolower((string) ($item['item_kind'] ?? '')) !== 'main_service') {
+                continue;
+            }
+
+            $linkedId = (int) ($item['linked_booking_service_id'] ?? 0);
+            if ($linkedId > 0) {
+                $ids->push($linkedId);
+            }
+        }
+
+        return $ids->filter(fn (int $id) => $id > 0)->unique()->values();
     }
 
     protected function countAvailablePackageBalance(int $customerId, int $bookingServiceId): int

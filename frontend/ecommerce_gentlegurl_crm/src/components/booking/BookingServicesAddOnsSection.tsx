@@ -59,6 +59,7 @@ export type BookingServicesAddOnsRow = {
   start_at?: string | null
   end_at?: string | null
   total_amount?: number
+  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number }>
 }
 
 const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
@@ -147,6 +148,12 @@ type BookingServicesAddOnsSectionProps = {
 }
 
 export default function BookingServicesAddOnsSection({ row, className }: BookingServicesAddOnsSectionProps) {
+  const claims = row.package_claims ?? []
+  const hasPackageClaim = (serviceId?: number | null) =>
+    serviceId != null && claims.some((c) => c.booking_service_id === serviceId)
+  const getPackageClaimName = (serviceId?: number | null) =>
+    claims.find((c) => c.booking_service_id === serviceId)?.package_name ?? 'Package'
+
   return (
     <section className={className ?? 'rounded-xl border border-slate-200 p-4'}>
       <h4 className="font-semibold text-slate-900">Services + Add-ons</h4>
@@ -158,8 +165,20 @@ export default function BookingServicesAddOnsSection({ row, className }: Booking
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Main Service</p>
               <div className="mt-2 space-y-2">
                 <div>
-                  <p className="text-sm font-medium text-slate-900">{service.name || '—'}</p>
+                  <p className="text-sm font-medium text-slate-900">
+                    {service.name || '—'}
+                    {hasPackageClaim(service.service_id ?? service.id) && (
+                      <span className="ml-2 inline-flex rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        PKG
+                      </span>
+                    )}
+                  </p>
                   {service.cn_name ? <p className="text-xs text-slate-500">{service.cn_name}</p> : null}
+                  {hasPackageClaim(service.service_id ?? service.id) && (
+                    <p className="text-[11px] text-emerald-600">
+                      Covered by {getPackageClaimName(service.service_id ?? service.id)}
+                    </p>
+                  )}
                 </div>
                 <p className="text-sm text-slate-700">Amount: {formatServiceAmount(service)}</p>
                 <p className="text-sm text-slate-700">Duration: {service.duration_min != null ? `${service.duration_min} min` : '—'}</p>
@@ -174,20 +193,36 @@ export default function BookingServicesAddOnsSection({ row, className }: Booking
               <p className="text-sm font-semibold text-slate-900">Add-ons</p>
               {(service.add_ons ?? []).length > 0 ? (
                 <div className="mt-2 space-y-3">
-                  {service.add_ons?.map((item, index) => (
-                    <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
-                      <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
-                      {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
-                      {storedAddonQuantity(item) > 1 ? (
-                        <p className="mt-1 text-xs font-medium text-slate-600">Quantity: {storedAddonQuantity(item)}</p>
-                      ) : null}
-                      <p className="mt-2 text-sm text-slate-700">Amount: {formatAddonAmount(item)}</p>
-                      <p className="text-sm text-slate-700">Duration: {formatAddonDuration(item)}</p>
-                      <div className="mt-2">
-                        <StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} />
+                  {service.add_ons?.map((item, index) => {
+                    const addonServiceId = Number(item.id ?? 0)
+                    const addonHasClaim = hasPackageClaim(addonServiceId > 0 ? addonServiceId : null)
+                    return (
+                      <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {index + 1}. {item.name}
+                          {addonHasClaim && (
+                            <span className="ml-2 inline-flex rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                              PKG
+                            </span>
+                          )}
+                        </p>
+                        {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
+                        {addonHasClaim && (
+                          <p className="text-[11px] text-emerald-600">
+                            Covered by {getPackageClaimName(addonServiceId)}
+                          </p>
+                        )}
+                        {storedAddonQuantity(item) > 1 ? (
+                          <p className="mt-1 text-xs font-medium text-slate-600">Quantity: {storedAddonQuantity(item)}</p>
+                        ) : null}
+                        <p className="mt-2 text-sm text-slate-700">Amount: {formatAddonAmount(item)}</p>
+                        <p className="text-sm text-slate-700">Duration: {formatAddonDuration(item)}</p>
+                        <div className="mt-2">
+                          <StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} />
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-slate-500">No add-ons.</p>

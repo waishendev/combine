@@ -11,6 +11,7 @@ import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentD
 import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import type { PosDepositTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
+import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import BookingAddonOptionRow, { PosAddonLineName, PosAddonSelectionDurationLabel, PosAddonSelectionPriceLabel, PosAddonSettlementPriceLabel } from '@/components/pos/BookingAddonOptionRow'
@@ -48,15 +49,21 @@ import {
   posPriceDisplayWithOverride,
   seedFinalizedAddonPriceOverrides,
   buildAddonSettlementSaveOverrides,
+  buildSettlementCartMainServicePriceSource,
   resolveEditSettlementAddonUnitDisplay,
   seedAddonLineTotalOverrides,
   computeSettlementCartItemDueBounds,
+  computeSettlementCartItemServiceValueBounds,
+  settlementAddonLineCoveredByPackage,
+  settlementMainLineCoveredByPackage,
+  settlementPackageApplied,
   resolveSettlementLineAmountDue,
   resolveSettlementLineFullPrice,
   resolveSettlementAddonLineGross,
   resolveSettlementAddonLineDue,
   settlementCartItemHasUnsettledRangePricing,
   settlementNeedsSettledAmount,
+  validateSettlementAmountInput,
   settlementShowsSeparateDepositCredit,
   UNSETTLED_RANGE_CHECKOUT_MESSAGE,
   type PosPriceDisplaySource,
@@ -317,6 +324,7 @@ type AppointmentSettlementCartItem = {
     gross_amount?: number
     paid_amount?: number
     balance_due: number
+    linked_booking_service_id?: number | null
     discount_type?: 'percentage' | 'fixed' | null
     discount_value?: number
     discount_amount?: number
@@ -329,6 +337,7 @@ type AppointmentSettlementCartItem = {
   can_apply_package?: boolean
   package_disabled_reason?: string | null
   eligible_package_count?: number
+  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number }>
 }
 
 
@@ -367,6 +376,9 @@ type ServiceCartItem = {
   deposit_payable_total?: number
   deposit_price_override?: PriceOverrideSnapshot | null
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null
+  package_claim_name?: string | null
+  package_claim_usage_id?: number | null
+  package_claim_package_id?: number | null
   claimed_by_package?: boolean
   assigned_staff_id?: number | null
   assigned_staff_name?: string | null
@@ -481,6 +493,7 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
     item.package_claim_status === 'consumed',
   )
   const mainDepositReference = Number(item.deposit_main_reference ?? item.deposit_contribution ?? 0)
+  const pkgName = item.package_claim_name ?? 'Package'
 
   return getPosServiceMainBlocks(item).map((service, idx) => {
     const isOriginal = service.is_original ?? idx === 0
@@ -499,7 +512,7 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
       price_override: item.deposit_price_override ?? null,
       reference_deposit: referenceDeposit,
       covered_by_package: coveredByPackage,
-      package_note: coveredByPackage ? 'Included in your package (main service)' : null,
+      package_note: coveredByPackage ? `Covered by ${pkgName}` : null,
       add_ons: (service.add_ons ?? []).map((addon) => {
         const addonDeposit = getPosServiceAddonDeposit(item, addon.id)
         const addonReferenceDeposit = getPosServiceAddonDepositReference(item, addon)
@@ -513,7 +526,7 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
           price_override: depositLine?.price_override ?? null,
           reference_deposit: Math.max(addonReferenceDeposit, addonDeposit),
           covered_by_package: addonCoveredByPackage,
-          package_note: addonCoveredByPackage ? 'Included in your package (add-on)' : null,
+          package_note: addonCoveredByPackage ? `Covered by ${pkgName} (add-on)` : null,
         }
       }),
     }
@@ -1772,6 +1785,18 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [serviceUnclaimingIds, setServiceUnclaimingIds] = useState<Record<number, boolean>>({})
   const [settlementRedeemingIds, setSettlementRedeemingIds] = useState<Record<number, boolean>>({})
   const [settlementUnclaimingIds, setSettlementUnclaimingIds] = useState<Record<number, boolean>>({})
+  const [applyPackageModalTarget, setApplyPackageModalTarget] = useState<{ bookingId: number; customerName?: string } | null>(null)
+  const openSettlementPackageModal = useCallback((target: { bookingId: number; customerName?: string }) => {
+    setServiceItemPackageModalTarget(null)
+    setApplyPackageModalTarget(target)
+  }, [])
+  const [serviceItemPackageModalTarget, setServiceItemPackageModalTarget] = useState<{
+    customerId: number
+    bookingServiceId: number
+    serviceItemId: number
+    customerName?: string
+    serviceName?: string
+  } | null>(null)
 
   const [cartEditSettlementOpen, setCartEditSettlementOpen] = useState(false)
   const [cartEditSettlementBookingId, setCartEditSettlementBookingId] = useState<number | null>(null)
@@ -1850,6 +1875,17 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [memberOrderViewId, setMemberOrderViewId] = useState<number | null>(null)
   const [lookupMember, setLookupMember] = useState<Member | null>(null)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
+  const openServiceItemPackageModal = useCallback((serviceItem: ServiceCartItem) => {
+    if (!selectedMember?.id) return
+    setApplyPackageModalTarget(null)
+    setServiceItemPackageModalTarget({
+      customerId: selectedMember.id,
+      bookingServiceId: serviceItem.booking_service_id,
+      serviceItemId: serviceItem.id,
+      customerName: selectedMember.name ?? undefined,
+      serviceName: serviceItem.service_name,
+    })
+  }, [selectedMember?.id, selectedMember?.name])
   const [voucherModalOpen, setVoucherModalOpen] = useState(false)
   const [voucherLoading, setVoucherLoading] = useState(false)
   const [voucherApplying, setVoucherApplying] = useState(false)
@@ -5130,10 +5166,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         payload.booking_service_id = originalServiceId
       }
       if (needsSettledAmount) {
-        const settledAmount = optionalSettlementAmountPayload(cartEditSettledAmount)
-        if (settledAmount != null) {
-          payload.settled_service_amount = settledAmount
+        const validation = validateSettlementAmountInput(cartEditSettledAmount, cartEditOriginalSettlementSource)
+        if (!validation.ok) {
+          reportCartEditSettlementError(validation.message)
+          return
         }
+        payload.settled_service_amount = validation.amount
       }
       const normalizedSplits = cartEditStaffSplits.map((row) => ({
         staff_id: Number(row.staff_id ?? 0),
@@ -8427,9 +8465,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   const mainCoveredByPkg = isPkgClaimed && depMain < 0.0001
                   const servicePackageDisabledReason = !selectedMember?.id
                     ? 'Package can only be applied for members.'
-                    : (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0
-                      ? 'No eligible package available.'
-                      : null
+                    : null
 
                   return (
                   <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-3 shadow-sm sm:p-4">
@@ -8442,19 +8478,19 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           ) : null}
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
-                          {isPkgClaimed || (serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? (
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums ${isPkgClaimed ? 'bg-emerald-100 text-emerald-800' : 'text-gray-500'}`}>
-                              {(serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? `Pkg bal. ${serviceAvailabilityMap[serviceItem.id] ?? 0}` : 'Package claimed'}
+                          {isPkgClaimed ? (
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                              [PKG] {serviceItem.package_claim_name ?? 'Package'}
                             </span>
                           ) : null}
                           {serviceItem.package_claim_status === 'reserved' ? (
                             <button
                               type="button"
                               disabled={serviceUnclaimingIds[serviceItem.id] || serviceRedeemingIds[serviceItem.id]}
-                              onClick={() => void unclaimServicePackage(serviceItem)}
+                              onClick={() => openServiceItemPackageModal(serviceItem)}
                               className="rounded-lg border border-amber-400/90 bg-amber-50/90 px-3 py-1.5 text-[11px] font-semibold text-amber-950 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              {serviceUnclaimingIds[serviceItem.id] ? 'Releasing…' : 'Unclaim Package'}
+                              Manage packages
                             </button>
                           ) : (
                             <span className="inline-flex items-center">
@@ -8468,7 +8504,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   serviceItem.package_claim_status === 'consumed'
                                 }
                                 title={servicePackageDisabledReason ?? undefined}
-                                onClick={() => void redeemServiceItem(serviceItem)}
+                                onClick={() => openServiceItemPackageModal(serviceItem)}
                                 className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                                   isPkgClaimed
                                     ? 'border-emerald-500 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200'
@@ -8578,42 +8614,40 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Type: Settlement Services</p>
-                          {!settlement.can_apply_package ? (
+                          {!settlement.can_apply_package && settlement.package_disabled_reason && settlement.package_disabled_reason !== 'No eligible package available.' ? (
                             <p className="mt-1 text-[10px] font-medium leading-tight text-amber-700">
-                              {settlement.package_disabled_reason ?? 'No eligible package available.'}
+                              {settlement.package_disabled_reason}
                             </p>
                           ) : null}
                         </div>
                         <div className="pos-cart-settlement-actions flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
-                          {settlement.package_status?.status === 'reserved' || Number(settlement.eligible_package_count ?? settlementAvailabilityMap[settlement.id] ?? 0) > 0 ? (
-                            <span className="text-[10px] text-gray-500 tabular-nums">
-                              Pkg bal. {Number(settlement.eligible_package_count ?? settlementAvailabilityMap[settlement.id] ?? 0)}
-                            </span>
-                          ) : null}
                             {settlement.package_status?.status === 'reserved' ? (
                               <button
                                 type="button"
                                 disabled={settlementUnclaimingIds[settlement.id] || settlementRedeemingIds[settlement.id]}
-                                onClick={() => void unclaimSettlementPackage(settlement.booking_id, settlement.id)}
+                                onClick={() => openSettlementPackageModal({ bookingId: settlement.booking_id, customerName: settlement.customer_name ?? undefined })}
                                 className="rounded-lg border border-amber-400/90 bg-amber-50/90 px-3 py-1.5 text-[11px] font-semibold text-amber-950 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                {settlementUnclaimingIds[settlement.id] ? 'Releasing…' : 'Unclaim Package'}
+                                Manage packages
                               </button>
                             ) : (
                               <span className="inline-flex items-center">
                                 <button
                                   type="button"
                                   disabled={
-                                    !settlement.can_apply_package ||
                                     settlementRedeemingIds[settlement.id] ||
                                     settlementUnclaimingIds[settlement.id] ||
                                     settlement.package_status?.status === 'consumed'
                                   }
-                                  title={!settlement.can_apply_package ? (settlement.package_disabled_reason ?? 'No eligible package available.') : undefined}
-                                  onClick={() => void claimSettlementPackage(settlement.booking_id, settlement.id)}
+                                  title={
+                                    !settlement.can_apply_package && settlement.package_disabled_reason && settlement.package_disabled_reason !== 'No eligible package available.'
+                                      ? settlement.package_disabled_reason
+                                      : undefined
+                                  }
+                                  onClick={() => openSettlementPackageModal({ bookingId: settlement.booking_id, customerName: settlement.customer_name ?? undefined })}
                                   className="rounded-lg border border-cyan-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-cyan-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  {settlementRedeemingIds[settlement.id] ? 'Reserving…' : 'Claim package'}
+                                  Apply package
                                 </button>
                               </span>
                             )}
@@ -8698,10 +8732,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
                     {(() => {
                       const pkgOffset = Number(settlement.package_offset ?? 0)
-                      const settlementPackageClaimed = ['reserved', 'consumed'].includes(String(settlement.package_status?.status ?? '').toLowerCase())
-                      const mainCoveredByPkg = (settlementPackageClaimed || pkgOffset > 0.0001) && pkgOffset > 0.0001
+                      const settlementPackageClaimed = settlementPackageApplied(settlement)
+                      const mainCoveredByPkg = settlementPackageClaimed && pkgOffset > 0.0001
                       const serviceBlocks = settlement.main_service_settlement_items ?? []
                       const hasServiceBlocks = serviceBlocks.length > 0
+                      const serviceValueBounds = computeSettlementCartItemServiceValueBounds(settlement)
+                      const serviceValueLabel = formatPosAccumulatedPriceDisplay(serviceValueBounds)
                       const originalServiceBlock = serviceBlocks.find((service, idx) => service.is_original ?? idx === 0)
                       const originalServiceReference = Number(
                         originalServiceBlock?.gross_amount ??
@@ -8713,11 +8749,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       const addonRows = settlement.addon_settlement_items ?? []
                       const addonDueSum = addonRows.reduce((sum, a) => sum + resolveSettlementAddonLineDue(a), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
-                      const totalDue = Number(settlement.balance_due ?? settlement.amount_due_now ?? 0)
-                      const isRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
-                      const totalDueLabel = isRangeUnsettled
-                        ? `RM ${(Number(settlement.service_price_range_min) + addonDueSum - depositCredit - pkgOffset).toFixed(2)} - ${(Number(settlement.service_price_range_max) + addonDueSum - depositCredit - pkgOffset).toFixed(2)}`
-                        : `RM ${totalDue.toFixed(2)}`
+                      const totalDueLabel = formatPosAccumulatedPriceDisplay(computeSettlementCartItemDueBounds(settlement))
 
                       return (
                         <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-cyan-200/80">
@@ -8730,7 +8762,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   const fullPrice = resolveSettlementLineFullPrice(service)
                                   const discount = Number(service.discount_amount ?? 0)
                                   const amountDue = resolveSettlementLineAmountDue(service)
-                                  const coveredByPackage = mainCoveredByPkg && (service.is_original ?? idx === 0)
+                                  const coveredByPackage = settlementMainLineCoveredByPackage(settlement, service, idx)
+                                  const servicePriceSource = buildSettlementCartMainServicePriceSource(settlement, service, idx)
                                   const displayFullPrice = coveredByPackage
                                     ? resolveSettlementLineOriginalPrice(
                                         service,
@@ -8746,18 +8779,27 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                           <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="text-xs font-medium text-gray-800" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
                                           {coveredByPackage ? (
                                             <p className="mt-0.5 text-[10px] font-medium leading-snug text-emerald-700">
-                                              Included in your package (main service)
+                                              [PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(service.linked_booking_service_id ?? service.id ?? 0))?.package_name ?? 'Package'}
                                             </p>
                                           ) : null}
                                         </div>
                                         <span className="text-right font-semibold tabular-nums">
-                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: displayFullPrice })}</span> : null}
-                                          {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: coveredByPackage ? 0 : displayFullPrice })}</span>
-                                          {!coveredByPackage && !discount && amountDue + 0.0001 < displayFullPrice && !settlementShowsSeparateDepositCredit(settlement) ? (
-                                            <span className="block text-[10px] font-medium text-gray-500">Due now: RM {amountDue.toFixed(2)}</span>
-                                          ) : null}
-                                          {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
+                                          {coveredByPackage ? (
+                                            <>
+                                              <span className="block text-[10px] text-gray-400 line-through">{formatPosCurrentOrRangeDisplay(servicePriceSource)}</span>
+                                              <span className="block text-emerald-800">RM 0.00</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              {discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: displayFullPrice })}</span> : null}
+                                              {discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
+                                              <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayFullPrice })}</span>
+                                              {amountDue + 0.0001 < displayFullPrice && !settlementShowsSeparateDepositCredit(settlement) ? (
+                                                <span className="block text-[10px] font-medium text-gray-500">Due now: RM {amountDue.toFixed(2)}</span>
+                                              ) : null}
+                                              {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
+                                            </>
+                                          )}
                                         </span>
                                       </div>
                                     </div>
@@ -8769,7 +8811,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   const net = resolveSettlementAddonLineDue(addon)
                                   const addonUnitReference = Number(addon.extra_price ?? 0)
                                   const addonReference = gross > 0.0001 ? gross : addonUnitReference * storedAddonQuantity(addon)
-                                  const coveredByPackage = pkgOffset > originalServiceReference + 0.0001 && net <= 0.0001 && addonReference > 0.0001
+                                  const coveredByPackage = settlementAddonLineCoveredByPackage(settlement, addon, originalServiceReference)
                                   const displayGross = coveredByPackage ? addonReference : gross
                                   const displayNet = coveredByPackage ? 0 : net
                                   const addonPriceSource = posPriceDisplayForAddonLine(addon)
@@ -8784,13 +8826,22 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                           quantity={addon.quantity}
                                           cnClassName="block text-[10px] text-gray-500"
                                           quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600"
-                                          trailing={coveredByPackage ? <span className="mt-0.5 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}
+                                          trailing={coveredByPackage ? <span className="mt-0.5 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">[PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(addon.linked_booking_service_id ?? addon.id ?? 0))?.package_name ?? 'Package'}</span> : null}
                                         />
                                         <span className="text-right font-semibold tabular-nums">
-                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: displayGross })}</span> : null}
-                                          {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: displayNet })}</span>
-                                          {posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
+                                          {coveredByPackage ? (
+                                            <>
+                                              <span className="block text-[10px] text-gray-400 line-through">{formatPosCurrentOrRangeDisplay(addonPriceSource)}</span>
+                                              <span className="block text-emerald-800">RM 0.00</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              {discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: displayGross })}</span> : null}
+                                              {discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
+                                              <span className="block">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: displayNet })}</span>
+                                              {posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
+                                            </>
+                                          )}
                                         </span>
                                       </div>
                                     </div>
@@ -9975,12 +10026,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           <span className="font-semibold tabular-nums text-emerald-700">−RM {depositOffset.toFixed(2)}</span>
                         </div>
                       ) : null}
-                      {packageOffset > 0 ? (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Package Offset</span>
-                          <span className="font-semibold tabular-nums text-emerald-700">−RM {packageOffset.toFixed(2)}</span>
-                        </div>
-                      ) : null}
                       <div className="flex justify-between border-t border-gray-200 pt-1.5">
                         <span className="font-bold text-gray-900">Final Amount</span>
                         <span className="font-bold tabular-nums text-gray-900">{finalTotalLabel}</span>
@@ -10505,11 +10550,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       const checkoutServiceBlocks = settlement.main_service_settlement_items ?? []
                       const hasServiceBlocks = checkoutServiceBlocks.length > 0
                       const addonDueSum = addons.reduce((sum, a) => sum + resolveSettlementAddonLineDue(a), 0)
-                      const serviceTotalRef = Number(settlement.service_total ?? 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const pkgOffset = Number(settlement.package_offset ?? 0)
-                      const settlementPackageClaimed = ['reserved', 'consumed'].includes(String(settlement.package_status?.status ?? '').toLowerCase())
-                      const mainCoveredByPkg = (settlementPackageClaimed || pkgOffset > 0.0001) && pkgOffset > 0.0001
+                      const settlementPackageClaimed = settlementPackageApplied(settlement)
+                      const mainCoveredByPkg = settlementPackageClaimed && pkgOffset > 0.0001
                       const checkoutOriginalServiceBlock = checkoutServiceBlocks.find((service, idx) => service.is_original ?? idx === 0)
                       const checkoutOriginalServiceReference = Number(
                         checkoutOriginalServiceBlock?.gross_amount ??
@@ -10518,10 +10562,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         settlement.service_total ??
                         0,
                       )
-                      const stIsRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
-                      const stServiceLabel = stIsRangeUnsettled
-                        ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
-                        : `RM ${serviceTotalRef.toFixed(2)}`
+                      const serviceValueBounds = computeSettlementCartItemServiceValueBounds(settlement)
+                      const stServiceLabel = formatPosAccumulatedPriceDisplay(serviceValueBounds)
+                      const settlementTotalDueLabel = formatPosAccumulatedPriceDisplay(computeSettlementCartItemDueBounds(settlement))
                       const fallbackMainOriginal = resolveSettlementLineOriginalPrice(
                         checkoutOriginalServiceBlock ?? {},
                         checkoutOriginalServiceReference,
@@ -10592,7 +10635,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                 const serviceFullPrice = resolveSettlementLineFullPrice(service)
                                 const serviceDiscount = Number(service.discount_amount ?? 0)
                                 const serviceDue = resolveSettlementLineAmountDue(service)
-                                const coveredByPackage = mainCoveredByPkg && (service.is_original ?? idx === 0)
+                                const coveredByPackage = settlementMainLineCoveredByPackage(settlement, service, idx)
                                 const displayFullPrice = coveredByPackage ? 0 : serviceFullPrice
                                 const serviceSettlementSplitKey = `settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`
                                 const packageOriginalPrice = resolveSettlementLineOriginalPrice(
@@ -10610,7 +10653,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="mt-1 text-xs text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
                                         {coveredByPackage ? (
                                           <p className="mt-1 text-[10px] font-medium leading-snug text-emerald-700">
-                                            Included in your package (main service)
+                                            [PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(service.linked_booking_service_id ?? service.id ?? 0))?.package_name ?? 'Package'}
                                           </p>
                                         ) : null}
                                       </td>
@@ -10667,7 +10710,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                 const addonReference = gross > 0.0001 ? gross : addonUnitReference * storedAddonQuantity(addon)
                                 const discount = Number(addon.discount_amount ?? 0)
                                 const due = resolveSettlementAddonLineDue(addon)
-                                const coveredByPackage = pkgOffset > checkoutOriginalServiceReference + 0.0001 && due <= 0.0001 && addonReference > 0.0001
+                                const coveredByPackage = settlementAddonLineCoveredByPackage(settlement, addon, checkoutOriginalServiceReference)
                                 const addonOriginalPrice = resolveSettlementLineOriginalPrice(addon, addonReference, gross)
                                 const displayDue = coveredByPackage ? 0 : due
                                 const addonSettlementSplitKey = `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`
@@ -10685,7 +10728,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         quantity={addon.quantity}
                                         cnClassName="block text-[10px] text-gray-500"
                                         quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600"
-                                        trailing={coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}
+                                        trailing={coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">[PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(addon.linked_booking_service_id ?? addon.id ?? 0))?.package_name ?? 'Package'}</span> : null}
                                       />
                                     </td>
                                     <td className="min-w-[260px] px-4 py-2 align-top">
@@ -10714,7 +10757,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   <p className="mt-1 text-xs text-gray-700">Service</p>
                                   {mainCoveredByPkg ? (
                                     <p className="mt-1 text-[10px] leading-snug text-cyan-800">
-                                      Included in your package (main service)
+                                      [PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(settlement.booking_service_id ?? 0))?.package_name ?? 'Package'}
                                     </p>
                                   ) : null}
                                 </td>
@@ -10802,6 +10845,20 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
                               <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
                                 <p className="text-lg font-bold leading-tight text-emerald-700">− RM {depositCredit.toFixed(2)}</p>
+                              </td>
+                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
+                            </tr>
+                          ) : null}
+                          {hasServiceBlocks ? (
+                            <tr className={`${stRowClass} align-top`}>
+                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
+                              <td className="px-4 py-2 pl-7 text-xs font-bold text-gray-900 sm:px-5 sm:pl-8">
+                                Total to pay
+                              </td>
+                              <td className="min-w-[260px] px-4 py-2" aria-hidden />
+                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
+                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
+                                <p className="text-lg font-bold leading-tight text-orange-700">{settlementTotalDueLabel}</p>
                               </td>
                               <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                             </tr>
@@ -12950,6 +13007,35 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           onSuccess={(customer) => void handleMemberCreated(customer)}
         />
       ) : null}
+
+      <ApplyPackageModal
+        open={applyPackageModalTarget !== null}
+        onClose={() => setApplyPackageModalTarget(null)}
+        bookingId={applyPackageModalTarget?.bookingId ?? 0}
+        customerName={applyPackageModalTarget?.customerName}
+        onSuccess={async () => {
+          showMsg('Package updated successfully.', 'success')
+          await loadCart()
+          void fetchUnpaidCompletedAppointments(settlementQuery)
+          setApplyPackageModalTarget(null)
+        }}
+      />
+
+      <ApplyPackageModal
+        mode="service-item"
+        open={serviceItemPackageModalTarget !== null}
+        onClose={() => setServiceItemPackageModalTarget(null)}
+        customerId={serviceItemPackageModalTarget?.customerId ?? 0}
+        bookingServiceId={serviceItemPackageModalTarget?.bookingServiceId ?? 0}
+        serviceItemId={serviceItemPackageModalTarget?.serviceItemId ?? 0}
+        customerName={serviceItemPackageModalTarget?.customerName}
+        serviceName={serviceItemPackageModalTarget?.serviceName}
+        onSuccess={async () => {
+          showMsg('Package updated successfully.', 'success')
+          await loadCart()
+          setServiceItemPackageModalTarget(null)
+        }}
+      />
 
     </div>
   )

@@ -379,6 +379,7 @@ export type PublicAccountOrder = {
     cover_image_url?: string | null;
     product_image?: string | null;
     selected_booking_product_options?: Array<{ options?: Array<{ id?: number; label?: string | null; cn_label?: string | null; extra_price?: number | string | null }> }>;
+    package_applied_name?: string | null;
   }>;
 };
 

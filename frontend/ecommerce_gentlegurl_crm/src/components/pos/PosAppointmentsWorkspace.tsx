@@ -30,6 +30,7 @@ import {
   seedAddonLineTotalOverrides,
   seedFinalizedAddonPriceOverrides,
   settlementNeedsSettledAmount,
+  validateSettlementAmountInput,
   UNSETTLED_RANGE_CHECKOUT_MESSAGE,
   type PosPriceDisplaySource,
 } from '@/components/pos/settlementAmountUtils'
@@ -64,6 +65,7 @@ import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentD
 import PosAppointmentPaymentLinksSection from '@/components/pos/PosAppointmentPaymentLinksSection'
 import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
+import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
@@ -519,6 +521,7 @@ export default function PosAppointmentsWorkspace({
   const [editSettlementNoteDraft, setEditSettlementNoteDraft] = useState('')
   const [memberPickerForEditSettlement, setMemberPickerForEditSettlement] = useState(false)
   const [isCreateMemberModalOpen, setIsCreateMemberModalOpen] = useState(false)
+  const [applyPackageModalOpen, setApplyPackageModalOpen] = useState(false)
   const [editMainServicePickerOpen, setEditMainServicePickerOpen] = useState(false)
   const [editMainServicePickerTargetId, setEditMainServicePickerTargetId] = useState<string | null>(null)
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
@@ -2147,6 +2150,34 @@ export default function PosAppointmentsWorkspace({
     })
   }, [appointmentDetail?.main_services, appointmentDetail?.service?.id])
 
+  const buildAppointmentMainServicePriceSource = useCallback(
+    (service: (typeof appointmentDisplayMainServices)[number], idx: number): PosPriceDisplaySource => {
+      const isOriginalService = Boolean(service.is_original ?? idx === 0)
+      return {
+        ...service,
+        ...(isOriginalService && appointmentDetail?.settled_service_amount != null
+          ? {
+              extra_price: Number(appointmentDetail.settled_service_amount),
+              settled_service_amount: appointmentDetail.settled_service_amount,
+              price_finalized: true,
+            }
+          : {}),
+        ...(isOriginalService && appointmentDetail?.settled_service_amount == null && appointmentDetail?.service
+          ? {
+              price_mode: service.price_mode ?? appointmentDetail.service.price_mode ?? null,
+              service_price_mode: appointmentDetail.service.price_mode ?? null,
+              price_range_min: service.price_range_min ?? appointmentDetail.service.price_range_min ?? null,
+              price_range_max: service.price_range_max ?? appointmentDetail.service.price_range_max ?? null,
+              service_price_range_min: appointmentDetail.service.price_range_min ?? null,
+              service_price_range_max: appointmentDetail.service.price_range_max ?? null,
+            }
+          : {}),
+        ...(service.price_finalized ? { price_finalized: true } : {}),
+      }
+    },
+    [appointmentDetail?.service, appointmentDetail?.settled_service_amount],
+  )
+
   const openEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.service?.id) return
     reportEditSettlementError(null)
@@ -2558,10 +2589,12 @@ export default function PosAppointmentsWorkspace({
         payload.original_service_price = editOriginalServicePriceOverride
       }
       if (needsSettledAmount) {
-        const settledAmount = optionalSettlementAmountPayload(editSettledAmount)
-        if (settledAmount != null) {
-          payload.settled_service_amount = settledAmount
+        const validation = validateSettlementAmountInput(editSettledAmount, editOriginalSettlementSource)
+        if (!validation.ok) {
+          reportEditSettlementError(validation.message)
+          return
         }
+        payload.settled_service_amount = validation.amount
       }
       const normalizedSplits = editStaffSplits.map((row) => ({
         staff_id: Number(row.staff_id ?? 0),
@@ -3414,6 +3447,41 @@ export default function PosAppointmentsWorkspace({
     [appointmentDetail?.service_total],
   )
 
+  const appointmentServiceValueBounds = useMemo(() => {
+    if (appointmentDisplayMainServices.length === 0) {
+      if (appointmentDetail?.is_range_priced && appointmentDetail.settled_service_amount == null) {
+        return {
+          min: Number(appointmentDetail.service?.price_range_min ?? 0),
+          max: Number(appointmentDetail.service?.price_range_max ?? 0),
+          hasRange: true,
+        }
+      }
+      return { min: appointmentServiceAmount, max: appointmentServiceAmount, hasRange: false }
+    }
+
+    return accumulatePosPriceBounds(
+      appointmentDisplayMainServices.map((service, idx) => ({
+        source: buildAppointmentMainServicePriceSource(service, idx),
+      })),
+    )
+  }, [
+    appointmentDetail?.is_range_priced,
+    appointmentDetail?.service?.price_range_max,
+    appointmentDetail?.service?.price_range_min,
+    appointmentDetail?.settled_service_amount,
+    appointmentDisplayMainServices,
+    appointmentServiceAmount,
+    buildAppointmentMainServicePriceSource,
+  ])
+
+  const appointmentServiceValueDisplay = useMemo(() => {
+    if (appointmentServiceValueBounds.hasRange) {
+      return formatPosAccumulatedPriceDisplay(appointmentServiceValueBounds)
+    }
+    const amount = appointmentServiceValueBounds.min > 0.0001 ? appointmentServiceValueBounds.min : appointmentServiceAmount
+    return `RM ${amount.toFixed(2)}`
+  }, [appointmentServiceAmount, appointmentServiceValueBounds])
+
   const appointmentSettlementDurationMin = useMemo(
     () => durationMinutesFromRange(appointmentDetail?.appointment_start_at, appointmentDetail?.appointment_end_at),
     [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at],
@@ -3552,9 +3620,78 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
-  const appointmentPackageApplied = ['reserved', 'consumed'].includes(
-    String(appointmentDetail?.package_status?.status ?? '').toLowerCase(),
-  )
+  const appointmentPackageApplied =
+    ['reserved', 'consumed'].includes(String(appointmentDetail?.package_status?.status ?? '').toLowerCase()) ||
+    (appointmentDetail?.package_claims?.length ?? 0) > 0
+  const appointmentPackageCoveredBreakdown = useMemo((): { show: boolean; display: string } => {
+    const claims = appointmentDetail?.package_claims ?? []
+    const claimedIds = new Set(claims.map((c) => c.booking_service_id))
+    const hasPerLineClaims = claims.length > 0
+
+    if (!hasPerLineClaims && !appointmentPackageApplied) {
+      return { show: false, display: '' }
+    }
+
+    const coveredItems: Array<{
+      source?: PosPriceDisplaySource | null
+      overrideAmount?: number
+      hasOverrideKey?: boolean
+      lineTotalOverride?: number
+      hasLineTotalOverrideKey?: boolean
+    }> = []
+
+    appointmentDisplayMainServices.forEach((service, idx) => {
+      const isOriginalService = Boolean(service.is_original ?? idx === 0)
+      const serviceBookingServiceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
+      const packageCovers = hasPerLineClaims
+        ? claimedIds.has(serviceBookingServiceId)
+        : appointmentPackageApplied && isOriginalService
+      if (!packageCovers) return
+
+      coveredItems.push({
+        source: buildAppointmentMainServicePriceSource(service, idx),
+      })
+    })
+
+    for (const service of appointmentDisplayMainServices) {
+      for (const addon of service.add_ons ?? []) {
+        const addonServiceId = Number(addon.linked_booking_service_id ?? addon.id ?? 0)
+        if (!hasPerLineClaims || !claimedIds.has(addonServiceId)) continue
+        coveredItems.push({ source: posPriceDisplayForAddonLine(addon) ?? addon })
+      }
+    }
+
+    if (coveredItems.length === 0) {
+      const offset = Number(appointmentDetail?.package_offset ?? 0)
+      if (offset > 0.0001) {
+        return { show: true, display: `− RM ${offset.toFixed(2)}` }
+      }
+      return { show: hasPerLineClaims || appointmentPackageApplied, display: '− RM 0.00' }
+    }
+
+    const bounds = accumulatePosPriceBounds(coveredItems)
+    const offset = Number(appointmentDetail?.package_offset ?? 0)
+
+    if (bounds.hasRange && Math.abs(bounds.min - bounds.max) > 0.0001) {
+      return {
+        show: true,
+        display: `− RM ${bounds.min.toFixed(2)} - RM ${bounds.max.toFixed(2)}`,
+      }
+    }
+
+    const amount = bounds.min > 0.0001 ? bounds.min : offset
+    return {
+      show: true,
+      display: amount > 0.0001 ? `− RM ${amount.toFixed(2)}` : '− RM 0.00',
+    }
+  }, [
+    appointmentDetail?.package_claims,
+    appointmentDetail?.package_offset,
+    appointmentDetail?.settled_service_amount,
+    appointmentDisplayMainServices,
+    appointmentPackageApplied,
+    buildAppointmentMainServicePriceSource,
+  ])
   /** Package reserved on booking but settlement not recorded yet — treat as unpaid until POS/main checkout finalises. */
   const packageReservedPendingRegister = useMemo(
     () =>
@@ -3570,12 +3707,15 @@ export default function PosAppointmentsWorkspace({
     appointmentDueAmountNow <= 0.0001
   const appointmentShowApplyPackageButton = useMemo(
     () =>
-      !appointmentPackageApplied &&
       !appointmentCheckoutCompleted &&
-      !['reserved', 'consumed'].includes(String(appointmentDetail?.package_status?.status ?? '').toLowerCase()),
-    [appointmentCheckoutCompleted, appointmentDetail?.package_status?.status, appointmentPackageApplied],
+      Boolean(appointmentDetail?.customer),
+    [appointmentCheckoutCompleted, appointmentDetail?.customer],
   )
-  const appointmentPackageDisabledReason = appointmentDetail?.package_disabled_reason ?? 'No eligible package available.'
+  const appointmentPackageDisabledReason =
+    appointmentDetail?.package_disabled_reason &&
+    appointmentDetail.package_disabled_reason !== 'No eligible package available.'
+      ? appointmentDetail.package_disabled_reason
+      : null
   const appointmentCanApplyPackage = Boolean(appointmentDetail?.can_apply_package)
   const appointmentStatusUpper = String(appointmentDetail?.status ?? '').toUpperCase()
   const appointmentIsHold = appointmentStatusUpper === 'HOLD'
@@ -4309,18 +4449,28 @@ export default function PosAppointmentsWorkspace({
                         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-800">Service</p>
                         <div className="mt-2 space-y-2">
                           {(() => {
-                            const originalServiceForPackage = appointmentDisplayMainServices.find((service, idx) => service.is_original ?? idx === 0)
-                            const packageMainReference = Number(originalServiceForPackage?.extra_price ?? appointmentDetail.service_total ?? 0)
-                            const packageRemainingForAddons = Math.max(0, appointmentPackageOffsetAmount - packageMainReference)
-                            let addonCoverageUsed = 0
+                            const claims = appointmentDetail.package_claims ?? []
+                            const hasPerLineClaims = claims.length > 0
 
                             return appointmentDisplayMainServices.map((service, serviceIdx) => {
                               const isOriginalService = Boolean(service.is_original ?? serviceIdx === 0)
-                              const servicePrice = Number(service.extra_price ?? 0)
-                              const packageCoversMainService =
-                                appointmentPackageApplied &&
-                                (service.is_original ?? serviceIdx === 0) &&
-                                appointmentPackageOffsetAmount > 0.0001
+                              const servicePriceSource = {
+                                ...service,
+                                ...(isOriginalService && appointmentDetail?.settled_service_amount != null
+                                  ? {
+                                      extra_price: Number(appointmentDetail.settled_service_amount),
+                                      settled_service_amount: appointmentDetail.settled_service_amount,
+                                      price_finalized: true,
+                                    }
+                                  : {}),
+                                ...(service.price_finalized ? { price_finalized: true } : {}),
+                              }
+                              const servicePrice = Number(servicePriceSource.extra_price ?? 0)
+                              const serviceBookingServiceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
+                              const serviceIsRangePriced = posPriceDisplayHasRange(servicePriceSource) && !posPriceDisplayHasFinalPrice(servicePriceSource)
+                              const packageCoversMainService = hasPerLineClaims
+                                ? claims.some((c) => c.booking_service_id === serviceBookingServiceId)
+                                : appointmentPackageApplied && isOriginalService
 
                               return (
                                 <div key={`appt-main-block-${service.id ?? service.name}-${serviceIdx}`} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
@@ -4334,20 +4484,20 @@ export default function PosAppointmentsWorkspace({
                                       />
                                       {packageCoversMainService ? (
                                         <p className="mt-0.5 text-[11px] font-medium leading-snug text-emerald-700">
-                                          Included in your package (main service)
+                                          [PKG] {hasPerLineClaims ? (claims.find((c) => c.booking_service_id === serviceBookingServiceId)?.package_name ?? 'Package') : 'Included in your package'}
                                         </p>
                                       ) : null}
                                     </div>
                                     <span className="text-right text-xs font-semibold tabular-nums text-slate-900">
                                       {packageCoversMainService ? (
                                         <>
-                                          <span className="block text-slate-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: servicePrice })}</span>
+                                          <span className="block text-slate-400 line-through">{formatPosCurrentOrRangeDisplay(servicePriceSource)}</span>
                                           <span className="block text-emerald-800">RM 0.00</span>
                                         </>
                                       ) : (
                                         <>
-                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: servicePrice })}</span>
-                                          {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
+                                          <span className="block">{formatPosCurrentOrRangeDisplay(servicePriceSource)}</span>
+                                          {serviceIsRangePriced ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </>
                                       )}
                                     </span>
@@ -4411,12 +4561,9 @@ export default function PosAppointmentsWorkspace({
                                         const showAddonUnsettledRange = posPriceDisplayHasRange(addon)
                                           && !posPriceDisplayHasFinalPrice(addon)
                                           && !hasExplicitAddonLinePrice
-                                        const packageCoversAddon =
-                                          appointmentPackageApplied &&
-                                          packageRemainingForAddons > addonCoverageUsed + 0.0001 &&
-                                          addonLinePrice > 0.0001 &&
-                                          packageRemainingForAddons + 0.0001 >= addonCoverageUsed + addonLinePrice
-                                        if (packageCoversAddon) addonCoverageUsed += addonLinePrice
+                                        const packageCoversAddon = hasPerLineClaims
+                                          ? claims.some((c) => c.booking_service_id === Number(addon.linked_booking_service_id ?? addon.id ?? 0))
+                                          : false
 
                                         return (
                                           <li key={`appt-main-addon-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex items-start justify-between gap-3">
@@ -4430,14 +4577,14 @@ export default function PosAppointmentsWorkspace({
                                               quantityClassName="mt-0.5 text-[11px] font-semibold tabular-nums text-slate-500"
                                               trailing={packageCoversAddon ? (
                                                 <span className="mt-1 block text-[11px] font-medium leading-snug text-emerald-700">
-                                                  Included in your package (add-on)
+                                                  [PKG] {hasPerLineClaims ? (claims.find((c) => c.booking_service_id === Number(addon.linked_booking_service_id ?? addon.id ?? 0))?.package_name ?? 'Package') : 'Included in your package'}
                                                 </span>
                                               ) : null}
                                             />
                                             <span className="text-right tabular-nums">
                                               {packageCoversAddon ? (
                                                 <>
-                                                  <span className="block text-slate-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: addonLinePrice })}</span>
+                                                  <span className="block text-slate-400 line-through">{formatPosCurrentOrRangeDisplay(addonPriceSource)}</span>
                                                   <span className="block font-semibold text-emerald-800">RM 0.00</span>
                                                 </>
                                               ) : (
@@ -4577,11 +4724,9 @@ export default function PosAppointmentsWorkspace({
                     </h4>
                     <div className="divide-y divide-slate-100 px-4 text-sm">
                       <div className="flex items-center justify-between gap-3 py-3.5">
-                        <span className="text-slate-600">Service</span>
+                        <span className="text-slate-600">Service Value</span>
                         <span className="font-medium tabular-nums text-slate-900">
-                          {appointmentDetail.is_range_priced && appointmentDetail.settled_service_amount == null
-                            ? `RM ${Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} - ${Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}`
-                            : `RM ${appointmentServiceAmount.toFixed(2)}`}
+                          {appointmentServiceValueDisplay}
                         </span>
                       </div>
                       <div className="flex flex-col gap-1 py-3.5">
@@ -4609,10 +4754,14 @@ export default function PosAppointmentsWorkspace({
                           {appointmentDepositTotalForBreakdown > 0 ? `− RM ${appointmentDepositTotalForBreakdown.toFixed(2)}` : '—'}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between gap-3 py-3.5">
-                        <span className="text-slate-600">Package offset</span>
-                        <span className="font-medium tabular-nums text-emerald-800">− RM {appointmentPackageOffsetAmount.toFixed(2)}</span>
-                      </div>
+                      {appointmentPackageCoveredBreakdown.show ? (
+                        <div className="flex items-center justify-between gap-3 py-3.5">
+                          <span className="text-slate-600">Package Covered</span>
+                          <span className="font-medium tabular-nums text-emerald-800">
+                            {appointmentPackageCoveredBreakdown.display}
+                          </span>
+                        </div>
+                      ) : null}
 
                       <div className="-mx-4 flex items-center justify-between gap-3 border-t-2 border-slate-200 bg-emerald-50/50 px-4 py-4">
                         <span className="text-base font-bold text-slate-900">Total Amount to Pay</span>
@@ -4711,9 +4860,9 @@ export default function PosAppointmentsWorkspace({
                           {appointmentShowApplyPackageButton ? (
                             <button
                               type="button"
-                              disabled={cashShiftActionDisabled || appointmentActionLoading || !appointmentCanApplyPackage}
-                              title={cashShiftActionTitle ?? (!appointmentCanApplyPackage ? appointmentPackageDisabledReason : undefined)}
-                              onClick={() => void applyAppointmentPackage()}
+                              disabled={cashShiftActionDisabled || appointmentActionLoading}
+                              title={cashShiftActionTitle ?? undefined}
+                              onClick={() => setApplyPackageModalOpen(true)}
                               className="min-h-[44px] rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:pointer-events-none disabled:opacity-50"
                             >
                               Apply package
@@ -4723,14 +4872,14 @@ export default function PosAppointmentsWorkspace({
                               type="button"
                               disabled={cashShiftActionDisabled || appointmentActionLoading}
                               title={cashShiftActionTitle}
-                              onClick={() => void releaseAppointmentPackage()}
+                              onClick={() => setApplyPackageModalOpen(true)}
                               className="min-h-[44px] rounded-lg border-2 border-amber-600 bg-white py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:bg-amber-50 disabled:pointer-events-none disabled:opacity-50"
                             >
-                              Unclaim package
+                              Manage packages
                             </button>
                           ) : null}
                         </div>
-                        {appointmentShowApplyPackageButton && !appointmentCanApplyPackage ? (
+                        {appointmentShowApplyPackageButton && appointmentPackageDisabledReason ? (
                           <p className="text-[11px] font-medium text-amber-700">{appointmentPackageDisabledReason}</p>
                         ) : null}
                         {appointmentHasUnsettledRangePricing ? (
@@ -7759,6 +7908,18 @@ export default function PosAppointmentsWorkspace({
           onSuccess={handleMemberCreated}
         />
       ) : null}
+
+      <ApplyPackageModal
+        open={applyPackageModalOpen}
+        onClose={() => setApplyPackageModalOpen(false)}
+        bookingId={appointmentDetail?.id ?? 0}
+        customerName={appointmentDetail?.customer_name ?? appointmentDetail?.customer?.name ?? undefined}
+        onSuccess={async () => {
+          showMsg('Package updated successfully.', 'success')
+          await fetchAppointments({ silent: true })
+          await refreshOpenedAppointmentDetail()
+        }}
+      />
     </div>
   )
 }

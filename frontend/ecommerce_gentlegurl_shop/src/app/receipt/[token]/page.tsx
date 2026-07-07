@@ -300,7 +300,7 @@ export default async function PublicReceiptPage({ params }: Props) {
             </tr>
             {receipt.package_coverage?.covered && (receipt.package_coverage?.package_offset ?? 0) > 0 ? (
               <tr className="border-b border-[var(--card-border)]">
-                <td className="px-4 py-2 text-[var(--foreground)]/70">Package Offset</td>
+                <td className="px-4 py-2 text-[var(--foreground)]/70">Package Covered</td>
                 <td className="px-4 py-2 text-right font-semibold">- {money(receipt.package_coverage?.package_offset)}</td>
               </tr>
             ) : null}

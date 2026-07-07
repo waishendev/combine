@@ -544,36 +544,196 @@ export function settlementShowsSeparateDepositCredit(settlement?: {
   return fullPrice > amountDue + 0.0001
 }
 
-export function computeSettlementCartItemDueBounds(settlement?: {
+export type SettlementCartItemLike = {
   is_range_priced?: boolean | null
   requires_settled_amount?: boolean | null
   settled_service_amount?: number | string | null
+  service_price_mode?: string | null
   service_price_range_min?: number | string | null
   service_price_range_max?: number | string | null
+  service_total?: number | string | null
   balance_due?: number | string | null
   amount_due_now?: number | string | null
   deposit_contribution?: number | string | null
   package_offset?: number | string | null
-  addon_settlement_items?: Array<{ balance_due?: number | string | null; extra_price?: number | string | null }> | null
-} | null): PosPriceBounds {
+  package_status?: { status?: string | null } | null
+  package_claims?: Array<{ booking_service_id: number }> | null
+  main_services?: Array<{
+    is_original?: boolean
+    price_mode?: string | null
+    price_range_min?: number | null
+    price_range_max?: number | null
+  }> | null
+  main_service_settlement_items?: Array<PosPriceDisplaySource & {
+    is_original?: boolean
+    linked_booking_service_id?: number | null
+    id?: number | null
+    price_mode?: string | null
+    price_range_min?: number | null
+    price_range_max?: number | null
+    price_finalized?: boolean | null
+  }> | null
+  addon_settlement_items?: Array<(PosPriceDisplaySource & StoredAddonRowLike & {
+    balance_due?: number | string | null
+    extra_price?: number | string | null
+    linked_booking_service_id?: number | null
+    id?: number | null
+    discount_amount?: number | null
+    line_total_after_discount?: number | null
+    gross_amount?: number | null
+    price_finalized?: boolean | null
+  })> | null
+}
+
+export function buildSettlementCartMainServicePriceSource(
+  settlement: SettlementCartItemLike,
+  service: NonNullable<SettlementCartItemLike['main_service_settlement_items']>[number],
+  idx: number,
+): PosPriceDisplaySource {
+  const isOriginalService = Boolean(service.is_original ?? idx === 0)
+  const originalMainMeta = (settlement.main_services ?? []).find((row) => row.is_original)
+    ?? settlement.main_services?.[0]
+
+  return {
+    ...service,
+    ...(isOriginalService && settlement.settled_service_amount != null
+      ? {
+          extra_price: Number(settlement.settled_service_amount),
+          settled_service_amount: settlement.settled_service_amount,
+          price_finalized: true,
+        }
+      : {}),
+    ...(isOriginalService && settlement.settled_service_amount == null
+      ? {
+          price_mode: service.price_mode ?? settlement.service_price_mode ?? originalMainMeta?.price_mode ?? null,
+          service_price_mode: settlement.service_price_mode ?? null,
+          price_range_min: service.price_range_min ?? settlement.service_price_range_min ?? originalMainMeta?.price_range_min ?? null,
+          price_range_max: service.price_range_max ?? settlement.service_price_range_max ?? originalMainMeta?.price_range_max ?? null,
+          service_price_range_min: settlement.service_price_range_min ?? null,
+          service_price_range_max: settlement.service_price_range_max ?? null,
+        }
+      : {}),
+    ...(service.price_finalized ? { price_finalized: true } : {}),
+  }
+}
+
+export function computeSettlementCartItemServiceValueBounds(
+  settlement?: SettlementCartItemLike | null,
+): PosPriceBounds {
+  if (!settlement) return { min: 0, max: 0, hasRange: false }
+
+  const blocks = settlement.main_service_settlement_items ?? []
+  if (blocks.length === 0) {
+    if (settlement.is_range_priced && settlement.settled_service_amount == null) {
+      return {
+        min: Number(settlement.service_price_range_min ?? 0),
+        max: Number(settlement.service_price_range_max ?? 0),
+        hasRange: true,
+      }
+    }
+    const amount = Number(settlement.service_total ?? 0)
+    return { min: amount, max: amount, hasRange: false }
+  }
+
+  return accumulatePosPriceBounds(
+    blocks.map((service, idx) => ({
+      source: buildSettlementCartMainServicePriceSource(settlement, service, idx),
+    })),
+  )
+}
+
+export function settlementPackageApplied(settlement?: SettlementCartItemLike | null): boolean {
+  if (!settlement) return false
+  return ['reserved', 'consumed'].includes(String(settlement.package_status?.status ?? '').toLowerCase())
+    || (settlement.package_claims?.length ?? 0) > 0
+}
+
+export function settlementMainLineCoveredByPackage(
+  settlement: SettlementCartItemLike,
+  service: { linked_booking_service_id?: number | null; id?: number | null; is_original?: boolean },
+  idx: number,
+): boolean {
+  const claims = settlement.package_claims ?? []
+  const lineBookingServiceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
+  if (claims.length > 0) {
+    return claims.some((claim) => claim.booking_service_id === lineBookingServiceId)
+  }
+
+  const pkgOffset = Number(settlement.package_offset ?? 0)
+  if (!settlementPackageApplied(settlement) || pkgOffset <= 0.0001) return false
+  return Boolean(service.is_original ?? idx === 0)
+}
+
+export function settlementAddonLineCoveredByPackage(
+  settlement: SettlementCartItemLike,
+  addon: {
+    linked_booking_service_id?: number | null
+    id?: number | null
+    extra_price?: number | string | null
+    balance_due?: number | string | null
+    discount_amount?: number | null
+    line_total_after_discount?: number | null
+    gross_amount?: number | null
+    quantity?: number | null
+    line_gross_amount?: number | null
+  },
+  originalServiceReference: number,
+): boolean {
+  const claims = settlement.package_claims ?? []
+  const lineBookingServiceId = Number(addon.linked_booking_service_id ?? addon.id ?? 0)
+  if (claims.length > 0) {
+    return claims.some((claim) => claim.booking_service_id === lineBookingServiceId)
+  }
+
+  const pkgOffset = Number(settlement.package_offset ?? 0)
+  const net = resolveSettlementAddonLineDue(addon)
+  const gross = resolveSettlementAddonLineGross(addon)
+  const addonReference = gross > 0.0001 ? gross : Number(addon.extra_price ?? 0) * storedAddonQuantity(addon)
+  return pkgOffset > originalServiceReference + 0.0001 && net <= 0.0001 && addonReference > 0.0001
+}
+
+export function computeSettlementCartItemDueBounds(
+  settlement?: SettlementCartItemLike | null,
+): PosPriceBounds {
   if (!settlement) return { min: 0, max: 0, hasRange: false }
 
   const depositCredit = Number(settlement.deposit_contribution ?? 0)
-  const pkgOffset = Number(settlement.package_offset ?? 0)
-  const addonDueSum = (settlement.addon_settlement_items ?? []).reduce(
-    (sum, addon) => sum + Number(addon.balance_due ?? addon.extra_price ?? 0),
-    0,
-  )
-  const isRangeUnsettled = Boolean(
-    settlement.is_range_priced || settlement.requires_settled_amount,
-  ) && settlement.settled_service_amount == null
+  const hasUnsettledRange = settlementCartItemHasUnsettledRangePricing(settlement)
 
-  if (isRangeUnsettled) {
-    const minRaw = Number(settlement.service_price_range_min ?? 0) + addonDueSum - depositCredit - pkgOffset
-    const maxRaw = Number(settlement.service_price_range_max ?? 0) + addonDueSum - depositCredit - pkgOffset
+  if (hasUnsettledRange) {
+    const serviceBlocks = settlement.main_service_settlement_items ?? []
+    const addonBlocks = settlement.addon_settlement_items ?? []
+    const originalServiceBlock = serviceBlocks.find((service, idx) => service.is_original ?? idx === 0)
+    const originalServiceReference = Number(
+      originalServiceBlock?.gross_amount ??
+      originalServiceBlock?.extra_price ??
+      originalServiceBlock?.balance_due ??
+      settlement.service_total ??
+      0,
+    )
+
+    const serviceBounds = accumulatePosPriceBounds(
+      serviceBlocks.map((service, idx) => ({
+        source: settlementMainLineCoveredByPackage(settlement, service, idx)
+          ? settlementZeroPriceSource()
+          : buildSettlementCartMainServicePriceSource(settlement, service, idx),
+      })),
+    )
+    const addonBounds = accumulatePosPriceBounds(
+      addonBlocks.map((addon) => ({
+        source: settlementAddonLineCoveredByPackage(settlement, addon, originalServiceReference)
+          ? settlementZeroPriceSource()
+          : posPriceDisplayForAddonLine(addon),
+      })),
+    )
+    const minRaw = serviceBounds.min + addonBounds.min - depositCredit
+    const maxRaw = serviceBounds.max + addonBounds.max - depositCredit
     const min = Math.max(0, Math.min(minRaw, maxRaw))
     const max = Math.max(0, Math.max(minRaw, maxRaw))
-    return { min, max, hasRange: Math.abs(min - max) > 0.0001 }
+    const hasRange = serviceBounds.hasRange
+      || addonBounds.hasRange
+      || Math.abs(min - max) > 0.0001
+    return { min, max, hasRange }
   }
 
   const due = Number(settlement.balance_due ?? settlement.amount_due_now ?? 0)
@@ -630,6 +790,8 @@ export function appointmentNeedsZeroBalanceCheckout(detail?: {
 
 export function settlementCartItemHasUnsettledRangePricing(settlement?: {
   requires_settled_amount?: boolean | null
+  is_range_priced?: boolean | null
+  settled_service_amount?: number | string | null
   addon_settlement_items?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null; is_original?: boolean }>
   main_service_settlement_items?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null; is_original?: boolean }>
   main_services?: Array<PosPriceDisplaySource & {
@@ -639,15 +801,25 @@ export function settlementCartItemHasUnsettledRangePricing(settlement?: {
 } | null): boolean {
   if (!settlement) return false
   if (settlement.requires_settled_amount) return true
+  if (settlement.is_range_priced && settlement.settled_service_amount == null) return true
   if (collectionHasUnsettledRangePricing(settlement.addon_settlement_items)) return true
-  if (collectionHasUnsettledRangePricing(
-    (settlement.main_service_settlement_items ?? []).filter((line) => !line.is_original),
-  )) return true
+  if (collectionHasUnsettledRangePricing(settlement.main_service_settlement_items)) return true
   for (const service of settlement.main_services ?? []) {
     if (posLineHasUnsettledRangePricing(service)) return true
     if (collectionHasUnsettledRangePricing(service.add_ons)) return true
   }
   return false
+}
+
+function settlementZeroPriceSource(): PosPriceDisplaySource {
+  return {
+    price: 0,
+    extra_price: 0,
+    price_mode: null,
+    service_price_mode: null,
+    linked_price_mode: null,
+    price_finalized: true,
+  }
 }
 
 /** Only include settlement amount in save payload when the user entered a value. */

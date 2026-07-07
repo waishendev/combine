@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
-use App\Models\Booking\Booking;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderReceiptToken;
@@ -35,8 +34,25 @@ class PublicReceiptController extends Controller
 
         $order = $receiptToken->order;
 
+        $settlementBookingServiceIds = $order->items
+            ->filter(fn (OrderItem $item) => in_array((string) ($item->line_type ?? ''), ['booking_settlement', 'booking_addon'], true))
+            ->pluck('booking_service_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
         $mixedItems = $order->items
             ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
+            ->filter(function (OrderItem $item) use ($settlementBookingServiceIds) {
+                if ((string) ($item->line_type ?? '') !== 'service') {
+                    return true;
+                }
+
+                $serviceId = (int) ($item->booking_service_id ?? 0);
+
+                return $serviceId <= 0 || ! $settlementBookingServiceIds->contains($serviceId);
+            })
             ->values();
         $bookingIdsForPackage = $order->serviceItems
             ->pluck('booking_id')
@@ -48,9 +64,11 @@ class PublicReceiptController extends Controller
             ->all();
 
         $packageNameByBooking = collect();
+        $packageNameByServiceId = collect();
+        $packageUsages = collect();
         if ($bookingIdsForPackage !== []) {
-            $packageNameByBooking = CustomerServicePackageUsage::query()
-                ->with('customerServicePackage.servicePackage:id,name')
+            $packageUsages = CustomerServicePackageUsage::query()
+                ->with(['customerServicePackage.servicePackage:id,name', 'bookingService:id,name,cn_name'])
                 ->whereIn('status', ['reserved', 'consumed'])
                 ->where(function ($q) use ($bookingIdsForPackage) {
                     $q->whereIn('booking_id', $bookingIdsForPackage)
@@ -60,14 +78,31 @@ class PublicReceiptController extends Controller
                         });
                 })
                 ->orderByDesc('id')
-                ->get()
+                ->get();
+            $packageNameByBooking = $packageUsages
                 ->groupBy(fn ($usage) => (int) ($usage->booking_id ?: $usage->used_ref_id ?: 0))
                 ->map(function ($rows) {
                     $usage = $rows->first();
 
                     return (string) ($usage?->customerServicePackage?->servicePackage?->name ?? '');
                 });
+            $packageNameByServiceId = $packageUsages
+                ->groupBy(fn ($usage) => (int) ($usage->booking_service_id ?? 0))
+                ->map(function ($rows) {
+                    $usage = $rows->first();
+
+                    return (string) ($usage?->customerServicePackage?->servicePackage?->name ?? '');
+                });
         }
+        $representedBookingServiceIds = $order->items
+            ->filter(fn (OrderItem $item) => in_array((string) ($item->line_type ?? ''), ['booking_settlement', 'booking_addon', 'service'], true))
+            ->pluck('booking_service_id')
+            ->concat($order->serviceItems->pluck('booking_service_id'))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
         $serviceItems = $order->serviceItems->where('item_type', 'service')->values();
         $orderServiceCoverageLines = $serviceItems
             ->filter(fn ($item) => $this->isBookingCoveredByPackage((int) ($item->booking_id ?? 0)))
@@ -91,40 +126,54 @@ class PublicReceiptController extends Controller
             })
             ->values();
         $serviceCoverageLines = $orderServiceCoverageLines
-            ->concat($this->buildFallbackPackageCoveredServiceLines(
-                $order,
-                $packageNameByBooking,
-                $orderServiceCoverageLines->pluck('booking_id')->map(fn ($id) => (int) $id)->all(),
-            ))
+            ->concat($this->invoiceService->buildFallbackPackageCoveredServiceItems($order, $representedBookingServiceIds)
+                ->map(fn (array $row) => [
+                    'type' => (string) ($row['line_type'] ?? 'service'),
+                    'name' => (string) ($row['product_name'] ?? 'Service'),
+                    'cn_name' => $row['product_cn_name'] ?? null,
+                    'qty' => (int) ($row['quantity'] ?? 1),
+                    'unit_price' => (float) ($row['unit_price'] ?? 0),
+                    'line_total' => (float) ($row['line_total'] ?? 0),
+                    'line_total_snapshot' => (float) ($row['line_total_snapshot'] ?? $row['line_total'] ?? 0),
+                    'line_total_after_discount' => 0.0,
+                    'booking_id' => (int) ($row['booking_id'] ?? 0),
+                    'booking_service_id' => (int) ($row['booking_service_id'] ?? 0),
+                    'covered_by_package' => true,
+                    'package_applied_name' => $row['package_applied_name'] ?? null,
+                ]))
+            ->filter(function (array $item) use ($settlementBookingServiceIds, $order) {
+                $serviceId = (int) ($item['booking_service_id'] ?? 0);
+                $serviceName = (string) ($item['name'] ?? '');
+
+                if ($this->invoiceService->orderAlreadyRepresentsPackageService($order, $serviceId, $serviceName)) {
+                    return false;
+                }
+
+                if ($serviceId <= 0) {
+                    return true;
+                }
+
+                return ! $settlementBookingServiceIds->contains($serviceId);
+            })
             ->values();
         $hasDepositLine = $mixedItems->contains(fn ($item) => (string) $item->line_type === 'booking_deposit');
         $hasSettlementLine = $mixedItems->contains(fn ($item) => (string) $item->line_type === 'booking_settlement');
-        $hasPackageCoverage = $serviceCoverageLines->isNotEmpty();
+        $hasPackageCoverage = $serviceCoverageLines->isNotEmpty()
+            || $mixedItems->contains(function (OrderItem $item) use ($packageNameByServiceId, $packageUsages) {
+                return $this->invoiceService->resolvePackageNameForOrderItem($item, $packageNameByServiceId, $packageUsages) !== '';
+            });
         $canRenderServiceCoverageLines = $hasPackageCoverage;
         $isPackageCoveredReceipt = ! $hasDepositLine
             && ! $hasSettlementLine
             && $hasPackageCoverage
-            && $mixedItems->every(fn ($item) => in_array((string) ($item->line_type ?? ''), ['', 'booking_addon', 'service_package'], true));
-
-        $packageOffset = $canRenderServiceCoverageLines
-            ? (float) $serviceCoverageLines->sum(fn (array $item) => (float) ($item['line_total'] ?? 0))
-            : 0.0;
-        $packageNames = $canRenderServiceCoverageLines
-            ? $serviceCoverageLines
-                ->map(fn (array $item) => (string) ($item['package_applied_name'] ?? ''))
-                ->filter(fn (string $name) => $name !== '')
-                ->unique()
-                ->values()
-                ->all()
-            : [];
-
+            && $mixedItems->every(fn ($item) => in_array((string) ($item->line_type ?? ''), ['', 'booking_addon', 'service_package', 'service'], true));
 
         $hasOnlyDepositLines = $hasDepositLine
             && $mixedItems->count() > 0
             && $mixedItems->count() === $mixedItems->where('line_type', 'booking_deposit')->count();
         $hasOnlySettlementLines = $hasSettlementLine
             && $mixedItems->count() > 0
-            && $mixedItems->every(fn ($item) => in_array((string) ($item->line_type ?? ''), ['booking_settlement', 'booking_addon'], true));
+            && $mixedItems->every(fn ($item) => in_array((string) ($item->line_type ?? ''), ['booking_settlement', 'booking_addon', 'service'], true));
 
         $receiptStage = $isPackageCoveredReceipt
             ? 'package_covered_booking'
@@ -136,11 +185,11 @@ class PublicReceiptController extends Controller
         if ($hasOnlyDepositLines) {
             $displayItems = $mixedItems->where('line_type', 'booking_deposit')->values();
         } elseif ($hasOnlySettlementLines) {
-            $displayItems = $mixedItems->whereIn('line_type', ['booking_settlement', 'booking_addon'])->values();
+            $displayItems = $mixedItems->whereIn('line_type', ['booking_settlement', 'booking_addon', 'service'])->values();
         }
 
 
-        $displayItemsForResponse = $displayItems->map(function (OrderItem $item) {
+        $displayItemsForResponse = $displayItems->map(function (OrderItem $item) use ($packageNameByServiceId, $packageUsages) {
             $row = $this->invoiceService->mapOrderItemToInvoiceRow($item);
             $discountAmount = (float) ($item->discount_amount ?? 0);
             $lineTotalSnapshot = (float) ($item->line_total_snapshot
@@ -150,6 +199,8 @@ class PublicReceiptController extends Controller
                 ?? $item->effective_line_total
                 ?? $item->line_total
                 ?? max(0, $lineTotalSnapshot - $discountAmount));
+            $packageName = $this->invoiceService->resolvePackageNameForOrderItem($item, $packageNameByServiceId, $packageUsages);
+            $coveredByPackage = $packageName !== '';
 
             $lineType = (string) ($item->line_type ?: 'product');
             $rawProductName = (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Add-on');
@@ -170,13 +221,13 @@ class PublicReceiptController extends Controller
                 'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,
                 'qty' => $row['quantity'],
                 'unit_price' => $row['unit_price'],
-                'line_total' => $lineTotalNet,
+                'line_total' => $coveredByPackage ? 0.0 : $lineTotalNet,
                 'line_total_snapshot' => $lineTotalSnapshot,
                 'discount_type' => $item->discount_type,
                 'discount_value' => (float) ($item->discount_value ?? 0),
                 'discount_amount' => $discountAmount,
                 'discount_remark' => $item->discount_remark,
-                'line_total_after_discount' => $lineTotalNet,
+                'line_total_after_discount' => $coveredByPackage ? 0.0 : $lineTotalNet,
                 'booking_id' => $item->booking_id,
                 'service_package_id' => $item->service_package_id,
                 'customer_service_package_id' => $item->customer_service_package_id,
@@ -184,14 +235,35 @@ class PublicReceiptController extends Controller
                 'promotion_name' => $item->promotion_name_snapshot,
                 'promotion_tier_summary' => data_get($item->promotion_snapshot, 'summary'),
                 'promotion_snapshot' => $item->promotion_snapshot,
-                'covered_by_package' => false,
-                'package_applied_name' => null,
+                'covered_by_package' => $coveredByPackage,
+                'package_applied_name' => $coveredByPackage ? $packageName : null,
             ];
         })->values()->concat($serviceCoverageLines)->values();
 
+        $packageOffset = $canRenderServiceCoverageLines
+            ? round((float) $displayItemsForResponse
+                ->filter(fn (array $item) => (bool) ($item['covered_by_package'] ?? false))
+                ->sum(fn (array $item) => (float) ($item['line_total_snapshot'] ?? $item['line_total'] ?? 0)), 2)
+            : 0.0;
+        $packageNames = $canRenderServiceCoverageLines
+            ? $displayItemsForResponse
+                ->filter(fn (array $item) => (bool) ($item['covered_by_package'] ?? false))
+                ->map(fn (array $item) => (string) ($item['package_applied_name'] ?? ''))
+                ->filter(fn (string $name) => $name !== '')
+                ->unique()
+                ->values()
+                ->all()
+            : [];
+
         $summarySubtotal = (float) $order->subtotal;
         if ($canRenderServiceCoverageLines || ($mixedItems->isEmpty() && $serviceCoverageLines->isNotEmpty())) {
-            $summarySubtotal = round((float) $displayItemsForResponse->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2);
+            $summarySubtotal = round((float) $displayItemsForResponse->sum(function (array $item) {
+                if ((bool) ($item['covered_by_package'] ?? false)) {
+                    return (float) ($item['line_total_snapshot'] ?? $item['line_total'] ?? 0);
+                }
+
+                return (float) ($item['line_total'] ?? 0);
+            }), 2);
         }
 
         return $this->respond([
@@ -252,72 +324,6 @@ class PublicReceiptController extends Controller
             })->values(),
         ]);
     }
-
-    private function buildFallbackPackageCoveredServiceLines(Order $order, $packageNameByBooking, array $existingBookingIds)
-    {
-        $existing = collect($existingBookingIds)->map(fn ($id) => (int) $id)->filter()->values();
-        $bookingIds = $order->items
-            ->pluck('booking_id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->reject(fn (int $id) => $existing->contains($id))
-            ->filter(fn (int $id) => $this->isBookingCoveredByPackage($id))
-            ->values();
-
-        if ($bookingIds->isEmpty()) {
-            return collect();
-        }
-
-        $loadedBookings = $order->items
-            ->pluck('booking')
-            ->filter()
-            ->keyBy(fn ($booking) => (int) $booking->id);
-        $missingBookingIds = $bookingIds
-            ->reject(fn (int $id) => $loadedBookings->has($id))
-            ->values();
-
-        if ($missingBookingIds->isNotEmpty()) {
-            Booking::query()
-                ->with('service:id,name,cn_name,service_price,price')
-                ->whereIn('id', $missingBookingIds->all())
-                ->get()
-                ->each(function (Booking $booking) use ($loadedBookings) {
-                    $loadedBookings->put((int) $booking->id, $booking);
-                });
-        }
-
-        return $bookingIds
-            ->map(function (int $bookingId) use ($loadedBookings, $packageNameByBooking) {
-                $booking = $loadedBookings->get($bookingId);
-                if (! $booking) {
-                    return null;
-                }
-
-                $serviceName = (string) ($booking->service?->name ?? 'Service');
-                $serviceAmount = $booking->settled_service_amount !== null
-                    ? (float) $booking->settled_service_amount
-                    : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
-                $packageName = (string) ($packageNameByBooking->get($bookingId) ?? '');
-
-                return [
-                    'type' => 'service',
-                    'name' => $serviceName,
-                    'cn_name' => $booking->service?->cn_name,
-                    'qty' => 1,
-                    'unit_price' => round(max(0, $serviceAmount), 2),
-                    'line_total' => round(max(0, $serviceAmount), 2),
-                    'line_total_snapshot' => round(max(0, $serviceAmount), 2),
-                    'line_total_after_discount' => 0.0,
-                    'booking_id' => $bookingId,
-                    'covered_by_package' => true,
-                    'package_applied_name' => $packageName !== '' ? $packageName : null,
-                ];
-            })
-            ->filter()
-            ->values();
-    }
-
 
     private function isFakeMainServiceBookingAddon($item): bool
     {

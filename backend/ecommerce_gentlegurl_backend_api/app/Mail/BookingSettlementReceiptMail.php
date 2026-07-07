@@ -21,7 +21,9 @@ class BookingSettlementReceiptMail extends Mailable implements ShouldQueue
      *     variant_name?: string|null,
      *     variant_cn_name?: string|null,
      *     qty: int,
-     *     line_total: float
+     *     line_total: float,
+     *     package_covered?: bool,
+     *     package_name?: string|null
      * }> $items
      */
     public function __construct(
@@ -60,6 +62,10 @@ class BookingSettlementReceiptMail extends Mailable implements ShouldQueue
                     : null,
                 'qty' => (int) ($item['qty'] ?? 0),
                 'line_total' => (float) ($item['line_total'] ?? 0),
+                'package_covered' => !empty($item['package_covered']),
+                'package_name' => ($pkgName = trim((string) ($item['package_name'] ?? ''))) !== ''
+                    ? mb_scrub($pkgName, 'UTF-8')
+                    : null,
             ],
             $this->items
         );

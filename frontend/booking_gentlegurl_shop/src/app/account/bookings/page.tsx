@@ -197,16 +197,24 @@ export default function MyBookingsPage() {
                               {booking.booking_code || `BOOKING-${booking.id}`}
                             </p>
                             <ol className="mt-2 space-y-2">
-                              {serviceBlocks.map((block, index) => (
+                              {serviceBlocks.map((block, index) => {
+                                const claim = (booking.package_claims ?? []).find((c) => c.booking_service_id === block.service_id)
+                                return (
                                 <li key={`${block.service_id ?? block.name}-${index}`} className="flex gap-2">
                                   <span className="shrink-0 text-sm font-semibold tabular-nums text-[var(--text-muted)]">
                                     {index + 1}.
                                   </span>
                                   <div className="min-w-0 flex-1">
                                     <ServiceNameStack name={block.name} cnName={block.cn_name} />
+                                    {claim ? (
+                                      <span className="mt-0.5 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                        [PKG] {claim.package_name}
+                                      </span>
+                                    ) : null}
                                   </div>
                                 </li>
-                              ))}
+                                )
+                              })}
                             </ol>
                           </>
                         ) : (
@@ -216,6 +224,11 @@ export default function MyBookingsPage() {
                             </p>
                             <div className="mt-2">
                               <ServiceNameStack name={booking.service_name} cnName={serviceCnName} />
+                              {(booking.package_claims ?? []).length > 0 ? (
+                                <span className="mt-0.5 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                  [PKG] {booking.package_claims![0].package_name}
+                                </span>
+                              ) : null}
                             </div>
                           </>
                         )}

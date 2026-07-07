@@ -737,7 +737,7 @@
         </tr>
         <?php if($coveredByPackage && $packageOffsetDisplay > 0): ?>
           <tr>
-            <td>Package Offset</td>
+            <td>Package Covered</td>
             <td>- {{ $currency }} {{ number_format($packageOffsetDisplay, 2) }}</td>
           </tr>
         <?php endif; ?>

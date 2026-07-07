@@ -357,11 +357,66 @@ class SalesChannelReportService
             'discount_value' => (float) ($item->discount_value ?? 0),
             'discount_remark' => $item->discount_remark,
             'price_override' => $this->normalizeOrderItemPriceOverride($item, $overrideUsers),
+            'package_applied' => $this->resolveLinePackageApplied($item),
+            'package_name' => $this->resolveLinePackageName($item),
             'children' => $children,
             'staff_name' => $item->staff?->name ?: $assignedStaffName,
             'assigned_staff_name' => $assignedStaffName,
             'staff_splits' => $staffSplits->all(),
         ];
+    }
+
+    private function resolveLinePackageApplied(OrderItem $item): bool
+    {
+        $bookingServiceId = (int) ($item->booking_service_id ?? 0);
+        if ($bookingServiceId <= 0) {
+            return false;
+        }
+
+        return \App\Models\Booking\CustomerServicePackageUsage::query()
+            ->where('booking_service_id', $bookingServiceId)
+            ->where(function ($q) use ($item) {
+                $bookingId = (int) ($item->booking_id ?? 0);
+                if ($bookingId > 0) {
+                    $q->where('booking_id', $bookingId)
+                        ->orWhere(function ($q2) use ($bookingId) {
+                            $q2->where('used_from', 'POS')
+                                ->where('used_ref_id', $bookingId);
+                        });
+                } else {
+                    $q->whereNotNull('id');
+                }
+            })
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->exists();
+    }
+
+    private function resolveLinePackageName(OrderItem $item): ?string
+    {
+        $bookingServiceId = (int) ($item->booking_service_id ?? 0);
+        if ($bookingServiceId <= 0) {
+            return null;
+        }
+
+        $usage = \App\Models\Booking\CustomerServicePackageUsage::query()
+            ->with('customerServicePackage.servicePackage')
+            ->where('booking_service_id', $bookingServiceId)
+            ->where(function ($q) use ($item) {
+                $bookingId = (int) ($item->booking_id ?? 0);
+                if ($bookingId > 0) {
+                    $q->where('booking_id', $bookingId)
+                        ->orWhere(function ($q2) use ($bookingId) {
+                            $q2->where('used_from', 'POS')
+                                ->where('used_ref_id', $bookingId);
+                        });
+                } else {
+                    $q->whereNotNull('id');
+                }
+            })
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->first();
+
+        return $usage?->customerServicePackage?->servicePackage?->name ?? null;
     }
 
     private function resolveBookingStaffSplitsForLine(OrderItem $item, $existingSplits)
