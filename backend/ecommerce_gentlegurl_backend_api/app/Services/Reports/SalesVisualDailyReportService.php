@@ -369,10 +369,13 @@ class SalesVisualDailyReportService
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
-            ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
+            // service_package lines are booking/POS package purchases and are counted in
+            // $itemBooking below. Including them here too doubles the Package item type
+            // in the combined All workspace (e.g. RM899 shows as RM1,798).
+            ->whereIn('oi.line_type', ['product', 'service'])
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'product' THEN $lineTotal ELSE 0 END), 0) as product")
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'service' THEN $lineTotal ELSE 0 END), 0) as service")
-            ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'service_package' THEN $lineTotal ELSE 0 END), 0) as multi_package")
+            ->selectRaw("0 as multi_package")
             ->first();
 
         $bookingSub = $this->applyOrderScope(
