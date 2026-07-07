@@ -13,6 +13,7 @@ export type SalesVisualPaymentMethodRow = {
 export type SalesVisualSummaryData = {
   online_offline?: { online: number; offline: number }
   payment_methods?: SalesVisualPaymentMethodRow[]
+  refunds?: SalesVisualPaymentMethodRow[]
   item_types?: {
     estimate?: boolean
     product: number
@@ -61,6 +62,10 @@ export default function SalesVisualSummaryCards({
   const paymentFinalOnline = payments.reduce((a, p) => a + (Number(p.online) || 0), 0)
   const paymentFinalOffline = payments.reduce((a, p) => a + (Number(p.offline) || 0), 0)
   const paymentFinalTotal = payments.reduce((a, p) => a + (Number(p.total) || 0), 0)
+  const refunds: SalesVisualPaymentMethodRow[] = Array.isArray(data?.refunds) ? data!.refunds : []
+  const refundTotalOnline = refunds.reduce((a, p) => a + (Number(p.online) || 0), 0)
+  const refundTotalOffline = refunds.reduce((a, p) => a + (Number(p.offline) || 0), 0)
+  const refundTotal = refunds.reduce((a, p) => a + (Number(p.total) || 0), 0)
   const itemTypes = data?.item_types
   const itemTypeTotal = itemTypes
     ? (Number(itemTypes.product) || 0) +
@@ -96,6 +101,7 @@ export default function SalesVisualSummaryCards({
           <p className="mt-1 text-xs text-slate-500">
             All gateways from settings ({workspaceLabel}). Net amount after discount; online vs offline by order creator.
           </p>
+          <p className="mt-1 text-[11px] text-slate-500">Refunds are shown separately below and are not mixed into normal payment totals.</p>
           {loading ? (
             <p className="mt-3 text-sm text-slate-500">Loading…</p>
           ) : payments.length === 0 ? (
@@ -130,6 +136,31 @@ export default function SalesVisualSummaryCards({
                   </tr>
                 </tfoot>
               </table>
+              {refunds.some((row) => Number(row.total) > 0) ? (
+                <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50 p-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wide text-rose-900">Refunds</h4>
+                  <table className="mt-2 w-full text-xs">
+                    <tbody>
+                      {refunds.map((p) => (
+                        <tr key={p.key} className="border-b border-rose-100 last:border-b-0">
+                          <td className="py-1.5 pr-2 text-rose-800">{p.label}</td>
+                          <td className="py-1.5 pr-2 text-right font-medium text-rose-900">{fmtRm(p.online)}</td>
+                          <td className="py-1.5 pr-2 text-right font-medium text-rose-900">{fmtRm(p.offline)}</td>
+                          <td className="py-1.5 text-right font-bold text-rose-900">{fmtRm(p.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-rose-200">
+                        <td className="py-2 pr-2 font-bold text-rose-900">REFUND TOTAL</td>
+                        <td className="py-2 pr-2 text-right font-bold text-rose-900">{fmtRm(refundTotalOnline)}</td>
+                        <td className="py-2 pr-2 text-right font-bold text-rose-900">{fmtRm(refundTotalOffline)}</td>
+                        <td className="py-2 text-right font-bold text-rose-900">{fmtRm(refundTotal)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
