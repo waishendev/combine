@@ -79,6 +79,7 @@ class ServicePackageController extends Controller
                 ->map(fn ($item) => [
                     'booking_service_id' => (int) $item->booking_service_id,
                     'quantity' => (int) $item->quantity,
+                    'redemption_value' => round((float) ($item->redemption_value ?? 0), 2),
                 ])
                 ->values()
                 ->all();
@@ -181,6 +182,7 @@ class ServicePackageController extends Controller
                 'items' => ['required', 'array', 'min:1'],
                 'items.*.booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
                 'items.*.quantity' => ['required', 'integer', 'min:1'],
+                'items.*.redemption_value' => ['nullable', 'numeric', 'min:0'],
             ]);
 
             if ($validator->fails()) {
@@ -200,10 +202,11 @@ class ServicePackageController extends Controller
                         $summary['created']++;
                     } else {
                         $currentItems = $package->items()
-                            ->get(['booking_service_id', 'quantity'])
+                            ->get(['booking_service_id', 'quantity', 'redemption_value'])
                             ->map(fn ($item) => [
                                 'booking_service_id' => (int) $item->booking_service_id,
                                 'quantity' => (int) $item->quantity,
+                                'redemption_value' => round((float) ($item->redemption_value ?? 0), 2),
                             ])
                             ->sortBy(fn ($item) => sprintf('%010d-%010d', $item['booking_service_id'], $item['quantity']))
                             ->values()
@@ -212,6 +215,7 @@ class ServicePackageController extends Controller
                             ->map(fn ($item) => [
                                 'booking_service_id' => (int) $item['booking_service_id'],
                                 'quantity' => (int) $item['quantity'],
+                                'redemption_value' => round((float) ($item['redemption_value'] ?? 0), 2),
                             ])
                             ->sortBy(fn ($item) => sprintf('%010d-%010d', $item['booking_service_id'], $item['quantity']))
                             ->values()
@@ -256,6 +260,7 @@ class ServicePackageController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.redemption_value' => ['nullable', 'numeric', 'min:0'],
         ]);
     }
 }

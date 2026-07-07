@@ -18,6 +18,7 @@ export type SalesVisualSummaryData = {
     product: number
     service: number
     multi_package: number
+    package_redemption?: number
     unlimited_plan: number
     other?: number
   }
@@ -65,6 +66,7 @@ export default function SalesVisualSummaryCards({
     ? (Number(itemTypes.product) || 0) +
       (Number(itemTypes.service) || 0) +
       (Number(itemTypes.multi_package) || 0) +
+      (Number(itemTypes.package_redemption) || 0) +
       (Number(itemTypes.other) || 0)
     : 0
   const staffSales = data?.staff?.sales_activity ?? []
@@ -158,6 +160,10 @@ export default function SalesVisualSummaryCards({
               <li className="flex justify-between gap-2">
                 <span className="text-slate-600">Package</span>
                 <span className="font-semibold text-slate-900">{fmtRm(itemTypes.multi_package)}</span>
+              </li>
+              <li className="flex justify-between gap-2">
+                <span className="text-slate-600">Package Redemption</span>
+                <span className="font-semibold text-slate-900">{fmtRm(Number(itemTypes.package_redemption) || 0)}</span>
               </li>
               {itemTypes.other != null && itemTypes.other > 0 ? (
                 <li className="flex justify-between gap-2">

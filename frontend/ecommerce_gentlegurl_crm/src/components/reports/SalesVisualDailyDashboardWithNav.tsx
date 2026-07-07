@@ -22,6 +22,7 @@ type VisualPayload = {
     product: number
     service: number
     multi_package: number
+    package_redemption?: number
     unlimited_plan: number
     other?: number
   }
@@ -236,6 +237,10 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
               <li className="flex justify-between gap-2">
                 <span className="text-slate-600">Package</span>
                 <span className="font-semibold text-slate-900">{fmtRm(itemTypes.multi_package)}</span>
+              </li>
+              <li className="flex justify-between gap-2">
+                <span className="text-slate-600">Package Redemption</span>
+                <span className="font-semibold text-slate-900">{fmtRm(Number(itemTypes.package_redemption) || 0)}</span>
               </li>
               {itemTypes.other != null && itemTypes.other > 0 ? (
                 <li className="flex justify-between gap-2">

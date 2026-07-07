@@ -231,6 +231,7 @@ class SalesVisualDailyReportService
 
         $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
+        $packageRedemption = $this->packageRedemptionValue($start, $end);
 
         return [
             'date' => $day->toDateString(),
@@ -244,6 +245,7 @@ class SalesVisualDailyReportService
                 'product' => round((float) ($itemAgg->product ?? 0), 2),
                 'service' => round((float) ($itemAgg->service ?? 0), 2),
                 'multi_package' => round((float) ($itemAgg->multi_package ?? 0), 2),
+                'package_redemption' => $packageRedemption,
                 'unlimited_plan' => 0.0,
                 'other' => 0.0,
             ],
@@ -301,6 +303,7 @@ class SalesVisualDailyReportService
 
         $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
+        $packageRedemption = $this->packageRedemptionValue($start, $end);
 
         $serviceConsumedQuery = $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -322,6 +325,7 @@ class SalesVisualDailyReportService
                 'product' => 0.0,
                 'service' => round((float) ($itemAgg->service_bucket ?? 0), 2),
                 'multi_package' => round((float) ($itemAgg->multi_package ?? 0), 2),
+                'package_redemption' => $packageRedemption,
                 'unlimited_plan' => 0.0,
                 'other' => 0.0,
             ],
@@ -397,6 +401,7 @@ class SalesVisualDailyReportService
 
         $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
+        $packageRedemption = $this->packageRedemptionValue($start, $end);
 
         $serviceConsumedAmount = round((float) $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -418,6 +423,7 @@ class SalesVisualDailyReportService
                 'product' => round((float) ($itemEcommerce->product ?? 0), 2),
                 'service' => round((float) ($itemEcommerce->service ?? 0) + (float) ($itemBooking->service_bucket ?? 0), 2),
                 'multi_package' => round((float) ($itemEcommerce->multi_package ?? 0) + (float) ($itemBooking->multi_package ?? 0), 2),
+                'package_redemption' => $packageRedemption,
                 'unlimited_plan' => 0.0,
                 'other' => 0.0,
             ],
@@ -438,6 +444,20 @@ class SalesVisualDailyReportService
                 'service_activity_amount_total' => round(array_sum(array_column($staffService, 'service_amount')), 2),
             ],
         ];
+    }
+
+    private function packageRedemptionValue(Carbon $start, Carbon $end): float
+    {
+        return round((float) $this->applyOrderScope(
+            DB::table('order_item_staff_splits as sps')
+                ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end]),
+            'o'
+        )
+            ->where('sps.line_type', 'settlement_package_redemption')
+            ->selectRaw('COALESCE(SUM((COALESCE(sps.amount_basis, 0)::numeric) * (sps.share_percent::numeric / 100)), 0) as v')
+            ->value('v'), 2);
     }
 
     /** @return list<array{staff_id: int, name: string}> */

@@ -10,6 +10,7 @@ import { useI18n } from '@/lib/i18n'
 type FormItem = {
   booking_service_id: string
   quantity: string
+  redemption_value: string
 }
 
 interface ServicePackageFormModalProps {
@@ -34,7 +35,7 @@ const initialForm: FormState = {
   selling_price: '0.00',
   valid_days: '',
   is_active: true,
-  items: [{ booking_service_id: '', quantity: '1' }],
+  items: [{ booking_service_id: '', quantity: '1', redemption_value: '0.00' }],
 }
 
 const getMessage = (data: unknown, fallback: string) => {
@@ -164,8 +165,9 @@ export default function ServicePackageFormModal({
             ? pkg.items.map((item) => ({
                 booking_service_id: String(item.booking_service_id),
                 quantity: String(item.quantity ?? 1),
+                redemption_value: String(item.redemption_value ?? '0.00'),
               }))
-            : [{ booking_service_id: '', quantity: '1' }],
+            : [{ booking_service_id: '', quantity: '1', redemption_value: '0.00' }],
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -198,7 +200,7 @@ export default function ServicePackageFormModal({
   const addItem = () => {
     setForm((prev) => ({
       ...prev,
-      items: [...prev.items, { booking_service_id: '', quantity: '1' }],
+      items: [...prev.items, { booking_service_id: '', quantity: '1', redemption_value: '0.00' }],
     }))
   }
 
@@ -234,10 +236,11 @@ export default function ServicePackageFormModal({
       return
     }
 
-    const parsedItems = [] as Array<{ booking_service_id: number; quantity: number }>
+    const parsedItems = [] as Array<{ booking_service_id: number; quantity: number; redemption_value: number }>
     for (const item of form.items) {
       const bookingServiceId = Number(item.booking_service_id)
       const quantity = Number(item.quantity)
+      const redemptionValue = Number(item.redemption_value || 0)
       if (!Number.isFinite(bookingServiceId) || bookingServiceId <= 0) {
         setError('Please select a service for each item')
         return
@@ -246,7 +249,11 @@ export default function ServicePackageFormModal({
         setError('Quantity must be greater than 0')
         return
       }
-      parsedItems.push({ booking_service_id: bookingServiceId, quantity })
+      if (!Number.isFinite(redemptionValue) || redemptionValue < 0) {
+        setError('Redemption Value / Claim Value must be 0 or greater')
+        return
+      }
+      parsedItems.push({ booking_service_id: bookingServiceId, quantity, redemption_value: Number(redemptionValue.toFixed(2)) })
     }
 
     setSubmitting(true)
@@ -420,7 +427,7 @@ export default function ServicePackageFormModal({
             </div>
 
             {form.items.map((item, index) => (
-              <div key={`${index}-${item.booking_service_id}`} className="grid gap-2 rounded-md border border-gray-200 p-3 md:grid-cols-[1fr_120px_auto]">
+              <div key={`${index}-${item.booking_service_id}`} className="grid gap-2 rounded-md border border-gray-200 p-3 md:grid-cols-[1fr_120px_180px_auto]">
                 <BookingPackageItemServicePicker
                   options={services}
                   value={item.booking_service_id}
@@ -437,6 +444,20 @@ export default function ServicePackageFormModal({
                   placeholder="Qty"
                   disabled={disableForm}
                 />
+
+                <label className="space-y-1">
+                  <span className="block text-[11px] font-medium text-gray-600">Redemption Value / Claim Value</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={item.redemption_value}
+                    onChange={(e) => setItem(index, 'redemption_value', e.target.value)}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="RM 0.00"
+                    disabled={disableForm}
+                  />
+                </label>
 
                 <button
                   type="button"

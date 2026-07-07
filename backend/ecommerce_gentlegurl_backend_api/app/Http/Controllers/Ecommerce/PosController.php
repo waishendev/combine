@@ -1360,7 +1360,22 @@ class PosController extends Controller
                     'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id),
                 ]);
 
+                $serviceLineKey = (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, (int) $mainIdx));
+                $serviceSplits = $resolveLineSplits($serviceLineKey, $mainLine['staff_splits'] ?? [], $bookingSplits);
+
                 if ($isPackageCoveredLine) {
+                    $redemptionValue = $this->resolvePackageRedemptionValueForBookingLine((int) $booking->id, (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id));
+                    if ($redemptionValue > 0.0001) {
+                        $persistLineSplits($serviceOrderItem, $serviceSplits, 'settlement_package_redemption', $serviceLineKey, $redemptionValue, [
+                            'booking_id' => (int) $booking->id,
+                            'line_key' => $serviceLineKey,
+                            'line_type' => 'settlement_package_redemption',
+                            'service_id' => (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id),
+                            'redemption_value' => round($redemptionValue, 2),
+                            'service' => $mainLine,
+                            'staff_split_source' => $findLineSplitPayload($serviceLineKey) ? 'explicit' : (! empty($mainLine['staff_splits'] ?? []) ? 'line' : 'inherited'),
+                        ]);
+                    }
                     continue;
                 }
 
@@ -8855,6 +8870,24 @@ class PosController extends Controller
         }
 
         return $addon;
+    }
+
+    protected function resolvePackageRedemptionValueForBookingLine(int $bookingId, int $bookingServiceId): float
+    {
+        if ($bookingId <= 0 || $bookingServiceId <= 0) {
+            return 0.0;
+        }
+
+        return round((float) DB::table('customer_service_package_usages as u')
+            ->join('customer_service_packages as csp', 'csp.id', '=', 'u.customer_service_package_id')
+            ->join('service_package_items as spi', function ($join) {
+                $join->on('spi.service_package_id', '=', 'csp.service_package_id')
+                    ->on('spi.booking_service_id', '=', 'u.booking_service_id');
+            })
+            ->where('u.booking_id', $bookingId)
+            ->where('u.booking_service_id', $bookingServiceId)
+            ->whereIn('u.status', ['reserved', 'consumed'])
+            ->sum(DB::raw('COALESCE(spi.redemption_value, 0) * COALESCE(u.used_qty, 1)')), 2);
     }
 
     protected function resolveBookingDepositBreakdown(Booking $booking, bool $packageCoversMain = false): array
