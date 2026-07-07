@@ -663,9 +663,7 @@ class PosController extends Controller
         }
 
         // Release reserved claims only (consumed cannot be released).
-        // POS reservations are stored by used_from/used_ref_id (booking_id) with booking_id null.
         $this->customerServicePackageService->releaseReservedClaimsForBooking((int) $booking->id);
-        $this->customerServicePackageService->releaseReservedClaimsBySource('POS', (int) $booking->id);
 
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
@@ -713,13 +711,7 @@ class PosController extends Controller
 
         $customerId = (int) $booking->customer_id;
         $currentClaims = CustomerServicePackageUsage::query()
-            ->where(function ($q) use ($booking) {
-                $q->where('booking_id', (int) $booking->id)
-                    ->orWhere(function ($q2) use ($booking) {
-                        $q2->where('used_from', 'POS')
-                            ->where('used_ref_id', (int) $booking->id);
-                    });
-            })
+            ->where('booking_id', (int) $booking->id)
             ->whereIn('status', ['reserved', 'consumed'])
             ->get();
 
@@ -1107,13 +1099,7 @@ class PosController extends Controller
 
         $released = CustomerServicePackageUsage::query()
             ->whereIn('id', $usageIds)
-            ->where(function ($q) use ($booking) {
-                $q->where('booking_id', (int) $booking->id)
-                    ->orWhere(function ($q2) use ($booking) {
-                        $q2->where('used_from', 'POS')
-                            ->where('used_ref_id', (int) $booking->id);
-                    });
-            })
+            ->where('booking_id', (int) $booking->id)
             ->where('status', 'reserved')
             ->update([
                 'status' => 'released',
@@ -8483,6 +8469,22 @@ class PosController extends Controller
             $claimUsageId = isset($claimInfo['usage_id']) ? (int) $claimInfo['usage_id'] : null;
             $claimPackageId = isset($claimInfo['customer_service_package_id']) ? (int) $claimInfo['customer_service_package_id'] : null;
             $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
+            $serviceItemClaims = CustomerServicePackageUsage::query()
+                ->with(['customerServicePackage.servicePackage'])
+                ->where('used_from', 'POS')
+                ->where('used_ref_id', (int) $item->id)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->get()
+                ->map(fn (CustomerServicePackageUsage $usage) => [
+                    'usage_id' => (int) $usage->id,
+                    'customer_service_package_id' => (int) $usage->customer_service_package_id,
+                    'package_name' => (string) ($usage->customerServicePackage?->servicePackage?->name ?? 'Package'),
+                    'booking_service_id' => (int) $usage->booking_service_id,
+                    'status' => (string) $usage->status,
+                    'used_qty' => (int) $usage->used_qty,
+                ])
+                ->values()
+                ->all();
             $depositContribution = $claimedByPackage ? 0.0 : (float) ($depositByServiceItemId[(int) $item->id] ?? 0);
 
             $addonDepositLines = collect($depositAddonByServiceItemId[(int) $item->id] ?? [])
@@ -8572,6 +8574,9 @@ class PosController extends Controller
                 'deposit_payable_total' => (float) $depositPayableTotal,
                 'package_claim_status' => $claimStatus,
                 'package_claim_name' => $claimPackageName,
+                'package_claim_names' => array_values(array_filter((array) ($claimInfo['package_names'] ?? []))),
+                'package_claim_count' => (int) ($claimInfo['claim_count'] ?? 0),
+                'package_claims' => $serviceItemClaims,
                 'package_claim_usage_id' => $claimUsageId,
                 'package_claim_package_id' => $claimPackageId,
                 'claimed_by_package' => $claimedByPackage,
@@ -9037,6 +9042,15 @@ class PosController extends Controller
         foreach ($cart->serviceItems as $item) {
             $itemId = (int) $item->id;
             $depositByServiceItem[$itemId] = 0.0;
+            $serviceItemClaimedServiceIds = CustomerServicePackageUsage::query()
+                ->where('used_from', 'POS')
+                ->where('used_ref_id', $itemId)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->pluck('booking_service_id')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn (int $id) => $id > 0)
+                ->unique()
+                ->values();
             $linkedServicesById = $this->resolveLinkedBookingServicesForAddonRows((array) ($item->addon_items_json ?? []));
             $depositByServiceItemAddons[$itemId] = collect((array) ($item->addon_items_json ?? []))
                 ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
@@ -9054,8 +9068,7 @@ class PosController extends Controller
             $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
             $itemCandidates = [];
 
-            // Package claim waives the main service deposit only; add-on deposits still apply.
-            if (! $claimedByPackage) {
+            if (! $serviceItemClaimedServiceIds->contains((int) $item->booking_service_id) && ! $claimedByPackage) {
                 $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
                 $mainDeposit = max(0, (float) ($item->bookingService?->deposit_amount ?? 0));
                 $mainOverride = $this->applyPriceOverrideToAmount($item, 'main', $mainDeposit);
@@ -9074,6 +9087,10 @@ class PosController extends Controller
                 }
                 $addonType = strtoupper((string) ($addon['linked_service_type'] ?? ''));
                 if ($addonType === '') {
+                    continue;
+                }
+                $addonLinkedServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+                if ($addonLinkedServiceId > 0 && $serviceItemClaimedServiceIds->contains($addonLinkedServiceId)) {
                     continue;
                 }
                 $addonDeposit = max(0, (float) ($addon['linked_deposit_amount'] ?? 0));
@@ -9209,17 +9226,31 @@ class PosController extends Controller
                 continue;
             }
 
+            $packageName = (string) ($claim->customerServicePackage?->servicePackage?->name ?? 'Package');
+            $existingRow = $map[$itemId] ?? [
+                'usage_id' => null,
+                'customer_service_package_id' => null,
+                'booking_service_id' => (int) $claim->booking_service_id,
+                'status' => null,
+                'package_name' => null,
+                'package_names' => [],
+                'claim_count' => 0,
+            ];
+
             $incoming = $priority[$claim->status] ?? 0;
-            $existing = $priority[$map[$itemId]['status'] ?? ''] ?? 0;
+            $existing = $priority[$existingRow['status'] ?? ''] ?? 0;
             if ($incoming >= $existing) {
-                $map[$itemId] = [
-                    'usage_id' => (int) $claim->id,
-                    'customer_service_package_id' => (int) $claim->customer_service_package_id,
-                    'booking_service_id' => (int) $claim->booking_service_id,
-                    'status' => $claim->status,
-                    'package_name' => (string) ($claim->customerServicePackage?->servicePackage?->name ?? 'Package'),
-                ];
+                $existingRow['usage_id'] = (int) $claim->id;
+                $existingRow['customer_service_package_id'] = (int) $claim->customer_service_package_id;
+                $existingRow['booking_service_id'] = (int) $claim->booking_service_id;
+                $existingRow['status'] = $claim->status;
+                $existingRow['package_name'] = $packageName;
             }
+
+            $existingRow['package_names'][] = $packageName;
+            $existingRow['package_names'] = array_values(array_unique(array_filter($existingRow['package_names'])));
+            $existingRow['claim_count'] = count($existingRow['package_names']);
+            $map[$itemId] = $existingRow;
         }
 
         return $map;
@@ -10006,17 +10037,10 @@ class PosController extends Controller
         $claims = CustomerServicePackageUsage::query()
             ->with(['customerServicePackage.servicePackage'])
             ->where(function ($q) use ($booking, $posCartItemIds) {
-                $q->where('booking_id', (int) $booking->id)
-                    ->orWhere(function ($q2) use ($booking) {
-                        $q2->where('used_from', 'POS')
-                            ->where('used_ref_id', (int) $booking->id);
-                    });
+                $q->where('booking_id', (int) $booking->id);
 
                 if ($posCartItemIds !== []) {
-                    $q->orWhere(function ($q3) use ($posCartItemIds) {
-                        $q3->where('used_from', 'POS')
-                            ->whereIn('used_ref_id', $posCartItemIds);
-                    })->orWhereIn('booking_id', $posCartItemIds);
+                    $q->orWhereIn('booking_id', $posCartItemIds);
                 }
             })
             ->whereIn('status', ['reserved', 'consumed'])
@@ -10399,6 +10423,7 @@ class PosController extends Controller
             'quantity' => $quantity,
             'line_gross_amount' => round($unitPrice * $quantity, 2),
             'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
+            'linked_booking_service_id' => isset($addon['linked_booking_service_id']) ? (int) $addon['linked_booking_service_id'] : null,
             'item_kind' => $addon['item_kind'] ?? null,
             'staff_splits' => collect($addon['staff_splits'] ?? [])->map(fn ($split) => [
                 'staff_id' => (int) ($split['staff_id'] ?? 0),
@@ -10693,11 +10718,11 @@ class PosController extends Controller
             ->latest('id')
             ->first();
         if (! $packageUsageEarly && $booking->customer_id && $booking->service_id) {
+            $posCartItemIdsForBooking = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking((int) $booking->id);
             $packageUsageEarly = CustomerServicePackageUsage::query()
                 ->where('customer_id', (int) $booking->customer_id)
                 ->where('booking_service_id', (int) $booking->service_id)
-                ->where('used_from', 'POS')
-                ->where('used_ref_id', (int) $booking->id)
+                ->when($posCartItemIdsForBooking !== [], fn ($query) => $query->whereIn('booking_id', $posCartItemIdsForBooking))
                 ->whereIn('status', ['reserved', 'consumed'])
                 ->latest('id')
                 ->first();
@@ -10787,16 +10812,10 @@ class PosController extends Controller
                 ->where('customer_id', (int) $booking->customer_id)
                 ->where('booking_service_id', (int) $booking->service_id)
                 ->where(function ($q) use ($booking, $posCartItemIds) {
-                    $q->where(function ($q2) use ($booking) {
-                        $q2->where('used_from', 'POS')
-                            ->where('used_ref_id', (int) $booking->id);
-                    });
-
                     if ($posCartItemIds !== []) {
-                        $q->orWhere(function ($q3) use ($posCartItemIds) {
-                            $q3->where('used_from', 'POS')
-                                ->whereIn('used_ref_id', $posCartItemIds);
-                        })->orWhereIn('booking_id', $posCartItemIds);
+                        $q->whereIn('booking_id', $posCartItemIds);
+                    } else {
+                        $q->whereRaw('1 = 0');
                     }
                 })
                 ->whereIn('status', ['reserved', 'consumed'])

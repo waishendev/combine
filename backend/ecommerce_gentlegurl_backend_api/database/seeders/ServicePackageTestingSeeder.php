@@ -271,28 +271,40 @@ class ServicePackageTestingSeeder extends Seeder
     private function seedServicePackages(array $serviceIds): array
     {
         $now = now();
-        $primaryServiceId = $serviceIds[0];
-        $secondaryServiceId = $serviceIds[1] ?? $serviceIds[0];
+        $packageQuantity = 50;
+        $packageRedemptionValue = 100;
+        $eligibleServiceIds = collect($serviceIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $buildItems = static fn ($ids) => collect($ids)
+            ->map(fn (int $serviceId) => [
+                'booking_service_id' => $serviceId,
+                'quantity' => $packageQuantity,
+                'redemption_value' => $packageRedemptionValue,
+            ])
+            ->values()
+            ->all();
+
+        $starterServiceIds = $eligibleServiceIds->take(min(8, $eligibleServiceIds->count()))->all();
+        $comboServiceIds = $eligibleServiceIds->take(min(16, $eligibleServiceIds->count()))->all();
 
         $packages = [
             'Seed Hair Wash 10x' => [
-                'description' => 'Auto seed package for QA: 10 sessions of hair wash.',
+                'description' => 'Auto seed package for QA: broad package with high balances for rapid testing.',
                 'selling_price' => 350,
                 'valid_days' => 180,
                 'is_active' => true,
-                'items' => [
-                    ['booking_service_id' => $primaryServiceId, 'quantity' => 10],
-                ],
+                'items' => $buildItems($starterServiceIds),
             ],
             'Seed Premium Care Combo' => [
-                'description' => 'Auto seed package for QA: combo package with 2 services.',
+                'description' => 'Auto seed package for QA: expanded combo package with high balances for rapid testing.',
                 'selling_price' => 899,
                 'valid_days' => 365,
                 'is_active' => true,
-                'items' => [
-                    ['booking_service_id' => $primaryServiceId, 'quantity' => 10],
-                    ['booking_service_id' => $secondaryServiceId, 'quantity' => 5],
-                ],
+                'items' => $buildItems($comboServiceIds),
             ],
         ];
 
@@ -323,6 +335,7 @@ class ServicePackageTestingSeeder extends Seeder
                     ],
                     [
                         'quantity' => $item['quantity'],
+                        'redemption_value' => $item['redemption_value'],
                         'updated_at' => $now,
                         'created_at' => $now,
                     ]
