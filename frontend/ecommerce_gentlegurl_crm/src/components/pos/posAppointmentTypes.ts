@@ -89,6 +89,9 @@ export type PosAppointmentListItem = {
   deposit_previously_collected?: boolean
   deposit_previously_collected_amount?: number
   package_offset?: number
+  total_covered?: number
+  overpaid_amount?: number
+  refund_needed?: number
   balance_due: number
   amount_due_now?: number
   /** From `resolveAppointmentFinancialSummary` — used with `package_status` for completed paid vs unpaid colours. */
@@ -166,6 +169,9 @@ export type PosAppointmentDetail = {
   deposit_previously_collected?: boolean
   deposit_previously_collected_amount?: number
   package_offset?: number
+  total_covered?: number
+  overpaid_amount?: number
+  refund_needed?: number
   /** Latest POS order that registered this booking via an order_service_items row (checkout closure). */
   visit_register_order_id?: number | null
   visit_checkout_finalized?: boolean

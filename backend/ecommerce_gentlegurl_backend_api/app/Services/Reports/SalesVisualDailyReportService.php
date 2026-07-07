@@ -240,6 +240,9 @@ class SalesVisualDailyReportService
                 'offline' => round((float) ($channelSplit->offline ?? 0), 2),
             ],
             'payment_methods' => $paymentBlock['rows'],
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
                 'product' => round((float) ($itemAgg->product ?? 0), 2),
@@ -320,6 +323,9 @@ class SalesVisualDailyReportService
                 'offline' => $paymentBlock['totals']['offline'],
             ],
             'payment_methods' => $paymentBlock['rows'],
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
                 'product' => 0.0,
@@ -421,6 +427,9 @@ class SalesVisualDailyReportService
                 'offline' => $paymentBlock['totals']['offline'],
             ],
             'payment_methods' => $paymentBlock['rows'],
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
                 'product' => round((float) ($itemEcommerce->product ?? 0), 2),
@@ -863,6 +872,34 @@ class SalesVisualDailyReportService
     private function allWorkspaceLineFilterSql(string $alias = 'oi_sn'): string
     {
         return "({$this->ecommerceWorkspaceLineFilterSql($alias)} OR {$this->bookingWorkspaceLineFilterSql($alias)})";
+    }
+
+
+    private function refundRows(Carbon $start, Carbon $end): array
+    {
+        $labels = [
+            'cash' => 'Cash Refund',
+            'qrpay' => 'QRPay Refund',
+            'manual_transfer' => 'Manual Transfer Refund',
+            'store_credit' => 'Store Credit / Customer Balance',
+        ];
+
+        return collect($labels)->map(function (string $label, string $method) use ($start, $end) {
+            $base = DB::table('booking_refunds')
+                ->where('status', 'completed')
+                ->where('method', $method)
+                ->whereBetween(DB::raw('COALESCE(processed_at, created_at)'), [$start, $end]);
+            $online = (clone $base)->where('channel', 'online')->sum('amount');
+            $offline = (clone $base)->where('channel', 'offline')->sum('amount');
+
+            return [
+                'key' => $method,
+                'label' => $label,
+                'online' => round((float) $online, 2),
+                'offline' => round((float) $offline, 2),
+                'total' => round((float) $online + (float) $offline, 2),
+            ];
+        })->values()->all();
     }
 
     /**
