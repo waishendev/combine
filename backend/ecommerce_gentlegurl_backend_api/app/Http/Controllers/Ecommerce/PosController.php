@@ -1254,6 +1254,20 @@ class PosController extends Controller
                 });
             };
             $bookingSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))->values()->all();
+            $packageRedemptionUnitsByService = $this->resolvePackageRedemptionUnitsForBooking((int) $booking->id);
+            $takePackageRedemptionValue = function (int $bookingServiceId, int $quantity = 1) use (&$packageRedemptionUnitsByService): float {
+                $quantity = max(1, $quantity);
+                if ($bookingServiceId <= 0 || empty($packageRedemptionUnitsByService[$bookingServiceId])) {
+                    return 0.0;
+                }
+
+                $amount = 0.0;
+                for ($i = 0; $i < $quantity && ! empty($packageRedemptionUnitsByService[$bookingServiceId]); $i++) {
+                    $amount += (float) array_shift($packageRedemptionUnitsByService[$bookingServiceId]);
+                }
+
+                return round($amount, 2);
+            };
             $resolveLineSplits = function (string $lineKey, $lineSplits = [], $fallbackSplits = []) use ($findLineSplitPayload, $normalizeSplits) {
                 $payload = $findLineSplitPayload($lineKey);
                 $splits = $payload ? ($payload['staff_splits'] ?? []) : (! empty($lineSplits) ? $lineSplits : $fallbackSplits);
@@ -1364,7 +1378,7 @@ class PosController extends Controller
                 $serviceSplits = $resolveLineSplits($serviceLineKey, $mainLine['staff_splits'] ?? [], $bookingSplits);
 
                 if ($isPackageCoveredLine) {
-                    $redemptionValue = $this->resolvePackageRedemptionValueForBookingLine((int) $booking->id, (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id));
+                    $redemptionValue = $takePackageRedemptionValue((int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id), 1);
                     if ($redemptionValue > 0.0001) {
                         $persistLineSplits($serviceOrderItem, $serviceSplits, 'settlement_package_redemption', $serviceLineKey, $redemptionValue, [
                             'booking_id' => (int) $booking->id,
@@ -1427,12 +1441,25 @@ class PosController extends Controller
                     'booking_service_id' => (int) ($addon['linked_booking_service_id'] ?? 0) ?: null,
                 ]);
 
+                $addonLineKey = (string) ($addon['line_key'] ?? $this->appointmentSettlementLineKey('addon', (array) $addon, (int) $addonIdx));
+                $addonSplits = $resolveLineSplits($addonLineKey, $addon['staff_splits'] ?? [], $bookingSplits);
+
                 if ($isPackageCoveredLine) {
+                    $redemptionValue = $takePackageRedemptionValue((int) ($addon['linked_booking_service_id'] ?? 0), $addonQty);
+                    if ($redemptionValue > 0.0001) {
+                        $persistLineSplits($addonOrderItem, $addonSplits, 'settlement_package_redemption', $addonLineKey, $redemptionValue, [
+                            'booking_id' => (int) $booking->id,
+                            'line_key' => $addonLineKey,
+                            'line_type' => 'settlement_package_redemption',
+                            'service_id' => (int) ($addon['linked_booking_service_id'] ?? 0),
+                            'redemption_value' => round($redemptionValue, 2),
+                            'addon' => $addon,
+                            'staff_split_source' => $findLineSplitPayload($addonLineKey) ? 'explicit' : (! empty($addon['staff_splits'] ?? []) ? 'line' : 'inherited'),
+                        ]);
+                    }
                     continue;
                 }
 
-                $addonLineKey = (string) ($addon['line_key'] ?? $this->appointmentSettlementLineKey('addon', (array) $addon, (int) $addonIdx));
-                $addonSplits = $resolveLineSplits($addonLineKey, $addon['staff_splits'] ?? [], $bookingSplits);
                 $persistLineSplits($addonOrderItem, $addonSplits, 'settlement_addon', $addonLineKey, $addonLineNet, [
                     'booking_id' => (int) $booking->id,
                     'line_key' => $addonLineKey,
@@ -8872,22 +8899,65 @@ class PosController extends Controller
         return $addon;
     }
 
-    protected function resolvePackageRedemptionValueForBookingLine(int $bookingId, int $bookingServiceId): float
+    /**
+     * Build a FIFO queue of per-claimed-unit redemption values keyed by booking service.
+     * This keeps package redemption line-based: each covered settlement line consumes as
+     * many redemption units as its quantity, so multiple claimed add-ons in one booking
+     * are attributed separately to that line's staff split.
+     *
+     * @return array<int, list<float>>
+     */
+    protected function resolvePackageRedemptionUnitsForBooking(int $bookingId): array
     {
-        if ($bookingId <= 0 || $bookingServiceId <= 0) {
-            return 0.0;
+        if ($bookingId <= 0) {
+            return [];
         }
 
-        return round((float) DB::table('customer_service_package_usages as u')
+        $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking($bookingId);
+
+        $rows = DB::table('customer_service_package_usages as u')
             ->join('customer_service_packages as csp', 'csp.id', '=', 'u.customer_service_package_id')
             ->join('service_package_items as spi', function ($join) {
                 $join->on('spi.service_package_id', '=', 'csp.service_package_id')
                     ->on('spi.booking_service_id', '=', 'u.booking_service_id');
             })
-            ->where('u.booking_id', $bookingId)
-            ->where('u.booking_service_id', $bookingServiceId)
+            ->where(function ($q) use ($bookingId, $posCartItemIds) {
+                $q->where('u.booking_id', $bookingId)
+                    ->orWhere(function ($q2) use ($bookingId) {
+                        $q2->where('u.used_from', 'POS')
+                            ->where('u.used_ref_id', $bookingId);
+                    });
+
+                if ($posCartItemIds !== []) {
+                    $q->orWhere(function ($q3) use ($posCartItemIds) {
+                        $q3->where('u.used_from', 'POS')
+                            ->whereIn('u.used_ref_id', $posCartItemIds);
+                    })->orWhereIn('u.booking_id', $posCartItemIds);
+                }
+            })
             ->whereIn('u.status', ['reserved', 'consumed'])
-            ->sum(DB::raw('COALESCE(spi.redemption_value, 0) * COALESCE(u.used_qty, 1)')), 2);
+            ->orderBy('u.id')
+            ->get([
+                'u.booking_service_id',
+                'u.used_qty',
+                DB::raw('COALESCE(spi.redemption_value, 0) as redemption_value'),
+            ]);
+
+        $units = [];
+        foreach ($rows as $row) {
+            $serviceId = (int) $row->booking_service_id;
+            $qty = max(1, (int) ($row->used_qty ?? 1));
+            $unitValue = round((float) ($row->redemption_value ?? 0), 2);
+            if ($serviceId <= 0 || $unitValue <= 0) {
+                continue;
+            }
+            $units[$serviceId] ??= [];
+            for ($i = 0; $i < $qty; $i++) {
+                $units[$serviceId][] = $unitValue;
+            }
+        }
+
+        return $units;
     }
 
     protected function resolveBookingDepositBreakdown(Booking $booking, bool $packageCoversMain = false): array
