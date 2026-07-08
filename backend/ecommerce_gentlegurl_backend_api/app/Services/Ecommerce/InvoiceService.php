@@ -115,8 +115,10 @@ class InvoiceService
 
         $isStaffFree = (bool) ($item->is_staff_free_applied ?? false);
         $discountAmount = (float) ($item->discount_amount ?? 0);
-        $lineTotalSnapshot = (float) ($item->line_total_snapshot ?? $item->line_total ?? 0);
-        $lineTotalNet = (float) ($item->effective_line_total ?? $item->line_total_after_discount ?? $item->line_total ?? $lineTotalSnapshot);
+        $qty = max(1, (int) ($item->quantity ?? 1));
+        $lineTotalSnapshot = $this->resolveOrderItemGrossSnapshot($item);
+        $lineTotalNet = (float) ($item->effective_line_total ?? $item->line_total_after_discount ?? $item->line_total ?? 0);
+        $unitPriceDisplay = $this->resolveOrderItemGrossUnitPrice($item, $lineTotalSnapshot, $qty);
 
         return [
             'line_type' => $lineType,
@@ -128,7 +130,7 @@ class InvoiceService
             'variant_cn_name' => $item->displayVariantCnName(),
             'variant_sku' => $item->variant_sku_snapshot,
             'quantity' => (int) $item->quantity,
-            'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
+            'unit_price' => (float) $unitPriceDisplay,
             'line_total_snapshot' => $lineTotalSnapshot,
             'discount_type' => $item->discount_type,
             'discount_value' => (float) ($item->discount_value ?? 0),
@@ -727,14 +729,111 @@ class InvoiceService
             return $row;
         }
 
+        $grossSnapshot = $this->resolveOrderItemGrossSnapshot($item);
+        $qty = max(1, (int) ($item->quantity ?? 1));
+
         return [
             ...$row,
             'covered_by_package' => true,
             'package_applied_name' => $packageName,
-            'line_total_snapshot' => (float) ($item->line_total_snapshot ?? $item->line_total ?? $row['line_total_snapshot'] ?? $row['line_total'] ?? 0),
+            'unit_price' => $this->resolveOrderItemGrossUnitPrice($item, $grossSnapshot, $qty),
+            'line_total_snapshot' => $grossSnapshot,
             'line_total' => 0.0,
             'line_total_after_discount' => 0.0,
         ];
+    }
+
+    public function resolveOrderItemGrossSnapshot(OrderItem $item): float
+    {
+        $qty = max(1, (int) ($item->quantity ?? 1));
+        $unitPriceSnapshot = (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0);
+        $lineTotalSnapshot = (float) ($item->line_total_snapshot ?? 0);
+
+        if (abs($lineTotalSnapshot) <= 0.0001) {
+            $fallbackLineTotal = (float) ($item->line_total ?? 0);
+            if (abs($fallbackLineTotal) > 0.0001) {
+                $lineTotalSnapshot = $fallbackLineTotal;
+            } elseif (abs($unitPriceSnapshot) > 0.0001) {
+                $lineTotalSnapshot = $unitPriceSnapshot * $qty;
+            } else {
+                $bookingReference = $this->resolveOriginalBookingDepositReference($item);
+                if ($bookingReference > 0.0001) {
+                    $lineTotalSnapshot = $bookingReference;
+                }
+            }
+        }
+
+        return round(max(0, $lineTotalSnapshot), 2);
+    }
+
+    public function resolveOrderItemGrossUnitPrice(OrderItem $item, float $grossSnapshot, int $qty): float
+    {
+        $qty = max(1, $qty);
+        $unitPriceSnapshot = (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0);
+
+        if (abs($unitPriceSnapshot) > 0.0001) {
+            return round($unitPriceSnapshot, 2);
+        }
+
+        if (abs($grossSnapshot) > 0.0001) {
+            return round($grossSnapshot / $qty, 2);
+        }
+
+        $bookingReference = $this->resolveOriginalBookingDepositReference($item);
+
+        return round(max(0, $qty > 0 ? $bookingReference / $qty : $bookingReference), 2);
+    }
+
+    public function resolveOriginalBookingDepositReference(OrderItem $item): float
+    {
+        $lineType = (string) ($item->line_type ?? '');
+
+        if ($lineType === 'booking_deposit') {
+            $item->loadMissing('bookingService:id,deposit_amount');
+
+            return round(max(0, (float) ($item->bookingService?->deposit_amount ?? 0)), 2);
+        }
+
+        if ($lineType !== 'booking_addon') {
+            return 0.0;
+        }
+
+        $variantName = trim((string) ($item->variant_name_snapshot ?? ''));
+        if ($variantName !== '' && ! in_array($variantName, ['Booking Add-on Deposit', 'Booking Add-on Settlement'], true)) {
+            return 0.0;
+        }
+
+        $item->loadMissing('booking:id,addon_items_json');
+        $targetName = mb_strtolower(trim((string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: '')));
+        if ($targetName === '') {
+            return 0.0;
+        }
+
+        $qty = max(1, (int) ($item->quantity ?? 1));
+        foreach ((array) ($item->booking?->addon_items_json ?? []) as $addon) {
+            if (! is_array($addon)) {
+                continue;
+            }
+
+            $addonName = mb_strtolower(trim((string) ($addon['name'] ?? $addon['label'] ?? '')));
+            if ($addonName === '' || $addonName !== $targetName) {
+                continue;
+            }
+
+            $linkedDeposit = (float) ($addon['linked_deposit_amount'] ?? 0);
+            if ($linkedDeposit <= 0.0001) {
+                $linkedServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+                if ($linkedServiceId > 0) {
+                    $linkedDeposit = (float) (\App\Models\Booking\BookingService::query()
+                        ->where('id', $linkedServiceId)
+                        ->value('deposit_amount') ?? 0);
+                }
+            }
+
+            return round(max(0, $linkedDeposit * $qty), 2);
+        }
+
+        return 0.0;
     }
 
     protected function isBookingCoveredByPackage(int $bookingId): bool

@@ -21,7 +21,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items.bookingService:id,name,cn_name', 'order.items.booking.service:id,name,cn_name,service_price,price', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
+            ->with(['order.items.bookingService:id,name,cn_name,deposit_amount', 'order.items.booking.service:id,name,cn_name,service_price,price', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
             ->first();
 
         if (!$receiptToken) {
@@ -192,9 +192,7 @@ class PublicReceiptController extends Controller
         $displayItemsForResponse = $displayItems->map(function (OrderItem $item) use ($packageNameByServiceId, $packageUsages) {
             $row = $this->invoiceService->mapOrderItemToInvoiceRow($item);
             $discountAmount = (float) ($item->discount_amount ?? 0);
-            $lineTotalSnapshot = (float) ($item->line_total_snapshot
-                ?? $item->line_total
-                ?? (($item->unit_price_snapshot ?? 0) * max(1, (int) ($item->quantity ?? 1))));
+            $lineTotalSnapshot = $this->invoiceService->resolveOrderItemGrossSnapshot($item);
             $lineTotalNet = (float) ($item->line_total_after_discount
                 ?? $item->effective_line_total
                 ?? $item->line_total
@@ -371,7 +369,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items.bookingService:id,name,cn_name', 'order.items.booking.service:id,name,cn_name,service_price,price', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
+            ->with(['order.items.bookingService:id,name,cn_name,deposit_amount', 'order.items.booking.service:id,name,cn_name,service_price,price', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
             ->first();
 
         if (! $receiptToken) {

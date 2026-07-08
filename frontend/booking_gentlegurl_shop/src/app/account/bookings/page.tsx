@@ -12,6 +12,7 @@ import {
   bookingHasPendingRange,
   getBookingBalanceDueDisplay,
   getBookingPackageCoveredDisplay,
+  getBookingPackageCoveredTotals,
   getBookingServiceTotalDisplay,
   serviceBlocksForBooking,
 } from "@/lib/bookingServiceDisplay";
@@ -31,8 +32,14 @@ const formatDate = (value: string) =>
 const formatAddonLabel = (name: string, qty: number) => (qty > 1 ? `${name} (${qty})` : name);
 
 const addonSummary = (booking: BookingRecord) => {
+  const claims = booking.package_claims ?? [];
   const labels = serviceBlocksForBooking(booking).flatMap((block) =>
-    (block.add_ons ?? []).map((addon) => formatAddonLabel(addon.name, storedAddonQuantity(addon))),
+    (block.add_ons ?? []).map((addon) => {
+      const base = formatAddonLabel(addon.name, storedAddonQuantity(addon));
+      const addonServiceId = Number((addon as { service_id?: number | null }).service_id ?? 0);
+      const claim = addonServiceId > 0 ? claims.find((c) => c.booking_service_id === addonServiceId) : null;
+      return claim ? `${base} [PKG] ${claim.package_name}` : base;
+    }),
   );
 
   return labels.length > 0 ? labels.join(", ") : "None";
@@ -62,7 +69,7 @@ const getCustomerPaymentSummary = (booking: BookingRecord) => {
     booking.deposit_previously_collected_amount,
   );
   const settlementPaid = Number(booking.settlement_paid ?? 0);
-  const packageOffset = Number(booking.package_offset ?? 0);
+  const packageOffset = getBookingPackageCoveredTotals(booking).minTotal;
   const calculatedBalance = Math.max(0, serviceTotal + addonTotal - depositPaid - settlementPaid - packageOffset);
   const balanceDue = Number(booking.balance_due ?? booking.amount_due_now ?? calculatedBalance);
   const totalPaid = Number(booking.total_paid ?? depositPaid + settlementPaid);

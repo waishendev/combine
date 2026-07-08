@@ -195,6 +195,7 @@ export type BookingRecord = {
     is_original?: boolean | null;
     add_ons?: Array<{
       id?: number | null;
+      service_id?: number | null;
       name: string;
       cn_name?: string | null;
       extra_duration_min: number;

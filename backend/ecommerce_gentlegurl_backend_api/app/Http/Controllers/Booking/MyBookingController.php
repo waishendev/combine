@@ -18,6 +18,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderServiceItem;
 use App\Models\Booking\BookingSetting;
 use App\Services\Booking\BookingAddonQuantityService;
+use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\BookingServiceBlocksResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -46,13 +47,34 @@ class MyBookingController extends Controller
             ->orderByDesc('start_at')
             ->get();
 
-        $claimsByBooking = CustomerServicePackageUsage::query()
-            ->whereIn('booking_id', $bookings->pluck('id')->all())
-            ->whereIn('status', ['reserved', 'consumed'])
-            ->with('customerServicePackage.servicePackage:id,name')
-            ->orderByDesc('id')
-            ->get()
-            ->groupBy('booking_id');
+        $claimsByBooking = $bookings
+            ->mapWithKeys(function (Booking $booking) {
+                $bookingId = (int) $booking->id;
+                $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking($bookingId);
+
+                $claims = CustomerServicePackageUsage::query()
+                    ->where(function ($q) use ($bookingId, $posCartItemIds) {
+                        $q->where('booking_id', $bookingId)
+                            ->orWhere(function ($q2) use ($bookingId) {
+                                $q2->where('used_from', 'POS')
+                                    ->where('used_ref_id', $bookingId)
+                                    ->whereNull('booking_id');
+                            });
+
+                        if ($posCartItemIds !== []) {
+                            $q->orWhere(function ($q3) use ($posCartItemIds) {
+                                $q3->where('used_from', 'POS')
+                                    ->whereIn('used_ref_id', $posCartItemIds);
+                            })->orWhereIn('booking_id', $posCartItemIds);
+                        }
+                    })
+                    ->whereIn('status', ['reserved', 'consumed'])
+                    ->with('customerServicePackage.servicePackage:id,name')
+                    ->orderByDesc('id')
+                    ->get();
+
+                return [$bookingId => $claims];
+            });
 
         $latestCancellationRequests = BookingCancellationRequest::query()
             ->whereIn('booking_id', $bookings->pluck('id')->all())
@@ -613,6 +635,21 @@ class MyBookingController extends Controller
                 'receipt_public_url' => $item->order ? $this->resolveReceiptUrl((int) $item->order->id) : null,
             ];
         });
+
+        // If this same POS order is already rendered as "package covered",
+        // the deposit/settlement receipt rows are redundant (and currently show 0).
+        if ($serviceOrderRows->isNotEmpty()) {
+            $packageCoveredOrderIds = $serviceOrderRows
+                ->pluck('order_id')
+                ->unique()
+                ->values();
+
+            $orderItemRows = $orderItemRows->reject(function (array $row) use ($packageCoveredOrderIds) {
+                $lineType = (string) ($row['line_type'] ?? '');
+                return $packageCoveredOrderIds->contains((int) ($row['order_id'] ?? 0))
+                    && in_array($lineType, ['booking_deposit', 'booking_settlement'], true);
+            })->values();
+        }
 
         return $orderItemRows
             ->concat($serviceOrderRows)

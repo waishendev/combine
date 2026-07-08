@@ -7268,6 +7268,9 @@ class PosController extends Controller
 
                 $claimStatus = $serviceClaimStatuses[(int) $serviceItem->id]['status'] ?? null;
                 $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
+                $mainDepositBase = max(0, (float) ($serviceItem->bookingService?->deposit_amount ?? 0));
+                $mainDepositOverrideResult = $this->applyPriceOverrideToAmount($serviceItem, 'main', $mainDepositBase);
+                $depositGross = (float) $mainDepositOverrideResult['amount'];
                 $depositContribution = ! $claimedByPackage
                     ? (float) ($depositByServiceItemId[(int) $serviceItem->id] ?? 0)
                     : 0.0;
@@ -7276,6 +7279,9 @@ class PosController extends Controller
                     $depositPriceOverrideResult = $this->applyPriceOverrideToAmount($serviceItem, 'main', $depositContribution);
                     $depositContribution = (float) $depositPriceOverrideResult['amount'];
                     $depositPriceOverride = $depositPriceOverrideResult['override'] ?? ($depositByServiceItemOverrides[(int) $serviceItem->id] ?? null);
+                    $depositGross = $depositContribution;
+                } else {
+                    $depositPriceOverride = $mainDepositOverrideResult['override'] ?? ($depositByServiceItemOverrides[(int) $serviceItem->id] ?? null);
                 }
 
                 $depositOrderItem = OrderItem::create([
@@ -7285,10 +7291,10 @@ class PosController extends Controller
                     'product_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
                     'display_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
                     'quantity' => 1,
-                    'price_snapshot' => $depositContribution,
-                    'unit_price_snapshot' => $depositContribution,
-                    'line_total' => $depositContribution,
-                    'line_total_snapshot' => $depositContribution,
+                    'price_snapshot' => $depositGross,
+                    'unit_price_snapshot' => $depositGross,
+                    'line_total' => $depositGross,
+                    'line_total_snapshot' => $depositGross,
                     'effective_unit_price' => $depositContribution,
                     'effective_line_total' => $depositContribution,
                     'locked' => true,
@@ -10358,10 +10364,18 @@ class PosController extends Controller
         $claims = CustomerServicePackageUsage::query()
             ->with(['customerServicePackage.servicePackage'])
             ->where(function ($q) use ($booking, $posCartItemIds) {
-                $q->where('booking_id', (int) $booking->id);
+                $q->where('booking_id', (int) $booking->id)
+                    ->orWhere(function ($q2) use ($booking) {
+                        $q2->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id)
+                            ->whereNull('booking_id');
+                    });
 
                 if ($posCartItemIds !== []) {
-                    $q->orWhereIn('booking_id', $posCartItemIds);
+                    $q->orWhere(function ($q3) use ($posCartItemIds) {
+                        $q3->where('used_from', 'POS')
+                            ->whereIn('used_ref_id', $posCartItemIds);
+                    })->orWhereIn('booking_id', $posCartItemIds);
                 }
             })
             ->whereIn('status', ['reserved', 'consumed'])

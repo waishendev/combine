@@ -22,6 +22,7 @@ import {
   getBookingBalanceDueDisplay,
   getBookingMainServiceTotalDisplay,
   getBookingPackageCoveredDisplay,
+  getBookingPackageCoveredTotals,
 } from "@/lib/bookingServiceDisplay";
 import {
   formatReceiptMeta,
@@ -80,7 +81,8 @@ const getPaymentSummary = (booking: BookingRecord) => {
     booking.deposit_previously_collected_amount,
   );
   const settlementPaid = Number(booking.settlement_paid ?? 0);
-  const packageOffset = Number(booking.package_offset ?? 0);
+  const packageOffset = getBookingPackageCoveredTotals(booking).minTotal;
+  const hasPackageClaims = (booking.package_claims ?? []).length > 0;
   const calculatedBalance = Math.max(0, serviceTotal + addonTotal - depositPaid - settlementPaid - packageOffset);
   const balanceDue = Number(booking.balance_due ?? booking.amount_due_now ?? calculatedBalance);
   const totalPaid = Number(booking.total_paid ?? depositPaid + settlementPaid);
@@ -99,7 +101,7 @@ const getPaymentSummary = (booking: BookingRecord) => {
       ? "No payment received yet."
       : paymentStatus === "PARTIAL"
         ? "Deposit received. Remaining balance will be paid at the salon."
-        : packageOffset > 0
+        : hasPackageClaims
           ? "Covered by your service package."
           : "Fully paid.";
 
@@ -576,10 +578,12 @@ export default function BookingDetailPage() {
                   </div>
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Add-ons</span><span className={`font-medium ${addonTotalDisplay.isRangePending ? "text-amber-700" : ""}`}>{addonTotalDisplay.text}</span></div>
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Deposit Paid</span><span className="font-medium text-emerald-700">{formatCurrency(payment.depositPaid)}</span></div>
-                  {payment.packageOffset > 0 ? (
+                  {!isBookingProduct && (booking.package_claims ?? []).length > 0 ? (
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-[var(--text-muted)]">Package Covered</span>
-                      <span className="font-medium text-emerald-700">{packageCoveredDisplay.text}</span>
+                      <span className="font-medium text-emerald-700">
+                        {packageCoveredDisplay.text}
+                      </span>
                     </div>
                   ) : null}
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Paid In Store</span><span className="font-medium">{formatCurrency(payment.settlementPaid)}</span></div>

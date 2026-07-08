@@ -19,7 +19,9 @@ export type BookingServiceBlock = {
   price_finalized?: boolean | null;
   duration_min?: number | null;
   is_original?: boolean | null;
-  add_ons?: Array<StoredBookingAddonRow & { id?: number | null; name: string; cn_name?: string | null }>;
+  add_ons?: Array<
+    StoredBookingAddonRow & { id?: number | null; service_id?: number | null; name: string; cn_name?: string | null }
+  >;
 };
 
 export type RangeDisplay = { text: string; isRangePending: boolean };
@@ -255,7 +257,7 @@ export function getBookingBalanceDueDisplay(
   return formatRangeTotal(minBalance, maxBalance, true, formatMoney);
 }
 
-function getBookingPackageCoveredTotals(booking: BookingRecord): AccumulatedTotals {
+export function getBookingPackageCoveredTotals(booking: BookingRecord): AccumulatedTotals {
   const claims = booking.package_claims ?? [];
   if (claims.length === 0) return { minTotal: 0, maxTotal: 0, hasPendingRange: false };
 
@@ -266,20 +268,38 @@ function getBookingPackageCoveredTotals(booking: BookingRecord): AccumulatedTota
 
   for (const block of serviceBlocksForBooking(booking)) {
     const id = Number(block.service_id ?? 0);
-    if (!claimIds.has(id)) continue;
-
-    if (isServiceBlockRangePending(block)) {
-      const rangeMin = Number(block.price_range_min ?? 0);
-      const rangeMax = Number(block.price_range_max ?? 0);
-      minTotal += Math.min(rangeMin, rangeMax);
-      maxTotal += Math.max(rangeMin, rangeMax);
-      hasPendingRange = true;
-      continue;
+    if (id > 0 && claimIds.has(id)) {
+      if (isServiceBlockRangePending(block)) {
+        const rangeMin = Number(block.price_range_min ?? 0);
+        const rangeMax = Number(block.price_range_max ?? 0);
+        minTotal += Math.min(rangeMin, rangeMax);
+        maxTotal += Math.max(rangeMin, rangeMax);
+        hasPendingRange = true;
+      } else {
+        const amount = Number(block.amount ?? 0);
+        minTotal += amount;
+        maxTotal += amount;
+      }
     }
 
-    const amount = Number(block.amount ?? 0);
-    minTotal += amount;
-    maxTotal += amount;
+    // Add-on claims: include covered add-ons too.
+    for (const addon of block.add_ons ?? []) {
+      const addonServiceId = Number((addon as { service_id?: number | null }).service_id ?? 0);
+      if (!claimIds.has(addonServiceId)) continue;
+
+      const addonQty = storedAddonQuantity(addon);
+      if (isAddonRangePending(addon)) {
+        const rangeMin = Number(addon.price_range_min ?? 0) * addonQty;
+        const rangeMax = Number(addon.price_range_max ?? 0) * addonQty;
+        minTotal += Math.min(rangeMin, rangeMax);
+        maxTotal += Math.max(rangeMin, rangeMax);
+        hasPendingRange = true;
+      } else {
+        const lineTotal = storedAddonLinePrice(addon);
+        minTotal += lineTotal;
+        maxTotal += lineTotal;
+      }
+    }
   }
 
   return { minTotal, maxTotal, hasPendingRange };
@@ -290,7 +310,7 @@ export function getBookingPackageCoveredDisplay(
   formatMoney: (value: number) => string = formatCurrency,
 ): RangeDisplay {
   const totals = getBookingPackageCoveredTotals(booking);
-  if (totals.minTotal <= 0 && totals.maxTotal <= 0) {
+  if (!totals.hasPendingRange && totals.minTotal <= 0 && totals.maxTotal <= 0) {
     return { text: formatMoney(0), isRangePending: false };
   }
 

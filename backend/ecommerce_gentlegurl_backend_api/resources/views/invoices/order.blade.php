@@ -609,9 +609,19 @@
               $bookingProductOptionUnitTotal = (float) $bookingProductOptionRows->sum(fn ($option) => (float) ($option['extra_price'] ?? 0));
               $bookingProductOptionDiscountTotal = (float) $bookingProductOptionRows->sum(fn ($option) => (float) ($option['discount_amount'] ?? 0));
               $mainLineDiscountAmount = max(0, (float) ($item['discount_amount'] ?? 0) - $bookingProductOptionDiscountTotal);
+              $unitPriceBase = (float) ($item['unit_price'] ?? 0);
+              $itemLineTotalSnapshot = (float) ($item['line_total_snapshot'] ?? 0);
+              $itemLineTotal = (float) ($item['line_total'] ?? 0);
+              // When snapshot is 0 but line_total is correct, prefer line_total for unit-price reconstruction.
+              $lineTotalForOriginal = abs($itemLineTotalSnapshot) > 0.0001 ? $itemLineTotalSnapshot : $itemLineTotal;
+              if (abs($unitPriceBase) <= 0.0001) {
+                $qty = max(1, (int) ($item['quantity'] ?? 1));
+                $unitPriceBase = abs($lineTotalForOriginal) > 0.0001 ? ($lineTotalForOriginal / $qty) : $unitPriceBase;
+              }
+
               $displayUnitPrice = $bookingProductOptionRows->isNotEmpty()
-                ? max(0, (float) ($item['unit_price'] ?? 0) - $bookingProductOptionUnitTotal)
-                : (float) ($item['unit_price'] ?? 0);
+                ? max(0, (float) $unitPriceBase - $bookingProductOptionUnitTotal)
+                : (float) $unitPriceBase;
               $displayLineTotal = $bookingProductOptionRows->isNotEmpty()
                 ? max(0, (float) ($item['line_total'] ?? 0) - $bookingProductOptionRows->sum(function ($option) use ($item) {
                     $gross = (float) ($option['extra_price'] ?? 0) * (int) ($item['quantity'] ?? 1);
@@ -639,7 +649,7 @@
                 <?php endif; ?>
                 <?php if($mainLineDiscountAmount > 0): ?>
                   <div class="sku" style="color:#92400e;margin-top:2px;">
-                    Original: {{ $currency }} {{ number_format(max(0, (float) ($item['line_total_snapshot'] ?? 0) - ($bookingProductOptionUnitTotal * (int) ($item['quantity'] ?? 1))), 2) }}
+                    Original: {{ $currency }} {{ number_format(max(0, (float) $lineTotalForOriginal - ($bookingProductOptionUnitTotal * (int) ($item['quantity'] ?? 1))), 2) }}
                   </div>
                   <div class="sku" style="color:#92400e;">
                     Discount
@@ -675,13 +685,13 @@
               <td class="numeric">
                 <?php if(!empty($item['covered_by_package'])): ?>
                   <div style="font-size:11px;color:#9ca3af;text-decoration:line-through;">
-                    {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? $item['line_total'] ?? 0), 2) }}
+                    {{ $currency }} {{ number_format((float) $lineTotalForOriginal, 2) }}
                   </div>
                   <div style="color:#047857;font-weight:700;">{{ $currency }} 0.00</div>
                 <?php else: ?>
                   <?php if($mainLineDiscountAmount > 0): ?>
                     <div style="font-size:11px;color:#9ca3af;text-decoration:line-through;">
-                      {{ $currency }} {{ number_format(max(0, (float) ($item['line_total_snapshot'] ?? 0) - ($bookingProductOptionUnitTotal * (int) ($item['quantity'] ?? 1))), 2) }}
+                      {{ $currency }} {{ number_format(max(0, (float) $lineTotalForOriginal - ($bookingProductOptionUnitTotal * (int) ($item['quantity'] ?? 1))), 2) }}
                     </div>
                   <?php endif; ?>
                   <div>{{ $currency }} {{ number_format((float) $displayLineTotal, 2) }}</div>

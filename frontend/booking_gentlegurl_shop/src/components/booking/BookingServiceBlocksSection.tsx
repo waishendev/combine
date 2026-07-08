@@ -20,11 +20,24 @@ function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | nu
   );
 }
 
-function ServiceBlockCard({ block, compact = false, packageName }: { block: BookingServiceBlock; compact?: boolean; packageName?: string | null }) {
+type PackageClaim = NonNullable<BookingRecord["package_claims"]>[number];
+
+function ServiceBlockCard({
+  block,
+  compact = false,
+  packageName,
+  packageClaims,
+}: {
+  block: BookingServiceBlock;
+  compact?: boolean;
+  packageName?: string | null;
+  packageClaims?: PackageClaim[];
+}) {
   const addOns = block.add_ons ?? [];
   const priceText = formatServicePrice(block, formatCurrency);
   const isRangePending = String(block.price_mode ?? "").toLowerCase() === "range" && block.price_finalized === false;
   const isPackageCovered = Boolean(packageName);
+  const claims = packageClaims ?? [];
 
   return (
     <div className={`rounded-xl border border-[var(--card-border)] bg-[var(--card)] ${compact ? "p-3" : "p-4"}`}>
@@ -62,6 +75,7 @@ function ServiceBlockCard({ block, compact = false, packageName }: { block: Book
             const priceText = formatBookingAddonPriceText(addon, formatCurrency);
             const addonRangePending = isAddonRangePending(addon);
             const qty = Number(addon.quantity ?? 1);
+            const addonClaim = claims.find((c) => c.booking_service_id === Number((addon as { service_id?: number | null }).service_id ?? 0));
             return (
               <div
                 key={`${addon.id ?? addon.name}-${index}`}
@@ -70,6 +84,11 @@ function ServiceBlockCard({ block, compact = false, packageName }: { block: Book
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium text-[var(--foreground)]">{addon.name}</p>
+                    {addonClaim ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                        [PKG] {addonClaim.package_name}
+                      </span>
+                    ) : null}
                     {qty > 1 ? (
                       <span className="rounded-full bg-[var(--background)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
                         × {qty}
@@ -104,6 +123,7 @@ export default function BookingServiceBlocksSection({
 }: BookingServiceBlocksSectionProps) {
   const blocks = serviceBlocksForBooking(booking);
   const multiService = blocks.length > 1;
+  const packageClaims = booking.package_claims ?? [];
 
   return (
     <section className={className}>
@@ -128,6 +148,7 @@ export default function BookingServiceBlocksSection({
               block={block}
               compact={compact}
               packageName={claim?.package_name ?? null}
+              packageClaims={packageClaims}
             />
           );
         })}
