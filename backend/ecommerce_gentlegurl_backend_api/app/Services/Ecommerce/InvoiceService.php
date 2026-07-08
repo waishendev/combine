@@ -3,6 +3,7 @@
 namespace App\Services\Ecommerce;
 
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingRefund;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageUsage;
@@ -752,6 +753,31 @@ class InvoiceService
             })
             ->whereIn('status', ['reserved', 'consumed'])
             ->exists();
+    }
+
+    public function buildRefundPdf(BookingRefund $refund)
+    {
+        $refund->loadMissing(['booking.customer', 'processor:id,name']);
+        $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
+        $methodLabels = [
+            'cash' => 'Cash Refund',
+            'customer_credit' => 'Customer Credit',
+        ];
+
+        $booking = $refund->booking;
+        $customerName = (string) ($booking?->customer?->name ?? $booking?->guest_name ?? '');
+        $customerPhone = (string) ($booking?->customer?->phone ?? $booking?->guest_phone ?? '');
+        $customerEmail = (string) ($booking?->customer?->email ?? $booking?->guest_email ?? '');
+
+        return app('snappy.pdf.wrapper')->loadView('invoices.refund', [
+            'refund' => $refund,
+            'invoiceProfile' => $invoiceProfile,
+            'bookingCode' => (string) ($booking?->booking_code ?? ''),
+            'customerName' => $customerName !== '' ? $customerName : 'Walk-in / Guest',
+            'customerPhone' => $customerPhone,
+            'customerEmail' => $customerEmail,
+            'methodLabel' => $methodLabels[(string) $refund->method] ?? ucfirst(str_replace('_', ' ', (string) $refund->method)),
+        ]);
     }
 
     protected function defaultInvoiceProfile(): array

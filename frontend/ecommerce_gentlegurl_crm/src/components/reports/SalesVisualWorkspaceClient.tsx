@@ -21,9 +21,11 @@ const segmentClass = (active: boolean) =>
 export default function SalesVisualWorkspaceClient({
   canExport,
   canUpdateOrder = false,
+  canVoidRefund = false,
 }: {
   canExport: boolean
   canUpdateOrder?: boolean
+  canVoidRefund?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -141,16 +143,16 @@ export default function SalesVisualWorkspaceClient({
               Product-line orders only. Booking deposits and other booking lines appear under Booking below (same as POS rows with
               booking line types).
             </p>
-            <SalesChannelReportPage mode="ecommerce" canExport={canExport} canUpdateOrder={canUpdateOrder} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
+            <SalesChannelReportPage mode="ecommerce" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
           </section>
           <section>
             <h4 className="text-base font-semibold text-slate-800">Booking</h4>
             <p className="mb-3 text-xs text-slate-500">Deposits, settlement, add-ons, and packages — grouped to one row per order; line details remain in View Details.</p>
-            <SalesChannelReportPage mode="booking" canExport={canExport} canUpdateOrder={canUpdateOrder} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
+            <SalesChannelReportPage mode="booking" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
           </section>
         </div>
       ) : (
-        <SalesChannelReportPage mode={mode} canExport={canExport} canUpdateOrder={canUpdateOrder} defaultDatePreset="today" showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
+        <SalesChannelReportPage mode={mode} canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
       )}
     </div>
   )

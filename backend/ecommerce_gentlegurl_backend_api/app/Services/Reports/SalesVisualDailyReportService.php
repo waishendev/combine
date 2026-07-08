@@ -879,11 +879,7 @@ class SalesVisualDailyReportService
     {
         $labels = [
             'cash' => 'Cash Refund',
-            'qrpay' => 'QRPay Refund',
-            'manual_transfer' => 'Manual Transfer Refund',
-            'credit_card' => 'Credit Card Refund',
-            'customer_credit' => 'Customer Credit / Store Credit',
-            'store_credit' => 'Store Credit / Customer Balance',
+            'customer_credit' => 'Customer Credit',
         ];
 
         return collect($labels)->map(function (string $label, string $method) use ($start, $end) {

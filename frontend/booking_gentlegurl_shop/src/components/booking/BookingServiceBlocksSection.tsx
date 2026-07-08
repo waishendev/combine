@@ -1,6 +1,7 @@
 "use client";
 
 import type { BookingRecord } from "@/lib/types";
+import { isAddonRangePending } from "@/lib/bookingAddonDisplay";
 import {
   formatBookingAddonDurationText,
   formatBookingAddonPriceText,
@@ -19,10 +20,11 @@ function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | nu
   );
 }
 
-function ServiceBlockCard({ block, compact = false }: { block: BookingServiceBlock; compact?: boolean }) {
+function ServiceBlockCard({ block, compact = false, packageName }: { block: BookingServiceBlock; compact?: boolean; packageName?: string | null }) {
   const addOns = block.add_ons ?? [];
   const priceText = formatServicePrice(block, formatCurrency);
   const isRangePending = String(block.price_mode ?? "").toLowerCase() === "range" && block.price_finalized === false;
+  const isPackageCovered = Boolean(packageName);
 
   return (
     <div className={`rounded-xl border border-[var(--card-border)] bg-[var(--card)] ${compact ? "p-3" : "p-4"}`}>
@@ -35,6 +37,11 @@ function ServiceBlockCard({ block, compact = false }: { block: BookingServiceBlo
                 Original
               </span>
             ) : null}
+            {isPackageCovered ? (
+              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                [PKG] {packageName}
+              </span>
+            ) : null}
           </div>
           {!compact && Number(block.duration_min ?? 0) > 0 ? (
             <p className="mt-1 text-xs text-[var(--text-muted)]">{block.duration_min} mins</p>
@@ -44,9 +51,6 @@ function ServiceBlockCard({ block, compact = false }: { block: BookingServiceBlo
           <p className={`text-sm font-semibold tabular-nums ${isRangePending ? "text-amber-700" : "text-[var(--foreground)]"}`}>
             {priceText}
           </p>
-          {isRangePending ? (
-            <p className="mt-0.5 text-[10px] text-amber-700">Final price at salon</p>
-          ) : null}
         </div>
       </div>
 
@@ -56,6 +60,7 @@ function ServiceBlockCard({ block, compact = false }: { block: BookingServiceBlo
           {addOns.map((addon, index) => {
             const durationText = formatBookingAddonDurationText(addon);
             const priceText = formatBookingAddonPriceText(addon, formatCurrency);
+            const addonRangePending = isAddonRangePending(addon);
             const qty = Number(addon.quantity ?? 1);
             return (
               <div
@@ -75,7 +80,7 @@ function ServiceBlockCard({ block, compact = false }: { block: BookingServiceBlo
                   {durationText ? <p className="mt-1 text-xs text-[var(--text-muted)]">{durationText}</p> : null}
                 </div>
                 {priceText ? (
-                  <p className="shrink-0 text-right text-xs font-medium tabular-nums text-[var(--text-muted)]">{priceText}</p>
+                  <p className={`shrink-0 text-right text-xs font-medium tabular-nums ${addonRangePending ? "text-amber-700" : "text-[var(--text-muted)]"}`}>{priceText}</p>
                 ) : null}
               </div>
             );
@@ -113,13 +118,19 @@ export default function BookingServiceBlocksSection({
         ) : null}
       </div>
       <div className={multiService ? "space-y-3" : ""}>
-        {blocks.map((block, index) => (
-          <ServiceBlockCard
-            key={`${block.service_id ?? block.name}-${index}`}
-            block={block}
-            compact={compact}
-          />
-        ))}
+        {blocks.map((block, index) => {
+          const claim = (booking.package_claims ?? []).find(
+            (c) => c.booking_service_id === block.service_id,
+          );
+          return (
+            <ServiceBlockCard
+              key={`${block.service_id ?? block.name}-${index}`}
+              block={block}
+              compact={compact}
+              packageName={claim?.package_name ?? null}
+            />
+          );
+        })}
       </div>
     </section>
   );

@@ -227,6 +227,7 @@ export type BookingRecord = {
   balance_due?: number | null;
   amount_due_now?: number | null;
   total_paid?: number | null;
+  has_pending_range_pricing?: boolean | null;
   estimated_duration_min?: number | null;
   staff_name?: string | null;
   starts_at: string;
@@ -264,6 +265,18 @@ export type BookingRecord = {
     amount: number;
     payment_method?: string | null;
     paid_at?: string | null;
+    receipt_public_url?: string | null;
+  }>;
+  refunds?: Array<{
+    id: number;
+    refund_no: string;
+    amount: number;
+    method: string;
+    method_label: string;
+    channel?: string | null;
+    processed_at?: string | null;
+    created_at?: string | null;
+    remark?: string | null;
     receipt_public_url?: string | null;
   }>;
   uploaded_item_photos?: BookingCartItemPhoto[];

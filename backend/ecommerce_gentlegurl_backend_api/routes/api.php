@@ -42,6 +42,7 @@ use App\Http\Controllers\Ecommerce\PosAppointmentPaymentLinkController;
 use App\Http\Controllers\Ecommerce\PosController;
 use App\Http\Controllers\Ecommerce\PosCashShiftController;
 use App\Http\Controllers\Ecommerce\PublicReceiptController;
+use App\Http\Controllers\Ecommerce\PublicRefundReceiptController;
 use App\Http\Controllers\Ecommerce\PublicVoucherController;
 use App\Http\Controllers\Ecommerce\ProductStockMovementController;
 use App\Http\Controllers\Ecommerce\ProductVariantBundleItemController;
@@ -127,6 +128,8 @@ Route::post('/public/payments/billplz/callback', [BillplzCallbackController::cla
 Route::get('/public/payments/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
 Route::get('/public/receipt/{token}', [PublicReceiptController::class, 'show']);
 Route::get('/public/receipt/{token}/invoice', [PublicReceiptController::class, 'invoice']);
+Route::get('/public/refund-receipt/{token}', [PublicRefundReceiptController::class, 'show']);
+Route::get('/public/refund-receipt/{token}/invoice', [PublicRefundReceiptController::class, 'invoice']);
 // Backwards compatibility for previous callback URLs
 Route::post('/payment/billplz/callback', [BillplzCallbackController::class, 'callback']);
 Route::get('/payment/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
@@ -506,6 +509,14 @@ $protectedRoutes = function () {
             ->middleware('permission:pos.checkout|pos.appointments.manage');
         Route::patch('/appointments/{id}/deposits/{orderItemId}', [PosController::class, 'editAppointmentDepositTransaction'])
             ->middleware('permission:pos.checkout|pos.appointments.manage');
+        Route::post('/appointments/{id}/refunds', [PosController::class, 'addAppointmentRefund'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage');
+        Route::patch('/appointments/{id}/refunds/{refundId}', [PosController::class, 'editAppointmentRefundTransaction'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage');
+        Route::put('/refunds/{id}/void', [PosController::class, 'voidAppointmentRefund'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage|ecommerce.orders.update');
+        Route::get('/refunds/{id}/receipt', [PosController::class, 'refundReceipt'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage|ecommerce.daily-sales-reports.view');
         Route::get('/payment-links/pending-review', [PosAppointmentPaymentLinkController::class, 'pendingReview']);
         Route::get('/appointments/{id}/payment-links', [PosAppointmentPaymentLinkController::class, 'index']);
         Route::post('/appointments/{id}/payment-links', [PosAppointmentPaymentLinkController::class, 'store']);

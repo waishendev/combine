@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingItemPhoto;
+use App\Models\Booking\BookingRefund;
+use App\Models\Booking\BookingRefundReceiptToken;
 use App\Models\Booking\BookingServicePhoto;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\BookingPayment;
@@ -35,7 +37,7 @@ class MyBookingController extends Controller
 
         $bookings = Booking::query()
             ->with([
-                'service:id,name,cn_name,duration_min,deposit_amount,buffer_min,allow_photo_upload,service_price,price,service_type,price_mode',
+                'service:id,name,cn_name,duration_min,deposit_amount,buffer_min,allow_photo_upload,service_price,price,service_type,price_mode,price_range_min,price_range_max',
                 'staff:id,name',
                 'itemPhotos',
                 'servicePhotos',
@@ -75,6 +77,7 @@ class MyBookingController extends Controller
                 ->first();
 
             $receiptRows = $this->resolveBookingReceipts((int) $booking->id);
+            $refundRows = $this->resolveBookingRefunds((int) $booking->id);
             $summary = $this->resolveAppointmentFinancialSummary($booking);
 
             return [
@@ -134,6 +137,7 @@ class MyBookingController extends Controller
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['amount_due_now'],
                 'total_paid' => (float) $summary['total_paid'],
+                'has_pending_range_pricing' => (bool) ($summary['has_pending_range_pricing'] ?? false),
                 'estimated_duration_min' => (int) $summary['estimated_duration_min'],
                 'staff_name' => $booking->staff?->name,
                 'customer_remarks' => BookingNotes::customerRemarksForDisplay($booking->notes),
@@ -187,6 +191,7 @@ class MyBookingController extends Controller
                     'deposit_order_item_id' => (int) $depositOrderItem->id,
                 ] : null,
                 'receipts' => $receiptRows,
+                'refunds' => $refundRows,
             ];
         })->values();
 
@@ -410,9 +415,14 @@ class MyBookingController extends Controller
                 ->first();
         }
         $packageOffset = $packageUsage ? max(0.0, $originalServiceAmount) : 0.0;
-        $payableTotal = round($serviceTotal + $addonTotalPrice, 2);
+        $hasPendingRangePricing = $this->serviceBlocksResolver->hasPendingRangePricing($booking);
+        $payableTotal = $hasPendingRangePricing
+            ? 0.0
+            : round($serviceTotal + $addonTotalPrice, 2);
         $paidTotal = round($depositPaid + $settlementPaid + $packageOffset, 2);
-        $balanceDue = max(0.0, round($payableTotal - $paidTotal, 2));
+        $balanceDue = $hasPendingRangePricing
+            ? 0.0
+            : max(0.0, round($payableTotal - $paidTotal, 2));
 
         return [
             'service_total' => round($serviceTotal, 2),
@@ -427,6 +437,7 @@ class MyBookingController extends Controller
             'balance_due' => round($balanceDue, 2),
             'amount_due_now' => round($balanceDue, 2),
             'total_paid' => round($depositPaid + $settlementPaid, 2),
+            'has_pending_range_pricing' => $hasPendingRangePricing,
         ];
     }
 
@@ -624,5 +635,57 @@ class MyBookingController extends Controller
 
         $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
         return $frontendUrl . '/api/proxy/public/receipt/' . $token->token . '/invoice';
+    }
+
+    private function resolveBookingRefunds(int $bookingId): array
+    {
+        $methodLabels = [
+            'cash' => 'Cash Refund',
+            'customer_credit' => 'Customer Credit',
+        ];
+
+        return BookingRefund::query()
+            ->where('booking_id', $bookingId)
+            ->where('status', 'completed')
+            ->orderBy('id')
+            ->get()
+            ->map(function (BookingRefund $refund) use ($methodLabels) {
+                $method = (string) $refund->method;
+
+                return [
+                    'id' => (int) $refund->id,
+                    'refund_no' => (string) $refund->refund_no,
+                    'amount' => round((float) $refund->amount, 2),
+                    'method' => $method,
+                    'method_label' => $methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method)),
+                    'channel' => (string) ($refund->channel ?? 'offline'),
+                    'processed_at' => optional($refund->processed_at)?->toIso8601String(),
+                    'created_at' => optional($refund->created_at)?->toIso8601String(),
+                    'remark' => $refund->remark,
+                    'receipt_public_url' => $this->resolveRefundReceiptUrl((int) $refund->id),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function resolveRefundReceiptUrl(int $refundId): ?string
+    {
+        $token = BookingRefundReceiptToken::query()
+            ->where('booking_refund_id', $refundId)
+            ->latest('id')
+            ->first();
+
+        if (! $token) {
+            $token = BookingRefundReceiptToken::create([
+                'booking_refund_id' => $refundId,
+                'token' => Str::random(64),
+                'expires_at' => null,
+            ]);
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
+
+        return $frontendUrl . '/api/proxy/public/refund-receipt/' . $token->token . '/invoice';
     }
 }

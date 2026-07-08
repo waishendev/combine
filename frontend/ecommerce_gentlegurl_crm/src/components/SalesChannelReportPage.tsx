@@ -10,6 +10,7 @@ import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import OfflineOrderActions from './reports/OfflineOrderActions'
 import OrderReceiptAction from './reports/OrderReceiptAction'
+import RefundReportActions from './reports/RefundReportActions'
 import { ReportDetailDrawer, ReportViewDetailsButton } from './reports/ReportActions'
 import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
 import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
@@ -65,6 +66,9 @@ type BookingRow = {
   discount: number
   net_amount: number
   status: string
+  is_refund?: boolean
+  refund_id?: number
+  receipt_public_url?: string | null
 }
 
 type EcommerceResponse = {
@@ -273,6 +277,14 @@ const formatDisplayDateTime = (value: string) => {
 const formatAmount = (amount: number) =>
   amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+const formatSignedAmount = (value: number) => {
+  const amount = Number(value ?? 0)
+  if (amount < 0) {
+    return `− RM ${formatAmount(Math.abs(amount))}`
+  }
+  return `RM ${formatAmount(amount)}`
+}
+
 const labelize = (value: string) =>
   value
     .replaceAll('_', ' ')
@@ -467,6 +479,7 @@ export default function SalesChannelReportPage({
   mode,
   canExport = false,
   canUpdateOrder,
+  canVoidRefund = false,
   defaultDatePreset = 'month',
   paramPrefix,
   isAllWorkspace = false,
@@ -476,6 +489,7 @@ export default function SalesChannelReportPage({
   mode: Mode
   canExport?: boolean
   canUpdateOrder?: boolean
+  canVoidRefund?: boolean
   defaultDatePreset?: 'month' | 'today'
   /** When set (e.g. `ec_`), URL uses `{prefix}page` and `{prefix}per_page` instead of `page` / `per_page`. */
   paramPrefix?: string
@@ -971,10 +985,25 @@ export default function SalesChannelReportPage({
                   </td>
                   <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.gross_amount)}</td>
                   <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.discount)}</td>
-                  <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.net_amount)}</td>
+                  <td className={`px-4 py-2 border border-gray-200 ${row.net_amount < 0 ? 'font-semibold text-rose-700' : ''}`}>{formatSignedAmount(row.net_amount)}</td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
                   <td className="px-4 py-2 border border-gray-200 text-center">
                     <div className="inline-flex items-center justify-center gap-2">
+                      {row.is_refund ? (
+                        row.refund_id ? (
+                          <RefundReportActions
+                            refundId={row.refund_id}
+                            refundNo={row.order_no}
+                            receiptPublicUrl={row.receipt_public_url}
+                            canVoid={canVoidRefund}
+                            onDone={() => {
+                              setRefreshKey((prev) => prev + 1)
+                              onDataChanged?.()
+                            }}
+                          />
+                        ) : null
+                      ) : (
+                        <>
                       <ReportViewDetailsButton onClick={() => void openBookingDetail(row)} title={row.booking_no ? `View booking details for ${row.booking_no}` : `View details for ${row.order_no}`} />
                       <OrderReceiptAction orderId={row.order_id} orderNo={row.order_no} />
                     <OfflineOrderActions
@@ -992,6 +1021,8 @@ export default function SalesChannelReportPage({
                         onDataChanged?.()
                       }}
                     />
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

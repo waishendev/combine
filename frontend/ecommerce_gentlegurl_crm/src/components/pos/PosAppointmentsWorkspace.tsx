@@ -62,6 +62,7 @@ import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
+import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRefundCreditSection'
 import PosAppointmentPaymentLinksSection from '@/components/pos/PosAppointmentPaymentLinksSection'
 import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
@@ -135,14 +136,7 @@ const appointmentMatchesStatusFilter = (row: PosAppointmentListItem, value: stri
 }
 
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
-type AppointmentRefundMethod = 'cash' | 'qrpay' | 'manual_transfer' | 'credit_card' | 'customer_credit'
-const APPOINTMENT_REFUND_METHODS: Array<{ method: AppointmentRefundMethod; label: string; channel: 'online' | 'offline' }> = [
-  { method: 'cash', label: 'Cash', channel: 'offline' },
-  { method: 'qrpay', label: 'QRPay', channel: 'offline' },
-  { method: 'manual_transfer', label: 'Manual Transfer', channel: 'offline' },
-  { method: 'credit_card', label: 'Credit Card', channel: 'offline' },
-  { method: 'customer_credit', label: 'Customer Credit / Store Credit', channel: 'online' },
-]
+
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
   { method: 'cash', label: 'Cash' },
   { method: 'qrpay', label: 'QRPay' },
@@ -480,10 +474,6 @@ export default function PosAppointmentsWorkspace({
   const [appointmentDiscountTypeDraft, setAppointmentDiscountTypeDraft] = useState<'percentage' | 'fixed'>('fixed')
   const [appointmentDiscountValueDraft, setAppointmentDiscountValueDraft] = useState('')
   const [appointmentDiscountRemarkDraft, setAppointmentDiscountRemarkDraft] = useState('')
-  const [appointmentRefundAmountDraft, setAppointmentRefundAmountDraft] = useState('')
-  const [appointmentRefundMethodDraft, setAppointmentRefundMethodDraft] = useState<AppointmentRefundMethod>('cash')
-  const [appointmentRefundRemarkDraft, setAppointmentRefundRemarkDraft] = useState('')
-  const [appointmentRefundActionDraft, setAppointmentRefundActionDraft] = useState<'refund_now' | 'store_credit'>('refund_now')
   const [appointmentQrProofFile, setAppointmentQrProofFile] = useState<File | null>(null)
   const [appointmentQrProofFileName, setAppointmentQrProofFileName] = useState<string | null>(null)
   const [appointmentQrProofPreviewUrl, setAppointmentQrProofPreviewUrl] = useState<string | null>(null)
@@ -1830,13 +1820,6 @@ export default function PosAppointmentsWorkspace({
       setAppointmentCheckoutConfirmationOpen(false)
       setAppointmentPaymentMethod('cash')
       setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
-      setAppointmentRefundAmountDraft('')
-      setAppointmentRefundRemarkDraft('')
-      setAppointmentRefundActionDraft('refund_now')
-      setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
-      setAppointmentRefundAmountDraft('')
-      setAppointmentRefundRemarkDraft('')
-      setAppointmentRefundActionDraft('refund_now')
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
@@ -2015,16 +1998,10 @@ export default function PosAppointmentsWorkspace({
     const isZeroBalanceFinalize =
       settlementPaidSnapshot <= 0.0001 && dueAmount <= 0.0001 && appointmentNeedsZeroBalanceCheckout(appointmentDetail)
     const overpaidAmount = Number(appointmentDetail?.overpaid_amount ?? appointmentDetail?.refund_needed ?? 0)
-    const refundAmount = Number(appointmentRefundAmountDraft || overpaidAmount || 0)
-    if (isZeroBalanceFinalize && overpaidAmount > 0.0001) {
-      if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
-        reportAppointmentCheckoutError('Refund / credit amount is required for this overpaid appointment.')
-        return
-      }
-      if (refundAmount > overpaidAmount + 0.0001) {
-        reportAppointmentCheckoutError('Refund / credit amount cannot exceed the overpaid amount.')
-        return
-      }
+    const refundPending = overpaidAmount > 0.0001 && !appointmentDetail?.refund_handled
+    if (isZeroBalanceFinalize && refundPending) {
+      reportAppointmentCheckoutError('This booking has overpaid deposit. Please handle refund/credit in Edit Settlement before checkout.')
+      return
     }
     const paymentRows = isZeroBalanceFinalize
       ? []
@@ -2098,17 +2075,8 @@ export default function PosAppointmentsWorkspace({
         ? `/api/proxy/pos/appointments/${appointmentDetail.id}/finalize-zero-settlement`
         : `/api/proxy/pos/appointments/${appointmentDetail.id}/collect-payment`
 
-      const selectedRefundMethod = appointmentRefundActionDraft === 'store_credit' ? 'customer_credit' : appointmentRefundMethodDraft
-      const selectedRefundChannel = APPOINTMENT_REFUND_METHODS.find((row) => row.method === selectedRefundMethod)?.channel ?? 'offline'
       const zeroSettlementBody = {
         payment_method: mapZeroSettlementPaymentMethod(appointmentPaymentMethod),
-        refund: overpaidAmount > 0.0001 ? {
-          amount: refundAmount,
-          method: selectedRefundMethod,
-          channel: selectedRefundChannel,
-          reason: 'Package claim overpayment',
-          remark: appointmentRefundRemarkDraft.trim() || null,
-        } : undefined,
       }
       const settlementBody = !isZeroBalanceFinalize && appointmentQrProofFile && settlementHasQrPay ? new FormData() : null
       if (settlementBody) {
@@ -2149,9 +2117,6 @@ export default function PosAppointmentsWorkspace({
       setAppointmentQrCodeFullscreen(false)
       setAppointmentReceiptQrLoaded(false)
       setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
-      setAppointmentRefundAmountDraft('')
-      setAppointmentRefundRemarkDraft('')
-      setAppointmentRefundActionDraft('refund_now')
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
@@ -2171,10 +2136,6 @@ export default function PosAppointmentsWorkspace({
     appointmentPaymentMethod,
     appointmentQrProofFile,
     appointmentQrProofPreviewUrl,
-    appointmentRefundActionDraft,
-    appointmentRefundAmountDraft,
-    appointmentRefundMethodDraft,
-    appointmentRefundRemarkDraft,
     appointmentSettlementPaymentAmounts,
     fetchAppointments,
     showMsg,
@@ -4899,9 +4860,6 @@ export default function PosAppointmentsWorkspace({
                               if (checkoutZeroBalanceSettlement) {
                                 setAppointmentPaymentMethod('qrpay')
                                 setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
-      setAppointmentRefundAmountDraft('')
-      setAppointmentRefundRemarkDraft('')
-      setAppointmentRefundActionDraft('refund_now')
                               } else {
                                 setAppointmentPaymentMethod('cash')
                                 setAppointmentSettlementPaymentAmounts({ cash: due > 0 ? due.toFixed(2) : '', qrpay: '', credit_card: '' })
@@ -6982,6 +6940,32 @@ export default function PosAppointmentsWorkspace({
                   />
                   ) : null}
 
+                  {canEditAppointmentSettlement ? (
+                  <PosAppointmentRefundCreditSection
+                    bookingId={appointmentDetail.id}
+                    refundNeeded={Number(appointmentDetail.refund_needed ?? appointmentDetail.overpaid_amount ?? 0)}
+                    initialTransactions={appointmentDetail.refund_transactions}
+                    onError={reportEditSettlementError}
+                    showMsg={showMsg}
+                    onAppointmentUpdated={(payload) => {
+                      const appointmentPatch = (payload.appointment ?? {}) as Partial<PosAppointmentDetail>
+                      setAppointmentDetail((current) => current ? {
+                        ...current,
+                        ...appointmentPatch,
+                        refund_transactions: payload.refund_transactions ?? current.refund_transactions,
+                        overpaid_amount: Number(payload.overpaid_amount ?? appointmentPatch.overpaid_amount ?? current.overpaid_amount ?? 0),
+                        refund_needed: Number(payload.refund_needed ?? appointmentPatch.refund_needed ?? current.refund_needed ?? 0),
+                        refund_handled: Boolean(payload.refund_handled ?? appointmentPatch.refund_handled ?? current.refund_handled),
+                        refund_handled_amount: Number(payload.refund_handled_amount ?? appointmentPatch.refund_handled_amount ?? current.refund_handled_amount ?? 0),
+                        balance_due: Number(payload.balance_due ?? appointmentPatch.balance_due ?? current.balance_due ?? 0),
+                        amount_due_now: Number(payload.amount_due_now ?? appointmentPatch.amount_due_now ?? current.amount_due_now ?? 0),
+                      } : current)
+                      void refreshOpenedAppointmentDetail()
+                      void fetchAppointments({ silent: true })
+                    }}
+                  />
+                  ) : null}
+
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                     <label className="text-xs font-semibold text-gray-700">Settlement Note</label>
                     <textarea
@@ -7634,36 +7618,12 @@ export default function PosAppointmentsWorkspace({
                   </label>
                 </div>
               ) : null}
-              {checkoutZeroBalanceSettlement && appointmentOverpaidAmount > 0.0001 ? (
+              {checkoutZeroBalanceSettlement && appointmentOverpaidAmount > 0.0001 && !appointmentDetail?.refund_handled ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-                  <p className="mb-1 text-sm font-bold text-rose-900">Refund / Credit Required</p>
-                  <p className="mb-3 text-xs text-rose-800">Package coverage plus earlier payments exceeds the service value by RM {appointmentOverpaidAmount.toFixed(2)}.</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-700">
-                      Refund / Credit Amount
-                      <input type="number" min="0" max={appointmentOverpaidAmount.toFixed(2)} step="0.01" value={appointmentRefundAmountDraft || appointmentOverpaidAmount.toFixed(2)} onChange={(event) => { reportAppointmentCheckoutError(null); setAppointmentRefundAmountDraft(event.target.value) }} className="mt-1 h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-900" />
-                    </label>
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-700">
-                      Staff Choice
-                      <select value={appointmentRefundActionDraft} onChange={(event) => { const value = event.target.value as 'refund_now' | 'store_credit'; setAppointmentRefundActionDraft(value); if (value === 'store_credit') setAppointmentRefundMethodDraft('customer_credit') }} className="mt-1 h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900">
-                        <option value="refund_now">Refund now</option>
-                        <option value="store_credit">Keep as customer credit</option>
-                      </select>
-                    </label>
-                  </div>
-                  {appointmentRefundActionDraft === 'refund_now' ? (
-                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      {APPOINTMENT_REFUND_METHODS.filter((row) => row.method !== 'customer_credit').map(({ method, label }) => (
-                        <button key={method} type="button" onClick={() => { reportAppointmentCheckoutError(null); setAppointmentRefundMethodDraft(method) }} className={`rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition ${appointmentRefundMethodDraft === method ? 'border-rose-600 bg-white text-rose-800 shadow-sm' : 'border-rose-100 bg-white/70 text-gray-700 hover:border-rose-300'}`}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-gray-700">
-                    Remark (optional)
-                    <textarea value={appointmentRefundRemarkDraft} onChange={(event) => setAppointmentRefundRemarkDraft(event.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" placeholder="Refund receipt remark / customer balance note" />
-                  </label>
+                  <p className="text-sm font-bold text-rose-900">Refund / Credit Required</p>
+                  <p className="mt-2 text-xs text-rose-800">
+                    Overpaid by RM {appointmentOverpaidAmount.toFixed(2)}. Open <span className="font-semibold">Edit Settlement</span> and use the refund section to record Cash Refund or Customer Credit before checkout.
+                  </p>
                 </div>
               ) : null}
               {checkoutZeroBalanceSettlement ? (
@@ -7777,6 +7737,7 @@ export default function PosAppointmentsWorkspace({
                   disabled={
                     cashShiftActionDisabled ||
                     appointmentActionLoading ||
+                    (checkoutZeroBalanceSettlement && appointmentOverpaidAmount > 0.0001 && !appointmentDetail?.refund_handled) ||
                     (!checkoutZeroBalanceSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementPaymentValid))
                   }
                   onClick={() => void settleAppointmentPayment()}

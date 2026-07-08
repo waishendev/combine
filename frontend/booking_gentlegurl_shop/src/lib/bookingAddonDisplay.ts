@@ -3,7 +3,19 @@ export type StoredBookingAddonRow = {
   extra_price?: number | null;
   quantity?: number | null;
   line_gross_amount?: number | null;
+  price_mode?: string | null;
+  price_range_min?: number | null;
+  price_range_max?: number | null;
+  price_finalized?: boolean | null;
 };
+
+export function isAddonRangePending(row: StoredBookingAddonRow): boolean {
+  const mode = String(row.price_mode ?? "").toLowerCase();
+  const finalized = row.price_finalized === true;
+  const unitPrice = Number(row.extra_price ?? 0);
+  const lineTotal = Number(row.line_gross_amount ?? 0);
+  return mode === "range" && !finalized && unitPrice <= 0 && lineTotal <= 0;
+}
 
 const ADDON_QTY_MIN = 1;
 
@@ -30,6 +42,19 @@ export function formatBookingAddonDurationText(row: StoredBookingAddonRow): stri
 
 export function formatBookingAddonPriceText(row: StoredBookingAddonRow, formatCurrency: (value: number) => string): string {
   const qty = storedAddonQuantity(row);
+
+  if (isAddonRangePending(row)) {
+    const rangeMin = Number(row.price_range_min ?? 0);
+    const rangeMax = Number(row.price_range_max ?? 0);
+    if (rangeMin > 0 || rangeMax > 0) {
+      const min = Math.min(rangeMin, rangeMax);
+      const max = Math.max(rangeMin, rangeMax);
+      const base = min === max ? formatCurrency(min) : `${formatCurrency(min)} – ${formatCurrency(max)}`;
+      return qty > 1 ? `${base} × ${qty}` : base;
+    }
+    return formatCurrency(0);
+  }
+
   const lineTotal = storedAddonLinePrice(row);
   const unitPrice = Number(row.extra_price ?? 0);
   if (qty > 1) {

@@ -63,6 +63,11 @@ export default function SalesVisualSummaryCards({
   const paymentFinalOffline = payments.reduce((a, p) => a + (Number(p.offline) || 0), 0)
   const paymentFinalTotal = payments.reduce((a, p) => a + (Number(p.total) || 0), 0)
   const refunds: SalesVisualPaymentMethodRow[] = Array.isArray(data?.refunds) ? data!.refunds : []
+  const DEFAULT_REFUND_ROWS: SalesVisualPaymentMethodRow[] = [
+    { key: 'cash', label: 'Cash Refund', online: 0, offline: 0, total: 0 },
+    { key: 'customer_credit', label: 'Customer Credit', online: 0, offline: 0, total: 0 },
+  ]
+  const refundRowsDisplay: SalesVisualPaymentMethodRow[] = refunds.length > 0 ? refunds : DEFAULT_REFUND_ROWS
   const refundTotalOnline = refunds.reduce((a, p) => a + (Number(p.online) || 0), 0)
   const refundTotalOffline = refunds.reduce((a, p) => a + (Number(p.offline) || 0), 0)
   const refundTotal = refunds.reduce((a, p) => a + (Number(p.total) || 0), 0)
@@ -136,31 +141,29 @@ export default function SalesVisualSummaryCards({
                   </tr>
                 </tfoot>
               </table>
-              {refunds.some((row) => Number(row.total) > 0) ? (
-                <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50 p-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wide text-rose-900">Refunds</h4>
-                  <table className="mt-2 w-full text-xs">
-                    <tbody>
-                      {refunds.map((p) => (
-                        <tr key={p.key} className="border-b border-rose-100 last:border-b-0">
-                          <td className="py-1.5 pr-2 text-rose-800">{p.label}</td>
-                          <td className="py-1.5 pr-2 text-right font-medium text-rose-900">{fmtRm(p.online)}</td>
-                          <td className="py-1.5 pr-2 text-right font-medium text-rose-900">{fmtRm(p.offline)}</td>
-                          <td className="py-1.5 text-right font-bold text-rose-900">{fmtRm(p.total)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-rose-200">
-                        <td className="py-2 pr-2 font-bold text-rose-900">REFUND TOTAL</td>
-                        <td className="py-2 pr-2 text-right font-bold text-rose-900">{fmtRm(refundTotalOnline)}</td>
-                        <td className="py-2 pr-2 text-right font-bold text-rose-900">{fmtRm(refundTotalOffline)}</td>
-                        <td className="py-2 text-right font-bold text-rose-900">{fmtRm(refundTotal)}</td>
+              <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50 p-3">
+                <h4 className="text-xs font-bold uppercase tracking-wide text-rose-900">Refunds</h4>
+                <table className="mt-2 w-full text-xs">
+                  <tbody>
+                    {refundRowsDisplay.map((p) => (
+                      <tr key={p.key} className="border-b border-rose-100 last:border-b-0">
+                        <td className="py-1.5 pr-2 text-rose-800">{p.label}</td>
+                        <td className="py-1.5 pr-2 text-right font-medium text-rose-900">{Number(p.online) > 0 ? fmtRm(-Math.abs(Number(p.online))) : fmtRm(0)}</td>
+                        <td className="py-1.5 pr-2 text-right font-medium text-rose-900">{Number(p.offline) > 0 ? fmtRm(-Math.abs(Number(p.offline))) : fmtRm(0)}</td>
+                        <td className="py-1.5 text-right font-bold text-rose-900">{Number(p.total) > 0 ? fmtRm(-Math.abs(Number(p.total))) : fmtRm(0)}</td>
                       </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              ) : null}
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-rose-200">
+                      <td className="py-2 pr-2 font-bold text-rose-900">REFUND TOTAL</td>
+                      <td className="py-2 pr-2 text-right font-bold text-rose-900">{refundTotalOnline > 0 ? fmtRm(-Math.abs(refundTotalOnline)) : fmtRm(0)}</td>
+                      <td className="py-2 pr-2 text-right font-bold text-rose-900">{refundTotalOffline > 0 ? fmtRm(-Math.abs(refundTotalOffline)) : fmtRm(0)}</td>
+                      <td className="py-2 text-right font-bold text-rose-900">{refundTotal > 0 ? fmtRm(-Math.abs(refundTotal)) : fmtRm(0)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
           )}
         </div>

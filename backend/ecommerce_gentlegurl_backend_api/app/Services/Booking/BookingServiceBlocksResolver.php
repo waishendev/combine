@@ -73,6 +73,7 @@ class BookingServiceBlocksResolver
             : collect();
 
         $originalItem = is_array($originalMainServiceItem) ? $originalMainServiceItem : [];
+        $originalLinkedService = $servicesById->get($bookingServiceId) ?? $booking->service;
 
         $originalBlock = [
             'service_id' => $bookingServiceId,
@@ -80,7 +81,7 @@ class BookingServiceBlocksResolver
             'cn_name' => $originalItem['cn_name'] ?? $originalItem['linked_cn_name'] ?? $booking->service?->cn_name,
             ...$this->resolveServicePriceMeta(
                 array_merge($originalItem, ['is_original' => true]),
-                $booking->service,
+                $originalLinkedService,
                 $booking,
             ),
             'duration_min' => max(0, (int) ($originalItem['extra_duration_min'] ?? $booking->service?->duration_min ?? 0)),
@@ -157,6 +158,49 @@ class BookingServiceBlocksResolver
         ];
     }
 
+    protected function resolveRangeMin(array $item, ?BookingService $linkedService = null): ?float
+    {
+        foreach (['price_range_min', 'linked_price_range_min', 'service_price_range_min'] as $key) {
+            if (! isset($item[$key]) || $item[$key] === null || $item[$key] === '') {
+                continue;
+            }
+
+            return (float) $item[$key];
+        }
+
+        return $linkedService?->price_range_min !== null ? (float) $linkedService->price_range_min : null;
+    }
+
+    protected function resolveRangeMax(array $item, ?BookingService $linkedService = null): ?float
+    {
+        foreach (['price_range_max', 'linked_price_range_max', 'service_price_range_max'] as $key) {
+            if (! isset($item[$key]) || $item[$key] === null || $item[$key] === '') {
+                continue;
+            }
+
+            return (float) $item[$key];
+        }
+
+        return $linkedService?->price_range_max !== null ? (float) $linkedService->price_range_max : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function resolveServicePriceMode(array $item, ?BookingService $linkedService, Booking $booking): string
+    {
+        foreach (['price_mode', 'linked_price_mode', 'service_price_mode'] as $key) {
+            $mode = $item[$key] ?? null;
+            if (is_string($mode) && trim($mode) !== '') {
+                return strtolower(trim($mode));
+            }
+        }
+
+        $linkedMode = $linkedService?->price_mode ?? $booking->service?->price_mode ?? 'fixed';
+
+        return strtolower(trim((string) $linkedMode));
+    }
+
     /**
      * @param  array<string, mixed>  $item
      * @return array{price_mode: string|null, price_range_min: float|null, price_range_max: float|null}
@@ -166,8 +210,8 @@ class BookingServiceBlocksResolver
         if ($linkedService && (string) ($linkedService->price_mode ?? 'fixed') !== '') {
             return [
                 'price_mode' => (string) ($linkedService->price_mode ?? 'fixed'),
-                'price_range_min' => $linkedService->price_range_min !== null ? (float) $linkedService->price_range_min : null,
-                'price_range_max' => $linkedService->price_range_max !== null ? (float) $linkedService->price_range_max : null,
+                'price_range_min' => $this->resolveRangeMin($item, $linkedService),
+                'price_range_max' => $this->resolveRangeMax($item, $linkedService),
             ];
         }
 
@@ -180,17 +224,10 @@ class BookingServiceBlocksResolver
             ];
         }
 
-        $rangeMin = array_key_exists('linked_price_range_min', $item)
-            ? $item['linked_price_range_min']
-            : ($item['price_range_min'] ?? null);
-        $rangeMax = array_key_exists('linked_price_range_max', $item)
-            ? $item['linked_price_range_max']
-            : ($item['price_range_max'] ?? null);
-
         return [
             'price_mode' => (string) $mode,
-            'price_range_min' => $rangeMin !== null && $rangeMin !== '' ? (float) $rangeMin : null,
-            'price_range_max' => $rangeMax !== null && $rangeMax !== '' ? (float) $rangeMax : null,
+            'price_range_min' => $this->resolveRangeMin($item, $linkedService),
+            'price_range_max' => $this->resolveRangeMax($item, $linkedService),
         ];
     }
 
@@ -214,7 +251,65 @@ class BookingServiceBlocksResolver
             }
         }
 
-        return round(max(0, (float) ($item['extra_price'] ?? 0)), 2) > 0.0001;
+        // Match POS: placeholder extra_price / line totals must not finalize range addons.
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function resolveServicePriceFinalized(array $item, Booking $booking, bool $isOriginal, bool $isRange): bool
+    {
+        if (! $isRange) {
+            return (bool) ($item['price_finalized'] ?? $item['final_price_set'] ?? true);
+        }
+
+        if ((bool) ($item['price_finalized'] ?? $item['final_price_set'] ?? false)) {
+            return true;
+        }
+
+        if ($isOriginal && $booking->settled_service_amount !== null && (float) $booking->settled_service_amount > 0.0001) {
+            return true;
+        }
+
+        foreach (['final_price', 'settled_price', 'adjusted_price', 'override_price', 'price_override'] as $field) {
+            if (array_key_exists($field, $item) && $item[$field] !== null && $item[$field] !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function resolveExplicitFinalAmount(array $item): float
+    {
+        foreach (['final_price', 'settled_price', 'adjusted_price', 'override_price', 'price_override', 'extra_price'] as $field) {
+            if (array_key_exists($field, $item) && $item[$field] !== null && $item[$field] !== '') {
+                return round(max(0, (float) $item[$field]), 2);
+            }
+        }
+
+        return 0.0;
+    }
+
+    public function hasPendingRangePricing(Booking $booking): bool
+    {
+        foreach ($this->blocks($booking) as $block) {
+            if (($block['price_mode'] ?? null) === 'range' && ($block['price_finalized'] ?? false) === false) {
+                return true;
+            }
+
+            foreach ($block['add_ons'] ?? [] as $addon) {
+                if (is_array($addon) && ($addon['price_mode'] ?? null) === 'range' && ($addon['price_finalized'] ?? false) === false) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -223,29 +318,15 @@ class BookingServiceBlocksResolver
      */
     protected function resolveServicePriceMeta(array $item, ?BookingService $linkedService, Booking $booking): array
     {
-        $priceMode = (string) ($item['price_mode'] ?? $linkedService?->price_mode ?? $booking->service?->price_mode ?? 'fixed');
-        $rangeMin = array_key_exists('price_range_min', $item)
-            ? (float) $item['price_range_min']
-            : ($linkedService?->price_range_min !== null ? (float) $linkedService->price_range_min : null);
-        $rangeMax = array_key_exists('price_range_max', $item)
-            ? (float) $item['price_range_max']
-            : ($linkedService?->price_range_max !== null ? (float) $linkedService->price_range_max : null);
+        $priceMode = $this->resolveServicePriceMode($item, $linkedService, $booking);
+        $rangeMin = $this->resolveRangeMin($item, $linkedService);
+        $rangeMax = $this->resolveRangeMax($item, $linkedService);
         $settledAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;
         $isOriginal = (bool) ($item['is_original'] ?? false);
-        $explicitAmount = round(max(0, (float) ($item['extra_price'] ?? 0)), 2);
-        $priceFinalized = (bool) ($item['price_finalized'] ?? $item['final_price_set'] ?? false);
+        $isRange = $priceMode === 'range';
+        $isFinalized = $this->resolveServicePriceFinalized($item, $booking, $isOriginal, $isRange);
 
-        if ($settledAmount !== null && $settledAmount > 0.0001 && $isOriginal) {
-            return [
-                'amount' => round($settledAmount, 2),
-                'price_mode' => $priceMode !== '' ? $priceMode : 'fixed',
-                'price_range_min' => $rangeMin,
-                'price_range_max' => $rangeMax,
-                'price_finalized' => true,
-            ];
-        }
-
-        if ($priceMode === 'range' && ! $priceFinalized && $explicitAmount <= 0.0001) {
+        if ($isRange && ! $isFinalized) {
             return [
                 'amount' => 0.0,
                 'price_mode' => 'range',
@@ -255,24 +336,21 @@ class BookingServiceBlocksResolver
             ];
         }
 
-        if ($explicitAmount > 0.0001) {
-            return [
-                'amount' => $explicitAmount,
-                'price_mode' => $priceMode !== '' ? $priceMode : 'fixed',
-                'price_range_min' => $rangeMin,
-                'price_range_max' => $rangeMax,
-                'price_finalized' => true,
-            ];
+        if ($settledAmount !== null && $settledAmount > 0.0001 && $isOriginal) {
+            $amount = round($settledAmount, 2);
+        } else {
+            $explicitAmount = $this->resolveExplicitFinalAmount($item);
+            $amount = $explicitAmount > 0.0001
+                ? $explicitAmount
+                : round(max(0, (float) ($linkedService?->service_price ?? $linkedService?->price ?? 0)), 2);
         }
 
-        $fallbackAmount = round(max(0, (float) ($linkedService?->service_price ?? $linkedService?->price ?? 0)), 2);
-
         return [
-            'amount' => $fallbackAmount,
+            'amount' => $amount,
             'price_mode' => $priceMode !== '' ? $priceMode : 'fixed',
             'price_range_min' => $rangeMin,
             'price_range_max' => $rangeMax,
-            'price_finalized' => $priceMode !== 'range' || $fallbackAmount > 0.0001,
+            'price_finalized' => true,
         ];
     }
 

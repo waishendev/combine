@@ -8,7 +8,7 @@ import { BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingTime } from "@/lib/bookingTime";
 import { storedAddonQuantity } from "@/lib/bookingAddonDisplay";
-import { serviceBlocksForBooking } from "@/lib/bookingServiceDisplay";
+import { getBookingBalanceDueDisplay, getBookingServiceTotalDisplay, serviceBlocksForBooking, bookingHasPendingRange } from "@/lib/bookingServiceDisplay";
 
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
   return (
@@ -60,13 +60,17 @@ const getCustomerPaymentSummary = (booking: BookingRecord) => {
   const calculatedBalance = Math.max(0, serviceTotal + addonTotal - depositPaid - settlementPaid - packageOffset);
   const balanceDue = Number(booking.balance_due ?? booking.amount_due_now ?? calculatedBalance);
   const totalPaid = Number(booking.total_paid ?? depositPaid + settlementPaid);
-  const paymentStatus = totalPaid <= 0
-    ? "UNPAID"
-    : balanceDue > 0
-      ? "PARTIAL"
-      : "PAID";
+  const effectivePaid = totalPaid + packageOffset;
+  const hasPendingRange = bookingHasPendingRange(booking);
+  const paymentStatus = hasPendingRange
+    ? "PARTIAL"
+    : effectivePaid <= 0
+      ? "UNPAID"
+      : balanceDue > 0
+        ? "PARTIAL"
+        : "PAID";
 
-  return { balanceDue, depositPaid, paymentStatus, totalPaid };
+  return { balanceDue, depositPaid, settlementPaid, paymentStatus, totalPaid, packageOffset };
 };
 
 function statusClass(status: string) {
@@ -178,6 +182,12 @@ export default function MyBookingsPage() {
               const serviceBlocks = serviceBlocksForBooking(booking);
               const multiService = !isBookingProduct && serviceBlocks.length > 1;
               const payment = getCustomerPaymentSummary(booking);
+              const serviceTotalDisplay = isBookingProduct
+                ? null
+                : getBookingServiceTotalDisplay(booking, formatCurrency);
+              const balanceDueDisplay = isBookingProduct
+                ? null
+                : getBookingBalanceDueDisplay(booking, payment, formatCurrency);
               const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
 
               return (
@@ -257,11 +267,16 @@ export default function MyBookingsPage() {
                       <p className="min-w-0 truncate">
                         Add-ons: <span className="text-[var(--foreground)]">{isBookingProduct ? (productOptions.length ? `${productOptions.length} selected` : "None") : addonSummary(booking)}</span>
                       </p>
+                      {serviceTotalDisplay ? (
+                        <p className="min-w-0 truncate">
+                          Service Total: <span className={serviceTotalDisplay.isRangePending ? "text-amber-700" : "text-[var(--foreground)]"}>{serviceTotalDisplay.text}</span>
+                        </p>
+                      ) : null}
                       <p className="min-w-0 truncate">
                         Deposit Paid: <span className="text-emerald-700">{formatCurrency(payment.depositPaid)}</span>
                       </p>
                       <p className="min-w-0 truncate font-medium">
-                        Balance Due: <span className="text-[var(--accent-strong)]">{formatCurrency(payment.balanceDue)}</span>
+                        Balance Due: <span className={`${balanceDueDisplay?.isRangePending ? "text-amber-700" : "text-[var(--accent-strong)]"}`}>{balanceDueDisplay?.text ?? formatCurrency(payment.balanceDue)}</span>
                       </p>
                     </div>
 
