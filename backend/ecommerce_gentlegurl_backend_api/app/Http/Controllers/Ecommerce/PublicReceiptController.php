@@ -201,6 +201,9 @@ class PublicReceiptController extends Controller
                 ?? max(0, $lineTotalSnapshot - $discountAmount));
             $packageName = $this->invoiceService->resolvePackageNameForOrderItem($item, $packageNameByServiceId, $packageUsages);
             $coveredByPackage = $packageName !== '';
+            $displayUnitPrice = $coveredByPackage
+                ? $this->resolveCoveredPackageUnitPrice($item, $lineTotalSnapshot)
+                : (float) $row['unit_price'];
 
             $lineType = (string) ($item->line_type ?: 'product');
             $rawProductName = (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Add-on');
@@ -220,7 +223,7 @@ class PublicReceiptController extends Controller
                 'variant_cn_name' => $row['variant_cn_name'] ?? $item->displayVariantCnName(),
                 'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,
                 'qty' => $row['quantity'],
-                'unit_price' => $row['unit_price'],
+                'unit_price' => $displayUnitPrice,
                 'line_total' => $coveredByPackage ? 0.0 : $lineTotalNet,
                 'line_total_snapshot' => $lineTotalSnapshot,
                 'discount_type' => $item->discount_type,
@@ -323,6 +326,23 @@ class PublicReceiptController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+
+    private function resolveCoveredPackageUnitPrice(OrderItem $item, float $lineTotalSnapshot): float
+    {
+        $quantity = max(1, (int) ($item->quantity ?? 1));
+        $snapshotUnitPrice = (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0);
+
+        if (abs($snapshotUnitPrice) > 0.0001) {
+            return round($snapshotUnitPrice, 2);
+        }
+
+        if (abs($lineTotalSnapshot) > 0.0001) {
+            return round($lineTotalSnapshot / $quantity, 2);
+        }
+
+        return 0.0;
     }
 
     private function isFakeMainServiceBookingAddon($item): bool
