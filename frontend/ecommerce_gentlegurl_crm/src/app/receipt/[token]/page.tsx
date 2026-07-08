@@ -112,6 +112,16 @@ async function getReceipt(token: string): Promise<ReceiptData | null> {
   return json.data
 }
 
+function getOriginalUnitPrice(item: Pick<ReceiptItem, 'qty' | 'unit_price' | 'line_total' | 'line_total_snapshot'>) {
+  const qty = Math.max(1, Number(item.qty ?? 1))
+  const unitPrice = Number(item.unit_price ?? 0)
+  const originalLineTotal = Number(item.line_total_snapshot ?? item.line_total ?? 0)
+
+  if (Math.abs(unitPrice) > 0.0001) return unitPrice
+  if (Math.abs(originalLineTotal) > 0.0001) return originalLineTotal / qty
+  return unitPrice
+}
+
 function money(amount: number | undefined) {
   return `RM ${Number(amount ?? 0).toFixed(2)}`
 }
@@ -248,7 +258,8 @@ export default async function PublicReceiptPage({ params }: Props) {
                 : []
               const isBookingProductLine = String(item.type ?? '').toLowerCase() === 'booking_product' || bookingProductAddons.length > 0
               const bookingProductAddonUnitTotal = bookingProductAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
-              const displayUnitPrice = bookingProductAddons.length > 0 ? Math.max(0, Number(item.unit_price ?? 0) - bookingProductAddonUnitTotal) : Number(item.unit_price ?? 0)
+              const originalUnitPrice = getOriginalUnitPrice(item)
+              const displayUnitPrice = bookingProductAddons.length > 0 ? Math.max(0, originalUnitPrice - bookingProductAddonUnitTotal) : originalUnitPrice
               const displayLineTotal = bookingProductAddons.length > 0 ? Math.max(0, net - (bookingProductAddonUnitTotal * Number(item.qty ?? 1))) : net
               return (
               <Fragment key={`${item.sku}-${idx}`}>
