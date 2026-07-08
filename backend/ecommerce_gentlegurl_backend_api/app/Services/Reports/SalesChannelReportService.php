@@ -3,6 +3,8 @@
 namespace App\Services\Reports;
 
 use App\Models\Booking\BookingPayment;
+use App\Models\Booking\BookingRefund;
+use App\Models\Booking\BookingRefundReceiptToken;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderActionLog;
@@ -35,6 +37,7 @@ class SalesChannelReportService
     public const BOOKING_TYPE_ADDON = 'addon';
     public const BOOKING_TYPE_PACKAGE_PURCHASE = 'package_purchase';
     public const BOOKING_TYPE_PRODUCT = 'booking_product';
+    public const BOOKING_TYPE_REFUND = 'refund';
 
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
 
@@ -854,6 +857,11 @@ class SalesChannelReportService
             ];
         })->values();
 
+        $refundRows = ($type === self::BOOKING_TYPE_ALL || $type === self::BOOKING_TYPE_REFUND)
+            ? $this->bookingRefundReportRows($start, $end, $channel, $paymentMethod, $customerId)
+            : collect();
+        $rows = $rows->concat($refundRows)->sortByDesc('order_datetime')->values();
+
         $summaryRow = (clone $baseQuery)
             ->selectRaw('COUNT(*) as total_transactions')
             ->selectRaw('COALESCE(SUM(net_amount), 0) as total_booking_revenue')
@@ -867,12 +875,15 @@ class SalesChannelReportService
             ->first();
 
         $totalsPage = $this->aggregateBookingTotals($rows);
-        $totalsPage['orders_count'] = (int) $rows->pluck('order_id')->unique()->count();
+        $totalsPage['orders_count'] = (int) $rows->pluck('order_id')->filter(fn (int $id) => $id > 0)->unique()->count() + (int) $rows->where('is_refund', true)->count();
+        $refundNetTotal = ($type === self::BOOKING_TYPE_ALL || $type === self::BOOKING_TYPE_REFUND)
+            ? (float) $this->bookingRefundReportRows($start, $end, $channel, $paymentMethod, $customerId)->sum('net_amount')
+            : 0.0;
         $grandTotals = [
-            'orders_count' => (int) ($summaryRow->total_transactions ?? 0),
+            'orders_count' => (int) ($summaryRow->total_transactions ?? 0) + ($refundNetTotal !== 0.0 ? (int) $this->bookingRefundReportRows($start, $end, $channel, $paymentMethod, $customerId)->count() : 0),
             'gross_amount' => (float) ((clone $baseQuery)->sum('gross_amount') ?? 0),
             'discount' => (float) ((clone $baseQuery)->sum('discount') ?? 0),
-            'net_amount' => (float) ($summaryRow->total_booking_revenue ?? 0),
+            'net_amount' => (float) ($summaryRow->total_booking_revenue ?? 0) + $refundNetTotal,
             'booking_deposit_amount' => (float) ($summaryRow->booking_deposit_amount ?? 0),
             'booking_settlement_amount' => (float) ($summaryRow->booking_settlement_amount ?? 0),
             'addon_revenue' => (float) ($summaryRow->addon_revenue ?? 0),
@@ -940,6 +951,11 @@ class SalesChannelReportService
             });
     }
 
+    private function collectedOrderItemNetAmountSql(string $alias = 'oi'): string
+    {
+        return "COALESCE({$alias}.line_total_after_discount, {$alias}.effective_line_total, {$alias}.line_total - COALESCE({$alias}.discount_amount, 0))";
+    }
+
     private function baseEcommerceRowsQuery(
         Carbon $start,
         Carbon $end,
@@ -969,7 +985,7 @@ class SalesChannelReportService
             ->selectRaw('COALESCE(SUM(oi.quantity), 0) as item_count')
             ->selectRaw('COALESCE(SUM(oi.line_total), 0) as product_amount')
             ->selectRaw('COALESCE(SUM(oi.discount_amount), 0) as discount')
-            ->selectRaw('COALESCE(SUM(COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))), 0) as net_amount');
+            ->selectRaw('COALESCE(SUM(COALESCE(oi.line_total_after_discount, oi.effective_line_total, oi.line_total - COALESCE(oi.discount_amount, 0))), 0) as net_amount');
 
         if ($channel === self::CHANNEL_ONLINE) {
             $query->whereNull('o.created_by_user_id');
@@ -1025,7 +1041,7 @@ class SalesChannelReportService
             ->selectRaw('COALESCE(oi.display_name_snapshot, oi.product_name_snapshot, sp.name) as package_name')
             ->selectRaw('COALESCE(oi.line_total_snapshot, oi.line_total + COALESCE(oi.discount_amount, 0), oi.line_total, 0) as gross_amount')
             ->selectRaw('COALESCE(oi.discount_amount, 0) as discount')
-            ->selectRaw('COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0), 0) as net_amount');
+            ->selectRaw('COALESCE(oi.line_total_after_discount, oi.effective_line_total, oi.line_total - COALESCE(oi.discount_amount, 0), 0) as net_amount');
 
         if ($channel === self::CHANNEL_ONLINE) {
             $query->whereNull('o.created_by_user_id');
@@ -1054,6 +1070,113 @@ class SalesChannelReportService
         }
 
         return DB::query()->fromSub($query, 'rows');
+    }
+
+    private function bookingRefundReportRows(
+        Carbon $start,
+        Carbon $end,
+        string $channel,
+        ?string $paymentMethod,
+        ?int $customerId = null,
+    ) {
+        $query = DB::table('booking_refunds as br')
+            ->join('bookings as b', 'b.id', '=', 'br.booking_id')
+            ->leftJoin('customers as c', 'c.id', '=', 'b.customer_id')
+            ->where('br.status', 'completed')
+            ->whereBetween(DB::raw('COALESCE(br.processed_at, br.created_at)'), [$start, $end]);
+
+        if ($channel === self::CHANNEL_ONLINE) {
+            $query->where('br.channel', 'online');
+        }
+        if ($channel === self::CHANNEL_OFFLINE) {
+            $query->where('br.channel', 'offline');
+        }
+        if ($paymentMethod !== null) {
+            $query->where('br.method', $paymentMethod);
+        }
+        if ($customerId !== null) {
+            $query->where('b.customer_id', $customerId);
+        }
+
+        $methodLabels = [
+            'cash' => 'Cash Refund',
+            'customer_credit' => 'Customer Credit',
+        ];
+
+        return $query
+            ->orderByDesc(DB::raw('COALESCE(br.processed_at, br.created_at)'))
+            ->get([
+                'br.id as refund_id',
+                'br.refund_no',
+                'br.amount',
+                'br.method',
+                'br.channel',
+                'br.processed_at',
+                'br.created_at',
+                'b.id as booking_id',
+                'b.booking_code',
+                'b.guest_name',
+                'c.name as customer_name',
+            ])
+            ->map(function ($row) use ($methodLabels) {
+                $amount = round((float) ($row->amount ?? 0), 2);
+                $method = (string) ($row->method ?? 'cash');
+                $processedAt = (string) ($row->processed_at ?? $row->created_at ?? '');
+
+                return [
+                    'order_id' => 0,
+                    'order_no' => (string) ($row->refund_no ?? ''),
+                    'order_datetime' => $processedAt,
+                    'customer' => $this->formatCustomerDisplayName(
+                        $row->customer_name ?? null,
+                        null,
+                        null,
+                        $row->guest_name ?? null,
+                    ),
+                    'channel' => (string) (($row->channel ?? 'offline') === 'online' ? 'online' : 'offline'),
+                    'payment_method' => $method,
+                    'payments' => [],
+                    'order_total' => -$amount,
+                    'type' => self::BOOKING_TYPE_REFUND,
+                    'booking_id' => $row->booking_id ? (int) $row->booking_id : null,
+                    'booking_no' => $row->booking_code ? (string) $row->booking_code : null,
+                    'package_name' => $methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method)),
+                    'package_cn_name' => null,
+                    'package_applied' => false,
+                    'applied_package_name' => null,
+                    'gross_amount' => $amount,
+                    'discount' => 0.0,
+                    'net_amount' => -$amount,
+                    'status' => 'completed',
+                    'is_refund' => true,
+                    'refund_id' => (int) ($row->refund_id ?? 0),
+                    'receipt_public_url' => $this->resolveRefundReceiptPublicUrl((int) ($row->refund_id ?? 0)),
+                ];
+            });
+    }
+
+    private function resolveRefundReceiptPublicUrl(int $refundId): ?string
+    {
+        if ($refundId <= 0) {
+            return null;
+        }
+
+        $receiptToken = BookingRefundReceiptToken::query()
+            ->where('booking_refund_id', $refundId)
+            ->latest('id')
+            ->first();
+
+        if (! $receiptToken) {
+            $receiptToken = BookingRefundReceiptToken::create([
+                'booking_refund_id' => $refundId,
+                'token' => Str::random(64),
+                'expires_at' => null,
+            ]);
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
+
+        return $frontendUrl . '/api/proxy/public/refund-receipt/' . $receiptToken->token . '/invoice';
     }
 
 
@@ -1133,6 +1256,7 @@ class SalesChannelReportService
             self::BOOKING_TYPE_ADDON => self::BOOKING_TYPE_ADDON,
             self::BOOKING_TYPE_PACKAGE_PURCHASE => self::BOOKING_TYPE_PACKAGE_PURCHASE,
             self::BOOKING_TYPE_PRODUCT => self::BOOKING_TYPE_PRODUCT,
+            'refund' => self::BOOKING_TYPE_REFUND,
             default => self::BOOKING_TYPE_ALL,
         };
     }

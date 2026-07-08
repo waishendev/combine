@@ -18,10 +18,14 @@ export default async function SalesVisualPage() {
   const canExport = user.permissions.includes('ecommerce.reports.sales.export')
 
   const canUpdateOrder = user.permissions.includes('ecommerce.orders.update')
+  const canVoidRefund =
+    user.permissions.includes('pos.checkout')
+    || user.permissions.includes('pos.appointments.manage')
+    || canUpdateOrder
 
   return (
     <Suspense fallback={<div className="p-10 text-sm text-slate-600">Loading report…</div>}>
-      <SalesVisualWorkspaceClient canExport={canExport} canUpdateOrder={canUpdateOrder} />
+      <SalesVisualWorkspaceClient canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} />
     </Suspense>
   )
 }

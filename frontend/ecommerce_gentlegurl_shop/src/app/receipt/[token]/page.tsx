@@ -94,6 +94,22 @@ async function getReceipt(token: string): Promise<ReceiptData | null> {
   }
 }
 
+function getOriginalUnitPrice(item: Pick<ReceiptItem, 'qty' | 'unit_price' | 'line_total' | 'line_total_snapshot'>) {
+  const qtyRaw = Number(item.qty ?? 1);
+  const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+
+  const unitPrice = Number(item.unit_price ?? 0);
+  const lineTotalSnapshot = Number(item.line_total_snapshot ?? 0);
+  const lineTotal = Number(item.line_total ?? 0);
+
+  // If backend snapshot is 0 but the real line_total is present, prefer line_total.
+  const originalLineTotal = Math.abs(lineTotalSnapshot) > 0.0001 ? lineTotalSnapshot : lineTotal;
+
+  if (Math.abs(unitPrice) > 0.0001) return unitPrice;
+  if (Math.abs(originalLineTotal) > 0.0001) return originalLineTotal / qty;
+  return unitPrice;
+}
+
 function money(amount: number | undefined) {
   return `RM ${Number(amount ?? 0).toFixed(2)}`;
 }
@@ -225,15 +241,23 @@ export default async function PublicReceiptPage({ params }: Props) {
               const itemLabel = resolveBookingReceiptItemLabel(item);
               const isBookingAddonLine = String(item.type ?? "").toLowerCase() === "booking_addon";
               const isCoveredByPackage = Boolean(item.covered_by_package);
-              const gross = Number(item.line_total_snapshot ?? item.line_total ?? item.qty * item.unit_price);
-              const net = isCoveredByPackage ? 0 : Number(item.line_total_after_discount ?? item.line_total ?? gross - Number(item.discount_amount ?? 0));
+              const lineTotalSnapshot = Number(item.line_total_snapshot ?? 0);
+              const gross = Math.abs(lineTotalSnapshot) > 0.0001
+                ? lineTotalSnapshot
+                : Number(item.line_total ?? item.qty * item.unit_price);
+              const discountAmount = Number(item.discount_amount ?? 0);
+              const net = isCoveredByPackage ? 0 : Number(item.line_total_after_discount ?? item.line_total ?? gross - discountAmount);
               const bookingProductAddons = Array.isArray(item.selected_booking_product_options)
                 ? item.selected_booking_product_options.flatMap((q) => q.options ?? [])
                 : [];
               const isBookingProductLine = String(item.type ?? '').toLowerCase() === 'booking_product' || bookingProductAddons.length > 0;
               const bookingProductAddonUnitTotal = bookingProductAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0);
-              const displayUnitPrice = bookingProductAddons.length > 0 ? Math.max(0, Number(item.unit_price ?? 0) - bookingProductAddonUnitTotal) : Number(item.unit_price ?? 0);
+              const originalUnitPrice = getOriginalUnitPrice(item);
+              const displayUnitPrice = bookingProductAddons.length > 0 ? Math.max(0, originalUnitPrice - bookingProductAddonUnitTotal) : originalUnitPrice;
               const displayLineTotal = bookingProductAddons.length > 0 ? Math.max(0, net - (bookingProductAddonUnitTotal * Number(item.qty ?? 1))) : net;
+              const isZeroFromPackageClaim =
+                !isCoveredByPackage && discountAmount <= 0.0001 && Math.abs(gross) > 0.0001 && Math.abs(displayLineTotal) <= 0.0001;
+              const shouldStrikeOriginal = isCoveredByPackage || isZeroFromPackageClaim;
 
               return (
                 <Fragment key={`${item.sku ?? item.name}-${index}`}>
@@ -246,7 +270,7 @@ export default async function PublicReceiptPage({ params }: Props) {
                         <VariantNameStack name={item.variant_name ?? ""} cnName={item.variant_cn_name} />
                       </div>
                     ) : null}
-                    {isCoveredByPackage ? (
+                    {shouldStrikeOriginal ? (
                       <>
                         <p className="text-xs font-semibold text-emerald-700">Included in package</p>
                         {item.package_applied_name ? (
@@ -258,7 +282,7 @@ export default async function PublicReceiptPage({ params }: Props) {
                   <td className="px-4 py-3 text-right">{item.qty}</td>
                   <td className="px-4 py-3 text-right">{money(displayUnitPrice)}</td>
                   <td className="px-4 py-3 text-right">
-                    {isCoveredByPackage ? (
+                    {shouldStrikeOriginal ? (
                       <div>
                         <p className="text-xs text-[var(--foreground)]/50 line-through">{money(gross)}</p>
                         <p className="font-semibold text-emerald-700">{money(displayLineTotal)}</p>

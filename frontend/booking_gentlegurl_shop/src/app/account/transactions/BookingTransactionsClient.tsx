@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   cancelOrder,
+  getMyBookings,
   getMyOrders,
   payPublicOrder,
   PublicAccountOrder,
@@ -11,6 +12,36 @@ import {
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 import { formatOrderPaymentMethodsLabel } from "@/lib/orderPaymentDisplay";
 import { getOrderItemDisplayImage } from "@/lib/orderItemImage";
+import { resolveReceiptViewUrl } from "@/lib/bookingReceiptLinks";
+
+type RefundEntry = {
+  id: number;
+  booking_id: number;
+  booking_code: string;
+  refund_no: string;
+  amount: number;
+  method_label: string;
+  processed_at?: string | null;
+  created_at?: string | null;
+  remark?: string | null;
+  receipt_public_url?: string | null;
+};
+
+type TransactionListItem =
+  | { kind: "order"; sortAt: number; order: PublicAccountOrder }
+  | { kind: "refund"; sortAt: number; refund: RefundEntry };
+
+function signedMoney(amount: number) {
+  const value = Number(amount ?? 0);
+  const prefix = value < 0 ? "-RM " : "RM ";
+  return `${prefix}${Math.abs(value).toFixed(2)}`;
+}
+
+function formatRefundMethodLabel(label?: string | null) {
+  const trimmed = String(label ?? "").trim();
+  if (!trimmed) return "Refund";
+  return trimmed.replace(/\s*refund$/i, "");
+}
 
 function money(amount: number | null | undefined) {
   return `RM ${Number(amount ?? 0).toFixed(2)}`;
@@ -61,6 +92,36 @@ function resolveLineLabel(item: NonNullable<PublicAccountOrder["items"]>[number]
   return item.name || "Item";
 }
 
+function TransactionLineAmount({
+  item,
+}: {
+  item: NonNullable<PublicAccountOrder["items"]>[number];
+}) {
+  const qty = Math.max(1, Number(item.quantity ?? 1));
+  const net = Number(item.effective_line_total ?? item.line_total ?? 0);
+  const snapshot = Number(item.line_total_snapshot ?? 0);
+  const gross =
+    Math.abs(snapshot) > 0.0001
+      ? snapshot
+      : Number(item.line_total ?? Number(item.unit_price ?? 0) * qty);
+  const coveredByPackage = Boolean(item.covered_by_package) || Boolean(item.package_applied_name);
+  const isZeroFromPackageClaim =
+    !coveredByPackage && gross > 0.0001 && Math.abs(net) <= 0.0001;
+  const shouldStrikeOriginal = coveredByPackage || isZeroFromPackageClaim;
+  const displayNet = coveredByPackage || isZeroFromPackageClaim ? 0 : net;
+
+  if (shouldStrikeOriginal && gross > 0.0001) {
+    return (
+      <div className="shrink-0 text-right">
+        <p className="text-xs text-[var(--foreground)]/45 line-through">{money(gross)}</p>
+        <p className="text-sm font-semibold text-emerald-700">{money(displayNet)}</p>
+      </div>
+    );
+  }
+
+  return <p className="shrink-0 text-sm font-semibold text-[var(--foreground)]">{money(displayNet)}</p>;
+}
+
 function LineNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
   return (
     <>
@@ -76,6 +137,7 @@ type SlipModalState = {
 
 export function BookingTransactionsClient() {
   const [orders, setOrders] = useState<PublicAccountOrder[]>([]);
+  const [refunds, setRefunds] = useState<RefundEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
@@ -94,9 +156,34 @@ export function BookingTransactionsClient() {
       try {
         setLoading(true);
         setError(null);
-        const rows = await getMyOrders();
+        const [rows, bookings] = await Promise.all([
+          getMyOrders(),
+          getMyBookings().catch(() => []),
+        ]);
         if (!cancelled) {
           setOrders(rows ?? []);
+          const refundEntries: RefundEntry[] = (bookings ?? []).flatMap((booking) =>
+            (booking.refunds ?? [])
+              .filter((refund) => Number(refund.amount ?? 0) > 0)
+              .map((refund) => ({
+                id: refund.id,
+                booking_id: booking.id,
+                booking_code: booking.booking_code || `BOOKING-${booking.id}`,
+                refund_no: refund.refund_no,
+                amount: Number(refund.amount ?? 0),
+                method_label: refund.method_label,
+                processed_at: refund.processed_at,
+                created_at: refund.created_at,
+                remark: refund.remark,
+                receipt_public_url: refund.receipt_public_url,
+              })),
+          );
+          refundEntries.sort((a, b) => {
+            const at = new Date(a.processed_at ?? a.created_at ?? 0).getTime();
+            const bt = new Date(b.processed_at ?? b.created_at ?? 0).getTime();
+            return bt - at;
+          });
+          setRefunds(refundEntries);
         }
       } catch (err) {
         if (!cancelled) {
@@ -173,6 +260,19 @@ export function BookingTransactionsClient() {
     }
   }
 
+  const transactionItems: TransactionListItem[] = [
+    ...orders.map((order) => ({
+      kind: "order" as const,
+      sortAt: new Date(order.created_at ?? 0).getTime(),
+      order,
+    })),
+    ...refunds.map((refund) => ({
+      kind: "refund" as const,
+      sortAt: new Date(refund.processed_at ?? refund.created_at ?? 0).getTime(),
+      refund,
+    })),
+  ].sort((a, b) => b.sortAt - a.sortAt);
+
   if (loading) {
     return <p className="text-sm text-[var(--foreground)]/70">Loading your transactions...</p>;
   }
@@ -185,7 +285,7 @@ export function BookingTransactionsClient() {
     );
   }
 
-  if (orders.length === 0) {
+  if (orders.length === 0 && refunds.length === 0) {
     return (
       <div className="flex flex-col items-start justify-center rounded-xl border border-dashed border-[var(--muted)] bg-[var(--background)] p-10 text-center shadow-sm">
         <p className="mb-3 text-lg font-semibold text-[var(--foreground)]">You have no transactions yet.</p>
@@ -214,7 +314,71 @@ export function BookingTransactionsClient() {
       ) : null}
 
       <div className="max-h-[min(70vh,720px)] space-y-4 overflow-y-auto overscroll-contain pr-1">
-        {orders.map((order) => {
+        {transactionItems.map((item) => {
+          if (item.kind === "refund") {
+            const refund = item.refund;
+            const refundUrl = resolveReceiptViewUrl(refund.receipt_public_url);
+            const refundDate = refund.processed_at ?? refund.created_at;
+
+            return (
+              <div
+                key={`refund-${refund.id}`}
+                className="rounded-xl border border-[var(--muted)] bg-[var(--myorder-background)] p-5 shadow-sm transition hover:shadow-md"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-semibold text-[var(--foreground)]">Refund No:</p>
+                    <p className="truncate text-sm tracking-[0.08em] text-[var(--foreground)]/60">{refund.refund_no}</p>
+                  </div>
+                  <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700">
+                    Refunded
+                  </span>
+                </div>
+
+                <div className="mt-4 grid min-w-0 gap-3 text-sm text-[var(--foreground)]/80 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Date</p>
+                    <p className="text-base font-medium text-[var(--foreground)]">{formatDate(refundDate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Refund Method</p>
+                    <div className="text-base font-medium text-[var(--foreground)]">
+                      <p>{formatRefundMethodLabel(refund.method_label)}</p>
+                      <p className="mt-1 text-xs text-[var(--foreground)]/70">Booking: {refund.booking_code}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Refund Amount</p>
+                    <p className="text-base font-semibold text-rose-700">{signedMoney(-refund.amount)}</p>
+                  </div>
+
+                  {refund.remark ? (
+                    <div className="sm:col-span-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Remark</p>
+                      <p className="mt-1 text-sm text-[var(--foreground)]/80">{refund.remark}</p>
+                    </div>
+                  ) : null}
+
+                  <div className="sm:col-span-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {refundUrl ? (
+                        <a
+                          href={refundUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                        >
+                          View Receipt
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          const order = item.order;
           const override = orderOverrides[order.id] ?? {};
           const statusValue = override.status ?? order.status;
           const paymentStatusValue = override.payment_status ?? order.payment_status;
@@ -424,7 +588,7 @@ export function BookingTransactionsClient() {
                                 <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity ?? 1}</p>
                               </div>
                             </div>
-                            <p className="shrink-0 text-sm font-semibold text-[var(--foreground)]">{money(item.line_total)}</p>
+                            <TransactionLineAmount item={item} />
                           </div>
                         );
                       })}

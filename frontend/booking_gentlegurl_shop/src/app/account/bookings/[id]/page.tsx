@@ -17,7 +17,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingDateTime, formatBookingTime } from "@/lib/bookingTime";
 import BookingServiceBlocksSection from "@/components/booking/BookingServiceBlocksSection";
 import {
+  bookingHasPendingRange,
+  getBookingAddonTotalDisplay,
+  getBookingBalanceDueDisplay,
+  getBookingMainServiceTotalDisplay,
+  getBookingPackageCoveredDisplay,
+  getBookingPackageCoveredTotals,
+  resolveBookingBalanceDueBounds,
+  resolveBookingPaymentStatus,
+} from "@/lib/bookingServiceDisplay";
+import {
   formatReceiptMeta,
+  formatReceiptPaidDate,
   getBookingReceiptRows,
   resolveReceiptViewUrl,
 } from "@/lib/bookingReceiptLinks";
@@ -66,26 +77,27 @@ const pickPaymentNumber = (...values: Array<number | null | undefined>) => {
 const getPaymentSummary = (booking: BookingRecord) => {
   const serviceTotal = Number(booking.service_total ?? 0);
   const addonTotal = Number(booking.addon_total_price ?? 0);
-  const depositPaid = pickPaymentNumber(
-    booking.deposit_paid,
-    booking.linked_booking_deposit_total,
-    booking.deposit_previously_collected_amount,
-  );
+  const depositPaid = pickPaymentNumber(booking.deposit_paid, booking.deposit_previously_collected_amount);
   const settlementPaid = Number(booking.settlement_paid ?? 0);
-  const packageOffset = Number(booking.package_offset ?? 0);
+  const packageOffset = getBookingPackageCoveredTotals(booking).minTotal;
+  const hasPackageClaims = (booking.package_claims ?? []).length > 0;
   const calculatedBalance = Math.max(0, serviceTotal + addonTotal - depositPaid - settlementPaid - packageOffset);
   const balanceDue = Number(booking.balance_due ?? booking.amount_due_now ?? calculatedBalance);
   const totalPaid = Number(booking.total_paid ?? depositPaid + settlementPaid);
-  const paymentStatus = totalPaid <= 0
-    ? "UNPAID"
-    : balanceDue > 0
-      ? "PARTIAL"
-      : "PAID";
-  const helperText = paymentStatus === "UNPAID"
-    ? "No payment received yet."
-    : paymentStatus === "PARTIAL"
-      ? "Deposit received. Remaining balance will be paid at the salon."
-      : "Fully paid.";
+  const payment = { depositPaid, settlementPaid, packageOffset, balanceDue };
+  const balanceBounds = resolveBookingBalanceDueBounds(booking, payment);
+  const fullySettled = balanceBounds.min <= 0.0001 && balanceBounds.max <= 0.0001;
+  const hasPendingRange = bookingHasPendingRange(booking);
+  const paymentStatus = resolveBookingPaymentStatus(booking, payment);
+  const helperText = hasPendingRange && !fullySettled
+    ? "Estimated price ranges are shown below. The final amount depends on your service at the salon."
+    : paymentStatus === "UNPAID"
+      ? "No payment received yet."
+      : paymentStatus === "PARTIAL"
+        ? "Deposit received. Remaining balance will be paid at the salon."
+        : hasPackageClaims
+          ? "Covered by your service package."
+          : "Fully paid.";
 
   return { serviceTotal, addonTotal, depositPaid, settlementPaid, packageOffset, balanceDue, totalPaid, paymentStatus, helperText };
 };
@@ -466,6 +478,12 @@ export default function BookingDetailPage() {
           const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
           const hasActions = canPayNow || state.canReschedule || state.canRequestCancellation || state.hasPendingCancellation;
           const receiptRows = getBookingReceiptRows(booking);
+          const refundRows = (booking.refunds ?? []).filter((row) => Number(row.amount ?? 0) > 0);
+          const totalRefunded = refundRows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+          const serviceTotalDisplay = getBookingMainServiceTotalDisplay(booking, formatCurrency);
+          const addonTotalDisplay = getBookingAddonTotalDisplay(booking, formatCurrency);
+          const balanceDueDisplay = getBookingBalanceDueDisplay(booking, payment, formatCurrency);
+          const packageCoveredDisplay = getBookingPackageCoveredDisplay(booking, formatCurrency);
 
           return (
             <div key={booking.id} className="space-y-4">
@@ -548,16 +566,27 @@ export default function BookingDetailPage() {
                 </div>
 
                 <div className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Service Total</span><span className="font-medium">{formatCurrency(payment.serviceTotal)}</span></div>
-                  <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Add-ons</span><span className="font-medium">{formatCurrency(payment.addonTotal)}</span></div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-[var(--text-muted)]">Service Total</span>
+                    <span className={`font-medium ${serviceTotalDisplay.isRangePending ? "text-amber-700" : ""}`}>{serviceTotalDisplay.text}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Add-ons</span><span className={`font-medium ${addonTotalDisplay.isRangePending ? "text-amber-700" : ""}`}>{addonTotalDisplay.text}</span></div>
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Deposit Paid</span><span className="font-medium text-emerald-700">{formatCurrency(payment.depositPaid)}</span></div>
-                  {payment.packageOffset > 0 ? (
-                    <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Package Offset</span><span className="font-medium">-{formatCurrency(payment.packageOffset)}</span></div>
+                  {!isBookingProduct && (booking.package_claims ?? []).length > 0 ? (
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[var(--text-muted)]">Package Covered</span>
+                      <span className="font-medium text-emerald-700">
+                        {packageCoveredDisplay.text}
+                      </span>
+                    </div>
                   ) : null}
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Paid In Store</span><span className="font-medium">{formatCurrency(payment.settlementPaid)}</span></div>
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Total Paid</span><span className="font-medium">{formatCurrency(payment.totalPaid)}</span></div>
+                  {totalRefunded > 0 ? (
+                    <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Refunded</span><span className="font-medium text-rose-600">-{formatCurrency(totalRefunded)}</span></div>
+                  ) : null}
                   <div className="border-t border-[var(--card-border)] pt-3">
-                    <div className="flex items-center justify-between gap-4 text-base"><span className="font-semibold">Balance Due</span><span className="font-semibold text-[var(--accent-strong)]">{formatCurrency(payment.balanceDue)}</span></div>
+                    <div className="flex items-center justify-between gap-4 text-base"><span className="font-semibold">Balance Due</span><span className={`font-semibold ${balanceDueDisplay.isRangePending ? "text-amber-700" : "text-[var(--accent-strong)]"}`}>{balanceDueDisplay.text}</span></div>
                   </div>
                 </div>
 
@@ -568,9 +597,9 @@ export default function BookingDetailPage() {
                 {receiptRows.length > 0 ? (
                   <div className="mt-4 border-t border-[var(--card-border)] pt-4">
                     <p className="text-sm font-semibold text-[var(--foreground)]">Receipts</p>
-                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                    {/* <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                       Each deposit or settlement payment has its own receipt.
-                    </p>
+                    </p> */}
                     <div className="mt-3 space-y-2">
                       {receiptRows.map((receipt, index) => {
                         const receiptUrl = resolveReceiptViewUrl(receipt.receipt_public_url);
@@ -593,6 +622,47 @@ export default function BookingDetailPage() {
                               <i className="fa-solid fa-receipt text-[10px]" aria-hidden />
                               View Receipt
                             </a>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {refundRows.length > 0 ? (
+                  <div className="mt-4 border-t border-[var(--card-border)] pt-4">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">Refunds</p>
+                    <div className="mt-3 space-y-2">
+                      {refundRows.map((refund) => {
+                        const refundUrl = resolveReceiptViewUrl(refund.receipt_public_url);
+                        const refundDate = formatReceiptPaidDate(refund.processed_at ?? refund.created_at);
+                        return (
+                          <div
+                            key={`refund-${refund.id}`}
+                            className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50/60 p-3 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-rose-700">
+                                {refund.method_label} · -{formatCurrency(refund.amount)}
+                              </p>
+                              <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                                {[refund.refund_no, refundDate].filter(Boolean).join(" · ")}
+                              </p>
+                              {refund.remark ? (
+                                <p className="mt-0.5 text-xs text-[var(--text-muted)]">{refund.remark}</p>
+                              ) : null}
+                            </div>
+                            {refundUrl ? (
+                              <a
+                                href={refundUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-rose-300 px-4 py-2 text-xs font-semibold uppercase text-rose-700 transition hover:border-rose-500 hover:text-rose-800"
+                              >
+                                <i className="fa-solid fa-receipt text-[10px]" aria-hidden />
+                                View Receipt
+                              </a>
+                            ) : null}
                           </div>
                         );
                       })}

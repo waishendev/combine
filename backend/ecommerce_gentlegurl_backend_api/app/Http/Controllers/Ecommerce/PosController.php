@@ -25,6 +25,8 @@ use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageBalance;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
+use App\Models\Booking\BookingRefund;
+use App\Models\Booking\BookingRefundReceiptToken;
 use App\Models\Booking\BookingPayment;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingProduct;
@@ -393,6 +395,13 @@ class PosController extends Controller
                 'deposit_previously_collected' => (bool) $summary['deposit_previously_collected'],
                 'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
                 'package_offset' => (float) $summary['package_offset'],
+                'total_covered' => (float) ($summary['total_covered'] ?? 0),
+                'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+                'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
+                'refund_handled_amount' => (float) ($summary['refund_handled_amount'] ?? 0),
+                'refund_pending_amount' => (float) ($summary['refund_pending_amount'] ?? 0),
+                'refund_handled' => (bool) ($summary['refund_handled'] ?? false),
+                'refund_pending' => (bool) ($summary['refund_pending'] ?? false),
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['amount_due_now'],
                 'settlement_paid' => (float) ($summary['settlement_paid'] ?? 0),
@@ -544,6 +553,13 @@ class PosController extends Controller
             'deposit_previously_collected' => (bool) $summary['deposit_previously_collected'],
             'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
             'package_offset' => (float) $summary['package_offset'],
+            'total_covered' => (float) ($summary['total_covered'] ?? 0),
+            'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+            'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
+            'refund_handled_amount' => (float) ($summary['refund_handled_amount'] ?? 0),
+            'refund_pending_amount' => (float) ($summary['refund_pending_amount'] ?? 0),
+            'refund_handled' => (bool) ($summary['refund_handled'] ?? false),
+            'refund_pending' => (bool) ($summary['refund_pending'] ?? false),
             'settlement_paid' => (float) $summary['settlement_paid'],
             'service_balance_due' => (float) ($summary['service_balance_due'] ?? 0),
             'balance_due' => (float) $summary['balance_due'],
@@ -562,7 +578,8 @@ class PosController extends Controller
             'package_claims' => $packageClaims,
             'payment_history' => $history,
             'receipts' => $history,
-            'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
+                'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
+                'refund_transactions' => $this->resolveAppointmentRefundTransactions($booking),
             ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
             'uploaded_item_photos' => $booking->itemPhotos->map(fn ($photo) => [
                 'id' => (int) $photo->id,
@@ -1493,7 +1510,13 @@ class PosController extends Controller
     public function finalizeAppointmentZeroSettlement(Request $request, int $id, OrderPaymentService $orderPaymentService)
     {
         $validated = $request->validate([
-            'payment_method' => ['required', 'in:cash,qrpay,billplz_credit_card'],
+            'payment_method' => ['required', 'in:cash,qrpay,billplz_credit_card,store_credit,manual_transfer'],
+            'refund' => ['nullable', 'array'],
+            'refund.amount' => ['required_with:refund', 'numeric', 'gt:0'],
+            'refund.method' => ['required_with:refund', 'string', 'in:cash,qrpay,manual_transfer,credit_card,customer_credit,store_credit'],
+            'refund.channel' => ['nullable', 'string', 'in:online,offline'],
+            'refund.reason' => ['nullable', 'string', 'max:255'],
+            'refund.remark' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
@@ -1531,6 +1554,11 @@ class PosController extends Controller
 
         if (max(0.0, (float) ($summary['balance_due'] ?? 0)) > 0.0001) {
             return $this->respondError(__('A balance is still due; use standard collection.'), 422);
+        }
+
+        $overpaidAmount = round((float) ($summary['overpaid_amount'] ?? 0), 2);
+        if ($overpaidAmount > 0.0001 && ! (bool) ($summary['refund_handled'] ?? false)) {
+            return $this->respondError(__('This booking has overpaid deposit. Please handle refund/credit in Edit Settlement before checkout.'), 422);
         }
 
         try {
@@ -1659,6 +1687,10 @@ class PosController extends Controller
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:32'],
             'guest_email' => ['nullable', 'string', 'email', 'max:255'],
+            'refund_action' => ['nullable', 'string', 'in:refund_now,customer_credit,handled_later'],
+            'refund_amount' => ['nullable', 'numeric', 'min:0'],
+            'refund_method' => ['nullable', 'string', 'in:cash,qrpay,manual_transfer,credit_card'],
+            'refund_remark' => ['nullable', 'string', 'max:1000'],
             'settlement_note' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -2063,6 +2095,43 @@ class PosController extends Controller
             ->with(['service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'customer:id,name,phone,email', 'staff:id,name'])
             ->findOrFail((int) $booking->id);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $overpaidAmount = round(max(0.0, (float) ($summary['overpaid_amount'] ?? 0)), 2);
+        $refundAction = (string) ($validated['refund_action'] ?? '');
+        if ($overpaidAmount > 0.0001 && $refundAction !== '') {
+            $refundAmount = $refundAction === 'handled_later'
+                ? $overpaidAmount
+                : round((float) ($validated['refund_amount'] ?? $overpaidAmount), 2);
+            if ($refundAction !== 'handled_later' && ($refundAmount <= 0.0001 || $refundAmount > $overpaidAmount + 0.0001)) {
+                return $this->respondError(__('Refund amount must be greater than 0 and cannot exceed the overpaid amount.'), 422);
+            }
+            if ($refundAction === 'refund_now' && empty($validated['refund_method'])) {
+                return $this->respondError(__('Refund method is required.'), 422);
+            }
+            $remark = trim((string) ($validated['refund_remark'] ?? ''));
+            if ($refundAction === 'handled_later' && $remark === '') {
+                return $this->respondError(__('Remark is required when marking refund handled later.'), 422);
+            }
+
+            $method = match ($refundAction) {
+                'customer_credit' => 'customer_credit',
+                'handled_later' => 'handled_later',
+                default => (string) $validated['refund_method'],
+            };
+            BookingRefund::query()->create([
+                'booking_id' => (int) $booking->id,
+                'order_id' => null,
+                'refund_no' => 'REF-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                'amount' => $refundAmount,
+                'method' => $method,
+                'channel' => $method === 'customer_credit' ? 'online' : 'offline',
+                'reason' => $refundAction === 'handled_later' ? 'Overpaid deposit marked handled later' : 'Package claim overpayment',
+                'status' => $refundAction === 'handled_later' ? 'pending' : 'completed',
+                'processed_by' => (int) $request->user()->id,
+                'processed_at' => now(),
+                'remark' => $remark !== '' ? $remark : null,
+            ]);
+            $summary = $this->resolveAppointmentFinancialSummary($booking->fresh(['service', 'customer']));
+        }
 
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking),
@@ -2287,6 +2356,159 @@ class PosController extends Controller
             $booking->fresh(['customer', 'service', 'staff']),
             __('Deposit updated.'),
         );
+    }
+
+    public function addAppointmentRefund(Request $request, int $id)
+    {
+        $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        if (in_array(strtoupper((string) $booking->status), ['CANCELLED', 'VOID', 'VOIDED'], true)) {
+            return $this->respondError(__('Cannot add refund to a cancelled appointment.'), 422);
+        }
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'method' => ['required', 'string', 'in:cash,customer_credit'],
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $refundNeeded = round(max(0.0, (float) ($summary['refund_needed'] ?? 0)), 2);
+        $amount = round((float) $validated['amount'], 2);
+
+        if ($refundNeeded <= 0.0001) {
+            return $this->respondError(__('No overpaid amount requires refund or customer credit.'), 422);
+        }
+        if ($amount > $refundNeeded + 0.0001) {
+            return $this->respondError(__('Refund amount cannot exceed the overpaid amount.'), 422);
+        }
+
+        $method = (string) $validated['method'];
+        $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
+        $remark = $remark !== '' ? $remark : null;
+
+        BookingRefund::query()->create([
+            'booking_id' => (int) $booking->id,
+            'order_id' => null,
+            'refund_no' => 'REF-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+            'amount' => $amount,
+            'method' => $method,
+            'channel' => $method === 'customer_credit' ? 'online' : 'offline',
+            'reason' => 'Overpaid deposit refund',
+            'status' => 'completed',
+            'processed_by' => (int) $request->user()->id,
+            'processed_at' => now(),
+            'remark' => $remark,
+        ]);
+
+        return $this->respondAppointmentRefundMutation(
+            $booking->fresh(['customer', 'service', 'staff']),
+            __('Refund recorded.'),
+        );
+    }
+
+    public function editAppointmentRefundTransaction(Request $request, int $id, int $refundId)
+    {
+        $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        if (in_array(strtoupper((string) $booking->status), ['CANCELLED', 'VOID', 'VOIDED'], true)) {
+            return $this->respondError(__('Cannot edit refund on a cancelled appointment.'), 422);
+        }
+
+        $refund = BookingRefund::query()
+            ->where('id', $refundId)
+            ->where('booking_id', (int) $booking->id)
+            ->where('status', 'completed')
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'method' => ['required', 'string', 'in:cash,customer_credit'],
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $overpaidAmount = round(max(0.0, (float) ($summary['overpaid_amount'] ?? 0)), 2);
+        $otherRefunded = round((float) BookingRefund::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('status', 'completed')
+            ->where('id', '!=', (int) $refund->id)
+            ->sum('amount'), 2);
+        $maxAmount = round(max(0.0, $overpaidAmount - $otherRefunded), 2);
+        $amount = round((float) $validated['amount'], 2);
+
+        if ($maxAmount <= 0.0001) {
+            return $this->respondError(__('No overpaid amount requires refund or customer credit.'), 422);
+        }
+        if ($amount > $maxAmount + 0.0001) {
+            return $this->respondError(__('Refund amount cannot exceed the overpaid amount.'), 422);
+        }
+
+        $method = (string) $validated['method'];
+        $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
+        $remark = $remark !== '' ? $remark : null;
+
+        $refund->update([
+            'amount' => $amount,
+            'method' => $method,
+            'channel' => $method === 'customer_credit' ? 'online' : 'offline',
+            'remark' => $remark,
+            'processed_by' => (int) $request->user()->id,
+            'processed_at' => now(),
+        ]);
+
+        return $this->respondAppointmentRefundMutation(
+            $booking->fresh(['customer', 'service', 'staff']),
+            __('Refund updated.'),
+        );
+    }
+
+    public function voidAppointmentRefund(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'remark' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $refund = BookingRefund::query()
+            ->with('booking')
+            ->where('id', $id)
+            ->where('status', 'completed')
+            ->firstOrFail();
+
+        $remark = trim((string) $validated['remark']);
+        $voidNote = '[VOIDED ' . now()->format('Y-m-d H:i') . '] ' . $remark;
+        $existingRemark = trim((string) ($refund->remark ?? ''));
+        $combinedRemark = $existingRemark !== ''
+            ? $existingRemark . "\n" . $voidNote
+            : $voidNote;
+
+        $refund->update([
+            'status' => 'voided',
+            'remark' => $combinedRemark,
+            'processed_by' => (int) $request->user()->id,
+            'processed_at' => now(),
+        ]);
+
+        $booking = $refund->booking;
+        if (! $booking) {
+            return $this->respond(['refund_id' => (int) $refund->id], __('Refund voided.'));
+        }
+
+        return $this->respondAppointmentRefundMutation(
+            $booking->fresh(['customer', 'service', 'staff']),
+            __('Refund voided.'),
+        );
+    }
+
+    public function refundReceipt(int $id)
+    {
+        $refund = BookingRefund::query()->findOrFail($id);
+
+        return $this->respond([
+            'refund' => [
+                'id' => (int) $refund->id,
+                'refund_no' => (string) $refund->refund_no,
+                'receipt_public_url' => $this->buildReceiptUrlForRefund((int) $refund->id),
+            ],
+        ]);
     }
 
     public function getServiceAddonOptions(int $serviceId)
@@ -6334,7 +6556,7 @@ class PosController extends Controller
             }
         }
 
-        [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
+        [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
             $confirmedBookingIds = [];
             $packageCustomerIds = $cart->packageItems
                 ->pluck('customer_id')
@@ -6634,6 +6856,8 @@ class PosController extends Controller
                 $cartServiceItemId = isset($item['cart_service_item_id']) ? (int) $item['cart_service_item_id'] : 0;
                 return $cartServiceItemId > 0 ? [$cartServiceItemId => collect($item['line_staff_splits'] ?? [])->values()->all()] : [];
             });
+
+            $bookingRefunds = [];
 
             $lineStaffSplitsBySettlementItemId = collect($validated['settlement_line_staff_splits'] ?? [])
                 ->groupBy(fn (array $line) => (int) ($line['settlement_cart_item_id'] ?? 0));
@@ -7044,6 +7268,9 @@ class PosController extends Controller
 
                 $claimStatus = $serviceClaimStatuses[(int) $serviceItem->id]['status'] ?? null;
                 $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
+                $mainDepositBase = max(0, (float) ($serviceItem->bookingService?->deposit_amount ?? 0));
+                $mainDepositOverrideResult = $this->applyPriceOverrideToAmount($serviceItem, 'main', $mainDepositBase);
+                $depositGross = (float) $mainDepositOverrideResult['amount'];
                 $depositContribution = ! $claimedByPackage
                     ? (float) ($depositByServiceItemId[(int) $serviceItem->id] ?? 0)
                     : 0.0;
@@ -7052,7 +7279,15 @@ class PosController extends Controller
                     $depositPriceOverrideResult = $this->applyPriceOverrideToAmount($serviceItem, 'main', $depositContribution);
                     $depositContribution = (float) $depositPriceOverrideResult['amount'];
                     $depositPriceOverride = $depositPriceOverrideResult['override'] ?? ($depositByServiceItemOverrides[(int) $serviceItem->id] ?? null);
+                    $depositGross = $depositContribution;
+                } else {
+                    $depositPriceOverride = $mainDepositOverrideResult['override'] ?? ($depositByServiceItemOverrides[(int) $serviceItem->id] ?? null);
+                    $depositGross = $depositContribution;
                 }
+
+                $depositGrossSnapshot = $claimedByPackage
+                    ? (float) $mainDepositOverrideResult['amount']
+                    : $depositGross;
 
                 $depositOrderItem = OrderItem::create([
                     'order_id' => $order->id,
@@ -7061,10 +7296,10 @@ class PosController extends Controller
                     'product_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
                     'display_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
                     'quantity' => 1,
-                    'price_snapshot' => $depositContribution,
-                    'unit_price_snapshot' => $depositContribution,
-                    'line_total' => $depositContribution,
-                    'line_total_snapshot' => $depositContribution,
+                    'price_snapshot' => $depositGross,
+                    'unit_price_snapshot' => $depositGross,
+                    'line_total' => $depositGross,
+                    'line_total_snapshot' => $depositGrossSnapshot,
                     'effective_unit_price' => $depositContribution,
                     'effective_line_total' => $depositContribution,
                     'locked' => true,
@@ -7278,6 +7513,10 @@ class PosController extends Controller
                 $mainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
                 $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
                 $balanceDue = max(0.0, (float) ($summary['balance_due'] ?? 0));
+                $overpaidAmount = round(max(0.0, (float) ($summary['overpaid_amount'] ?? 0)), 2);
+                if ($overpaidAmount > 0.0001 && ! (bool) ($summary['refund_handled'] ?? false)) {
+                    abort(422, __('This booking has overpaid deposit. Please handle refund/credit in Edit Settlement before checkout.'));
+                }
                 $discountLines = $this->normalizeAppointmentSettlementDiscountLines($settlementItem->discount_lines ?? []);
                 $hasPerLineDiscounts = ! empty($discountLines);
                 $settlementDiscount = $hasPerLineDiscounts
@@ -7512,7 +7751,7 @@ class PosController extends Controller
             $cart->appointmentSettlementItems()->delete();
             $this->clearVoucherFromCart($cart);
 
-            return [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds];
+            return [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds];
         });
 
         $this->dispatchBookingConfirmationEmails($confirmedBookingIds);
@@ -7532,6 +7771,7 @@ class PosController extends Controller
             'payment_status' => $order->payment_status,
             'receipt_public_url' => $receiptUrl,
             'package_items' => $purchasedPackageLines,
+            'refunds' => $bookingRefunds,
         ]);
     }
 
@@ -7862,11 +8102,91 @@ class PosController extends Controller
 
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking),
+                'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
+                'refund_transactions' => $this->resolveAppointmentRefundTransactions($booking),
+            'deposit_total' => (float) ($summary['deposit_previously_collected_amount'] ?? $summary['deposit_contribution'] ?? 0),
+            'balance_due' => (float) $summary['balance_due'],
+            'amount_due_now' => (float) $summary['amount_due_now'],
+            'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+            'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
+            'refund_handled' => (bool) ($summary['refund_handled'] ?? false),
+            'refund_handled_amount' => (float) ($summary['refund_handled_amount'] ?? 0),
+        ], $message);
+    }
+
+    protected function respondAppointmentRefundMutation(Booking $booking, string $message)
+    {
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking),
+            'refund_transactions' => $this->resolveAppointmentRefundTransactions($booking),
             'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
             'deposit_total' => (float) ($summary['deposit_previously_collected_amount'] ?? $summary['deposit_contribution'] ?? 0),
             'balance_due' => (float) $summary['balance_due'],
             'amount_due_now' => (float) $summary['amount_due_now'],
+            'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+            'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
+            'refund_handled' => (bool) ($summary['refund_handled'] ?? false),
+            'refund_handled_amount' => (float) ($summary['refund_handled_amount'] ?? 0),
         ], $message);
+    }
+
+    protected function resolveAppointmentRefundTransactions(Booking $booking): array
+    {
+        $methodLabels = [
+            'cash' => 'Cash Refund',
+            'customer_credit' => 'Customer Credit',
+        ];
+
+        return BookingRefund::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('status', 'completed')
+            ->with(['processor:id,name'])
+            ->orderBy('id')
+            ->get()
+            ->map(function (BookingRefund $refund) use ($methodLabels) {
+                $method = (string) $refund->method;
+
+                return [
+                    'id' => (int) $refund->id,
+                    'refund_no' => (string) $refund->refund_no,
+                    'amount' => round((float) $refund->amount, 2),
+                    'method' => $method,
+                    'method_label' => $methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method)),
+                    'channel' => (string) ($refund->channel ?? 'offline'),
+                    'processed_at' => optional($refund->processed_at)?->toIso8601String(),
+                    'created_at' => optional($refund->created_at)?->toIso8601String(),
+                    'receipt_public_url' => $this->buildReceiptUrlForRefund((int) $refund->id),
+                    'created_by' => $refund->processor ? [
+                        'id' => (int) $refund->processor->id,
+                        'name' => (string) $refund->processor->name,
+                    ] : null,
+                    'remark' => $refund->remark,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    protected function buildReceiptUrlForRefund(int $refundId): ?string
+    {
+        $receiptToken = BookingRefundReceiptToken::query()
+            ->where('booking_refund_id', $refundId)
+            ->latest('id')
+            ->first();
+
+        if (! $receiptToken) {
+            $receiptToken = BookingRefundReceiptToken::create([
+                'booking_refund_id' => $refundId,
+                'token' => Str::random(64),
+                'expires_at' => null,
+            ]);
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
+
+        return $frontendUrl . '/api/proxy/public/refund-receipt/' . $receiptToken->token . '/invoice';
     }
 
     protected function syncBookingDepositAmountFromOrderItems(Booking $booking): void
@@ -8749,7 +9069,15 @@ class PosController extends Controller
                 'deposit_previously_collected' => (bool) ($summary['deposit_previously_collected'] ?? false),
                 'deposit_previously_collected_amount' => (float) ($summary['deposit_previously_collected_amount'] ?? 0),
                 'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
+                'refund_transactions' => $this->resolveAppointmentRefundTransactions($booking),
                 'package_offset' => (float) ($summary['package_offset'] ?? 0),
+                'total_covered' => (float) ($summary['total_covered'] ?? 0),
+                'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+                'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
+                'refund_handled_amount' => (float) ($summary['refund_handled_amount'] ?? 0),
+                'refund_pending_amount' => (float) ($summary['refund_pending_amount'] ?? 0),
+                'refund_handled' => (bool) ($summary['refund_handled'] ?? false),
+                'refund_pending' => (bool) ($summary['refund_pending'] ?? false),
                 'amount_due_now' => (float) $netLineTotal,
                 'service_balance_due' => (float) ($hasPerLineDiscounts ? $mainSettlementItems->sum('line_total_after_discount') : ($summary['service_balance_due'] ?? 0)),
                 'addon_settlement_items' => $addonSettlementItems->all(),
@@ -10010,6 +10338,9 @@ class PosController extends Controller
             'deposit_previously_collected' => (bool) $summary['deposit_previously_collected'],
             'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
             'package_offset' => (float) $summary['package_offset'],
+            'total_covered' => (float) ($summary['total_covered'] ?? 0),
+            'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+            'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
             'amount_due_now' => (float) $summary['amount_due_now'],
@@ -10025,7 +10356,8 @@ class PosController extends Controller
             'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
             'package_claims' => $packageClaims,
             'receipts' => $receiptHistory,
-            'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
+                'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
+                'refund_transactions' => $this->resolveAppointmentRefundTransactions($booking),
             ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
         ];
     }
@@ -10037,10 +10369,18 @@ class PosController extends Controller
         $claims = CustomerServicePackageUsage::query()
             ->with(['customerServicePackage.servicePackage'])
             ->where(function ($q) use ($booking, $posCartItemIds) {
-                $q->where('booking_id', (int) $booking->id);
+                $q->where('booking_id', (int) $booking->id)
+                    ->orWhere(function ($q2) use ($booking) {
+                        $q2->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id)
+                            ->whereNull('booking_id');
+                    });
 
                 if ($posCartItemIds !== []) {
-                    $q->orWhereIn('booking_id', $posCartItemIds);
+                    $q->orWhere(function ($q3) use ($posCartItemIds) {
+                        $q3->where('used_from', 'POS')
+                            ->whereIn('used_ref_id', $posCartItemIds);
+                    })->orWhereIn('booking_id', $posCartItemIds);
                 }
             })
             ->whereIn('status', ['reserved', 'consumed'])
@@ -10734,17 +11074,17 @@ class PosController extends Controller
 
         $mainDepositCollected = round((float) $this->activeBookingOrderItemQuery((int) $booking->id)
             ->where('line_type', 'booking_deposit')
-            ->sum('line_total'), 2);
+            ->get()
+            ->sum(fn (OrderItem $row) => $this->invoiceService->resolveOrderItemCollectedAmount($row)), 2);
         $addonDepositCollected = round((float) $this->activeBookingOrderItemQuery((int) $booking->id)
             ->where('line_type', 'booking_addon')
             ->where('variant_name_snapshot', 'Booking Add-on Deposit')
-            ->sum('line_total'), 2);
+            ->get()
+            ->sum(fn (OrderItem $row) => $this->invoiceService->resolveOrderItemCollectedAmount($row)), 2);
         $actualAppointmentDepositCollected = round($mainDepositCollected + $addonDepositCollected, 2);
 
         $depositPaid = $actualAppointmentDepositCollected;
-        $linkedBookingDeposit = $actualAppointmentDepositCollected > 0.0001
-            ? $actualAppointmentDepositCollected
-            : (float) ($depositBreakdown['deposit_total'] ?? 0);
+        $linkedBookingDeposit = $actualAppointmentDepositCollected;
 
         $applyAddonDepositDisplay = function (array $addon) use ($expectedDepositByAddonId): array {
             $addonId = (int) ($addon['id'] ?? 0);
@@ -10900,7 +11240,14 @@ class PosController extends Controller
         $settlementPaid = round($serviceSettlementPaid + $addonPaidSettlement, 2);
         $payableTotal = round($serviceTotal + $addonTotalPrice, 2);
         $paidTotal = round($depositPaid + $settlementPaid + $packageOffset, 2);
+        $overpaidAmount = max(0.0, round($paidTotal - $payableTotal, 2));
         $balanceDue = max(0.0, round($payableTotal - $paidTotal, 2));
+        $refundRows = BookingRefund::query()
+            ->where('booking_id', (int) $booking->id)
+            ->whereIn('status', ['completed', 'pending'])
+            ->get();
+        $refundHandledAmount = round((float) $refundRows->where('status', 'completed')->sum('amount'), 2);
+        $refundPendingAmount = round((float) $refundRows->where('status', 'pending')->sum('amount'), 2);
 
         return [
             'service_total' => round($serviceTotal, 2),
@@ -10929,6 +11276,13 @@ class PosController extends Controller
             'addon_paid_online' => round($addonPaid, 2),
             'addon_paid_settlement' => round($addonPaidSettlement, 2),
             'addon_balance_due' => round($addonBalanceDue, 2),
+            'total_covered' => round($paidTotal, 2),
+            'overpaid_amount' => round($overpaidAmount, 2),
+            'refund_needed' => round(max(0.0, $overpaidAmount - $refundHandledAmount), 2),
+            'refund_handled_amount' => $refundHandledAmount,
+            'refund_pending_amount' => $refundPendingAmount,
+            'refund_handled' => ($refundHandledAmount + $refundPendingAmount) >= $overpaidAmount - 0.0001,
+            'refund_pending' => $refundPendingAmount > 0.0001,
             'balance_due' => round($balanceDue, 2),
             'amount_due_now' => round($balanceDue, 2),
             'visit_checkout_finalized' => $this->appointmentVisitCheckoutFinalized((int) $booking->id),

@@ -8,7 +8,14 @@ import { BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingTime } from "@/lib/bookingTime";
 import { storedAddonQuantity } from "@/lib/bookingAddonDisplay";
-import { serviceBlocksForBooking } from "@/lib/bookingServiceDisplay";
+import {
+  getBookingBalanceDueDisplay,
+  getBookingPackageCoveredDisplay,
+  getBookingPackageCoveredTotals,
+  getBookingServiceTotalDisplay,
+  resolveBookingPaymentStatus,
+  serviceBlocksForBooking,
+} from "@/lib/bookingServiceDisplay";
 
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
   return (
@@ -25,8 +32,14 @@ const formatDate = (value: string) =>
 const formatAddonLabel = (name: string, qty: number) => (qty > 1 ? `${name} (${qty})` : name);
 
 const addonSummary = (booking: BookingRecord) => {
+  const claims = booking.package_claims ?? [];
   const labels = serviceBlocksForBooking(booking).flatMap((block) =>
-    (block.add_ons ?? []).map((addon) => formatAddonLabel(addon.name, storedAddonQuantity(addon))),
+    (block.add_ons ?? []).map((addon) => {
+      const base = formatAddonLabel(addon.name, storedAddonQuantity(addon));
+      const addonServiceId = Number((addon as { service_id?: number | null }).service_id ?? 0);
+      const claim = addonServiceId > 0 ? claims.find((c) => c.booking_service_id === addonServiceId) : null;
+      return claim ? `${base} [PKG] ${claim.package_name}` : base;
+    }),
   );
 
   return labels.length > 0 ? labels.join(", ") : "None";
@@ -50,23 +63,16 @@ const pickPaymentNumber = (...values: Array<number | null | undefined>) => {
 const getCustomerPaymentSummary = (booking: BookingRecord) => {
   const serviceTotal = Number(booking.service_total ?? 0);
   const addonTotal = Number(booking.addon_total_price ?? 0);
-  const depositPaid = pickPaymentNumber(
-    booking.deposit_paid,
-    booking.linked_booking_deposit_total,
-    booking.deposit_previously_collected_amount,
-  );
+  const depositPaid = pickPaymentNumber(booking.deposit_paid, booking.deposit_previously_collected_amount);
   const settlementPaid = Number(booking.settlement_paid ?? 0);
-  const packageOffset = Number(booking.package_offset ?? 0);
+  const packageOffset = getBookingPackageCoveredTotals(booking).minTotal;
   const calculatedBalance = Math.max(0, serviceTotal + addonTotal - depositPaid - settlementPaid - packageOffset);
   const balanceDue = Number(booking.balance_due ?? booking.amount_due_now ?? calculatedBalance);
   const totalPaid = Number(booking.total_paid ?? depositPaid + settlementPaid);
-  const paymentStatus = totalPaid <= 0
-    ? "UNPAID"
-    : balanceDue > 0
-      ? "PARTIAL"
-      : "PAID";
+  const payment = { depositPaid, settlementPaid, packageOffset, balanceDue };
+  const paymentStatus = resolveBookingPaymentStatus(booking, payment);
 
-  return { balanceDue, depositPaid, paymentStatus, totalPaid };
+  return { balanceDue, depositPaid, settlementPaid, paymentStatus, totalPaid, packageOffset };
 };
 
 function statusClass(status: string) {
@@ -178,6 +184,15 @@ export default function MyBookingsPage() {
               const serviceBlocks = serviceBlocksForBooking(booking);
               const multiService = !isBookingProduct && serviceBlocks.length > 1;
               const payment = getCustomerPaymentSummary(booking);
+              const serviceTotalDisplay = isBookingProduct
+                ? null
+                : getBookingServiceTotalDisplay(booking, formatCurrency);
+              const balanceDueDisplay = isBookingProduct
+                ? null
+                : getBookingBalanceDueDisplay(booking, payment, formatCurrency);
+              const packageCoveredDisplay = isBookingProduct
+                ? null
+                : getBookingPackageCoveredDisplay(booking, formatCurrency);
               const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
 
               return (
@@ -257,11 +272,24 @@ export default function MyBookingsPage() {
                       <p className="min-w-0 truncate">
                         Add-ons: <span className="text-[var(--foreground)]">{isBookingProduct ? (productOptions.length ? `${productOptions.length} selected` : "None") : addonSummary(booking)}</span>
                       </p>
+                      {serviceTotalDisplay ? (
+                        <p className="min-w-0 truncate">
+                          Service Total: <span className={serviceTotalDisplay.isRangePending ? "text-amber-700" : "text-[var(--foreground)]"}>{serviceTotalDisplay.text}</span>
+                        </p>
+                      ) : null}
                       <p className="min-w-0 truncate">
                         Deposit Paid: <span className="text-emerald-700">{formatCurrency(payment.depositPaid)}</span>
                       </p>
+                      {!isBookingProduct && (booking.package_claims ?? []).length > 0 ? (
+                        <p className="min-w-0 truncate">
+                          Package Covered:{" "}
+                          <span className="text-emerald-700">
+                            {packageCoveredDisplay?.text ?? formatCurrency(payment.packageOffset)}
+                          </span>
+                        </p>
+                      ) : null}
                       <p className="min-w-0 truncate font-medium">
-                        Balance Due: <span className="text-[var(--accent-strong)]">{formatCurrency(payment.balanceDue)}</span>
+                        Balance Due: <span className={`${balanceDueDisplay?.isRangePending ? "text-amber-700" : "text-[var(--accent-strong)]"}`}>{balanceDueDisplay?.text ?? formatCurrency(payment.balanceDue)}</span>
                       </p>
                     </div>
 

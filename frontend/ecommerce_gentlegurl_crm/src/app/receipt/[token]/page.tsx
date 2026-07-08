@@ -112,6 +112,22 @@ async function getReceipt(token: string): Promise<ReceiptData | null> {
   return json.data
 }
 
+function getOriginalUnitPrice(item: Pick<ReceiptItem, 'qty' | 'unit_price' | 'line_total' | 'line_total_snapshot'>) {
+  const qtyRaw = Number(item.qty ?? 1)
+  const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1
+
+  const unitPrice = Number(item.unit_price ?? 0)
+  const lineTotalSnapshot = Number(item.line_total_snapshot ?? 0)
+  const lineTotal = Number(item.line_total ?? 0)
+
+  // If backend snapshot is 0 but the real line_total is present, prefer line_total.
+  const originalLineTotal = Math.abs(lineTotalSnapshot) > 0.0001 ? lineTotalSnapshot : lineTotal
+
+  if (Math.abs(unitPrice) > 0.0001) return unitPrice
+  if (Math.abs(originalLineTotal) > 0.0001) return originalLineTotal / qty
+  return unitPrice
+}
+
 function money(amount: number | undefined) {
   return `RM ${Number(amount ?? 0).toFixed(2)}`
 }
@@ -227,11 +243,10 @@ export default async function PublicReceiptPage({ params }: Props) {
             {receiptItems.map((item, idx) => {
               const itemLabel = resolveBookingReceiptItemLabel(item)
               const isBookingAddonLine = String(item.type ?? '') === 'booking_addon'
-              const gross = Number(
-                ('line_total_snapshot' in item ? (item as { line_total_snapshot?: number | string | null }).line_total_snapshot : undefined) ??
-                  item.line_total ??
-                  item.qty * item.unit_price,
-              )
+              const lineTotalSnapshot = Number(item.line_total_snapshot ?? 0)
+              const gross = Math.abs(lineTotalSnapshot) > 0.0001
+                ? lineTotalSnapshot
+                : Number(item.line_total ?? item.qty * item.unit_price)
               const discountAmount = Number(
                 ('discount_amount' in item ? (item as { discount_amount?: number | string | null }).discount_amount : undefined) ?? 0,
               )
@@ -248,8 +263,12 @@ export default async function PublicReceiptPage({ params }: Props) {
                 : []
               const isBookingProductLine = String(item.type ?? '').toLowerCase() === 'booking_product' || bookingProductAddons.length > 0
               const bookingProductAddonUnitTotal = bookingProductAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
-              const displayUnitPrice = bookingProductAddons.length > 0 ? Math.max(0, Number(item.unit_price ?? 0) - bookingProductAddonUnitTotal) : Number(item.unit_price ?? 0)
+              const originalUnitPrice = getOriginalUnitPrice(item)
+              const displayUnitPrice = bookingProductAddons.length > 0 ? Math.max(0, originalUnitPrice - bookingProductAddonUnitTotal) : originalUnitPrice
               const displayLineTotal = bookingProductAddons.length > 0 ? Math.max(0, net - (bookingProductAddonUnitTotal * Number(item.qty ?? 1))) : net
+              const isZeroFromPackageClaim =
+                !isCoveredByPackage && discountAmount <= 0.0001 && Math.abs(gross) > 0.0001 && Math.abs(displayLineTotal) <= 0.0001
+              const shouldStrikeOriginal = isCoveredByPackage || discountAmount > 0.0001 || isZeroFromPackageClaim
               return (
               <Fragment key={`${item.sku}-${idx}`}>
               <tr className="border-t border-gray-200 text-sm">
@@ -257,13 +276,13 @@ export default async function PublicReceiptPage({ params }: Props) {
                   <ReceiptItemNameStack name={isBookingAddonLine ? `+ ${itemLabel.name}` : itemLabel.name} cnName={item.cn_name} />
                   {itemLabel.serviceContext ? <p className="mt-0.5 text-xs text-gray-500">Service: {itemLabel.serviceContext}</p> : null}
                   <p className="text-xs text-gray-500">
-                    Type: {isCoveredByPackage ? 'Package-Covered Service' : lineTypeLabel(item.type)}
+                    Type: {isCoveredByPackage || isZeroFromPackageClaim ? 'Package-Covered Service' : lineTypeLabel(item.type)}
                   </p>
-                  {!isCoveredByPackage && item.sku ? <p className="text-xs text-gray-500">SKU: {item.sku}</p> : null}
-                  {!isCoveredByPackage && !isBookingProductLine && shouldShowReceiptVariant(item.variant_name) ? (
+                  {!(isCoveredByPackage || isZeroFromPackageClaim) && item.sku ? <p className="text-xs text-gray-500">SKU: {item.sku}</p> : null}
+                  {!(isCoveredByPackage || isZeroFromPackageClaim) && !isBookingProductLine && shouldShowReceiptVariant(item.variant_name) ? (
                     <p className="text-xs text-gray-500">Variant: {item.variant_name}</p>
                   ) : null}
-                  {isCoveredByPackage ? (
+                  {isCoveredByPackage || isZeroFromPackageClaim ? (
                     <div className="mt-1 space-y-0.5 text-xs font-semibold text-emerald-700">
                       <p>Included in package</p>
                       {item.package_applied_name ? <p className="font-medium">Package Applied: {item.package_applied_name}</p> : null}
@@ -290,10 +309,14 @@ export default async function PublicReceiptPage({ params }: Props) {
                 <td className="px-4 py-3 text-right">{item.qty}</td>
                 <td className="px-4 py-3 text-right">{money(displayUnitPrice)}</td>
                 <td className="px-4 py-3 text-right">
-                  {isCoveredByPackage || discountAmount > 0 ? (
+                  {shouldStrikeOriginal ? (
                     <div>
                       <p className="text-xs text-gray-400 line-through">{money(gross)}</p>
-                      <p className={isCoveredByPackage ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>{money(displayLineTotal)}</p>
+                      <p
+                        className={isCoveredByPackage || isZeroFromPackageClaim ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}
+                      >
+                        {money(displayLineTotal)}
+                      </p>
                     </div>
                   ) : money(displayLineTotal)}
                 </td>

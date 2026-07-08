@@ -8,8 +8,9 @@ import InternationalPhoneInput from '@/components/common/InternationalPhoneInput
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components/pos/PosCatalogInCartIndicator'
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
+import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRefundCreditSection'
 import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
-import type { PosDepositTransaction } from '@/components/pos/posAppointmentTypes'
+import type { PosDepositTransaction, PosRefundTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
@@ -303,7 +304,15 @@ type AppointmentSettlementCartItem = {
   deposit_previously_collected?: boolean
   deposit_previously_collected_amount?: number
   deposit_transactions?: PosDepositTransaction[]
+  refund_transactions?: PosRefundTransaction[]
   package_offset?: number
+  total_covered?: number
+  overpaid_amount?: number
+  refund_needed?: number
+  refund_handled_amount?: number
+  refund_pending_amount?: number
+  refund_handled?: boolean
+  refund_pending?: boolean
   amount_due_now?: number
   balance_due_snapshot?: number
   discount_type?: 'percentage' | 'fixed' | null
@@ -1952,6 +1961,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     payment_method: 'cash' | 'qrpay' | 'billplz_credit_card' | 'split'
     paid_amount: number
     change_amount: number
+    refunds?: Array<{ refund_no?: string | null; booking_code?: string | null; amount?: number; method?: string | null }>
   }>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [discountModalError, setDiscountModalError] = useState<string | null>(null)
@@ -6228,6 +6238,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const splitPaymentValid = cartCheckoutIsZeroTotal
     ? paymentMethod === 'cash' || paymentMethod === 'qrpay' || paymentMethod === 'billplz_credit_card'
     : checkoutPaymentRows.length > 0 && (splitPaymentMatchesTotal || splitCashOnlyOverpaid)
+  const overpaidSettlementItems = useMemo(
+    () => cartAppointmentSettlementItems
+      .map((settlement) => ({ settlement, amount: Number(settlement.overpaid_amount ?? settlement.refund_needed ?? 0) }))
+      .filter((row) => row.amount > 0.0001),
+    [cartAppointmentSettlementItems],
+  )
+  const unhandledOverpaidSettlementItems = useMemo(
+    () => overpaidSettlementItems.filter(({ settlement }) => !settlement.refund_handled),
+    [overpaidSettlementItems],
+  )
 
   const handleSplitPaymentAmountChange = useCallback((method: SplitPaymentMethod, rawValue: string) => {
     reportCheckoutError(null)
@@ -6384,6 +6404,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         reportCheckoutError('Please enter guest name before checkout.')
         return
       }
+    }
+
+    if (unhandledOverpaidSettlementItems.length > 0) {
+      reportCheckoutError('This booking has overpaid deposit. Please handle refund/credit in Edit Settlement before checkout.')
+      return
     }
 
     setCheckingOut(true)
@@ -6581,6 +6606,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       payment_method: checkoutPaymentRows.length > 1 ? 'split' : paymentMethod,
       paid_amount: meta.paid_amount,
       change_amount: meta.change_amount,
+      refunds: Array.isArray(json.data.refunds) ? json.data.refunds : [],
     })
     setReceiptEmail((selectedMember?.email?.trim() || guestContactCache.email.trim()) ?? '')
     setReceiptEmailError(null)
@@ -7509,6 +7535,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const canConfirmCheckoutInModal = useMemo(() => {
     if (checkingOut) return false
     if (!splitPaymentValid) return false
+    if (unhandledOverpaidSettlementItems.length > 0) return false
 
     if (checkoutRequiresCustomerValidation) {
       if (checkoutRequiresMemberOnly) {
@@ -7525,6 +7552,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     return true
   }, [
     splitPaymentValid,
+    unhandledOverpaidSettlementItems.length,
     checkingOut,
     checkoutAllowsGuestToggle,
     checkoutIdentityMode,
@@ -9778,6 +9806,31 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     />
                   ) : null}
 
+                  {cartEditSettlementBookingId ? (
+                    <PosAppointmentRefundCreditSection
+                      bookingId={cartEditSettlementBookingId}
+                      refundNeeded={Number(cartEditSettlementItem?.refund_needed ?? cartEditSettlementItem?.overpaid_amount ?? 0)}
+                      initialTransactions={cartEditSettlementItem?.refund_transactions}
+                      onError={reportCartEditSettlementError}
+                      showMsg={showMsg}
+                      onAppointmentUpdated={(payload) => {
+                        const appointmentPatch = (payload.appointment ?? {}) as Partial<AppointmentSettlementCartItem>
+                        setCartEditSettlementItem((current) => current ? {
+                          ...current,
+                          ...appointmentPatch,
+                          refund_transactions: payload.refund_transactions ?? current.refund_transactions,
+                          overpaid_amount: Number(payload.overpaid_amount ?? appointmentPatch.overpaid_amount ?? current.overpaid_amount ?? 0),
+                          refund_needed: Number(payload.refund_needed ?? appointmentPatch.refund_needed ?? current.refund_needed ?? 0),
+                          refund_handled: Boolean(payload.refund_handled ?? appointmentPatch.refund_handled ?? current.refund_handled),
+                          refund_handled_amount: Number(payload.refund_handled_amount ?? appointmentPatch.refund_handled_amount ?? current.refund_handled_amount ?? 0),
+                          balance_due: Number(appointmentPatch.balance_due ?? current.balance_due ?? 0),
+                          amount_due_now: Number(appointmentPatch.amount_due_now ?? current.amount_due_now ?? 0),
+                        } : current)
+                        void loadCart()
+                      }}
+                    />
+                  ) : null}
+
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                     <label className="text-xs font-semibold text-gray-700">Settlement Note</label>
                     <textarea
@@ -10867,6 +10920,20 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                             </tr>
                           ) : null}
+                          {Number(settlement.overpaid_amount ?? settlement.refund_needed ?? 0) > 0.0001 ? (
+                            <tr className={`${stRowClass} align-top`}>
+                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
+                              <td className="px-4 py-2 pl-7 text-xs font-bold text-rose-800 sm:px-5 sm:pl-8">
+                                Refund / Credit Required
+                              </td>
+                              <td className="min-w-[260px] px-4 py-2 text-[11px] font-semibold text-rose-700">Open Edit Settlement to handle before checkout.</td>
+                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
+                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
+                                <p className="text-lg font-bold leading-tight text-rose-700">RM {Number(settlement.overpaid_amount ?? settlement.refund_needed ?? 0).toFixed(2)}</p>
+                              </td>
+                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
+                            </tr>
+                          ) : null}
                           {hasServiceBlocks ? (
                             <tr className={`${stRowClass} align-top`}>
                               <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
@@ -11121,6 +11188,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     </div>
                   ) : null}
                 </div>
+
+              {unhandledOverpaidSettlementItems.length > 0 ? (
+                <div className="mt-6 rounded-xl border-2 border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800">
+                  This booking has overpaid deposit. Please handle refund/credit in Edit Settlement before checkout.
+                </div>
+              ) : null}
 
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -12827,6 +12900,23 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 <p className="text-2xl font-bold text-gray-900">{checkoutResult.order_number}</p>
                 {/* <p className="text-lg font-semibold text-gray-700">RM {checkoutResult.total.toFixed(2)}</p> */}
               </div>
+
+              {(checkoutResult.refunds?.length ?? 0) > 0 ? (
+                <div className="rounded-xl border-2 border-rose-200 bg-rose-50 p-4 text-sm">
+                  <p className="font-bold text-rose-900">Refund / Credit Recorded</p>
+                  <div className="mt-2 space-y-2">
+                    {checkoutResult.refunds?.map((refund) => (
+                      <div key={refund.refund_no ?? `${refund.booking_code}-${refund.amount}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                        <div>
+                          <p className="font-semibold text-gray-900">{refund.refund_no ?? 'Refund receipt'}</p>
+                          <p className="text-xs text-gray-600">Booking {refund.booking_code ?? '—'} · {refund.method ?? 'refund'}</p>
+                        </div>
+                        <p className="font-bold tabular-nums text-rose-700">RM {Number(refund.amount ?? 0).toFixed(2)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {checkoutResult.receipt_public_url && (
                 <div className="space-y-3">

@@ -7,7 +7,7 @@ export default function BookingAccountTransactionsPage() {
         <div>
           <h2 className="text-2xl font-semibold text-[var(--foreground)]">My Transactions</h2>
           <p className="text-sm text-[var(--foreground)]/70">
-            Booking deposits, settlements, and related payments are shown here with full item details.
+            Booking deposits, settlements, refunds, and related payments are shown here with full item details.
           </p>
         </div>
       </div>

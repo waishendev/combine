@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingItemPhoto;
+use App\Models\Booking\BookingRefund;
+use App\Models\Booking\BookingRefundReceiptToken;
 use App\Models\Booking\BookingServicePhoto;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\BookingPayment;
@@ -16,7 +18,9 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderServiceItem;
 use App\Models\Booking\BookingSetting;
 use App\Services\Booking\BookingAddonQuantityService;
+use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\BookingServiceBlocksResolver;
+use App\Services\Ecommerce\InvoiceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -26,6 +30,7 @@ class MyBookingController extends Controller
     public function __construct(
         protected BookingAddonQuantityService $addonQuantityService,
         protected BookingServiceBlocksResolver $serviceBlocksResolver,
+        protected InvoiceService $invoiceService,
     ) {
     }
 
@@ -35,7 +40,7 @@ class MyBookingController extends Controller
 
         $bookings = Booking::query()
             ->with([
-                'service:id,name,cn_name,duration_min,deposit_amount,buffer_min,allow_photo_upload,service_price,price,service_type,price_mode',
+                'service:id,name,cn_name,duration_min,deposit_amount,buffer_min,allow_photo_upload,service_price,price,service_type,price_mode,price_range_min,price_range_max',
                 'staff:id,name',
                 'itemPhotos',
                 'servicePhotos',
@@ -44,13 +49,34 @@ class MyBookingController extends Controller
             ->orderByDesc('start_at')
             ->get();
 
-        $claimsByBooking = CustomerServicePackageUsage::query()
-            ->whereIn('booking_id', $bookings->pluck('id')->all())
-            ->whereIn('status', ['reserved', 'consumed'])
-            ->with('customerServicePackage.servicePackage:id,name')
-            ->orderByDesc('id')
-            ->get()
-            ->groupBy('booking_id');
+        $claimsByBooking = $bookings
+            ->mapWithKeys(function (Booking $booking) {
+                $bookingId = (int) $booking->id;
+                $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking($bookingId);
+
+                $claims = CustomerServicePackageUsage::query()
+                    ->where(function ($q) use ($bookingId, $posCartItemIds) {
+                        $q->where('booking_id', $bookingId)
+                            ->orWhere(function ($q2) use ($bookingId) {
+                                $q2->where('used_from', 'POS')
+                                    ->where('used_ref_id', $bookingId)
+                                    ->whereNull('booking_id');
+                            });
+
+                        if ($posCartItemIds !== []) {
+                            $q->orWhere(function ($q3) use ($posCartItemIds) {
+                                $q3->where('used_from', 'POS')
+                                    ->whereIn('used_ref_id', $posCartItemIds);
+                            })->orWhereIn('booking_id', $posCartItemIds);
+                        }
+                    })
+                    ->whereIn('status', ['reserved', 'consumed'])
+                    ->with('customerServicePackage.servicePackage:id,name')
+                    ->orderByDesc('id')
+                    ->get();
+
+                return [$bookingId => $claims];
+            });
 
         $latestCancellationRequests = BookingCancellationRequest::query()
             ->whereIn('booking_id', $bookings->pluck('id')->all())
@@ -75,6 +101,7 @@ class MyBookingController extends Controller
                 ->first();
 
             $receiptRows = $this->resolveBookingReceipts((int) $booking->id);
+            $refundRows = $this->resolveBookingRefunds((int) $booking->id);
             $summary = $this->resolveAppointmentFinancialSummary($booking);
 
             return [
@@ -134,6 +161,7 @@ class MyBookingController extends Controller
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['amount_due_now'],
                 'total_paid' => (float) $summary['total_paid'],
+                'has_pending_range_pricing' => (bool) ($summary['has_pending_range_pricing'] ?? false),
                 'estimated_duration_min' => (int) $summary['estimated_duration_min'],
                 'staff_name' => $booking->staff?->name,
                 'customer_remarks' => BookingNotes::customerRemarksForDisplay($booking->notes),
@@ -187,6 +215,7 @@ class MyBookingController extends Controller
                     'deposit_order_item_id' => (int) $depositOrderItem->id,
                 ] : null,
                 'receipts' => $receiptRows,
+                'refunds' => $refundRows,
             ];
         })->values();
 
@@ -298,10 +327,18 @@ class MyBookingController extends Controller
         $addonTotalDurationMin = (int) $addonItems->sum(fn (array $addon) => $this->addonQuantityService->lineDurationMinutes($addon));
         $addonTotalPrice = round((float) ($booking->addon_price ?? $addonItems->sum(fn (array $addon) => (float) ($addon['line_gross_amount'] ?? 0))), 2);
 
-        $actualAppointmentDepositCollected = (float) OrderItem::query()
+        $actualAppointmentDepositCollected = round((float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_deposit')
-            ->sum('line_total');
+            ->where(function ($query) {
+                $query->where('line_type', 'booking_deposit')
+                    ->orWhere(function ($addonQuery) {
+                        $addonQuery->where('line_type', 'booking_addon')
+                            ->where('variant_name_snapshot', 'Booking Add-on Deposit');
+                    });
+            })
+            ->whereHas('order', fn ($orderQuery) => $orderQuery->whereNotIn('status', ['voided', 'cancelled', 'draft']))
+            ->get()
+            ->sum(fn (OrderItem $item) => $this->invoiceService->resolveOrderItemCollectedAmount($item)), 2);
         $linkedOrderIds = OrderServiceItem::query()
             ->where('booking_id', (int) $booking->id)
             ->pluck('order_id')
@@ -343,10 +380,17 @@ class MyBookingController extends Controller
             ? (float) $premiumBookings->count() * $premiumDeposit
             : ($standardBookings->isNotEmpty() ? $standardDeposit : 0.0);
         $depositFromOrderItems = $linkedOrderIds->isNotEmpty()
-            ? (float) OrderItem::query()
+            ? round((float) OrderItem::query()
                 ->whereIn('order_id', $linkedOrderIds->all())
-                ->where('line_type', 'booking_deposit')
-                ->sum('line_total')
+                ->where(function ($query) {
+                    $query->where('line_type', 'booking_deposit')
+                        ->orWhere(function ($addonQuery) {
+                            $addonQuery->where('line_type', 'booking_addon')
+                                ->where('variant_name_snapshot', 'Booking Add-on Deposit');
+                        });
+                })
+                ->get()
+                ->sum(fn (OrderItem $item) => $this->invoiceService->resolveOrderItemCollectedAmount($item)), 2)
             : 0.0;
         $depositFromOrderNotes = $linkedOrderIds->isNotEmpty()
             ? (float) Order::query()
@@ -361,11 +405,11 @@ class MyBookingController extends Controller
                     return $carry;
                 }, 0.0)
             : 0.0;
-        $linkedBookingDeposit = $depositFromOrderNotes > 0
-            ? $depositFromOrderNotes
-            : ($depositFromOrderItems > 0
-                ? ($expectedDepositTotal > 0 ? min($depositFromOrderItems, $expectedDepositTotal) : $depositFromOrderItems)
-                : 0.0);
+        $linkedBookingDeposit = $depositFromOrderItems > 0.0001
+            ? ($depositFromOrderNotes > 0.0001
+                ? min($depositFromOrderNotes, $depositFromOrderItems)
+                : ($expectedDepositTotal > 0 ? min($depositFromOrderItems, $expectedDepositTotal) : $depositFromOrderItems))
+            : 0.0;
         $depositPaid = 0.0;
         $currentType = strtoupper((string) ($booking->service?->service_type ?? 'STANDARD'));
         if ($premiumBookings->isNotEmpty()) {
@@ -410,9 +454,14 @@ class MyBookingController extends Controller
                 ->first();
         }
         $packageOffset = $packageUsage ? max(0.0, $originalServiceAmount) : 0.0;
-        $payableTotal = round($serviceTotal + $addonTotalPrice, 2);
+        $hasPendingRangePricing = $this->serviceBlocksResolver->hasPendingRangePricing($booking);
+        $payableTotal = $hasPendingRangePricing
+            ? 0.0
+            : round($serviceTotal + $addonTotalPrice, 2);
         $paidTotal = round($depositPaid + $settlementPaid + $packageOffset, 2);
-        $balanceDue = max(0.0, round($payableTotal - $paidTotal, 2));
+        $balanceDue = $hasPendingRangePricing
+            ? 0.0
+            : max(0.0, round($payableTotal - $paidTotal, 2));
 
         return [
             'service_total' => round($serviceTotal, 2),
@@ -427,6 +476,7 @@ class MyBookingController extends Controller
             'balance_due' => round($balanceDue, 2),
             'amount_due_now' => round($balanceDue, 2),
             'total_paid' => round($depositPaid + $settlementPaid, 2),
+            'has_pending_range_pricing' => $hasPendingRangePricing,
         ];
     }
 
@@ -603,6 +653,21 @@ class MyBookingController extends Controller
             ];
         });
 
+        // If this same POS order is already rendered as "package covered",
+        // the deposit/settlement receipt rows are redundant (and currently show 0).
+        if ($serviceOrderRows->isNotEmpty()) {
+            $packageCoveredOrderIds = $serviceOrderRows
+                ->pluck('order_id')
+                ->unique()
+                ->values();
+
+            $orderItemRows = $orderItemRows->reject(function (array $row) use ($packageCoveredOrderIds) {
+                $lineType = (string) ($row['line_type'] ?? '');
+                return $packageCoveredOrderIds->contains((int) ($row['order_id'] ?? 0))
+                    && in_array($lineType, ['booking_deposit', 'booking_settlement'], true);
+            })->values();
+        }
+
         return $orderItemRows
             ->concat($serviceOrderRows)
             ->unique(fn (array $row) => ($row['order_id'] ?? 0) . ':' . ($row['line_type'] ?? ''))
@@ -624,5 +689,57 @@ class MyBookingController extends Controller
 
         $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
         return $frontendUrl . '/api/proxy/public/receipt/' . $token->token . '/invoice';
+    }
+
+    private function resolveBookingRefunds(int $bookingId): array
+    {
+        $methodLabels = [
+            'cash' => 'Cash Refund',
+            'customer_credit' => 'Customer Credit',
+        ];
+
+        return BookingRefund::query()
+            ->where('booking_id', $bookingId)
+            ->where('status', 'completed')
+            ->orderBy('id')
+            ->get()
+            ->map(function (BookingRefund $refund) use ($methodLabels) {
+                $method = (string) $refund->method;
+
+                return [
+                    'id' => (int) $refund->id,
+                    'refund_no' => (string) $refund->refund_no,
+                    'amount' => round((float) $refund->amount, 2),
+                    'method' => $method,
+                    'method_label' => $methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method)),
+                    'channel' => (string) ($refund->channel ?? 'offline'),
+                    'processed_at' => optional($refund->processed_at)?->toIso8601String(),
+                    'created_at' => optional($refund->created_at)?->toIso8601String(),
+                    'remark' => $refund->remark,
+                    'receipt_public_url' => $this->resolveRefundReceiptUrl((int) $refund->id),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function resolveRefundReceiptUrl(int $refundId): ?string
+    {
+        $token = BookingRefundReceiptToken::query()
+            ->where('booking_refund_id', $refundId)
+            ->latest('id')
+            ->first();
+
+        if (! $token) {
+            $token = BookingRefundReceiptToken::create([
+                'booking_refund_id' => $refundId,
+                'token' => Str::random(64),
+                'expires_at' => null,
+            ]);
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
+
+        return $frontendUrl . '/api/proxy/public/refund-receipt/' . $token->token . '/invoice';
     }
 }

@@ -1,5 +1,3 @@
-/** Shared types for POS appointments workspace (not used by checkout cart). */
-
 export type PosDepositTransaction = {
   id: number
   order_id?: number
@@ -14,6 +12,20 @@ export type PosDepositTransaction = {
   payments?: Array<{ method?: string; amount?: number }>
   channel?: 'online' | 'offline' | string | null
   paid_at?: string | null
+  created_at?: string | null
+  receipt_public_url?: string | null
+  created_by?: { id?: number; name?: string } | null
+  remark?: string | null
+}
+
+export type PosRefundTransaction = {
+  id: number
+  refund_no?: string
+  amount: number
+  method?: string
+  method_label?: string
+  channel?: 'online' | 'offline' | string | null
+  processed_at?: string | null
   created_at?: string | null
   receipt_public_url?: string | null
   created_by?: { id?: number; name?: string } | null
@@ -89,6 +101,9 @@ export type PosAppointmentListItem = {
   deposit_previously_collected?: boolean
   deposit_previously_collected_amount?: number
   package_offset?: number
+  total_covered?: number
+  overpaid_amount?: number
+  refund_needed?: number
   balance_due: number
   amount_due_now?: number
   /** From `resolveAppointmentFinancialSummary` — used with `package_status` for completed paid vs unpaid colours. */
@@ -166,6 +181,9 @@ export type PosAppointmentDetail = {
   deposit_previously_collected?: boolean
   deposit_previously_collected_amount?: number
   package_offset?: number
+  total_covered?: number
+  overpaid_amount?: number
+  refund_needed?: number
   /** Latest POS order that registered this booking via an order_service_items row (checkout closure). */
   visit_register_order_id?: number | null
   visit_checkout_finalized?: boolean
@@ -181,6 +199,7 @@ export type PosAppointmentDetail = {
   payment_history?: Array<{ order_id?: number; order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
   receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
   deposit_transactions?: PosDepositTransaction[]
+  refund_transactions?: PosRefundTransaction[]
   hold_expires_at?: string | null
   hold_deposit_order?: {
     id: number

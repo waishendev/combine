@@ -136,7 +136,7 @@ class SalesVisualDailyReportService
 
     private function ecommerceSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
     {
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         return $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -153,7 +153,7 @@ class SalesVisualDailyReportService
 
     private function bookingSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
     {
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         return $this->applyOrderScope(
             DB::table('orders as o')
@@ -206,7 +206,7 @@ class SalesVisualDailyReportService
 
         $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::ECOMMERCE, $start, $end);
 
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         $itemAgg = $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -240,6 +240,9 @@ class SalesVisualDailyReportService
                 'offline' => round((float) ($channelSplit->offline ?? 0), 2),
             ],
             'payment_methods' => $paymentBlock['rows'],
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
                 'product' => round((float) ($itemAgg->product ?? 0), 2),
@@ -275,7 +278,7 @@ class SalesVisualDailyReportService
 
         $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::BOOKING, $start, $end);
 
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         $bookingSub = $this->applyOrderScope(
             DB::table('orders as o')
@@ -320,6 +323,9 @@ class SalesVisualDailyReportService
                 'offline' => $paymentBlock['totals']['offline'],
             ],
             'payment_methods' => $paymentBlock['rows'],
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
                 'product' => 0.0,
@@ -362,7 +368,7 @@ class SalesVisualDailyReportService
     public function allPeriod(Carbon $start, Carbon $end): array
     {
         $paymentBlock = $this->paymentMethodsForAllWorkspace($start, $end);
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         $itemEcommerce = $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -421,6 +427,9 @@ class SalesVisualDailyReportService
                 'offline' => $paymentBlock['totals']['offline'],
             ],
             'payment_methods' => $paymentBlock['rows'],
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
+            'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
                 'product' => round((float) ($itemEcommerce->product ?? 0), 2),
@@ -826,7 +835,7 @@ class SalesVisualDailyReportService
 
     private function lineNetAmountSql(string $alias = 'oi'): string
     {
-        return "COALESCE({$alias}.line_total_after_discount, {$alias}.line_total - COALESCE({$alias}.discount_amount, 0))";
+        return "COALESCE({$alias}.line_total_after_discount, {$alias}.effective_line_total, {$alias}.line_total - COALESCE({$alias}.discount_amount, 0))";
     }
 
     private function orderNetAmountSubquery(string $workspaceLineFilterSql): string
@@ -863,6 +872,32 @@ class SalesVisualDailyReportService
     private function allWorkspaceLineFilterSql(string $alias = 'oi_sn'): string
     {
         return "({$this->ecommerceWorkspaceLineFilterSql($alias)} OR {$this->bookingWorkspaceLineFilterSql($alias)})";
+    }
+
+
+    private function refundRows(Carbon $start, Carbon $end): array
+    {
+        $labels = [
+            'cash' => 'Cash Refund',
+            'customer_credit' => 'Customer Credit',
+        ];
+
+        return collect($labels)->map(function (string $label, string $method) use ($start, $end) {
+            $base = DB::table('booking_refunds')
+                ->where('status', 'completed')
+                ->where('method', $method)
+                ->whereBetween(DB::raw('COALESCE(processed_at, created_at)'), [$start, $end]);
+            $online = (clone $base)->where('channel', 'online')->sum('amount');
+            $offline = (clone $base)->where('channel', 'offline')->sum('amount');
+
+            return [
+                'key' => $method,
+                'label' => $label,
+                'online' => round((float) $online, 2),
+                'offline' => round((float) $offline, 2),
+                'total' => round((float) $online + (float) $offline, 2),
+            ];
+        })->values()->all();
     }
 
     /**

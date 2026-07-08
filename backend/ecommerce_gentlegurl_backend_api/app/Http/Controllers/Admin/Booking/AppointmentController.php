@@ -307,7 +307,7 @@ class AppointmentController extends Controller
         $posController = app(PosController::class);
         $summary = $posController->appointmentFinancialSummaryForBooking($booking);
         $packageClaims = $posController->resolvePerLinePackageClaims($booking, $summary);
-        $financial = $this->resolveHistoryFinancialsFromSummary($booking, $summary);
+        $financial = $this->resolveHistoryFinancialsFromSummary($booking, $summary, $packageClaims);
         $mainStaffSplits = $this->resolveHistoryStaffSplits($booking);
         $services = $this->mapHistoryServiceBlocksFromSummary($booking, $summary, $mainStaffSplits);
         $addonItems = collect($services)->flatMap(fn (array $service) => $service['add_ons'] ?? [])->values()->all();
@@ -420,7 +420,74 @@ class AppointmentController extends Controller
         return round(min(max(0.0, $rawSettlementPaid), $cashSettlementCap), 2);
     }
 
-    private function resolveHistoryAmountDisplayBounds(Booking $booking, array $summary): array
+    private function resolveHistoryPackageOffsetBounds(array $summary, array $packageClaims): array
+    {
+        $claimedIds = collect($packageClaims)
+            ->pluck('booking_service_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($claimedIds->isEmpty()) {
+            return ['min' => 0.0, 'max' => 0.0, 'has_range' => false];
+        }
+
+        $min = 0.0;
+        $max = 0.0;
+        $hasRange = false;
+
+        foreach (collect($summary['main_services'] ?? []) as $service) {
+            $serviceId = (int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0);
+            if (! $claimedIds->contains($serviceId)) {
+                continue;
+            }
+
+            $mode = strtolower((string) ($service['price_mode'] ?? 'fixed'));
+            $finalized = (bool) ($service['price_finalized'] ?? true);
+            if ($mode === 'range' && ! $finalized) {
+                $rangeMin = (float) ($service['price_range_min'] ?? 0);
+                $rangeMax = (float) ($service['price_range_max'] ?? 0);
+                $min += min($rangeMin, $rangeMax);
+                $max += max($rangeMin, $rangeMax);
+                $hasRange = true;
+            } else {
+                $amount = max(0.0, (float) ($service['extra_price'] ?? 0));
+                $min += $amount;
+                $max += $amount;
+            }
+        }
+
+        foreach (collect($summary['add_ons'] ?? []) as $addon) {
+            $addonServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+            if (! $claimedIds->contains($addonServiceId)) {
+                continue;
+            }
+
+            $mode = strtolower((string) ($addon['price_mode'] ?? 'fixed'));
+            $finalized = (bool) ($addon['price_finalized'] ?? true);
+            $qty = max(1, (int) ($addon['quantity'] ?? 1));
+            if ($mode === 'range' && ! $finalized) {
+                $rangeMin = (float) ($addon['price_range_min'] ?? 0) * $qty;
+                $rangeMax = (float) ($addon['price_range_max'] ?? 0) * $qty;
+                $min += min($rangeMin, $rangeMax);
+                $max += max($rangeMin, $rangeMax);
+                $hasRange = true;
+            } else {
+                $amount = max(0.0, (float) ($addon['line_gross_amount'] ?? ((float) ($addon['extra_price'] ?? 0) * $qty)));
+                $min += $amount;
+                $max += $amount;
+            }
+        }
+
+        return [
+            'min' => round($min, 2),
+            'max' => round($max, 2),
+            'has_range' => $hasRange && abs($min - $max) > 0.0001,
+        ];
+    }
+
+    private function resolveHistoryAmountDisplayBounds(Booking $booking, array $summary, array $packageOffsetBounds): array
     {
         $min = 0.0;
         $max = 0.0;
@@ -465,16 +532,21 @@ class AppointmentController extends Controller
         }
 
         $depositPaid = round((float) ($summary['deposit_paid'] ?? 0), 2);
-        $packageOffset = round((float) ($summary['package_offset'] ?? 0), 2);
+        $packageOffset = round((float) $packageOffsetBounds['min'], 2);
         $settlementPaid = $this->normalizeHistorySettlementPaid(
             $max,
             $depositPaid,
             round((float) ($summary['settlement_paid'] ?? 0), 2),
             $packageOffset,
         );
-        $paidTotal = round($depositPaid + $settlementPaid + $packageOffset, 2);
-        $balanceMin = max(0, round($min - $paidTotal, 2));
-        $balanceMax = max(0, round($max - $paidTotal, 2));
+        $balanceMin = max(0, round($min - $depositPaid - $settlementPaid - (float) $packageOffsetBounds['min'], 2));
+        $balanceMax = max(0, round($max - $depositPaid - $settlementPaid - (float) $packageOffsetBounds['max'], 2));
+
+        if (! $packageOffsetBounds['has_range']) {
+            $paidTotal = round($depositPaid + $settlementPaid + $packageOffset, 2);
+            $balanceMin = max(0, round($min - $paidTotal, 2));
+            $balanceMax = max(0, round($max - $paidTotal, 2));
+        }
 
         return [
             'min' => round($min, 2),
@@ -486,11 +558,12 @@ class AppointmentController extends Controller
         ];
     }
 
-    private function resolveHistoryFinancialsFromSummary(Booking $booking, array $summary): array
+    private function resolveHistoryFinancialsFromSummary(Booking $booking, array $summary, array $packageClaims = []): array
     {
+        $packageOffsetBounds = $this->resolveHistoryPackageOffsetBounds($summary, $packageClaims);
         $payableTotal = round((float) ($summary['service_total'] ?? 0) + (float) ($summary['addon_total_price'] ?? 0), 2);
         $depositPaid = round((float) ($summary['deposit_paid'] ?? 0), 2);
-        $packageOffset = round((float) ($summary['package_offset'] ?? 0), 2);
+        $packageOffset = round((float) $packageOffsetBounds['min'], 2);
         $balanceDue = round((float) ($summary['balance_due'] ?? 0), 2);
         $settlementPaid = $this->normalizeHistorySettlementPaid(
             $payableTotal,
@@ -499,11 +572,22 @@ class AppointmentController extends Controller
             $packageOffset,
             $balanceDue,
         );
-        $paidAmount = round($depositPaid + $settlementPaid + $packageOffset, 2);
-        $amountBounds = $this->resolveHistoryAmountDisplayBounds($booking, $summary);
+        $paidAmountMin = round($depositPaid + $settlementPaid + (float) $packageOffsetBounds['min'], 2);
+        $paidAmountMax = round($depositPaid + $settlementPaid + (float) $packageOffsetBounds['max'], 2);
+        $paidAmount = $paidAmountMin;
+        $amountBounds = $this->resolveHistoryAmountDisplayBounds($booking, $summary, $packageOffsetBounds);
+        $computedBalanceDue = (float) ($amountBounds['balance_max'] ?? $balanceDue);
+        if (
+            (float) ($amountBounds['balance_max'] ?? 0) <= 0.0001
+            && (float) ($amountBounds['balance_min'] ?? 0) <= 0.0001
+        ) {
+            $computedBalanceDue = 0.0;
+        } elseif (! ($amountBounds['balance_has_range'] ?? false)) {
+            $computedBalanceDue = (float) ($amountBounds['balance_min'] ?? $balanceDue);
+        }
         $computedPaymentStatus = $this->resolveHistoryPaymentStatus(
             $summary,
-            $balanceDue,
+            $computedBalanceDue,
             $paidAmount,
             $packageOffset,
             $amountBounds,
@@ -515,10 +599,16 @@ class AppointmentController extends Controller
             'total_amount_max' => $amountBounds['max'],
             'amount_has_range' => $amountBounds['has_range'],
             'paid_amount' => $paidAmount,
+            'paid_amount_min' => $paidAmountMin,
+            'paid_amount_max' => $paidAmountMax,
+            'paid_amount_has_range' => $packageOffsetBounds['has_range'],
             'deposit_paid' => $depositPaid,
             'settlement_paid' => $settlementPaid,
             'package_offset' => $packageOffset,
-            'balance_due' => $balanceDue,
+            'package_offset_min' => $packageOffsetBounds['min'],
+            'package_offset_max' => $packageOffsetBounds['max'],
+            'package_offset_has_range' => $packageOffsetBounds['has_range'],
+            'balance_due' => round($computedBalanceDue, 2),
             'balance_due_min' => $amountBounds['balance_min'],
             'balance_due_max' => $amountBounds['balance_max'],
             'balance_has_range' => $amountBounds['balance_has_range'],
@@ -543,6 +633,10 @@ class AppointmentController extends Controller
             && (float) ($amountBounds['balance_max'] ?? 0) > 0.0001;
 
         if ($requiresSettledAmount || $hasOutstandingRangeBalance) {
+            if ((float) ($amountBounds['balance_max'] ?? 0) <= 0.0001 && (float) ($amountBounds['balance_min'] ?? 0) <= 0.0001) {
+                return 'paid';
+            }
+
             return ($paidAmount > 0.0001 || $packageOffset > 0.0001) ? 'partial' : 'unpaid';
         }
 
