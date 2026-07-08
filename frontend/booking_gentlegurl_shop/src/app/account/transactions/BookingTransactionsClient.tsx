@@ -92,6 +92,36 @@ function resolveLineLabel(item: NonNullable<PublicAccountOrder["items"]>[number]
   return item.name || "Item";
 }
 
+function TransactionLineAmount({
+  item,
+}: {
+  item: NonNullable<PublicAccountOrder["items"]>[number];
+}) {
+  const qty = Math.max(1, Number(item.quantity ?? 1));
+  const net = Number(item.effective_line_total ?? item.line_total ?? 0);
+  const snapshot = Number(item.line_total_snapshot ?? 0);
+  const gross =
+    Math.abs(snapshot) > 0.0001
+      ? snapshot
+      : Number(item.line_total ?? Number(item.unit_price ?? 0) * qty);
+  const coveredByPackage = Boolean(item.covered_by_package) || Boolean(item.package_applied_name);
+  const isZeroFromPackageClaim =
+    !coveredByPackage && gross > 0.0001 && Math.abs(net) <= 0.0001;
+  const shouldStrikeOriginal = coveredByPackage || isZeroFromPackageClaim;
+  const displayNet = coveredByPackage || isZeroFromPackageClaim ? 0 : net;
+
+  if (shouldStrikeOriginal && gross > 0.0001) {
+    return (
+      <div className="shrink-0 text-right">
+        <p className="text-xs text-[var(--foreground)]/45 line-through">{money(gross)}</p>
+        <p className="text-sm font-semibold text-emerald-700">{money(displayNet)}</p>
+      </div>
+    );
+  }
+
+  return <p className="shrink-0 text-sm font-semibold text-[var(--foreground)]">{money(displayNet)}</p>;
+}
+
 function LineNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
   return (
     <>
@@ -558,7 +588,7 @@ export function BookingTransactionsClient() {
                                 <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity ?? 1}</p>
                               </div>
                             </div>
-                            <p className="shrink-0 text-sm font-semibold text-[var(--foreground)]">{money(item.line_total)}</p>
+                            <TransactionLineAmount item={item} />
                           </div>
                         );
                       })}

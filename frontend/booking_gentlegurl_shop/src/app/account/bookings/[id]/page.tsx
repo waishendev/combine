@@ -23,6 +23,8 @@ import {
   getBookingMainServiceTotalDisplay,
   getBookingPackageCoveredDisplay,
   getBookingPackageCoveredTotals,
+  resolveBookingBalanceDueBounds,
+  resolveBookingPaymentStatus,
 } from "@/lib/bookingServiceDisplay";
 import {
   formatReceiptMeta,
@@ -75,27 +77,19 @@ const pickPaymentNumber = (...values: Array<number | null | undefined>) => {
 const getPaymentSummary = (booking: BookingRecord) => {
   const serviceTotal = Number(booking.service_total ?? 0);
   const addonTotal = Number(booking.addon_total_price ?? 0);
-  const depositPaid = pickPaymentNumber(
-    booking.deposit_paid,
-    booking.linked_booking_deposit_total,
-    booking.deposit_previously_collected_amount,
-  );
+  const depositPaid = pickPaymentNumber(booking.deposit_paid, booking.deposit_previously_collected_amount);
   const settlementPaid = Number(booking.settlement_paid ?? 0);
   const packageOffset = getBookingPackageCoveredTotals(booking).minTotal;
   const hasPackageClaims = (booking.package_claims ?? []).length > 0;
   const calculatedBalance = Math.max(0, serviceTotal + addonTotal - depositPaid - settlementPaid - packageOffset);
   const balanceDue = Number(booking.balance_due ?? booking.amount_due_now ?? calculatedBalance);
   const totalPaid = Number(booking.total_paid ?? depositPaid + settlementPaid);
-  const effectivePaid = totalPaid + packageOffset;
+  const payment = { depositPaid, settlementPaid, packageOffset, balanceDue };
+  const balanceBounds = resolveBookingBalanceDueBounds(booking, payment);
+  const fullySettled = balanceBounds.min <= 0.0001 && balanceBounds.max <= 0.0001;
   const hasPendingRange = bookingHasPendingRange(booking);
-  const paymentStatus = hasPendingRange
-    ? "PARTIAL"
-    : effectivePaid <= 0
-      ? "UNPAID"
-      : balanceDue > 0
-        ? "PARTIAL"
-        : "PAID";
-  const helperText = hasPendingRange
+  const paymentStatus = resolveBookingPaymentStatus(booking, payment);
+  const helperText = hasPendingRange && !fullySettled
     ? "Estimated price ranges are shown below. The final amount depends on your service at the salon."
     : paymentStatus === "UNPAID"
       ? "No payment received yet."

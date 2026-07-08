@@ -321,6 +321,65 @@ export function getBookingPackageCoveredDisplay(
   return { text: formatMoney(totals.minTotal), isRangePending: false };
 }
 
+export function resolveBookingBalanceDueBounds(
+  booking: BookingRecord,
+  payment: {
+    depositPaid: number;
+    settlementPaid: number;
+    balanceDue: number;
+  },
+): { min: number; max: number; hasRange: boolean } {
+  const totals = accumulateBookingTotals(booking, true);
+  const packageCovered = getBookingPackageCoveredTotals(booking);
+  const baseDeductions = payment.depositPaid + payment.settlementPaid;
+
+  if (!totals.hasPendingRange) {
+    const due = Number(payment.balanceDue ?? 0);
+    return { min: due, max: due, hasRange: false };
+  }
+
+  return {
+    min: Math.max(0, totals.minTotal - baseDeductions - packageCovered.minTotal),
+    max: Math.max(0, totals.maxTotal - baseDeductions - packageCovered.maxTotal),
+    hasRange: true,
+  };
+}
+
+export function resolveBookingPaymentStatus(
+  booking: BookingRecord,
+  payment: {
+    depositPaid: number;
+    settlementPaid: number;
+    packageOffset: number;
+    balanceDue: number;
+  },
+): "UNPAID" | "PARTIAL" | "PAID" {
+  const balanceBounds = resolveBookingBalanceDueBounds(booking, payment);
+  const fullySettled = balanceBounds.min <= 0.0001 && balanceBounds.max <= 0.0001;
+
+  if (fullySettled) {
+    return "PAID";
+  }
+
+  const hasPendingRange = bookingHasPendingRange(booking);
+  if (hasPendingRange) {
+    return "PARTIAL";
+  }
+
+  const totalPaid = Number(booking.total_paid ?? payment.depositPaid + payment.settlementPaid);
+  const effectivePaid = totalPaid + payment.packageOffset;
+
+  if (effectivePaid <= 0.0001) {
+    return "UNPAID";
+  }
+
+  if (payment.balanceDue > 0.0001) {
+    return "PARTIAL";
+  }
+
+  return "PAID";
+}
+
 export function serviceBlocksForBooking(booking: BookingRecord): BookingServiceBlock[] {
   if (booking.service_blocks?.length) {
     return booking.service_blocks;

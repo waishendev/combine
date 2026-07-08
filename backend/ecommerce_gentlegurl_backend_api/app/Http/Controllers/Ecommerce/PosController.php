@@ -7282,7 +7282,12 @@ class PosController extends Controller
                     $depositGross = $depositContribution;
                 } else {
                     $depositPriceOverride = $mainDepositOverrideResult['override'] ?? ($depositByServiceItemOverrides[(int) $serviceItem->id] ?? null);
+                    $depositGross = $depositContribution;
                 }
+
+                $depositGrossSnapshot = $claimedByPackage
+                    ? (float) $mainDepositOverrideResult['amount']
+                    : $depositGross;
 
                 $depositOrderItem = OrderItem::create([
                     'order_id' => $order->id,
@@ -7294,7 +7299,7 @@ class PosController extends Controller
                     'price_snapshot' => $depositGross,
                     'unit_price_snapshot' => $depositGross,
                     'line_total' => $depositGross,
-                    'line_total_snapshot' => $depositGross,
+                    'line_total_snapshot' => $depositGrossSnapshot,
                     'effective_unit_price' => $depositContribution,
                     'effective_line_total' => $depositContribution,
                     'locked' => true,
@@ -11069,17 +11074,17 @@ class PosController extends Controller
 
         $mainDepositCollected = round((float) $this->activeBookingOrderItemQuery((int) $booking->id)
             ->where('line_type', 'booking_deposit')
-            ->sum('line_total'), 2);
+            ->get()
+            ->sum(fn (OrderItem $row) => $this->invoiceService->resolveOrderItemCollectedAmount($row)), 2);
         $addonDepositCollected = round((float) $this->activeBookingOrderItemQuery((int) $booking->id)
             ->where('line_type', 'booking_addon')
             ->where('variant_name_snapshot', 'Booking Add-on Deposit')
-            ->sum('line_total'), 2);
+            ->get()
+            ->sum(fn (OrderItem $row) => $this->invoiceService->resolveOrderItemCollectedAmount($row)), 2);
         $actualAppointmentDepositCollected = round($mainDepositCollected + $addonDepositCollected, 2);
 
         $depositPaid = $actualAppointmentDepositCollected;
-        $linkedBookingDeposit = $actualAppointmentDepositCollected > 0.0001
-            ? $actualAppointmentDepositCollected
-            : (float) ($depositBreakdown['deposit_total'] ?? 0);
+        $linkedBookingDeposit = $actualAppointmentDepositCollected;
 
         $applyAddonDepositDisplay = function (array $addon) use ($expectedDepositByAddonId): array {
             $addonId = (int) ($addon['id'] ?? 0);

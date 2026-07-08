@@ -20,6 +20,7 @@ use App\Models\Booking\BookingSetting;
 use App\Services\Booking\BookingAddonQuantityService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\BookingServiceBlocksResolver;
+use App\Services\Ecommerce\InvoiceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -29,6 +30,7 @@ class MyBookingController extends Controller
     public function __construct(
         protected BookingAddonQuantityService $addonQuantityService,
         protected BookingServiceBlocksResolver $serviceBlocksResolver,
+        protected InvoiceService $invoiceService,
     ) {
     }
 
@@ -325,10 +327,18 @@ class MyBookingController extends Controller
         $addonTotalDurationMin = (int) $addonItems->sum(fn (array $addon) => $this->addonQuantityService->lineDurationMinutes($addon));
         $addonTotalPrice = round((float) ($booking->addon_price ?? $addonItems->sum(fn (array $addon) => (float) ($addon['line_gross_amount'] ?? 0))), 2);
 
-        $actualAppointmentDepositCollected = (float) OrderItem::query()
+        $actualAppointmentDepositCollected = round((float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_deposit')
-            ->sum('line_total');
+            ->where(function ($query) {
+                $query->where('line_type', 'booking_deposit')
+                    ->orWhere(function ($addonQuery) {
+                        $addonQuery->where('line_type', 'booking_addon')
+                            ->where('variant_name_snapshot', 'Booking Add-on Deposit');
+                    });
+            })
+            ->whereHas('order', fn ($orderQuery) => $orderQuery->whereNotIn('status', ['voided', 'cancelled', 'draft']))
+            ->get()
+            ->sum(fn (OrderItem $item) => $this->invoiceService->resolveOrderItemCollectedAmount($item)), 2);
         $linkedOrderIds = OrderServiceItem::query()
             ->where('booking_id', (int) $booking->id)
             ->pluck('order_id')
@@ -370,10 +380,17 @@ class MyBookingController extends Controller
             ? (float) $premiumBookings->count() * $premiumDeposit
             : ($standardBookings->isNotEmpty() ? $standardDeposit : 0.0);
         $depositFromOrderItems = $linkedOrderIds->isNotEmpty()
-            ? (float) OrderItem::query()
+            ? round((float) OrderItem::query()
                 ->whereIn('order_id', $linkedOrderIds->all())
-                ->where('line_type', 'booking_deposit')
-                ->sum('line_total')
+                ->where(function ($query) {
+                    $query->where('line_type', 'booking_deposit')
+                        ->orWhere(function ($addonQuery) {
+                            $addonQuery->where('line_type', 'booking_addon')
+                                ->where('variant_name_snapshot', 'Booking Add-on Deposit');
+                        });
+                })
+                ->get()
+                ->sum(fn (OrderItem $item) => $this->invoiceService->resolveOrderItemCollectedAmount($item)), 2)
             : 0.0;
         $depositFromOrderNotes = $linkedOrderIds->isNotEmpty()
             ? (float) Order::query()
@@ -388,11 +405,11 @@ class MyBookingController extends Controller
                     return $carry;
                 }, 0.0)
             : 0.0;
-        $linkedBookingDeposit = $depositFromOrderNotes > 0
-            ? $depositFromOrderNotes
-            : ($depositFromOrderItems > 0
-                ? ($expectedDepositTotal > 0 ? min($depositFromOrderItems, $expectedDepositTotal) : $depositFromOrderItems)
-                : 0.0);
+        $linkedBookingDeposit = $depositFromOrderItems > 0.0001
+            ? ($depositFromOrderNotes > 0.0001
+                ? min($depositFromOrderNotes, $depositFromOrderItems)
+                : ($expectedDepositTotal > 0 ? min($depositFromOrderItems, $expectedDepositTotal) : $depositFromOrderItems))
+            : 0.0;
         $depositPaid = 0.0;
         $currentType = strtoupper((string) ($booking->service?->service_type ?? 'STANDARD'));
         if ($premiumBookings->isNotEmpty()) {

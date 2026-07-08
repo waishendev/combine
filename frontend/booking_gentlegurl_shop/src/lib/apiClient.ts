@@ -369,6 +369,10 @@ export type PublicAccountOrder = {
     cn_name?: string | null;
     quantity?: number | null;
     line_total?: number | null;
+    line_total_snapshot?: number | null;
+    effective_line_total?: number | null;
+    covered_by_package?: boolean;
+    unit_price?: number | null;
     booking_id?: number | null;
     service_package_id?: number | null;
     product_type?: string | null;

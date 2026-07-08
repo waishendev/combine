@@ -278,7 +278,7 @@ class InvoiceService
         }
 
         $representedBookingServiceIds = $order->items
-            ->filter(fn (OrderItem $item) => in_array((string) ($item->line_type ?? ''), ['booking_settlement', 'booking_addon', 'service'], true))
+            ->filter(fn (OrderItem $item) => in_array((string) ($item->line_type ?? ''), ['booking_deposit', 'booking_settlement', 'booking_addon', 'service'], true))
             ->pluck('booking_service_id')
             ->concat($order->serviceItems->pluck('booking_service_id'))
             ->filter()
@@ -403,7 +403,7 @@ class InvoiceService
 
         $items = $mixedItems->values();
 
-        if ($canRenderServiceCoverageLines) {
+        if ($canRenderServiceCoverageLines && ! $hasDepositLine) {
             $items = $items->concat($coveredServiceItems)->values();
         }
 
@@ -655,7 +655,7 @@ class InvoiceService
         $normalizedTarget = strtolower($this->normalizeReceiptServiceName($serviceName));
 
         foreach ($order->items as $item) {
-            if (! in_array((string) ($item->line_type ?? ''), ['booking_settlement', 'booking_addon', 'service'], true)) {
+            if (! in_array((string) ($item->line_type ?? ''), ['booking_deposit', 'booking_settlement', 'booking_addon', 'service'], true)) {
                 continue;
             }
 
@@ -741,6 +741,15 @@ class InvoiceService
             'line_total' => 0.0,
             'line_total_after_discount' => 0.0,
         ];
+    }
+
+    public function resolveOrderItemCollectedAmount(OrderItem $item): float
+    {
+        if ($item->effective_line_total !== null) {
+            return round(max(0, (float) $item->effective_line_total), 2);
+        }
+
+        return round(max(0, (float) ($item->line_total_after_discount ?? $item->line_total ?? 0)), 2);
     }
 
     public function resolveOrderItemGrossSnapshot(OrderItem $item): float

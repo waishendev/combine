@@ -45,7 +45,7 @@ class PublicOrderHistoryController extends Controller
 
         $ordersQuery = Order::query()
             ->where('customer_id', $customer->id)
-            ->with(['items.product.images', 'items.productVariant', 'items.review', 'items.bookingService:id,name,cn_name,image_path', 'items.booking:id,addon_items_json,service_id', 'items.booking.service:id,image_path', 'items.booking.servicePhotos:id,booking_id,image_path,sort_order', 'payments'])
+            ->with(['items.product.images', 'items.productVariant', 'items.review', 'items.bookingService:id,name,cn_name,image_path,deposit_amount', 'items.booking:id,addon_items_json,service_id', 'items.booking.service:id,image_path', 'items.booking.servicePhotos:id,booking_id,image_path,sort_order', 'payments'])
             ->orderByDesc('created_at');
 
         if ($scope === 'booking_related' || $workspace === 'booking') {
@@ -73,19 +73,28 @@ class PublicOrderHistoryController extends Controller
             ->filter()
             ->unique()
             ->values();
-        $packageClaimMap = [];
+        $packageUsages = collect();
+        $packageNameByServiceId = collect();
         if ($allBookingIds->isNotEmpty()) {
-            $usages = \App\Models\Booking\CustomerServicePackageUsage::query()
-                ->whereIn('booking_id', $allBookingIds->all())
+            $packageUsages = \App\Models\Booking\CustomerServicePackageUsage::query()
                 ->whereIn('status', ['reserved', 'consumed'])
-                ->with('customerServicePackage.servicePackage:id,name')
+                ->where(function ($q) use ($allBookingIds) {
+                    $q->whereIn('booking_id', $allBookingIds->all())
+                        ->orWhere(function ($q2) use ($allBookingIds) {
+                            $q2->where('used_from', 'POS')
+                                ->whereIn('used_ref_id', $allBookingIds->all());
+                        });
+                })
+                ->with(['customerServicePackage.servicePackage:id,name', 'bookingService:id,name,cn_name'])
+                ->orderByDesc('id')
                 ->get();
-            foreach ($usages as $usage) {
-                $bsId = (int) $usage->booking_service_id;
-                if ($bsId > 0) {
-                    $packageClaimMap[$bsId] = $usage->customerServicePackage?->servicePackage?->name ?? 'Package';
-                }
-            }
+            $packageNameByServiceId = $packageUsages
+                ->groupBy(fn ($usage) => (int) ($usage->booking_service_id ?? 0))
+                ->map(function ($rows) {
+                    $usage = $rows->first();
+
+                    return (string) ($usage?->customerServicePackage?->servicePackage?->name ?? '');
+                });
         }
 
         $reviewSettings = $this->reviewService->settings();
@@ -106,7 +115,7 @@ class PublicOrderHistoryController extends Controller
                 'receipt_public_url' => $this->resolveReceiptUrl($order, $request),
                 'items' => $order->items
                     ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
-                    ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled, $packageClaimMap) {
+                    ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled, $packageNameByServiceId, $packageUsages) {
                         $thumbnail = $this->resolveOrderItemThumbnail($item);
                         $productType = $item->product?->type;
                         $review = $item->review;
@@ -117,6 +126,20 @@ class PublicOrderHistoryController extends Controller
                             && ! $review
                             && $order->status === 'completed'
                             && (! $deadlineAt || Carbon::now()->lessThanOrEqualTo($deadlineAt));
+
+                        $grossSnapshot = $this->invoiceService->resolveOrderItemGrossSnapshot($item);
+                        $netAmount = $this->invoiceService->resolveOrderItemCollectedAmount($item);
+                        $packageAppliedName = $this->invoiceService->resolvePackageNameForOrderItem(
+                            $item,
+                            $packageNameByServiceId,
+                            $packageUsages,
+                        );
+                        $packageAppliedName = trim((string) $packageAppliedName) !== '' ? $packageAppliedName : null;
+                        $coveredByPackage = is_string($packageAppliedName)
+                            && trim($packageAppliedName) !== '';
+                        $isZeroFromPackageClaim = ! $coveredByPackage
+                            && $grossSnapshot > 0.0001
+                            && $netAmount <= 0.0001;
 
                         return [
                         'id' => $item->id,
@@ -134,6 +157,9 @@ class PublicOrderHistoryController extends Controller
                         'quantity' => $item->quantity,
                         'unit_price' => $item->price_snapshot,
                         'line_total' => $item->line_total,
+                        'line_total_snapshot' => round($grossSnapshot, 2),
+                        'effective_line_total' => round($netAmount, 2),
+                        'covered_by_package' => $coveredByPackage || $isZeroFromPackageClaim,
                         'line_type' => $item->line_type,
                         'booking_id' => $item->booking_id,
                         'service_package_id' => $item->service_package_id,
@@ -143,7 +169,7 @@ class PublicOrderHistoryController extends Controller
                         'review_id' => $review?->id,
                         'reviewed_at' => $reviewedAt,
                         'can_review' => $canReview,
-                        'package_applied_name' => $packageClaimMap[(int) ($item->booking_service_id ?? 0)] ?? null,
+                        'package_applied_name' => $packageAppliedName,
                     ];
                 })->values(),
             ])->all(),

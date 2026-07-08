@@ -46,9 +46,15 @@ export type AppointmentHistoryRow = {
   total_amount_max?: number
   amount_has_range?: boolean
   paid_amount: number
+  paid_amount_min?: number
+  paid_amount_max?: number
+  paid_amount_has_range?: boolean
   deposit_paid: number
   settlement_paid: number
   package_offset: number
+  package_offset_min?: number
+  package_offset_max?: number
+  package_offset_has_range?: boolean
   balance_due: number
   balance_due_min?: number
   balance_due_max?: number
@@ -130,11 +136,47 @@ const resolveHistoryMoneyDisplay = (
     | 'balance_due_max'
     | 'balance_has_range'
     | 'paid_amount'
+    | 'paid_amount_min'
+    | 'paid_amount_max'
+    | 'paid_amount_has_range'
+    | 'deposit_paid'
+    | 'settlement_paid'
+    | 'package_offset'
+    | 'package_offset_min'
+    | 'package_offset_max'
+    | 'package_offset_has_range'
   >,
   field: HistoryMoneyField,
 ): HistoryMoneyDisplay => {
   if (field === 'paid') {
-    return { type: 'single', text: formatMoney(row.paid_amount) }
+    const paidMin = Number(row.paid_amount_min ?? row.paid_amount ?? 0)
+    const paidMax = Number(row.paid_amount_max ?? row.paid_amount ?? 0)
+    if (
+      row.paid_amount_has_range &&
+      Math.abs(paidMin - paidMax) > 0.0001
+    ) {
+      return {
+        type: 'range',
+        minText: `RM ${paidMin.toFixed(2)} -`,
+        maxText: `RM ${paidMax.toFixed(2)}`,
+      }
+    }
+
+    const deposit = Number(row.deposit_paid ?? 0)
+    const settlement = Number(row.settlement_paid ?? 0)
+    const pkgMin = Number(row.package_offset_min ?? row.package_offset ?? 0)
+    const pkgMax = Number(row.package_offset_max ?? row.package_offset ?? 0)
+    const coveredMin = deposit + settlement + pkgMin
+    const coveredMax = deposit + settlement + pkgMax
+    if (row.package_offset_has_range && Math.abs(pkgMin - pkgMax) > 0.0001) {
+      return {
+        type: 'range',
+        minText: `RM ${coveredMin.toFixed(2)} -`,
+        maxText: `RM ${coveredMax.toFixed(2)}`,
+      }
+    }
+
+    return { type: 'single', text: formatMoney(coveredMin) }
   }
   if (
     field === 'total' &&
@@ -162,10 +204,34 @@ const resolveHistoryMoneyDisplay = (
       maxText: `RM ${Number(row.balance_due_max).toFixed(2)}`,
     }
   }
+  if (field === 'balance' && row.balance_due_min != null) {
+    return {
+      type: 'single',
+      text: formatMoney(row.balance_due_min),
+    }
+  }
   return {
     type: 'single',
     text: formatMoney(field === 'total' ? row.total_amount : row.balance_due),
   }
+}
+
+const formatHistoryPackageCoveredDisplay = (
+  row: Pick<
+    AppointmentHistoryRow,
+    'package_offset' | 'package_offset_min' | 'package_offset_max' | 'package_offset_has_range'
+  >,
+) => {
+  if (
+    row.package_offset_has_range &&
+    row.package_offset_min != null &&
+    row.package_offset_max != null &&
+    Math.abs(Number(row.package_offset_min) - Number(row.package_offset_max)) > 0.0001
+  ) {
+    return `RM ${Number(row.package_offset_min).toFixed(2)} - RM ${Number(row.package_offset_max).toFixed(2)}`
+  }
+
+  return formatMoney(row.package_offset)
 }
 
 const formatHistoryMoneyDisplay = (
@@ -180,6 +246,15 @@ const formatHistoryMoneyDisplay = (
     | 'balance_due_max'
     | 'balance_has_range'
     | 'paid_amount'
+    | 'paid_amount_min'
+    | 'paid_amount_max'
+    | 'paid_amount_has_range'
+    | 'deposit_paid'
+    | 'settlement_paid'
+    | 'package_offset'
+    | 'package_offset_min'
+    | 'package_offset_max'
+    | 'package_offset_has_range'
   >,
   field: HistoryMoneyField,
 ) => {
@@ -413,9 +488,9 @@ export function BookingAppointmentDetailDrawer({
                 <dl className="mt-4 grid gap-4 md:grid-cols-2">
                   <DetailField label="Total Amount" value={<HistoryMoneyDisplayValue row={row} field="total" className="text-sm" />} />
                   <DetailField label="Deposit Paid" value={formatMoney(row.deposit_paid)} />
-                  <DetailField label="Settlement Paid" value={formatMoney(row.settlement_paid)} />
-                  <DetailField label="Package Covered" value={formatMoney(row.package_offset)} />
-                  <DetailField label="Total Covered" value={formatHistoryMoneyDisplay(row, 'paid')} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
+                  <DetailField label="Settlement Paid" value={formatMoney(row.settlement_paid)} valueClassName="tabular-nums text-emerald-700" />
+                  <DetailField label="Package Covered" value={formatHistoryPackageCoveredDisplay(row)} valueClassName="tabular-nums text-emerald-700" />
+                  {/* <DetailField label="Total Covered" value={<HistoryMoneyDisplayValue row={row} field="paid" className={paidAmountClass(row.paid_amount)} />} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} /> */}
                   <DetailField label="Balance Due" value={<HistoryMoneyDisplayValue row={row} field="balance" className={`text-sm ${balanceDueClass(row.balance_due)}`} />} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
               </section>
@@ -628,13 +703,12 @@ export default function BookingAppointmentHistoryPage() {
               <th className="min-w-[6.5rem] px-3 py-3 text-right whitespace-nowrap">Total</th>
               <th className="min-w-[6rem] px-3 py-3 text-right whitespace-nowrap text-emerald-700">Paid</th>
               <th className="min-w-[6rem] px-3 py-3 text-right whitespace-nowrap text-amber-700">Balance</th>
-              <th className="min-w-[9rem] px-3 py-3 whitespace-nowrap">Created</th>
               <th className="px-3 py-3 whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <TableLoadingRow colSpan={11} />
+              <TableLoadingRow colSpan={10} />
             ) : rows.length > 0 ? rows.map((row) => {
               const appointmentSlot = formatAppointmentSlot(row.start_at, row.end_at)
 
@@ -676,15 +750,12 @@ export default function BookingAppointmentHistoryPage() {
                 <td className={`min-w-[6rem] px-3 py-3 text-right align-top tabular-nums ${balanceDueClass(row.balance_due)}`}>
                   <TableMoneyCell row={row} field="balance" className={balanceDueClass(row.balance_due)} />
                 </td>
-                <td className="min-w-[9rem] px-3 py-3 align-top text-xs tabular-nums whitespace-nowrap">
-                  {formatDateTime(row.created_at)}
-                </td>
                 <td className="px-3 py-3 align-top whitespace-nowrap">
                   <ReportViewDetailsButton onClick={() => { setDetail(row); setDetailId(row.id) }} title={`View details for ${row.booking_code}`} />
                 </td>
               </tr>
             )}) : (
-              <TableEmptyState colSpan={11} />
+              <TableEmptyState colSpan={10} />
             )}
           </tbody>
         </table>

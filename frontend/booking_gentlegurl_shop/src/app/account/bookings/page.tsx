@@ -9,11 +9,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingTime } from "@/lib/bookingTime";
 import { storedAddonQuantity } from "@/lib/bookingAddonDisplay";
 import {
-  bookingHasPendingRange,
   getBookingBalanceDueDisplay,
   getBookingPackageCoveredDisplay,
   getBookingPackageCoveredTotals,
   getBookingServiceTotalDisplay,
+  resolveBookingPaymentStatus,
   serviceBlocksForBooking,
 } from "@/lib/bookingServiceDisplay";
 
@@ -63,25 +63,14 @@ const pickPaymentNumber = (...values: Array<number | null | undefined>) => {
 const getCustomerPaymentSummary = (booking: BookingRecord) => {
   const serviceTotal = Number(booking.service_total ?? 0);
   const addonTotal = Number(booking.addon_total_price ?? 0);
-  const depositPaid = pickPaymentNumber(
-    booking.deposit_paid,
-    booking.linked_booking_deposit_total,
-    booking.deposit_previously_collected_amount,
-  );
+  const depositPaid = pickPaymentNumber(booking.deposit_paid, booking.deposit_previously_collected_amount);
   const settlementPaid = Number(booking.settlement_paid ?? 0);
   const packageOffset = getBookingPackageCoveredTotals(booking).minTotal;
   const calculatedBalance = Math.max(0, serviceTotal + addonTotal - depositPaid - settlementPaid - packageOffset);
   const balanceDue = Number(booking.balance_due ?? booking.amount_due_now ?? calculatedBalance);
   const totalPaid = Number(booking.total_paid ?? depositPaid + settlementPaid);
-  const effectivePaid = totalPaid + packageOffset;
-  const hasPendingRange = bookingHasPendingRange(booking);
-  const paymentStatus = hasPendingRange
-    ? "PARTIAL"
-    : effectivePaid <= 0
-      ? "UNPAID"
-      : balanceDue > 0
-        ? "PARTIAL"
-        : "PAID";
+  const payment = { depositPaid, settlementPaid, packageOffset, balanceDue };
+  const paymentStatus = resolveBookingPaymentStatus(booking, payment);
 
   return { balanceDue, depositPaid, settlementPaid, paymentStatus, totalPaid, packageOffset };
 };

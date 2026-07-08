@@ -3612,11 +3612,6 @@ export default function PosAppointmentsWorkspace({
     [appointmentAddonTotal, appointmentServiceAmount],
   )
 
-  const appointmentPackageOffsetAmount = useMemo(
-    () => Number(appointmentDetail?.package_offset ?? 0),
-    [appointmentDetail?.package_offset],
-  )
-
   /**
    * Deposit credited against this visit’s service balance only.
    * Do not add linked_booking_deposit: that is the same pool of money; the API already splits it into deposit_contribution per booking.
@@ -3633,18 +3628,17 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
   const appointmentOverpaidAmount = Number(appointmentDetail?.overpaid_amount ?? appointmentDetail?.refund_needed ?? 0)
-  const appointmentTotalCovered = Number(appointmentPackageOffsetAmount)
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
   const appointmentPackageApplied =
     ['reserved', 'consumed'].includes(String(appointmentDetail?.package_status?.status ?? '').toLowerCase()) ||
     (appointmentDetail?.package_claims?.length ?? 0) > 0
-  const appointmentPackageCoveredBreakdown = useMemo((): { show: boolean; display: string } => {
+  const appointmentPackageCoveredBounds = useMemo(() => {
     const claims = appointmentDetail?.package_claims ?? []
     const claimedIds = new Set(claims.map((c) => c.booking_service_id))
     const hasPerLineClaims = claims.length > 0
 
     if (!hasPerLineClaims && !appointmentPackageApplied) {
-      return { show: false, display: '' }
+      return { min: 0, max: 0, hasRange: false }
     }
 
     const coveredItems: Array<{
@@ -3678,23 +3672,36 @@ export default function PosAppointmentsWorkspace({
 
     if (coveredItems.length === 0) {
       const offset = Number(appointmentDetail?.package_offset ?? 0)
-      if (offset > 0.0001) {
-        return { show: true, display: `− RM ${offset.toFixed(2)}` }
-      }
-      return { show: hasPerLineClaims || appointmentPackageApplied, display: '− RM 0.00' }
+      return { min: offset, max: offset, hasRange: false }
     }
 
-    const bounds = accumulatePosPriceBounds(coveredItems)
+    return accumulatePosPriceBounds(coveredItems)
+  }, [
+    appointmentDetail?.package_claims,
+    appointmentDetail?.package_offset,
+    appointmentDisplayMainServices,
+    appointmentPackageApplied,
+    buildAppointmentMainServicePriceSource,
+  ])
+  const appointmentPackageCoveredBreakdown = useMemo((): { show: boolean; display: string } => {
+    const claims = appointmentDetail?.package_claims ?? []
+    const hasPerLineClaims = claims.length > 0
+
+    if (!hasPerLineClaims && !appointmentPackageApplied) {
+      return { show: false, display: '' }
+    }
+
+    const { min, max, hasRange } = appointmentPackageCoveredBounds
     const offset = Number(appointmentDetail?.package_offset ?? 0)
 
-    if (bounds.hasRange && Math.abs(bounds.min - bounds.max) > 0.0001) {
+    if (hasRange && Math.abs(min - max) > 0.0001) {
       return {
         show: true,
-        display: `− RM ${bounds.min.toFixed(2)} - RM ${bounds.max.toFixed(2)}`,
+        display: `− RM ${min.toFixed(2)} - RM ${max.toFixed(2)}`,
       }
     }
 
-    const amount = bounds.min > 0.0001 ? bounds.min : offset
+    const amount = min > 0.0001 ? min : offset
     return {
       show: true,
       display: amount > 0.0001 ? `− RM ${amount.toFixed(2)}` : '− RM 0.00',
@@ -3702,11 +3709,11 @@ export default function PosAppointmentsWorkspace({
   }, [
     appointmentDetail?.package_claims,
     appointmentDetail?.package_offset,
-    appointmentDetail?.settled_service_amount,
-    appointmentDisplayMainServices,
     appointmentPackageApplied,
-    buildAppointmentMainServicePriceSource,
+    appointmentPackageCoveredBounds,
   ])
+  const appointmentTotalCovered =
+    appointmentDepositTotalForBreakdown + appointmentSettlementPaid + appointmentPackageCoveredBounds.min
   /** Package reserved on booking but settlement not recorded yet — treat as unpaid until POS/main checkout finalises. */
   const packageReservedPendingRegister = useMemo(
     () =>
@@ -4778,10 +4785,10 @@ export default function PosAppointmentsWorkspace({
                         </div>
                       ) : null}
 
-                      <div className="flex items-center justify-between gap-3 py-3.5">
+                      {/* <div className="flex items-center justify-between gap-3 py-3.5">
                         <span className="text-slate-600">Total Covered</span>
                         <span className="font-semibold tabular-nums text-slate-900">RM {appointmentTotalCovered.toFixed(2)}</span>
-                      </div>
+                      </div> */}
                       {appointmentOverpaidAmount > 0.0001 ? (
                         <div className="flex items-center justify-between gap-3 py-3.5">
                           <span className="font-semibold text-rose-700">Refund Needed</span>
@@ -4807,8 +4814,8 @@ export default function PosAppointmentsWorkspace({
                                 const addonMax = displayAppointmentAddonBounds.hasRange
                                   ? displayAppointmentAddonBounds.max
                                   : appointmentAddonDueForBreakdown
-                                const totalMin = Math.max(0, rangeMin + addonMin - appointmentDepositTotalForBreakdown - appointmentPackageOffsetAmount)
-                                const totalMax = Math.max(0, rangeMax + addonMax - appointmentDepositTotalForBreakdown - appointmentPackageOffsetAmount)
+                                const totalMin = Math.max(0, rangeMin + addonMin - appointmentDepositTotalForBreakdown - appointmentPackageCoveredBounds.min)
+                                const totalMax = Math.max(0, rangeMax + addonMax - appointmentDepositTotalForBreakdown - appointmentPackageCoveredBounds.max)
                                 return totalMin === totalMax
                                   ? `RM ${totalMin.toFixed(2)}`
                                   : `RM ${totalMin.toFixed(2)} - ${totalMax.toFixed(2)}`

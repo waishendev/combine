@@ -951,6 +951,11 @@ class SalesChannelReportService
             });
     }
 
+    private function collectedOrderItemNetAmountSql(string $alias = 'oi'): string
+    {
+        return "COALESCE({$alias}.line_total_after_discount, {$alias}.effective_line_total, {$alias}.line_total - COALESCE({$alias}.discount_amount, 0))";
+    }
+
     private function baseEcommerceRowsQuery(
         Carbon $start,
         Carbon $end,
@@ -980,7 +985,7 @@ class SalesChannelReportService
             ->selectRaw('COALESCE(SUM(oi.quantity), 0) as item_count')
             ->selectRaw('COALESCE(SUM(oi.line_total), 0) as product_amount')
             ->selectRaw('COALESCE(SUM(oi.discount_amount), 0) as discount')
-            ->selectRaw('COALESCE(SUM(COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))), 0) as net_amount');
+            ->selectRaw('COALESCE(SUM(COALESCE(oi.line_total_after_discount, oi.effective_line_total, oi.line_total - COALESCE(oi.discount_amount, 0))), 0) as net_amount');
 
         if ($channel === self::CHANNEL_ONLINE) {
             $query->whereNull('o.created_by_user_id');
@@ -1036,7 +1041,7 @@ class SalesChannelReportService
             ->selectRaw('COALESCE(oi.display_name_snapshot, oi.product_name_snapshot, sp.name) as package_name')
             ->selectRaw('COALESCE(oi.line_total_snapshot, oi.line_total + COALESCE(oi.discount_amount, 0), oi.line_total, 0) as gross_amount')
             ->selectRaw('COALESCE(oi.discount_amount, 0) as discount')
-            ->selectRaw('COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0), 0) as net_amount');
+            ->selectRaw('COALESCE(oi.line_total_after_discount, oi.effective_line_total, oi.line_total - COALESCE(oi.discount_amount, 0), 0) as net_amount');
 
         if ($channel === self::CHANNEL_ONLINE) {
             $query->whereNull('o.created_by_user_id');

@@ -136,7 +136,7 @@ class SalesVisualDailyReportService
 
     private function ecommerceSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
     {
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         return $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -153,7 +153,7 @@ class SalesVisualDailyReportService
 
     private function bookingSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
     {
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         return $this->applyOrderScope(
             DB::table('orders as o')
@@ -206,7 +206,7 @@ class SalesVisualDailyReportService
 
         $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::ECOMMERCE, $start, $end);
 
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         $itemAgg = $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -278,7 +278,7 @@ class SalesVisualDailyReportService
 
         $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::BOOKING, $start, $end);
 
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         $bookingSub = $this->applyOrderScope(
             DB::table('orders as o')
@@ -368,7 +368,7 @@ class SalesVisualDailyReportService
     public function allPeriod(Carbon $start, Carbon $end): array
     {
         $paymentBlock = $this->paymentMethodsForAllWorkspace($start, $end);
-        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+        $lineTotal = $this->lineNetAmountSql('oi');
 
         $itemEcommerce = $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -835,7 +835,7 @@ class SalesVisualDailyReportService
 
     private function lineNetAmountSql(string $alias = 'oi'): string
     {
-        return "COALESCE({$alias}.line_total_after_discount, {$alias}.line_total - COALESCE({$alias}.discount_amount, 0))";
+        return "COALESCE({$alias}.line_total_after_discount, {$alias}.effective_line_total, {$alias}.line_total - COALESCE({$alias}.discount_amount, 0))";
     }
 
     private function orderNetAmountSubquery(string $workspaceLineFilterSql): string

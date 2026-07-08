@@ -95,7 +95,7 @@ class PublicReceiptController extends Controller
                 });
         }
         $representedBookingServiceIds = $order->items
-            ->filter(fn (OrderItem $item) => in_array((string) ($item->line_type ?? ''), ['booking_settlement', 'booking_addon', 'service'], true))
+            ->filter(fn (OrderItem $item) => in_array((string) ($item->line_type ?? ''), ['booking_deposit', 'booking_settlement', 'booking_addon', 'service'], true))
             ->pluck('booking_service_id')
             ->concat($order->serviceItems->pluck('booking_service_id'))
             ->filter()
@@ -236,7 +236,7 @@ class PublicReceiptController extends Controller
                 'covered_by_package' => $coveredByPackage,
                 'package_applied_name' => $coveredByPackage ? $packageName : null,
             ];
-        })->values()->concat($serviceCoverageLines)->values();
+        })->values()->concat($hasDepositLine ? collect() : $serviceCoverageLines)->values();
 
         $packageOffset = $canRenderServiceCoverageLines
             ? round((float) $displayItemsForResponse
