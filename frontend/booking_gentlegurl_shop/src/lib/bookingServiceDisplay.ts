@@ -247,11 +247,58 @@ export function getBookingBalanceDueDisplay(
     return { text: formatMoney(payment.balanceDue), isRangePending: false };
   }
 
-  const deductions = payment.depositPaid + payment.settlementPaid + payment.packageOffset;
-  const minBalance = Math.max(0, totals.minTotal - deductions);
-  const maxBalance = Math.max(0, totals.maxTotal - deductions);
+  const packageCovered = getBookingPackageCoveredTotals(booking);
+  const baseDeductions = payment.depositPaid + payment.settlementPaid;
+  const minBalance = Math.max(0, totals.minTotal - baseDeductions - packageCovered.minTotal);
+  const maxBalance = Math.max(0, totals.maxTotal - baseDeductions - packageCovered.maxTotal);
 
   return formatRangeTotal(minBalance, maxBalance, true, formatMoney);
+}
+
+function getBookingPackageCoveredTotals(booking: BookingRecord): AccumulatedTotals {
+  const claims = booking.package_claims ?? [];
+  if (claims.length === 0) return { minTotal: 0, maxTotal: 0, hasPendingRange: false };
+
+  const claimIds = new Set(claims.map((c) => Number(c.booking_service_id ?? 0)).filter((id) => id > 0));
+  let minTotal = 0;
+  let maxTotal = 0;
+  let hasPendingRange = false;
+
+  for (const block of serviceBlocksForBooking(booking)) {
+    const id = Number(block.service_id ?? 0);
+    if (!claimIds.has(id)) continue;
+
+    if (isServiceBlockRangePending(block)) {
+      const rangeMin = Number(block.price_range_min ?? 0);
+      const rangeMax = Number(block.price_range_max ?? 0);
+      minTotal += Math.min(rangeMin, rangeMax);
+      maxTotal += Math.max(rangeMin, rangeMax);
+      hasPendingRange = true;
+      continue;
+    }
+
+    const amount = Number(block.amount ?? 0);
+    minTotal += amount;
+    maxTotal += amount;
+  }
+
+  return { minTotal, maxTotal, hasPendingRange };
+}
+
+export function getBookingPackageCoveredDisplay(
+  booking: BookingRecord,
+  formatMoney: (value: number) => string = formatCurrency,
+): RangeDisplay {
+  const totals = getBookingPackageCoveredTotals(booking);
+  if (totals.minTotal <= 0 && totals.maxTotal <= 0) {
+    return { text: formatMoney(0), isRangePending: false };
+  }
+
+  if (totals.hasPendingRange) {
+    return formatRangeTotal(totals.minTotal, totals.maxTotal, true, formatMoney);
+  }
+
+  return { text: formatMoney(totals.minTotal), isRangePending: false };
 }
 
 export function serviceBlocksForBooking(booking: BookingRecord): BookingServiceBlock[] {

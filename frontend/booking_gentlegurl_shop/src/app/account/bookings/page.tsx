@@ -8,7 +8,13 @@ import { BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingTime } from "@/lib/bookingTime";
 import { storedAddonQuantity } from "@/lib/bookingAddonDisplay";
-import { getBookingBalanceDueDisplay, getBookingServiceTotalDisplay, serviceBlocksForBooking, bookingHasPendingRange } from "@/lib/bookingServiceDisplay";
+import {
+  bookingHasPendingRange,
+  getBookingBalanceDueDisplay,
+  getBookingPackageCoveredDisplay,
+  getBookingServiceTotalDisplay,
+  serviceBlocksForBooking,
+} from "@/lib/bookingServiceDisplay";
 
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
   return (
@@ -188,6 +194,9 @@ export default function MyBookingsPage() {
               const balanceDueDisplay = isBookingProduct
                 ? null
                 : getBookingBalanceDueDisplay(booking, payment, formatCurrency);
+              const packageCoveredDisplay = isBookingProduct
+                ? null
+                : getBookingPackageCoveredDisplay(booking, formatCurrency);
               const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
 
               return (
@@ -275,6 +284,14 @@ export default function MyBookingsPage() {
                       <p className="min-w-0 truncate">
                         Deposit Paid: <span className="text-emerald-700">{formatCurrency(payment.depositPaid)}</span>
                       </p>
+                      {!isBookingProduct && (booking.package_claims ?? []).length > 0 ? (
+                        <p className="min-w-0 truncate">
+                          Package Covered:{" "}
+                          <span className="text-emerald-700">
+                            {packageCoveredDisplay?.text ?? formatCurrency(payment.packageOffset)}
+                          </span>
+                        </p>
+                      ) : null}
                       <p className="min-w-0 truncate font-medium">
                         Balance Due: <span className={`${balanceDueDisplay?.isRangePending ? "text-amber-700" : "text-[var(--accent-strong)]"}`}>{balanceDueDisplay?.text ?? formatCurrency(payment.balanceDue)}</span>
                       </p>

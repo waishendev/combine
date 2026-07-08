@@ -21,6 +21,7 @@ import {
   getBookingAddonTotalDisplay,
   getBookingBalanceDueDisplay,
   getBookingMainServiceTotalDisplay,
+  getBookingPackageCoveredDisplay,
 } from "@/lib/bookingServiceDisplay";
 import {
   formatReceiptMeta,
@@ -486,6 +487,7 @@ export default function BookingDetailPage() {
           const serviceTotalDisplay = getBookingMainServiceTotalDisplay(booking, formatCurrency);
           const addonTotalDisplay = getBookingAddonTotalDisplay(booking, formatCurrency);
           const balanceDueDisplay = getBookingBalanceDueDisplay(booking, payment, formatCurrency);
+          const packageCoveredDisplay = getBookingPackageCoveredDisplay(booking, formatCurrency);
 
           return (
             <div key={booking.id} className="space-y-4">
@@ -575,7 +577,10 @@ export default function BookingDetailPage() {
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Add-ons</span><span className={`font-medium ${addonTotalDisplay.isRangePending ? "text-amber-700" : ""}`}>{addonTotalDisplay.text}</span></div>
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Deposit Paid</span><span className="font-medium text-emerald-700">{formatCurrency(payment.depositPaid)}</span></div>
                   {payment.packageOffset > 0 ? (
-                    <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Package Offset</span><span className="font-medium">-{formatCurrency(payment.packageOffset)}</span></div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[var(--text-muted)]">Package Covered</span>
+                      <span className="font-medium text-emerald-700">{packageCoveredDisplay.text}</span>
+                    </div>
                   ) : null}
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Paid In Store</span><span className="font-medium">{formatCurrency(payment.settlementPaid)}</span></div>
                   <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Total Paid</span><span className="font-medium">{formatCurrency(payment.totalPaid)}</span></div>
