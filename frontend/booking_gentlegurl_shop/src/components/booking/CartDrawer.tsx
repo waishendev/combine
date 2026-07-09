@@ -453,6 +453,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           bank_account_id: !isZeroPayableCheckout && selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
           billplz_gateway_option_id: !isZeroPayableCheckout && selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
         },
+        { authenticated: isLoggedIn },
       );
 
       if (process.env.NODE_ENV !== "production") {
@@ -690,7 +691,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         source_ref_id: item.id,
         used_qty: 1,
         ...(selectedPackage ? { customer_service_package_id: selectedPackage.customer_service_package_id } : {}),
-      } as Parameters<typeof redeemServicePackage>[0] & { customer_service_package_id?: number });
+      });
       if (selectedPackage) {
         setClaimedPackageNames((prev) => ({ ...prev, [item.id]: resolvePackageName(selectedPackage) }));
       }

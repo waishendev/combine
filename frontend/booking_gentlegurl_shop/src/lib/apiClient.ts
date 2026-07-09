@@ -276,7 +276,7 @@ export async function removeCartItem(itemId: number) {
 
 /** Undo package reservation for this line; slot stays in cart and full deposit rules apply again. */
 export async function releaseBookingCartPackageClaim(itemId: number) {
-  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}/release-package-claim`, {
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}/release-package-claim-member`, {
     method: "POST",
     body: JSON.stringify({}),
   });
@@ -312,8 +312,9 @@ export async function checkoutCart(payload?: {
   payment_method?: "manual_transfer" | "billplz_online_banking" | "billplz_credit_card";
   bank_account_id?: number;
   billplz_gateway_option_id?: number;
-}) {
-  const response = await request<{ data?: { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_status?: string; payment_url?: string; redirect_url?: string } } | { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_status?: string; payment_url?: string; redirect_url?: string }>(`/booking/cart/checkout`, {
+}, options?: { authenticated?: boolean }) {
+  const endpoint = options?.authenticated ? "/booking/cart/checkout-member" : "/booking/cart/checkout";
+  const response = await request<{ data?: { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_status?: string; payment_url?: string; redirect_url?: string } } | { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_status?: string; payment_url?: string; redirect_url?: string }>(endpoint, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
@@ -758,8 +759,9 @@ export async function redeemServicePackage(payload: {
   source: "BOOKING" | "POS" | "ADMIN";
   source_ref_id?: number;
   used_qty?: number;
+  customer_service_package_id?: number;
 }) {
-  return request<{ success?: boolean; message?: string }>("/service-packages/redeem", {
+  return request<{ success?: boolean; message?: string }>("/booking/service-packages/redeem", {
     method: "POST",
     body: JSON.stringify(payload),
   });
