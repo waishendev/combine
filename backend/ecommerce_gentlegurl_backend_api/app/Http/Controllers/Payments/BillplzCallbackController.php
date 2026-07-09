@@ -6,10 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Mail\BookingConfirmationMail;
 use App\Models\BillplzBill;
 use App\Models\Booking\Booking;
-use App\Models\Booking\BookingLog;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\Cart;
 use App\Services\Payments\BillplzConfigResolver;
+use App\Services\Booking\BookingOrderConfirmationService;
 use App\Services\SettingService;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
@@ -21,6 +21,7 @@ class BillplzCallbackController extends Controller
 {
     public function __construct(
         protected BillplzConfigResolver $configResolver,
+        protected BookingOrderConfirmationService $bookingOrderConfirmationService,
     ) {
     }
 
@@ -311,46 +312,21 @@ class BillplzCallbackController extends Controller
 
     protected function confirmOrderBookings(Order $order, ?string $billId = null): void
     {
-        $bookingIds = $order->items()
-            ->whereNotNull('booking_id')
-            ->pluck('booking_id')
-            ->unique()
-            ->filter()
-            ->values();
+        $confirmedIds = $this->bookingOrderConfirmationService->confirmLinkedBookingsForPaidOrder(
+            $order,
+            'order_callback',
+            [
+                'ref' => $billId,
+                'provider' => 'billplz',
+            ],
+        );
 
-        if ($bookingIds->isEmpty()) {
+        if ($confirmedIds === []) {
             return;
         }
 
-        Booking::query()
-            ->whereIn('id', $bookingIds)
-            ->where('payment_status', '!=', 'PAID')
-            ->update([
-                'status' => 'CONFIRMED',
-                'payment_status' => 'PAID',
-                'hold_expires_at' => null,
-                'updated_at' => now(),
-            ]);
-
-        foreach ($bookingIds as $bookingId) {
-            BookingLog::create([
-                'booking_id' => $bookingId,
-                'actor_type' => 'SYSTEM',
-                'actor_id' => null,
-                'action' => 'PAYMENT_CONFIRMED',
-                'meta' => [
-                    'order_id' => $order->id,
-                    'order_no' => $order->order_number,
-                    'ref' => $billId,
-                    'provider' => 'billplz',
-                    'source' => 'order_callback',
-                ],
-                'created_at' => now(),
-            ]);
-        }
-
         $bookings = Booking::query()
-            ->whereIn('id', $bookingIds)
+            ->whereIn('id', $confirmedIds)
             ->where('status', 'CONFIRMED')
             ->with(['service', 'staff', 'customer'])
             ->get();
@@ -362,7 +338,7 @@ class BillplzCallbackController extends Controller
         Log::info('Order bookings confirmed after payment', [
             'order_id' => $order->id,
             'order_no' => $order->order_number,
-            'booking_ids' => $bookingIds->all(),
+            'booking_ids' => $confirmedIds,
             'bill_id' => $billId,
         ]);
     }

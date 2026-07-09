@@ -1555,6 +1555,7 @@ export default function OrderViewPanel({
       {showConfirmPayment && (
         <OrderConfirmPaymentModal
           orderId={orderId}
+          linkedBookingCount={isBookingOrder ? bookingOrderGroups.length : 0}
           onClose={() => setShowConfirmPayment(false)}
           onSuccess={handleOrderUpdated}
           zIndexClassName={nestedModalZIndexClassName}

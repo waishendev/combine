@@ -7,7 +7,6 @@ use App\Mail\BookingConfirmationMail;
 use App\Mail\OrderShippedMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItemPhoto;
-use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPayment;
 use App\Models\Booking\BookingServicePhoto;
 use App\Models\Ecommerce\Order;
@@ -15,6 +14,7 @@ use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Booking\BookingCancellationService;
+use App\Services\Booking\BookingOrderConfirmationService;
 // use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
@@ -32,6 +32,7 @@ class OrderController extends Controller
         // protected OrderReserveService $orderReserveService,
         protected InvoiceService $invoiceService,
         protected BookingCancellationService $bookingCancellationService,
+        protected BookingOrderConfirmationService $bookingOrderConfirmationService,
     )
     {
     }
@@ -895,19 +896,7 @@ class OrderController extends Controller
 
     protected function linkedBookingIdsForOrder(Order $order)
     {
-        $itemBookingIds = $order->items()
-            ->whereNotNull('booking_id')
-            ->pluck('booking_id');
-
-        $serviceBookingIds = $order->serviceItems()
-            ->whereNotNull('booking_id')
-            ->pluck('booking_id');
-
-        return $itemBookingIds
-            ->merge($serviceBookingIds)
-            ->unique()
-            ->filter()
-            ->values();
+        return $this->bookingOrderConfirmationService->linkedBookingIdsForOrder($order);
     }
 
     protected function cancelLinkedOrderBookings(Order $order, Request $request, string $reason): void
@@ -956,44 +945,17 @@ class OrderController extends Controller
 
     protected function confirmOrderBookings(Order $order): void
     {
-        $bookingIds = $order->items()
-            ->whereNotNull('booking_id')
-            ->pluck('booking_id')
-            ->unique()
-            ->filter()
-            ->values();
+        $confirmedIds = $this->bookingOrderConfirmationService->confirmLinkedBookingsForPaidOrder(
+            $order,
+            'admin_confirm',
+        );
 
-        if ($bookingIds->isEmpty()) {
+        if ($confirmedIds === []) {
             return;
         }
 
-        Booking::query()
-            ->whereIn('id', $bookingIds)
-            ->where('payment_status', '!=', 'PAID')
-            ->update([
-                'status' => 'CONFIRMED',
-                'payment_status' => 'PAID',
-                'hold_expires_at' => null,
-                'updated_at' => now(),
-            ]);
-
-        foreach ($bookingIds as $bookingId) {
-            BookingLog::create([
-                'booking_id' => $bookingId,
-                'actor_type' => 'SYSTEM',
-                'actor_id' => null,
-                'action' => 'PAYMENT_CONFIRMED',
-                'meta' => [
-                    'order_id' => $order->id,
-                    'order_no' => $order->order_number,
-                    'source' => 'admin_confirm',
-                ],
-                'created_at' => now(),
-            ]);
-        }
-
         $bookings = Booking::query()
-            ->whereIn('id', $bookingIds)
+            ->whereIn('id', $confirmedIds)
             ->where('status', 'CONFIRMED')
             ->with(['service', 'staff', 'customer'])
             ->get();
@@ -1005,7 +967,7 @@ class OrderController extends Controller
         Log::info('Order bookings confirmed via admin payment confirmation', [
             'order_id' => $order->id,
             'order_no' => $order->order_number,
-            'booking_ids' => $bookingIds->all(),
+            'booking_ids' => $confirmedIds,
         ]);
     }
 

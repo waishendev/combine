@@ -43,6 +43,7 @@ use App\Models\Staff;
 use App\Services\Booking\BookingAddonQuantityService;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCancellationService;
+use App\Services\Booking\BookingOrderConfirmationService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\SettingService;
@@ -81,6 +82,7 @@ class PosController extends Controller
         protected StaffCommissionService $staffCommissionService,
         protected OrderPaymentService $orderPaymentService,
         protected BookingCancellationService $bookingCancellationService,
+        protected BookingOrderConfirmationService $bookingOrderConfirmationService,
         protected BookingAddonQuantityService $addonQuantityService,
     ) {}
 
@@ -10580,43 +10582,10 @@ class PosController extends Controller
      */
     protected function confirmHoldOrderBookings(Order $order): array
     {
-        $bookingIds = $order->items()
-            ->whereNotNull('booking_id')
-            ->pluck('booking_id')
-            ->unique()
-            ->filter()
-            ->values();
-
-        if ($bookingIds->isEmpty()) {
-            return [];
-        }
-
-        Booking::query()
-            ->whereIn('id', $bookingIds)
-            ->where('payment_status', '!=', 'PAID')
-            ->update([
-                'status' => 'CONFIRMED',
-                'payment_status' => 'PAID',
-                'hold_expires_at' => null,
-                'updated_at' => now(),
-            ]);
-
-        foreach ($bookingIds as $bookingId) {
-            BookingLog::create([
-                'booking_id' => (int) $bookingId,
-                'actor_type' => 'SYSTEM',
-                'actor_id' => null,
-                'action' => 'PAYMENT_CONFIRMED',
-                'meta' => [
-                    'order_id' => $order->id,
-                    'order_no' => $order->order_number,
-                    'source' => 'pos_hold_approve',
-                ],
-                'created_at' => now(),
-            ]);
-        }
-
-        return $bookingIds->map(fn ($id) => (int) $id)->all();
+        return $this->bookingOrderConfirmationService->confirmLinkedBookingsForPaidOrder(
+            $order,
+            'pos_hold_approve',
+        );
     }
 
     protected function cancelHoldLinkedBookings(Order $order, Request $request, string $reason): void
