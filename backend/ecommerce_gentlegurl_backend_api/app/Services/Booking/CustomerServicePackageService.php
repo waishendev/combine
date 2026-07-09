@@ -126,13 +126,11 @@ class CustomerServicePackageService
                 throw new \RuntimeException('Not enough balance in the selected package.');
             }
 
+            // BOOKING reservations are created from booking cart item ids before the Booking row exists.
+            // Keep booking_id null during reservation; checkout attaches the real bookings.id afterwards.
             $resolvedBookingId = null;
-            if ($sourceRefId) {
-                if (strtoupper($source) === 'POS' && ! Booking::query()->whereKey($sourceRefId)->exists()) {
-                    $resolvedBookingId = null;
-                } else {
-                    $resolvedBookingId = $sourceRefId;
-                }
+            if ($sourceRefId && strtoupper($source) !== 'BOOKING' && Booking::query()->whereKey($sourceRefId)->exists()) {
+                $resolvedBookingId = $sourceRefId;
             }
 
             return CustomerServicePackageUsage::create([
