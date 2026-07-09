@@ -696,7 +696,6 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         setClaimedPackageNames((prev) => ({ ...prev, [item.id]: resolvePackageName(selectedPackage) }));
       }
       await loadCart();
-      setPackagePickerItemId(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to apply package to this slot.");
     } finally {
@@ -705,12 +704,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     }
   };
 
-  const releasePackageClaim = async (itemId: number) => {
+  const releasePackageClaim = async (itemId: number, usageId?: number) => {
     setPackagePickerBusyId(itemId);
     setPackageActionItemId(itemId);
     setMessage(null);
     try {
-      const updated = await releaseBookingCartPackageClaim(itemId);
+      const updated = await releaseBookingCartPackageClaim(itemId, usageId);
       setCart(updated);
       setClaimedPackageNames((prev) => {
         const next = { ...prev };
@@ -890,12 +889,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               const urgent = sec > 0 && sec < 120;
               const premium = isPremiumService(item.service_type);
               const pkgBal = availableMap[item.id] ?? 0;
-              const claimStatus = item.package_claim_status ?? null;
+              const activePackageClaims = (item.package_claims ?? []).filter((claim) => ["reserved", "consumed"].includes(String(claim.status)));
               const availablePackageRows = availablePackagesMap[item.id] ?? [];
-              const claimPackageName = claimedPackageNames[item.id] ?? (availablePackageRows[0] ? resolvePackageName(availablePackageRows[0]) : "Selected package");
-              const packageApplied =
-                item.package_covers_main_service === true || claimStatus === "reserved" || claimStatus === "consumed";
-              const canUnclaimPackage = claimStatus === "reserved";
+              const mainPackageClaim = activePackageClaims.find((claim) => Number(claim.booking_service_id) === Number(item.service_id));
+              const claimPackageName = mainPackageClaim?.package_name ?? claimedPackageNames[item.id] ?? (availablePackageRows.find((row) => row.line_type === "main_service") ? resolvePackageName(availablePackageRows.find((row) => row.line_type === "main_service")!) : "Selected package");
+              const packageApplied = Boolean(mainPackageClaim) || item.package_covers_main_service === true;
+              const canUnclaimPackage = mainPackageClaim?.status === "reserved";
               const refMain = Number(item.reference_main_deposit ?? 0);
               const mainDep = Number(item.main_deposit_amount ?? 0);
               const addonDep = Number(item.addon_deposit_amount ?? 0);
@@ -1006,11 +1005,20 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                                 <span className="text-[var(--foreground)]">
                                   <span className="text-[var(--text-muted)]">+</span> {opt.label}
                                   {(opt.cn_label || opt.linked_cn_name) ? <span className="block pl-3 text-[10px] text-[var(--text-muted)]">{opt.cn_label || opt.linked_cn_name}</span> : null}
-                                  {packageApplied && addonPart <= 0 ? (
-                                    <span className="mt-1 block pl-3 text-[9px] font-bold uppercase tracking-wide text-[var(--status-success)]">[PKG] {claimPackageName}</span>
+                                  {matchedAddon?.package_claim ? (
+                                    <span className="mt-1 block pl-3 text-[9px] font-bold uppercase tracking-wide text-[var(--status-success)]">[PKG] {matchedAddon.package_claim.package_name}</span>
                                   ) : null}
                                 </span>
-                                <span className="shrink-0 font-semibold tabular-nums text-[var(--foreground)]">RM {addonPart.toFixed(2)}</span>
+                                <span className="shrink-0 text-right font-semibold tabular-nums text-[var(--foreground)]">
+                                  {matchedAddon?.package_claim ? (
+                                    <>
+                                      <span className="mr-1 text-[var(--text-muted)] line-through">RM {Number(opt.linked_deposit_amount ?? opt.extra_price ?? addonPart).toFixed(2)}</span>
+                                      <span className="text-[var(--status-success)]">RM {addonPart.toFixed(2)}</span>
+                                    </>
+                                  ) : (
+                                    <>RM {addonPart.toFixed(2)}</>
+                                  )}
+                                </span>
                               </div>
                             );
                           })}
@@ -1148,7 +1156,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
                   {isLoggedIn ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {(canUnclaimPackage || pkgBal > 0 || packageApplied) ? (
+                      {(canUnclaimPackage || pkgBal > 0 || packageApplied || activePackageClaims.length > 0) ? (
                         <button
                           type="button"
                           disabled={packageActionItemId === item.id}
@@ -1642,10 +1650,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         const item = cart?.items?.find((row) => row.id === packagePickerItemId);
         if (!item) return null;
         const rows = availablePackagesMap[item.id] ?? [];
-        const claimStatus = item.package_claim_status ?? null;
-        const packageApplied = item.package_covers_main_service === true || claimStatus === "reserved" || claimStatus === "consumed";
-        const canUnclaimPackage = claimStatus === "reserved";
-        const currentPackageName = claimedPackageNames[item.id] ?? (rows[0] ? resolvePackageName(rows[0]) : "Selected package");
+        const activeClaims = (item.package_claims ?? []).filter((claim) => ["reserved", "consumed"].includes(String(claim.status)));
 
         return (
           <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/55 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Apply Package">
@@ -1656,7 +1661,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Apply Package</p>
                     <h3 className="mt-1 font-[var(--font-heading)] text-lg font-semibold text-[var(--foreground)]">{item.service_name}</h3>
-                    <p className="mt-1 text-xs text-[var(--text-muted)]">Tick to claim, untick to unclaim. Package usage is deducted only after checkout is confirmed.</p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">Tick each main service or add-on line to claim. Untick to remove that line only.</p>
                   </div>
                   <button type="button" onClick={() => setPackagePickerItemId(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--muted)]" aria-label="Close package picker">
                     <i className="fa-solid fa-xmark" />
@@ -1665,25 +1670,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-                {packageApplied ? (
-                  <button
-                    type="button"
-                    disabled={!canUnclaimPackage || packagePickerBusyId === item.id}
-                    onClick={() => { void releasePackageClaim(item.id); }}
-                    className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3 text-left disabled:opacity-60"
-                  >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white">
-                      <i className="fa-solid fa-check text-[10px]" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold text-[var(--foreground)]">{currentPackageName}</span>
-                      <span className="block text-xs text-[var(--status-success)]">Current visit · main service claimed</span>
-                    </span>
-                    <span className="text-[10px] font-bold uppercase text-[var(--status-warning-text)]">{canUnclaimPackage ? "Unclaim" : "Consumed"}</span>
-                  </button>
-                ) : null}
-
-                {rows.length === 0 && !packageApplied ? (
+                {rows.length === 0 && activeClaims.length === 0 ? (
                   <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--muted)]/30 px-4 py-8 text-center">
                     <p className="text-sm font-semibold text-[var(--foreground)]">No available package balance</p>
                     <p className="mt-1 text-xs text-[var(--text-muted)]">No active package with remaining quantity matches this booking line.</p>
@@ -1693,24 +1680,36 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 <div className="space-y-3">
                   {rows.map((row) => {
                     const remaining = Number(row.remaining_qty ?? 0);
-                    const canApply = remaining > 0 && !packageApplied;
+                    const matchingClaim = activeClaims.find((claim) => Number(claim.booking_service_id) === Number(row.booking_service_id));
+                    const checkedHere = matchingClaim && Number(matchingClaim.customer_service_package_id) === Number(row.customer_service_package_id);
+                    const checkedElsewhere = Boolean(matchingClaim && !checkedHere);
+                    const canApply = remaining > 0 && !matchingClaim;
+                    const canToggle = Boolean(checkedHere && matchingClaim?.status === "reserved") || canApply;
                     const expiryLabel = formatPackageExpiry(row.expires_at);
                     const name = resolvePackageName(row);
                     return (
                       <button
-                        key={`${row.customer_service_package_id}-${row.booking_service_id}`}
+                        key={`${row.line_type}-${row.line_index}-${row.customer_service_package_id}-${row.booking_service_id}`}
                         type="button"
-                        disabled={!canApply || packagePickerBusyId === item.id}
-                        onClick={() => { void applyPackageClaim(item, row); }}
-                        className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition disabled:cursor-not-allowed ${canApply ? "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/30" : "border-[var(--card-border)] bg-[var(--muted)]/30 opacity-65"}`}
+                        disabled={!canToggle || packagePickerBusyId === item.id}
+                        onClick={() => {
+                          if (checkedHere && matchingClaim?.status === "reserved") {
+                            void releasePackageClaim(item.id, matchingClaim.usage_id);
+                            return;
+                          }
+                          if (canApply) void applyPackageClaim(item, row);
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition disabled:cursor-not-allowed ${checkedHere ? "border-[var(--accent-strong)] bg-[var(--status-success-bg)]" : canApply ? "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/30" : "border-[var(--card-border)] bg-[var(--muted)]/30 opacity-65"}`}
                       >
-                        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${canApply ? "border-[var(--accent-strong)] bg-white" : "border-[var(--card-border)] bg-[var(--muted)]"}`} />
+                        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${checkedHere ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white" : canApply ? "border-[var(--accent-strong)] bg-white" : "border-[var(--card-border)] bg-[var(--muted)]"}`}>
+                          {checkedHere ? <i className="fa-solid fa-check text-[10px]" /> : null}
+                        </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-semibold text-[var(--foreground)]">{name}</span>
                           <span className="block text-xs text-[var(--text-muted)]">{row.line_type === "addon" ? "Add-on" : "Main service"}: {row.line_label}{row.line_cn_label ? ` · ${row.line_cn_label}` : ""}</span>
                           <span className="mt-1 inline-flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-wide">
                             <span className={remaining > 0 ? "text-[var(--status-success)]" : "text-[var(--status-error)]"}>{remaining > 0 ? `${remaining} remaining` : "No balance"}</span>
-                            <span className={canApply ? "text-[var(--status-success)]" : "text-[var(--text-muted)]"}>{canApply ? "Can apply to this booking line" : "Cannot apply"}</span>
+                            <span className={checkedHere || canApply ? "text-[var(--status-success)]" : "text-[var(--text-muted)]"}>{checkedHere ? "Claimed for this visit" : checkedElsewhere ? "Selected in another package" : canApply ? "Can apply to this booking line" : "Cannot apply"}</span>
                             <span className="text-[var(--accent-strong)]">Current visit</span>
                           </span>
                           {expiryLabel ? <span className="mt-1 block text-[10px] text-[var(--text-muted)]">Expires {expiryLabel}</span> : null}
@@ -1719,6 +1718,9 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     );
                   })}
                 </div>
+              </div>
+              <div className="shrink-0 border-t border-[var(--card-border)] bg-[var(--muted)]/30 px-5 py-3 text-right">
+                <button type="button" onClick={() => setPackagePickerItemId(null)} className="rounded-full bg-[var(--accent-strong)] px-5 py-2 text-xs font-semibold text-white">Confirm</button>
               </div>
             </div>
           </div>

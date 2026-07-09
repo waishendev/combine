@@ -275,10 +275,10 @@ export async function removeCartItem(itemId: number) {
 }
 
 /** Undo package reservation for this line; slot stays in cart and full deposit rules apply again. */
-export async function releaseBookingCartPackageClaim(itemId: number) {
+export async function releaseBookingCartPackageClaim(itemId: number, usageId?: number) {
   const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}/release-package-claim-member`, {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(usageId ? { usage_id: usageId } : {}),
   });
   return unwrapData<BookingCart>(response);
 }

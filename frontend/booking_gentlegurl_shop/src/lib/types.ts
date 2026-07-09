@@ -127,15 +127,27 @@ export type BookingCartItem = {
   addon_deposit_amount?: number | null;
   addon_deposit_items?: Array<{
     id?: number | null;
+    booking_service_id?: number | null;
     label: string;
     deposit_contribution: number;
+    package_claim?: BookingCartPackageClaim | null;
   }>;
   package_claim_status?: "reserved" | "consumed" | "released" | null;
+  package_claims?: BookingCartPackageClaim[];
   /** True when a package balance is reserved/consumed for the main service (add-ons billed separately). */
   package_covers_main_service?: boolean;
   /** Listed main-service deposit on the service (for “was RM X” copy when package covers main). */
   reference_main_deposit?: number;
   customer_remarks?: string | null;
+};
+
+export type BookingCartPackageClaim = {
+  usage_id: number;
+  customer_service_package_id: number;
+  package_name: string;
+  booking_service_id: number;
+  status: "reserved" | "consumed" | "released" | string;
+  used_qty: number;
 };
 
 export type BookingCart = {
