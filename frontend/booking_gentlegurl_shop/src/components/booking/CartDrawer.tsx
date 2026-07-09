@@ -645,6 +645,34 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     ? Number(cart?.addon_deposit_total ?? 0)
     : (cart?.items ?? []).reduce((sum, item) => sum + Number(item.addon_deposit_amount ?? 0), 0);
 
+  const paymentSummaryDisplay = useMemo(() => {
+    const bookingItems = cart?.items ?? [];
+    const originalMain = bookingItems.reduce((sum, item) => {
+      const hasMainPackage = (item.package_claims ?? []).some(
+        (claim) => ["reserved", "consumed"].includes(String(claim.status)) && Number(claim.booking_service_id) === Number(item.service_id),
+      );
+      return sum + (hasMainPackage ? Number(item.reference_main_deposit ?? item.main_deposit_amount ?? 0) : Number(item.main_deposit_amount ?? 0));
+    }, 0);
+    const originalAddon = bookingItems.reduce((sum, item) => {
+      return sum + (item.selected_options ?? []).reduce((optionSum, opt) => {
+        const matchedAddon = (item.addon_deposit_items ?? []).find((addon) => Number(addon.id) === Number(opt.id));
+        const isCovered = Boolean(matchedAddon?.package_claim);
+        const original = Number(opt.linked_deposit_amount ?? opt.extra_price ?? matchedAddon?.deposit_contribution ?? 0);
+        return optionSum + (isCovered ? original : Number(matchedAddon?.deposit_contribution ?? 0));
+      }, 0);
+    }, 0);
+    const currentMain = mainDepositTotal;
+    const currentAddon = addonDepositTotal;
+    const packageCovered = Math.max(0, originalMain + originalAddon - currentMain - currentAddon);
+
+    return {
+      originalMain,
+      originalAddon,
+      packageCovered,
+      totalDue: Number(cart?.package_total ?? 0) + depositDisplay.total,
+    };
+  }, [addonDepositTotal, cart?.items, cart?.package_total, depositDisplay.total, mainDepositTotal]);
+
   const estimatedPayLaterTotal = useMemo(() => {
     return (cart?.items ?? []).reduce((sum, item) => {
       const listed = Number(item.listed_service_price ?? 0);
@@ -1566,18 +1594,30 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
               <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Payment summary</p>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">Main service deposit</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {mainDepositTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">Add-on deposit</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {addonDepositTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">Packages</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.package_total ?? 0).toFixed(2)}</span>
-                </div>
+                {paymentSummaryDisplay.originalMain > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--text-muted)]">Main service deposit</span>
+                    <span className="font-medium tabular-nums text-[var(--foreground)]">RM {paymentSummaryDisplay.originalMain.toFixed(2)}</span>
+                  </div>
+                ) : null}
+                {paymentSummaryDisplay.originalAddon > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--text-muted)]">Add-on deposit</span>
+                    <span className="font-medium tabular-nums text-[var(--foreground)]">RM {paymentSummaryDisplay.originalAddon.toFixed(2)}</span>
+                  </div>
+                ) : null}
+                {paymentSummaryDisplay.packageCovered > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--status-success)]">Package Covered</span>
+                    <span className="font-semibold tabular-nums text-[var(--status-success)]">-RM {paymentSummaryDisplay.packageCovered.toFixed(2)}</span>
+                  </div>
+                ) : null}
+                {Number(cart?.package_total ?? 0) > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--text-muted)]">Packages</span>
+                    <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.package_total ?? 0).toFixed(2)}</span>
+                  </div>
+                ) : null}
                 {/* {estimatedPayLaterTotal > 0 ? (
                   <div
                     className="flex justify-between gap-3 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2.5 text-sm ring-1 ring-[var(--status-success)]/10"
@@ -1593,10 +1633,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="min-w-0">
                       <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
-                      <p className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)]">Due now — deposits + packages</p>
+                      <p className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)]">Total due now</p>
                     </div>
                     <span className="shrink-0 font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
-                      RM {(Number(cart?.package_total ?? 0) + depositDisplay.total).toFixed(2)}
+                      RM {paymentSummaryDisplay.totalDue.toFixed(2)}
                     </span>
                   </div>
                   {nextExpiryIn ? (
