@@ -54,7 +54,7 @@ import {
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import CustomerCreateModal from '@/components/CustomerCreateModal'
 import type { CustomerRowData } from '@/components/CustomerRow'
-import PaymentProofModal from '@/components/payment/PaymentProofModal'
+import OrderViewPanel from '@/components/OrderViewPanel'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
@@ -503,6 +503,7 @@ export default function PosAppointmentsWorkspace({
   const [holdReviewNote, setHoldReviewNote] = useState('')
   const [holdCancelReason, setHoldCancelReason] = useState('')
   const [holdRejectNote, setHoldRejectNote] = useState('')
+  const [depositReviewViewOrderId, setDepositReviewViewOrderId] = useState<number | null>(null)
   const [appointmentStatusConfirmOpen, setAppointmentStatusConfirmOpen] = useState(false)
   const [appointmentStatusConfirmTarget, setAppointmentStatusConfirmTarget] = useState<AppointmentTerminalStatusAction | null>(null)
   const [appointmentStatusVoidDeposit, setAppointmentStatusVoidDeposit] = useState(false)
@@ -4351,14 +4352,6 @@ export default function PosAppointmentsWorkspace({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-bold uppercase tracking-wide text-violet-900">Deposit review</p>
-                            <p className="mt-1 text-sm leading-snug text-violet-950/90">
-                              Verify payment proof, then approve to confirm this booking — no need to open shop orders.
-                            </p>
-                            {appointmentDetail.hold_expires_at ? (
-                              <p className="mt-2 text-xs font-medium text-violet-800/90">
-                                Hold expires {formatDateTime12Hour(appointmentDetail.hold_expires_at)}
-                              </p>
-                            ) : null}
                             {appointmentHoldDepositOrder ? (
                               <p className="mt-2 text-xs text-violet-900/80">
                                 <span className="font-semibold">{appointmentHoldDepositOrder.order_number}</span>
@@ -4372,65 +4365,49 @@ export default function PosAppointmentsWorkspace({
                                     : appointmentHoldDepositOrder.status.replaceAll('_', ' ')}
                               </p>
                             ) : (
-                              <p className="mt-2 text-xs text-violet-800/80">No pending deposit order — approve if no deposit is required.</p>
+                              <p className="mt-2 text-xs text-violet-800/80">No pending deposit order linked to this hold.</p>
                             )}
+                            {appointmentDetail.hold_expires_at ? (
+                              <p className="mt-2 text-xs font-medium text-violet-800/90">
+                                Hold expires {formatDateTime12Hour(appointmentDetail.hold_expires_at)}
+                              </p>
+                            ) : null}
                           </div>
-                          <PaymentProofModal
-                            proofs={appointmentDetail.payment_proofs}
-                            bookingCode={appointmentDetail.booking_code}
-                            layout="icon"
-                            className="shrink-0"
-                          />
-                        </div>
-                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                           <button
                             type="button"
-                            disabled={appointmentActionLoading}
+                            disabled={!appointmentHoldDepositOrder}
                             onClick={() => {
-                              setHoldCancelReason('')
-                              setHoldCancelConfirmOpen(true)
+                              if (appointmentHoldDepositOrder) {
+                                setDepositReviewViewOrderId(appointmentHoldDepositOrder.id)
+                              }
                             }}
-                            className="min-h-[48px] rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-900 shadow-sm transition hover:bg-rose-50 disabled:opacity-50"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            disabled={appointmentActionLoading || !canRejectHoldPaymentProof}
                             title={
-                              canRejectHoldPaymentProof
-                                ? 'Reject invalid payment proof — customer can re-upload'
-                                : 'Available when slip is uploaded and waiting for verification'
+                              appointmentHoldDepositOrder
+                                ? `View order ${appointmentHoldDepositOrder.order_number}`
+                                : 'No deposit order available'
                             }
-                            onClick={() => {
-                              setHoldRejectNote('')
-                              setHoldRejectConfirmOpen(true)
-                            }}
-                            className="min-h-[48px] rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-950 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-45"
+                            className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-white text-violet-800 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-45"
+                            aria-label={
+                              appointmentHoldDepositOrder
+                                ? `View order ${appointmentHoldDepositOrder.order_number}`
+                                : 'No deposit order available'
+                            }
                           >
-                            Reject proof
-                          </button>
-                          <button
-                            type="button"
-                            disabled={appointmentActionLoading}
-                            onClick={() => {
-                              setHoldReviewNote('')
-                              setHoldApproveConfirmOpen(true)
-                            }}
-                            className="min-h-[48px] rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
-                          >
-                            Approve
+                            <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1 1 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
                           </button>
                         </div>
-                        {appointmentHoldProofCount === 0 && appointmentHoldDepositOrder?.status === 'processing' ? (
-                          <p className="mt-2 text-[11px] font-medium text-amber-800">
-                            Waiting for customer slip — tap the eye icon to check; it opens even when empty.
-                          </p>
-                        ) : appointmentHoldProofCount === 0 ? (
+                        {!appointmentHoldDepositOrder ? (
                           <p className="mt-2 text-[11px] font-medium text-violet-800/80">
-                            Tap the eye icon — proof shows after customer uploads a transfer slip (Manual Transfer orders only).
+                            Deposit order is not available yet for this hold.
                           </p>
-                        ) : null}
+                        ) : (
+                          <p className="mt-2 text-[11px] font-medium text-violet-800/80">
+                            Tap the eye icon to open booking order details, review payment proof, and confirm or reject from there.
+                          </p>
+                        )}
                       </div>
                     ) : null}
 
@@ -7891,6 +7868,19 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
       ) : null,
+        bodyModalRoot,
+      )}
+
+      {renderPosBodyModalPortal(
+        depositReviewViewOrderId !== null ? (
+          <OrderViewPanel
+            key={depositReviewViewOrderId}
+            orderId={depositReviewViewOrderId}
+            onClose={() => setDepositReviewViewOrderId(null)}
+            onOrderUpdated={() => void refreshOpenedAppointmentDetail()}
+            zIndexClassName="pos-body-stack-modal-detail"
+          />
+        ) : null,
         bodyModalRoot,
       )}
 

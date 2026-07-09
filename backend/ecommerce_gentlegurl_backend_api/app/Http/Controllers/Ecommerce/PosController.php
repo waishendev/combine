@@ -368,6 +368,10 @@ class PosController extends Controller
             $guestName = trim((string) ($booking->guest_name ?? ''));
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
             $guestEmail = trim((string) ($booking->guest_email ?? ''));
+            $holdDepositMeta = in_array((string) $booking->status, ['HOLD', 'PENDING', 'PENDING_CONFIRMATION'], true)
+                ? $this->resolveHoldDepositOrderMeta($booking)
+                : null;
+
             return [
                 'id' => (int) $booking->id,
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
@@ -419,6 +423,8 @@ class PosController extends Controller
                 'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
                 'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
                 'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
+                'hold_deposit_order' => $holdDepositMeta['order'] ?? null,
+                'hold_linked_bookings' => $holdDepositMeta['linked_bookings'] ?? [],
                 ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
             ];
         })->when($statusFilterNeedsActiveCheck, function ($rows) use ($unpaidOnly) {
@@ -484,7 +490,7 @@ class PosController extends Controller
         $packageClaims = $this->resolvePerLinePackageClaims($booking, $summary);
         $history = $this->resolveAppointmentPaymentHistory((int) $booking->id);
         $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
-        $holdOrder = $this->resolveHoldDepositOrderForReview($booking);
+        $holdDepositMeta = $this->resolveHoldDepositOrderMeta($booking);
 
         $guestName = trim((string) ($booking->guest_name ?? ''));
         $guestPhone = trim((string) ($booking->guest_phone ?? ''));
@@ -496,14 +502,8 @@ class PosController extends Controller
             'status' => (string) $booking->status,
             'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
             'hold_expires_at' => optional($booking->hold_expires_at)?->toIso8601String(),
-            'hold_deposit_order' => $holdOrder ? [
-                'id' => (int) $holdOrder->id,
-                'order_number' => (string) $holdOrder->order_number,
-                'status' => (string) $holdOrder->status,
-                'payment_status' => (string) $holdOrder->payment_status,
-                'payment_method' => (string) ($holdOrder->payment_method ?? ''),
-                'grand_total' => (float) ($holdOrder->grand_total ?? 0),
-            ] : null,
+            'hold_deposit_order' => $holdDepositMeta['order'] ?? null,
+            'hold_linked_bookings' => $holdDepositMeta['linked_bookings'] ?? [],
             'payment_proofs' => $this->mapAppointmentPaymentProofs($booking),
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
@@ -10449,30 +10449,93 @@ class PosController extends Controller
             ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
             ->orderBy('id')
             ->get()
-            ->map(fn (OrderItem $item) => [
-                'order_id' => (int) ($item->order?->id ?? 0),
-                'order_number' => (string) ($item->order?->order_number ?? '-'),
-                'line_type' => (string) ($item->line_type ?? ''),
-                'stage_label' => match ((string) ($item->line_type ?? '')) {
-                    'booking_deposit' => 'Booking Deposit Receipt',
-                    'booking_settlement' => 'Final Settlement Receipt',
-                    'booking_addon' => strcasecmp((string) ($item->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0
-                        ? 'Booking Add-on Settlement Receipt'
-                        : 'Booking Add-on Deposit Receipt',
-                    default => 'Receipt',
-                },
-                'amount' => (float) ($item->line_total ?? 0),
-                'payment_method' => (string) ($item->order?->payment_method ?? ''),
-                'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
-                'receipt_public_url' => $item->order ? $this->buildReceiptUrlForOrder((int) $item->order->id) : null,
-            ])->values()->all();
+            ->map(function (OrderItem $item) {
+                $collectedAmount = (float) ($item->line_total_after_discount
+                    ?? $item->effective_line_total
+                    ?? $item->line_total
+                    ?? 0);
+                $serviceGross = (float) ($item->line_total_snapshot ?? 0);
+
+                return [
+                    'order_id' => (int) ($item->order?->id ?? 0),
+                    'order_number' => (string) ($item->order?->order_number ?? '-'),
+                    'line_type' => (string) ($item->line_type ?? ''),
+                    'stage_label' => match ((string) ($item->line_type ?? '')) {
+                        'booking_deposit' => 'Booking Deposit Receipt',
+                        'booking_settlement' => 'Final Settlement Receipt',
+                        'booking_addon' => strcasecmp((string) ($item->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0
+                            ? 'Booking Add-on Settlement Receipt'
+                            : 'Booking Add-on Deposit Receipt',
+                        default => 'Receipt',
+                    },
+                    'amount' => round($collectedAmount, 2),
+                    'service_gross' => $serviceGross > $collectedAmount + 0.0001 ? round($serviceGross, 2) : null,
+                    'payment_method' => (string) ($item->order?->payment_method ?? ''),
+                    'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
+                    'receipt_public_url' => $item->order ? $this->buildReceiptUrlForOrder((int) $item->order->id) : null,
+                ];
+            })->values()->all();
+    }
+
+    /**
+     * Pending deposit order + sibling bookings on the same checkout order (shop HOLD flow).
+     *
+     * @return array{
+     *   order:?array{id:int,order_number:string,status:string,payment_status:string,payment_method:string,grand_total:float},
+     *   order_model:?Order,
+     *   linked_bookings:array<int,array{id:int,booking_code:string,service_name:string}>
+     * }
+     */
+    protected function resolveHoldDepositOrderMeta(Booking $booking): array
+    {
+        $holdOrder = $this->resolveHoldDepositOrderForReview($booking);
+        if (! $holdOrder) {
+            return [
+                'order' => null,
+                'order_model' => null,
+                'linked_bookings' => [],
+            ];
+        }
+
+        $linkedBookings = Booking::query()
+            ->with('service:id,name')
+            ->whereIn('id', OrderItem::query()
+                ->where('order_id', (int) $holdOrder->id)
+                ->whereNotNull('booking_id')
+                ->pluck('booking_id')
+                ->unique()
+                ->filter()
+                ->values()
+                ->all())
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Booking $linked) => [
+                'id' => (int) $linked->id,
+                'booking_code' => (string) ($linked->booking_code ?: ('BOOKING-' . $linked->id)),
+                'service_name' => (string) ($linked->service?->name ?? 'Service'),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'order' => [
+                'id' => (int) $holdOrder->id,
+                'order_number' => (string) $holdOrder->order_number,
+                'status' => (string) $holdOrder->status,
+                'payment_status' => (string) $holdOrder->payment_status,
+                'payment_method' => (string) ($holdOrder->payment_method ?? ''),
+                'grand_total' => (float) ($holdOrder->grand_total ?? 0),
+            ],
+            'order_model' => $holdOrder,
+            'linked_bookings' => $linkedBookings,
+        ];
     }
 
     protected function resolveHoldDepositOrder(Booking $booking): ?Order
     {
         $orderIds = OrderItem::query()
             ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_deposit')
+            ->whereIn('line_type', ['booking_deposit', 'booking_addon'])
             ->pluck('order_id')
             ->filter()
             ->unique()
@@ -10494,7 +10557,7 @@ class PosController extends Controller
     {
         $orderIds = OrderItem::query()
             ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_deposit')
+            ->whereIn('line_type', ['booking_deposit', 'booking_addon'])
             ->pluck('order_id')
             ->filter()
             ->unique()
