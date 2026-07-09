@@ -14,7 +14,7 @@ import {
   getBookingDepositTncSettings,
   getBookingPaymentGateways,
   getBillplzPaymentGatewayOptions,
-  getServicePackageAvailableFor,
+  getMyServicePackages,
   payBooking,
   payPublicOrder,
   redeemServicePackage,
@@ -302,40 +302,70 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     const loadAvailability = async () => {
       const next: Record<number, number> = {};
       const details: Record<number, PackagePickerAvailability[]> = {};
-      await Promise.all(
-        cart.items.map(async (item) => {
-          try {
-            const mainRows = await getServicePackageAvailableFor(customerId, item.service_id);
-            const addonOptions = (item.selected_options ?? []).filter((opt) => Number(opt.linked_booking_service_id ?? 0) > 0);
-            const addonRows = await Promise.all(
-              addonOptions.map(async (opt, index) => {
-                const rows = await getServicePackageAvailableFor(customerId, Number(opt.linked_booking_service_id));
-                return rows.map((row) => ({
-                  ...row,
-                  line_type: "addon" as const,
-                  line_index: index,
-                  line_label: opt.label,
-                  line_cn_label: opt.cn_label || opt.linked_cn_name || null,
-                }));
-              })
-            );
-            details[item.id] = [
-              ...mainRows.map((row) => ({
-                ...row,
-                line_type: "main_service" as const,
-                line_index: 0,
-                line_label: item.service_name,
-                line_cn_label: item.service_cn_name ?? null,
+
+      try {
+        const ownedPackages = await getMyServicePackages();
+        const activePackages = (ownedPackages ?? []).filter((pkg) => {
+          const status = String(pkg.status ?? "").toLowerCase();
+          const expiresAt = pkg.expires_at ? new Date(pkg.expires_at) : null;
+          return status === "active" && (!expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt >= new Date());
+        });
+
+        cart.items.forEach((item) => {
+          const packageRows: PackagePickerAvailability[] = [];
+          const lineMatches = [
+            {
+              bookingServiceId: item.service_id,
+              lineType: "main_service" as const,
+              lineIndex: 0,
+              lineLabel: item.service_name,
+              lineCnLabel: item.service_cn_name ?? null,
+            },
+            ...(item.selected_options ?? [])
+              .filter((opt) => Number(opt.linked_booking_service_id ?? 0) > 0)
+              .map((opt, index) => ({
+                bookingServiceId: Number(opt.linked_booking_service_id),
+                lineType: "addon" as const,
+                lineIndex: index,
+                lineLabel: opt.label,
+                lineCnLabel: opt.cn_label || opt.linked_cn_name || null,
               })),
-              ...addonRows.flat(),
-            ];
-            next[item.id] = details[item.id].reduce((sum, row) => sum + Number(row.remaining_qty || 0), 0);
-          } catch {
-            details[item.id] = [];
-            next[item.id] = 0;
-          }
-        })
-      );
+          ];
+
+          activePackages.forEach((pkg) => {
+            (pkg.balances ?? []).forEach((balance) => {
+              const remainingQty = Number(balance.remaining_qty ?? 0);
+              if (remainingQty <= 0) return;
+
+              lineMatches
+                .filter((line) => Number(line.bookingServiceId) === Number(balance.booking_service_id))
+                .forEach((line) => {
+                  packageRows.push({
+                    customer_service_package_id: pkg.id,
+                    service_package_id: pkg.service_package?.id,
+                    service_package_name: pkg.service_package?.name,
+                    booking_service_id: Number(balance.booking_service_id),
+                    remaining_qty: remainingQty,
+                    expires_at: pkg.expires_at ?? null,
+                    line_type: line.lineType,
+                    line_index: line.lineIndex,
+                    line_label: line.lineLabel,
+                    line_cn_label: line.lineCnLabel,
+                  });
+                });
+            });
+          });
+
+          details[item.id] = packageRows;
+          next[item.id] = packageRows.reduce((sum, row) => sum + Number(row.remaining_qty || 0), 0);
+        });
+      } catch {
+        cart.items.forEach((item) => {
+          details[item.id] = [];
+          next[item.id] = 0;
+        });
+      }
+
       setAvailableMap(next);
       setAvailablePackagesMap(details);
     };
