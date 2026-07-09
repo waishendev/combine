@@ -280,7 +280,21 @@ class CartController extends Controller
                 ->where('status', 'active')
                 ->findOrFail($itemId);
 
-            $this->customerServicePackageService->releaseReservedClaimsBySource('BOOKING', (int) $item->id);
+            $usageId = (int) ($request->input('usage_id') ?? 0);
+            if ($usageId > 0) {
+                CustomerServicePackageUsage::query()
+                    ->whereKey($usageId)
+                    ->where('used_from', 'BOOKING')
+                    ->where('used_ref_id', (int) $item->id)
+                    ->where('status', 'reserved')
+                    ->update([
+                        'status' => 'released',
+                        'released_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+            } else {
+                $this->customerServicePackageService->releaseReservedClaimsBySource('BOOKING', (int) $item->id);
+            }
 
             return $this->respond($this->buildCartPayload($cart->fresh()));
         });
@@ -480,10 +494,10 @@ class CartController extends Controller
 
             $bookingIds = [];
             $ownedPackageIds = [];
-            $claimStatusesByItem = $this->claimStatusesByCartItem($customer?->id, $activeItems->pluck('id')->all());
+            $packageClaimsByItem = $this->packageClaimsByCartItem($customer?->id, $activeItems->pluck('id')->all());
             $depositBreakdown = $isDepositWaivedForCustomer
                 ? $this->buildZeroDepositBreakdown($activeItems->all())
-                : $this->resolveDepositBreakdownByCartItem($activeItems->all(), $claimStatusesByItem);
+                : $this->resolveDepositBreakdownByCartItem($activeItems->all(), $packageClaimsByItem);
             $depositByCartItemId = $depositBreakdown['deposit_by_cart_item'] ?? [];
             $mainDepositByCartItemId = $depositBreakdown['main_deposit_by_cart_item'] ?? [];
             $addonDepositByCartItemId = $depositBreakdown['addon_deposit_by_cart_item'] ?? [];
@@ -613,13 +627,22 @@ class CartController extends Controller
                 }
 
                 if ($customer) {
-                    $this->customerServicePackageService->attachReservedClaimsToBooking(
-                        (int) $customer->id,
-                        (int) $item->service_id,
-                        'BOOKING',
-                        (int) $item->id,
-                        (int) $booking->id,
-                    );
+                    $bookingServiceIdsToAttach = collect([(int) $item->service_id])
+                        ->merge(collect((array) ($item->question_answers_json['selected_options'] ?? []))
+                            ->map(fn ($option) => (int) ($option['linked_booking_service_id'] ?? 0)))
+                        ->filter(fn (int $id) => $id > 0)
+                        ->unique()
+                        ->values();
+
+                    foreach ($bookingServiceIdsToAttach as $bookingServiceIdToAttach) {
+                        $this->customerServicePackageService->attachReservedClaimsToBooking(
+                            (int) $customer->id,
+                            (int) $bookingServiceIdToAttach,
+                            'BOOKING',
+                            (int) $item->id,
+                            (int) $booking->id,
+                        );
+                    }
                 }
 
                 BookingItemPhoto::query()
@@ -988,7 +1011,8 @@ class CartController extends Controller
         $activePackageItems = $cart->packageItems;
 
         $nextExpiry = $activeItems->min('expires_at');
-        $claimStatusesByItem = $this->claimStatusesByCartItem($cart->customer_id, $activeItems->pluck('id')->all());
+        $packageClaimsByItem = $this->packageClaimsByCartItem($cart->customer_id, $activeItems->pluck('id')->all());
+        $claimStatusesByItem = $this->claimStatusesByCartItem($packageClaimsByItem);
         $isDepositWaivedForCustomer = false;
         if ($cart->customer_id) {
             $isDepositWaivedForCustomer = (bool) DB::table('customers')
@@ -997,7 +1021,7 @@ class CartController extends Controller
         }
         $depositBreakdown = $isDepositWaivedForCustomer
             ? $this->buildZeroDepositBreakdown($activeItems->all())
-            : $this->resolveDepositBreakdownByCartItem($activeItems->all(), $claimStatusesByItem);
+            : $this->resolveDepositBreakdownByCartItem($activeItems->all(), $packageClaimsByItem);
         $depositByCartItemId = $depositBreakdown['deposit_by_cart_item'] ?? [];
         $mainDepositByCartItemId = $depositBreakdown['main_deposit_by_cart_item'] ?? [];
         $addonDepositByCartItemId = $depositBreakdown['addon_deposit_by_cart_item'] ?? [];
@@ -1037,7 +1061,8 @@ class CartController extends Controller
                 'expires_at' => $item->expires_at?->toIso8601String(),
                 'status' => $item->status,
                 'package_claim_status' => $claimStatusesByItem[(int) $item->id] ?? null,
-                'package_covers_main_service' => in_array($claimStatusesByItem[(int) $item->id] ?? null, ['reserved', 'consumed'], true),
+                'package_claims' => $packageClaimsByItem[(int) $item->id] ?? [],
+                'package_covers_main_service' => collect($packageClaimsByItem[(int) $item->id] ?? [])->contains(fn ($claim) => (int) ($claim['booking_service_id'] ?? 0) === (int) $item->service_id && in_array($claim['status'] ?? null, ['reserved', 'consumed'], true)),
                 'reference_main_deposit' => (float) ($item->service?->deposit_amount ?? 0),
                 'deposit_amount' => (float) ($depositByCartItemId[(int) $item->id] ?? 0),
                 'main_deposit_amount' => (float) ($mainDepositByCartItemId[(int) $item->id] ?? 0),
@@ -1123,76 +1148,62 @@ class CartController extends Controller
         return $this->resolveCheckoutSlotAvailabilityError($item, $bufferMin, $ignoreCartItemIds) === null;
     }
 
-    private function resolveDepositByCartItem(array $items, array $claimStatusesByItem = []): array
+    private function resolveDepositByCartItem(array $items, array $packageClaimsByItem = []): array
     {
-        return $this->resolveDepositBreakdownByCartItem($items, $claimStatusesByItem)['deposit_by_cart_item'] ?? [];
+        return $this->resolveDepositBreakdownByCartItem($items, $packageClaimsByItem)['deposit_by_cart_item'] ?? [];
     }
 
-    private function resolveDepositBreakdownByCartItem(array $items, array $claimStatusesByItem = []): array
+    private function resolveDepositBreakdownByCartItem(array $items, array $packageClaimsByItem = []): array
     {
         $result = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => 0.0])->all();
         $mainResult = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => 0.0])->all();
         $addonResult = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => 0.0])->all();
         $addonDepositItems = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => []])->all();
         $candidatesByItem = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => []])->all();
+
         foreach ($items as $item) {
             $itemId = (int) $item->id;
-            $claimStatus = $claimStatusesByItem[$itemId] ?? null;
-            $packageCoversMain = in_array($claimStatus, ['reserved', 'consumed'], true);
+            $claimedServiceIds = collect($packageClaimsByItem[$itemId] ?? [])
+                ->filter(fn ($claim) => in_array($claim['status'] ?? null, ['reserved', 'consumed'], true))
+                ->pluck('booking_service_id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values();
 
-            // Package applies to the main booking service only; add-on deposits still apply.
-            if ($packageCoversMain) {
-                foreach ((array) ($item->question_answers_json['selected_options'] ?? []) as $selectedOption) {
-                    $linkedType = strtoupper((string) ($selectedOption['linked_service_type'] ?? ''));
-                    if ($linkedType === '') {
-                        continue;
-                    }
-                    $linkedDeposit = max(0, (float) ($selectedOption['linked_deposit_amount'] ?? 0));
-                    $candidatesByItem[$itemId][] = [
-                        'item_id' => $itemId,
-                        'type' => $linkedType,
-                        'deposit_amount' => $linkedDeposit,
-                        'scope' => 'addon',
-                        'option_id' => isset($selectedOption['id']) ? (int) $selectedOption['id'] : null,
-                        'label' => (string) ($selectedOption['label'] ?? 'Add-on'),
-                    ];
-                    $addonDepositItems[$itemId][] = [
-                        'id' => isset($selectedOption['id']) ? (int) $selectedOption['id'] : null,
-                        'label' => (string) ($selectedOption['label'] ?? 'Add-on'),
-                        'deposit_contribution' => 0.0,
-                    ];
-                }
-
-                continue;
+            if (! $claimedServiceIds->contains((int) $item->service_id)) {
+                $mainType = strtoupper((string) ($item->service?->service_type ?? $item->service_type ?? 'STANDARD'));
+                $mainDeposit = (float) ($item->service?->deposit_amount ?? 0);
+                $candidatesByItem[$itemId][] = ['item_id' => $itemId, 'type' => $mainType, 'deposit_amount' => $mainDeposit, 'scope' => 'main'];
             }
-
-            $isPayable = ! in_array($claimStatus, ['reserved', 'consumed'], true);
-            if (! $isPayable) {
-                continue;
-            }
-
-            $mainType = strtoupper((string) ($item->service?->service_type ?? $item->service_type ?? 'STANDARD'));
-            $mainDeposit = (float) ($item->service?->deposit_amount ?? 0);
-            $candidatesByItem[$itemId][] = ['item_id' => $itemId, 'type' => $mainType, 'deposit_amount' => $mainDeposit, 'scope' => 'main'];
 
             foreach ((array) ($item->question_answers_json['selected_options'] ?? []) as $selectedOption) {
+                $optionId = isset($selectedOption['id']) ? (int) $selectedOption['id'] : null;
+                $linkedBookingServiceId = (int) ($selectedOption['linked_booking_service_id'] ?? 0);
+                $addonDepositItems[$itemId][] = [
+                    'id' => $optionId,
+                    'booking_service_id' => $linkedBookingServiceId ?: null,
+                    'label' => (string) ($selectedOption['label'] ?? 'Add-on'),
+                    'deposit_contribution' => 0.0,
+                    'package_claim' => collect($packageClaimsByItem[$itemId] ?? [])->first(fn ($claim) =>
+                        in_array($claim['status'] ?? null, ['reserved', 'consumed'], true) &&
+                        $linkedBookingServiceId > 0 &&
+                        (int) ($claim['booking_service_id'] ?? 0) === $linkedBookingServiceId
+                    ),
+                ];
+
                 $linkedType = strtoupper((string) ($selectedOption['linked_service_type'] ?? ''));
-                if ($linkedType === '') {
+                if ($linkedType === '' || ($linkedBookingServiceId > 0 && $claimedServiceIds->contains($linkedBookingServiceId))) {
                     continue;
                 }
+
                 $linkedDeposit = max(0, (float) ($selectedOption['linked_deposit_amount'] ?? 0));
                 $candidatesByItem[$itemId][] = [
                     'item_id' => $itemId,
                     'type' => $linkedType,
                     'deposit_amount' => $linkedDeposit,
                     'scope' => 'addon',
-                    'option_id' => isset($selectedOption['id']) ? (int) $selectedOption['id'] : null,
+                    'option_id' => $optionId,
                     'label' => (string) ($selectedOption['label'] ?? 'Add-on'),
-                ];
-                $addonDepositItems[$itemId][] = [
-                    'id' => isset($selectedOption['id']) ? (int) $selectedOption['id'] : null,
-                    'label' => (string) ($selectedOption['label'] ?? 'Add-on'),
-                    'deposit_contribution' => 0.0,
                 ];
             }
         }
@@ -1225,7 +1236,6 @@ class CartController extends Controller
                 continue;
             }
 
-            // STANDARD tier: apply the first candidate for this cart line only (main first, then add-ons).
             $applied = $candidates[0];
             $appliedAmount = max(0, (float) ($applied['deposit_amount'] ?? 0));
             $result[$itemId] += $appliedAmount;
@@ -1258,33 +1268,45 @@ class CartController extends Controller
         ];
     }
 
-    private function claimStatusesByCartItem(?int $customerId, array $cartItemIds): array
+    private function packageClaimsByCartItem(?int $customerId, array $cartItemIds): array
     {
         if (! $customerId || empty($cartItemIds)) {
             return [];
         }
 
-        $claims = CustomerServicePackageUsage::query()
+        return CustomerServicePackageUsage::query()
+            ->with(['customerServicePackage.servicePackage:id,name'])
             ->where('customer_id', $customerId)
             ->where('used_from', 'BOOKING')
             ->whereIn('used_ref_id', $cartItemIds)
             ->whereIn('status', ['reserved', 'consumed', 'released'])
-            ->get(['used_ref_id', 'status']);
+            ->orderBy('id')
+            ->get()
+            ->groupBy(fn (CustomerServicePackageUsage $claim) => (int) ($claim->used_ref_id ?? 0))
+            ->map(fn ($claims) => $claims->map(fn (CustomerServicePackageUsage $claim) => [
+                'usage_id' => (int) $claim->id,
+                'customer_service_package_id' => (int) $claim->customer_service_package_id,
+                'package_name' => (string) ($claim->customerServicePackage?->servicePackage?->name ?? ('Package #' . $claim->customer_service_package_id)),
+                'booking_service_id' => (int) $claim->booking_service_id,
+                'status' => (string) $claim->status,
+                'used_qty' => (int) $claim->used_qty,
+            ])->values()->all())
+            ->all();
+    }
 
+    private function claimStatusesByCartItem(array $packageClaimsByItem): array
+    {
         $priority = ['released' => 1, 'reserved' => 2, 'consumed' => 3];
         $map = [];
 
-        foreach ($claims as $claim) {
-            $itemId = (int) ($claim->used_ref_id ?? 0);
-            if ($itemId <= 0) {
-                continue;
-            }
+        foreach ($packageClaimsByItem as $itemId => $claims) {
+            foreach ((array) $claims as $claim) {
+                $incomingPriority = $priority[$claim['status'] ?? ''] ?? 0;
+                $existingPriority = $priority[$map[(int) $itemId] ?? ''] ?? 0;
 
-            $incomingPriority = $priority[$claim->status] ?? 0;
-            $existingPriority = $priority[$map[$itemId] ?? ''] ?? 0;
-
-            if ($incomingPriority >= $existingPriority) {
-                $map[$itemId] = $claim->status;
+                if ($incomingPriority >= $existingPriority) {
+                    $map[(int) $itemId] = (string) ($claim['status'] ?? '');
+                }
             }
         }
 

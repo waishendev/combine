@@ -14,7 +14,7 @@ import {
   getBookingDepositTncSettings,
   getBookingPaymentGateways,
   getBillplzPaymentGatewayOptions,
-  getServicePackageAvailableFor,
+  getMyServicePackages,
   payBooking,
   payPublicOrder,
   redeemServicePackage,
@@ -29,7 +29,7 @@ import {
   type BillplzPaymentGatewayOption,
 } from "@/lib/apiClient";
 import { bankQrImageCompactClass, BANK_QR_IMAGE_HEIGHT, BANK_QR_IMAGE_WIDTH } from "@/lib/bankQrImage";
-import { BookingCart } from "@/lib/types";
+import { BookingCart, ServicePackageAvailability } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
 const SLOT_ITEM_UNAVAILABLE_MESSAGE =
@@ -111,6 +111,13 @@ function getFirstFieldErrorKey(errors: Record<string, string>): string | null {
   return Object.keys(errors)[0] ?? null;
 }
 
+type PackagePickerAvailability = ServicePackageAvailability & {
+  line_type: "main_service" | "addon";
+  line_index: number;
+  line_label: string;
+  line_cn_label?: string | null;
+};
+
 interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -133,6 +140,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [allowNoDepositBooking, setAllowNoDepositBooking] = useState(false);
   const [availableMap, setAvailableMap] = useState<Record<number, number>>({});
+  const [availablePackagesMap, setAvailablePackagesMap] = useState<Record<number, PackagePickerAvailability[]>>({});
+  const [packagePickerItemId, setPackagePickerItemId] = useState<number | null>(null);
+  const [packagePickerBusyId, setPackagePickerBusyId] = useState<number | null>(null);
+  const [claimedPackageNames, setClaimedPackageNames] = useState<Record<number, string>>({});
   const [gateways, setGateways] = useState<PublicBookingPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBookingBankAccount[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"manual_transfer" | "billplz_online_banking" | "billplz_credit_card">("manual_transfer");
@@ -290,17 +301,73 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
     const loadAvailability = async () => {
       const next: Record<number, number> = {};
-      await Promise.all(
-        cart.items.map(async (item) => {
-          try {
-            const rows = await getServicePackageAvailableFor(customerId, item.service_id);
-            next[item.id] = rows.reduce((sum, row) => sum + Number(row.remaining_qty || 0), 0);
-          } catch {
-            next[item.id] = 0;
-          }
-        })
-      );
+      const details: Record<number, PackagePickerAvailability[]> = {};
+
+      try {
+        const ownedPackages = await getMyServicePackages();
+        const activePackages = (ownedPackages ?? []).filter((pkg) => {
+          const status = String(pkg.status ?? "").toLowerCase();
+          const expiresAt = pkg.expires_at ? new Date(pkg.expires_at) : null;
+          return status === "active" && (!expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt >= new Date());
+        });
+
+        cart.items.forEach((item) => {
+          const packageRows: PackagePickerAvailability[] = [];
+          const lineMatches = [
+            {
+              bookingServiceId: item.service_id,
+              lineType: "main_service" as const,
+              lineIndex: 0,
+              lineLabel: item.service_name,
+              lineCnLabel: item.service_cn_name ?? null,
+            },
+            ...(item.selected_options ?? [])
+              .filter((opt) => Number(opt.linked_booking_service_id ?? 0) > 0)
+              .map((opt, index) => ({
+                bookingServiceId: Number(opt.linked_booking_service_id),
+                lineType: "addon" as const,
+                lineIndex: index,
+                lineLabel: opt.label,
+                lineCnLabel: opt.cn_label || opt.linked_cn_name || null,
+              })),
+          ];
+
+          activePackages.forEach((pkg) => {
+            (pkg.balances ?? []).forEach((balance) => {
+              const remainingQty = Number(balance.remaining_qty ?? 0);
+              if (remainingQty <= 0) return;
+
+              lineMatches
+                .filter((line) => Number(line.bookingServiceId) === Number(balance.booking_service_id))
+                .forEach((line) => {
+                  packageRows.push({
+                    customer_service_package_id: pkg.id,
+                    service_package_id: pkg.service_package?.id,
+                    service_package_name: pkg.service_package?.name,
+                    booking_service_id: Number(balance.booking_service_id),
+                    remaining_qty: remainingQty,
+                    expires_at: pkg.expires_at ?? null,
+                    line_type: line.lineType,
+                    line_index: line.lineIndex,
+                    line_label: line.lineLabel,
+                    line_cn_label: line.lineCnLabel,
+                  });
+                });
+            });
+          });
+
+          details[item.id] = packageRows;
+          next[item.id] = packageRows.reduce((sum, row) => sum + Number(row.remaining_qty || 0), 0);
+        });
+      } catch {
+        cart.items.forEach((item) => {
+          details[item.id] = [];
+          next[item.id] = 0;
+        });
+      }
+
       setAvailableMap(next);
+      setAvailablePackagesMap(details);
     };
 
     void loadAvailability();
@@ -386,6 +453,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           bank_account_id: !isZeroPayableCheckout && selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
           billplz_gateway_option_id: !isZeroPayableCheckout && selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
         },
+        { authenticated: isLoggedIn },
       );
 
       if (process.env.NODE_ENV !== "production") {
@@ -534,6 +602,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       setFieldErrors({});
       setPackageActionItemId(null);
       setPackageQtyBusyId(null);
+      setPackagePickerItemId(null);
+      setPackagePickerBusyId(null);
     }
   }, [isOpen]);
 
@@ -575,6 +645,34 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     ? Number(cart?.addon_deposit_total ?? 0)
     : (cart?.items ?? []).reduce((sum, item) => sum + Number(item.addon_deposit_amount ?? 0), 0);
 
+  const paymentSummaryDisplay = useMemo(() => {
+    const bookingItems = cart?.items ?? [];
+    const originalMain = bookingItems.reduce((sum, item) => {
+      const hasMainPackage = (item.package_claims ?? []).some(
+        (claim) => ["reserved", "consumed"].includes(String(claim.status)) && Number(claim.booking_service_id) === Number(item.service_id),
+      );
+      return sum + (hasMainPackage ? Number(item.reference_main_deposit ?? item.main_deposit_amount ?? 0) : Number(item.main_deposit_amount ?? 0));
+    }, 0);
+    const originalAddon = bookingItems.reduce((sum, item) => {
+      return sum + (item.selected_options ?? []).reduce((optionSum, opt) => {
+        const matchedAddon = (item.addon_deposit_items ?? []).find((addon) => Number(addon.id) === Number(opt.id));
+        const isCovered = Boolean(matchedAddon?.package_claim);
+        const original = Number(opt.linked_deposit_amount ?? opt.extra_price ?? matchedAddon?.deposit_contribution ?? 0);
+        return optionSum + (isCovered ? original : Number(matchedAddon?.deposit_contribution ?? 0));
+      }, 0);
+    }, 0);
+    const currentMain = mainDepositTotal;
+    const currentAddon = addonDepositTotal;
+    const packageCovered = Math.max(0, originalMain + originalAddon - currentMain - currentAddon);
+
+    return {
+      originalMain,
+      originalAddon,
+      packageCovered,
+      totalDue: Number(cart?.package_total ?? 0) + depositDisplay.total,
+    };
+  }, [addonDepositTotal, cart?.items, cart?.package_total, depositDisplay.total, mainDepositTotal]);
+
   const estimatedPayLaterTotal = useMemo(() => {
     return (cart?.items ?? []).reduce((sum, item) => {
       const listed = Number(item.listed_service_price ?? 0);
@@ -585,6 +683,76 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       return sum + Math.max(0, menuTotal - lineDep);
     }, 0);
   }, [cart?.items, depositDisplay]);
+
+
+  const resolvePackageName = (row: ServicePackageAvailability): string => {
+    const extended = row as ServicePackageAvailability & {
+      package_name?: string | null;
+      customer_service_package?: { service_package?: { name?: string | null } | null } | null;
+      service_package?: { name?: string | null } | null;
+    };
+    return (
+      extended.service_package_name ||
+      extended.package_name ||
+      extended.customer_service_package?.service_package?.name ||
+      extended.service_package?.name ||
+      `Package #${row.customer_service_package_id}`
+    );
+  };
+
+  const formatPackageExpiry = (expiresAt?: string | null): string | null => {
+    if (!expiresAt) return null;
+    const date = new Date(expiresAt);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric", timeZone: TZ });
+  };
+
+  const applyPackageClaim = async (item: BookingCart["items"][number], selectedPackage?: PackagePickerAvailability) => {
+    setPackagePickerBusyId(item.id);
+    setPackageActionItemId(item.id);
+    setMessage(null);
+    try {
+      await redeemServicePackage({
+        customer_id: customerId || 0,
+        booking_service_id: selectedPackage?.booking_service_id ?? item.service_id,
+        source: "BOOKING",
+        source_ref_id: item.id,
+        used_qty: 1,
+        ...(selectedPackage ? { customer_service_package_id: selectedPackage.customer_service_package_id } : {}),
+      });
+      if (selectedPackage) {
+        setClaimedPackageNames((prev) => ({ ...prev, [item.id]: resolvePackageName(selectedPackage) }));
+      }
+      await loadCart();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to apply package to this slot.");
+    } finally {
+      setPackagePickerBusyId(null);
+      setPackageActionItemId(null);
+    }
+  };
+
+  const releasePackageClaim = async (itemId: number, usageId?: number) => {
+    setPackagePickerBusyId(itemId);
+    setPackageActionItemId(itemId);
+    setMessage(null);
+    try {
+      const updated = await releaseBookingCartPackageClaim(itemId, usageId);
+      setCart(updated);
+      setClaimedPackageNames((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      const count = (updated?.items?.length || 0) + (updated?.package_items?.length || 0);
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: count }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to remove package from this slot.");
+    } finally {
+      setPackagePickerBusyId(null);
+      setPackageActionItemId(null);
+    }
+  };
 
   const handlePhotoUpload = async (itemId: number, files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -749,10 +917,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               const urgent = sec > 0 && sec < 120;
               const premium = isPremiumService(item.service_type);
               const pkgBal = availableMap[item.id] ?? 0;
-              const claimStatus = item.package_claim_status ?? null;
-              const packageApplied =
-                item.package_covers_main_service === true || claimStatus === "reserved" || claimStatus === "consumed";
-              const canUnclaimPackage = claimStatus === "reserved";
+              const activePackageClaims = (item.package_claims ?? []).filter((claim) => ["reserved", "consumed"].includes(String(claim.status)));
+              const availablePackageRows = availablePackagesMap[item.id] ?? [];
+              const mainPackageClaim = activePackageClaims.find((claim) => Number(claim.booking_service_id) === Number(item.service_id));
+              const claimPackageName = mainPackageClaim?.package_name ?? claimedPackageNames[item.id] ?? (availablePackageRows.find((row) => row.line_type === "main_service") ? resolvePackageName(availablePackageRows.find((row) => row.line_type === "main_service")!) : "Selected package");
+              const packageApplied = Boolean(mainPackageClaim) || item.package_covers_main_service === true;
+              const canUnclaimPackage = mainPackageClaim?.status === "reserved";
               const refMain = Number(item.reference_main_deposit ?? 0);
               const mainDep = Number(item.main_deposit_amount ?? 0);
               const addonDep = Number(item.addon_deposit_amount ?? 0);
@@ -831,7 +1001,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--card-border)]/80 pb-2">
                           <div className="min-w-0">
                             <div><p className="font-medium text-[var(--foreground)]">{item.service_name}</p>{item.service_cn_name ? <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{item.service_cn_name}</p> : null}</div>
-                            <p className="text-[10px] text-[var(--status-success)]">Included in your package (main service)</p>
+                            <p className="mt-1 text-[10px] text-[var(--status-success)]">Included in your package (main service)</p>
+                            <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[var(--status-success)]">
+                              <span>[PKG]</span> {claimPackageName}
+                            </p>
                           </div>
                           <div className="shrink-0 text-right">
                             {refMain > 0 ? (
@@ -839,7 +1012,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                                 RM {refMain.toFixed(2)}
                               </span>
                             ) : null}
-                            {/* <span className="font-semibold tabular-nums text-[var(--status-success)]">RM {mainDep.toFixed(2)}</span> */}
+                            <span className="font-semibold tabular-nums text-[var(--status-success)]">RM {mainDep.toFixed(2)}</span>
                           </div>
                         </div>
                       ) : (
@@ -860,9 +1033,20 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                                 <span className="text-[var(--foreground)]">
                                   <span className="text-[var(--text-muted)]">+</span> {opt.label}
                                   {(opt.cn_label || opt.linked_cn_name) ? <span className="block pl-3 text-[10px] text-[var(--text-muted)]">{opt.cn_label || opt.linked_cn_name}</span> : null}
-                                  {/* <span className="ml-1 text-[10px] text-[var(--text-muted)]">(not included in package)</span> */}
+                                  {matchedAddon?.package_claim ? (
+                                    <span className="mt-1 block pl-3 text-[9px] font-bold uppercase tracking-wide text-[var(--status-success)]">[PKG] {matchedAddon.package_claim.package_name}</span>
+                                  ) : null}
                                 </span>
-                                <span className="shrink-0 font-semibold tabular-nums text-[var(--foreground)]">RM {addonPart.toFixed(2)}</span>
+                                <span className="shrink-0 text-right font-semibold tabular-nums text-[var(--foreground)]">
+                                  {matchedAddon?.package_claim ? (
+                                    <>
+                                      <span className="mr-1 text-[var(--text-muted)] line-through">RM {Number(opt.linked_deposit_amount ?? opt.extra_price ?? addonPart).toFixed(2)}</span>
+                                      <span className="text-[var(--status-success)]">RM {addonPart.toFixed(2)}</span>
+                                    </>
+                                  ) : (
+                                    <>RM {addonPart.toFixed(2)}</>
+                                  )}
+                                </span>
                               </div>
                             );
                           })}
@@ -1000,57 +1184,18 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
                   {isLoggedIn ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {canUnclaimPackage ? (
+                      {(canUnclaimPackage || pkgBal > 0 || packageApplied || activePackageClaims.length > 0) ? (
                         <button
                           type="button"
                           disabled={packageActionItemId === item.id}
-                          className="rounded-full border-2 border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-2.5 py-1 text-[10px] font-semibold  tracking-wide text-[var(--status-warning-text)] disabled:opacity-50"
-                          onClick={async () => {
-                            setPackageActionItemId(item.id);
-                            setMessage(null);
-                            try {
-                              const updated = await releaseBookingCartPackageClaim(item.id);
-                              setCart(updated);
-                              const count = (updated?.items?.length || 0) + (updated?.package_items?.length || 0);
-                              window.dispatchEvent(new CustomEvent("cartUpdated", { detail: count }));
-                              // setMessage("Package use removed for this slot. Deposit is calculated as usual.");
-                            } catch (error) {
-                              setMessage(error instanceof Error ? error.message : "Unable to remove package from this slot.");
-                            } finally {
-                              setPackageActionItemId(null);
-                            }
-                          }}
+                          className={`rounded-full border-2 px-2.5 py-1 text-[10px] font-semibold tracking-wide disabled:opacity-50 ${
+                            packageApplied
+                              ? "border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-text)]"
+                              : "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white"
+                          }`}
+                          onClick={() => setPackagePickerItemId(item.id)}
                         >
-                          {packageActionItemId === item.id ? "…" : "Unclaim Package"}
-                        </button>
-                      ) : null}
-
-                      {!packageApplied && pkgBal > 0 ? (
-                        <button
-                          type="button"
-                          disabled={packageActionItemId === item.id}
-                          className="rounded-full border-2 border-[var(--accent-strong)] bg-[var(--accent-strong)] px-2.5 py-1 text-[10px] font-semibold  tracking-wide text-white disabled:opacity-50"
-                          onClick={async () => {
-                            setPackageActionItemId(item.id);
-                            setMessage(null);
-                            try {
-                              await redeemServicePackage({
-                                customer_id: customerId || 0,
-                                booking_service_id: item.service_id,
-                                source: "BOOKING",
-                                source_ref_id: item.id,
-                                used_qty: 1,
-                              });
-                              await loadCart();
-                              // setMessage("Main service covered by your package. Add-on deposits (if any) still apply at checkout.");
-                            } catch (error) {
-                              setMessage(error instanceof Error ? error.message : "Unable to apply package to this slot.");
-                            } finally {
-                              setPackageActionItemId(null);
-                            }
-                          }}
-                        >
-                          {packageActionItemId === item.id ? "…" : `Claim package (${pkgBal})`}
+                          {packageActionItemId === item.id ? "…" : packageApplied ? "Manage Package" : "Claim Package"}
                         </button>
                       ) : null}
 
@@ -1449,18 +1594,30 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
               <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Payment summary</p>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">Main service deposit</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {mainDepositTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">Add-on deposit</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {addonDepositTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">Packages</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.package_total ?? 0).toFixed(2)}</span>
-                </div>
+                {paymentSummaryDisplay.originalMain > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--text-muted)]">Main service deposit</span>
+                    <span className="font-medium tabular-nums text-[var(--foreground)]">RM {paymentSummaryDisplay.originalMain.toFixed(2)}</span>
+                  </div>
+                ) : null}
+                {paymentSummaryDisplay.originalAddon > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--text-muted)]">Add-on deposit</span>
+                    <span className="font-medium tabular-nums text-[var(--foreground)]">RM {paymentSummaryDisplay.originalAddon.toFixed(2)}</span>
+                  </div>
+                ) : null}
+                {paymentSummaryDisplay.packageCovered > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--status-success)]">Package Covered</span>
+                    <span className="font-semibold tabular-nums text-[var(--status-success)]">-RM {paymentSummaryDisplay.packageCovered.toFixed(2)}</span>
+                  </div>
+                ) : null}
+                {Number(cart?.package_total ?? 0) > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--text-muted)]">Packages</span>
+                    <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.package_total ?? 0).toFixed(2)}</span>
+                  </div>
+                ) : null}
                 {/* {estimatedPayLaterTotal > 0 ? (
                   <div
                     className="flex justify-between gap-3 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2.5 text-sm ring-1 ring-[var(--status-success)]/10"
@@ -1476,10 +1633,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="min-w-0">
                       <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
-                      <p className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)]">Due now — deposits + packages</p>
+                      <p className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)]">Total due now</p>
                     </div>
                     <span className="shrink-0 font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
-                      RM {(Number(cart?.package_total ?? 0) + depositDisplay.total).toFixed(2)}
+                      RM {paymentSummaryDisplay.totalDue.toFixed(2)}
                     </span>
                   </div>
                   {nextExpiryIn ? (
@@ -1528,6 +1685,87 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           ) : null}
         </div>
       </div>
+
+      {packagePickerItemId ? (() => {
+        const item = cart?.items?.find((row) => row.id === packagePickerItemId);
+        if (!item) return null;
+        const rows = availablePackagesMap[item.id] ?? [];
+        const activeClaims = (item.package_claims ?? []).filter((claim) => ["reserved", "consumed"].includes(String(claim.status)));
+
+        return (
+          <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/55 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Apply Package">
+            <div className="absolute inset-0" onClick={() => setPackagePickerItemId(null)} aria-hidden />
+            <div className="relative z-[61] flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-[var(--card-border)] bg-[var(--card)] shadow-2xl sm:rounded-3xl">
+              <div className="shrink-0 border-b border-[var(--card-border)] bg-gradient-to-r from-[var(--muted)] via-[var(--card)] to-[var(--muted)] px-5 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Apply Package</p>
+                    <h3 className="mt-1 font-[var(--font-heading)] text-lg font-semibold text-[var(--foreground)]">{item.service_name}</h3>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">Tick each main service or add-on line to claim. Untick to remove that line only.</p>
+                  </div>
+                  <button type="button" onClick={() => setPackagePickerItemId(null)} className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--muted)]" aria-label="Close package picker">
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                {rows.length === 0 && activeClaims.length === 0 ? (
+                  <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--muted)]/30 px-4 py-8 text-center">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">No available package balance</p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">No active package with remaining quantity matches this booking line.</p>
+                  </div>
+                ) : null}
+
+                <div className="space-y-3">
+                  {rows.map((row) => {
+                    const remaining = Number(row.remaining_qty ?? 0);
+                    const matchingClaim = activeClaims.find((claim) => Number(claim.booking_service_id) === Number(row.booking_service_id));
+                    const checkedHere = matchingClaim && Number(matchingClaim.customer_service_package_id) === Number(row.customer_service_package_id);
+                    const checkedElsewhere = Boolean(matchingClaim && !checkedHere);
+                    const canApply = remaining > 0 && !matchingClaim;
+                    const canToggle = Boolean(checkedHere && matchingClaim?.status === "reserved") || canApply;
+                    const expiryLabel = formatPackageExpiry(row.expires_at);
+                    const name = resolvePackageName(row);
+                    return (
+                      <button
+                        key={`${row.line_type}-${row.line_index}-${row.customer_service_package_id}-${row.booking_service_id}`}
+                        type="button"
+                        disabled={!canToggle || packagePickerBusyId === item.id}
+                        onClick={() => {
+                          if (checkedHere && matchingClaim?.status === "reserved") {
+                            void releasePackageClaim(item.id, matchingClaim.usage_id);
+                            return;
+                          }
+                          if (canApply) void applyPackageClaim(item, row);
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition disabled:cursor-not-allowed ${checkedHere ? "border-[var(--accent-strong)] bg-[var(--status-success-bg)]" : canApply ? "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/30" : "border-[var(--card-border)] bg-[var(--muted)]/30 opacity-65"}`}
+                      >
+                        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${checkedHere ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white" : canApply ? "border-[var(--accent-strong)] bg-white" : "border-[var(--card-border)] bg-[var(--muted)]"}`}>
+                          {checkedHere ? <i className="fa-solid fa-check text-[10px]" /> : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-[var(--foreground)]">{name}</span>
+                          <span className="block text-xs text-[var(--text-muted)]">{row.line_type === "addon" ? "Add-on" : "Main service"}: {row.line_label}{row.line_cn_label ? ` · ${row.line_cn_label}` : ""}</span>
+                          <span className="mt-1 inline-flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-wide">
+                            <span className={remaining > 0 ? "text-[var(--status-success)]" : "text-[var(--status-error)]"}>{remaining > 0 ? `${remaining} remaining` : "No balance"}</span>
+                            <span className={checkedHere || canApply ? "text-[var(--status-success)]" : "text-[var(--text-muted)]"}>{checkedHere ? "Claimed for this visit" : checkedElsewhere ? "Selected in another package" : canApply ? "Can apply to this booking line" : "Cannot apply"}</span>
+                            <span className="text-[var(--accent-strong)]">Current visit</span>
+                          </span>
+                          {expiryLabel ? <span className="mt-1 block text-[10px] text-[var(--text-muted)]">Expires {expiryLabel}</span> : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="shrink-0 border-t border-[var(--card-border)] bg-[var(--muted)]/30 px-5 py-3 text-right">
+                <button type="button" onClick={() => setPackagePickerItemId(null)} className="rounded-full bg-[var(--accent-strong)] px-5 py-2 text-xs font-semibold text-white">Confirm</button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       {depositTncImagePreviewOpen && depositTncImage ? (
         <div

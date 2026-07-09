@@ -194,6 +194,14 @@ function formatMoney(value?: string | number | null) {
   return `RM ${Number(value ?? 0).toFixed(2)}`
 }
 
+function PackageBadge({ name }: { name: string }) {
+  return (
+    <span className="mt-1 inline-flex w-fit items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-100">
+      [PKG] {name}
+    </span>
+  )
+}
+
 function calcDurationMinutes(start?: string | null, end?: string | null) {
   if (!start || !end) return null
   const startDate = new Date(start)
@@ -724,16 +732,78 @@ export default function PosRequestCenter({
                   <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Services</p>
                     <div className="mt-3 space-y-3 text-sm text-slate-700">
-                      <div><span className="font-semibold text-slate-900">Main service(s):</span> {(bookingDetail.main_services?.length ? bookingDetail.main_services.map((item) => item.name).join(', ') : bookingDetail.service?.name) ?? '—'}</div>
-                      <div><span className="font-semibold text-slate-900">Add-ons:</span> {bookingDetail.add_ons?.length ? bookingDetail.add_ons.map((item) => item.name).join(', ') : '—'}</div>
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <Info label="Service amount" value={formatMoney(bookingDetail.service_total)} />
-                        <Info label="Add-on amount" value={formatMoney(bookingDetail.addon_total_price)} />
-                        <Info label="Total amount" value={formatMoney(Number(bookingDetail.service_total ?? 0) + Number(bookingDetail.addon_total_price ?? 0))} />
-                        <Info label="Deposit paid" value={formatMoney(bookingDetail.deposit_paid ?? bookingDetail.deposit_contribution)} />
-                        <Info label="Settlement paid" value={formatMoney(bookingDetail.settlement_paid)} />
-                        <Info label="Balance due" value={formatMoney(bookingDetail.amount_due_now ?? bookingDetail.balance_due)} />
-                      </div>
+                      {(() => {
+                        const activeClaims = (bookingDetail.package_claims ?? []).filter((claim) => ['reserved', 'consumed'].includes(String(claim.status)))
+                        const claimForService = (serviceId?: number | null) => activeClaims.find((claim) => Number(claim.booking_service_id) === Number(serviceId ?? 0))
+                        const mainRows: Array<{ id?: number | null; name: string; cn_name?: string | null; linked_booking_service_id?: number | null }> = bookingDetail.main_services?.length
+                          ? bookingDetail.main_services
+                          : bookingDetail.service
+                            ? [{ id: bookingDetail.service.id, name: bookingDetail.service.name, cn_name: bookingDetail.service.cn_name, linked_booking_service_id: bookingDetail.service.id }]
+                            : []
+                        const packageUsageRows = [
+                          ...mainRows.map((item) => {
+                            const claim = claimForService(item.linked_booking_service_id ?? item.id)
+                            return claim ? { key: `main-${item.id ?? item.name}`, packageName: claim.package_name, lineName: 'Main Service Covered' } : null
+                          }),
+                          ...(bookingDetail.add_ons ?? []).map((item) => {
+                            const claim = claimForService(item.linked_booking_service_id)
+                            return claim ? { key: `addon-${item.id ?? item.name}`, packageName: claim.package_name, lineName: `${item.name} Covered` } : null
+                          }),
+                        ].filter(Boolean) as Array<{ key: string; packageName: string; lineName: string }>
+                        const mainCovered = mainRows.some((item) => Boolean(claimForService(item.linked_booking_service_id ?? item.id)))
+                        const addonCovered = (bookingDetail.add_ons ?? []).some((item) => Boolean(claimForService(item.linked_booking_service_id)))
+
+                        return (
+                          <>
+                            <div>
+                              <span className="font-semibold text-slate-900">Main service(s):</span>
+                              <div className="mt-1 space-y-1">
+                                {mainRows.length ? mainRows.map((item) => {
+                                  const claim = claimForService(item.linked_booking_service_id ?? item.id)
+                                  return (
+                                    <div key={`main-${item.id ?? item.name}`} className="flex flex-col">
+                                      <span>{item.name}</span>
+                                      {claim ? <PackageBadge name={claim.package_name} /> : null}
+                                    </div>
+                                  )
+                                }) : '—'}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-900">Add-ons:</span>
+                              <div className="mt-1 space-y-1">
+                                {bookingDetail.add_ons?.length ? bookingDetail.add_ons.map((item) => {
+                                  const claim = claimForService(item.linked_booking_service_id)
+                                  return (
+                                    <div key={`addon-${item.id ?? item.name}`} className="flex flex-col">
+                                      <span>{item.name}</span>
+                                      {claim ? <PackageBadge name={claim.package_name} /> : null}
+                                    </div>
+                                  )
+                                }) : '—'}
+                              </div>
+                            </div>
+                            {packageUsageRows.length > 0 ? (
+                              <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 p-3">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Package Usage</p>
+                                <div className="mt-2 space-y-1.5">
+                                  {packageUsageRows.map((row) => (
+                                    <div key={row.key} className="text-xs text-emerald-900">✓ <span className="font-semibold">{row.packageName}</span> · {row.lineName}</div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <div><Info label="Service amount" value={formatMoney(bookingDetail.service_total)} />{mainCovered ? <p className="mt-1 text-xs font-semibold text-emerald-700">Covered by package</p> : null}</div>
+                              <div><Info label="Add-on amount" value={formatMoney(bookingDetail.addon_total_price)} />{addonCovered ? <p className="mt-1 text-xs font-semibold text-emerald-700">Covered by package</p> : null}</div>
+                              <Info label="Total amount" value={formatMoney(Number(bookingDetail.service_total ?? 0) + Number(bookingDetail.addon_total_price ?? 0))} />
+                              <Info label="Deposit paid" value={formatMoney(bookingDetail.deposit_paid ?? bookingDetail.deposit_contribution)} />
+                              <Info label="Settlement paid" value={formatMoney(bookingDetail.settlement_paid)} />
+                              <Info label="Balance due" value={formatMoney(bookingDetail.amount_due_now ?? bookingDetail.balance_due)} />
+                            </div>
+                          </>
+                        )
+                      })()}
                     </div>
                   </section>
                   <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

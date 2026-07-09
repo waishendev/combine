@@ -1268,6 +1268,9 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
     Route::post('/payment/callback', [\App\Http\Controllers\Booking\PaymentController::class, 'callback']);
 
     Route::middleware('auth:customer,sanctum')->group(function () {
+        Route::post('/cart/checkout-member', [\App\Http\Controllers\Booking\CartController::class, 'checkout']);
+        Route::post('/cart/item/{itemId}/release-package-claim-member', [\App\Http\Controllers\Booking\CartController::class, 'releasePackageClaim']);
+        Route::post('/service-packages/redeem', [\App\Http\Controllers\Booking\ServicePackageCustomerController::class, 'redeem']);
         Route::post('/cart/add-package', [\App\Http\Controllers\Booking\CartController::class, 'addPackage']);
         Route::patch('/cart/package-item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'updatePackageItem']);
         Route::delete('/cart/package-item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removePackageItem']);

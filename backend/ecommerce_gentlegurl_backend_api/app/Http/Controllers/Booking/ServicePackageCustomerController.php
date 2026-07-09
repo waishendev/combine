@@ -27,6 +27,46 @@ class ServicePackageCustomerController extends Controller
         return $this->respond($rows);
     }
 
+
+    public function redeem(Request $request)
+    {
+        $customer = $request->user('customer');
+
+        $validated = $request->validate([
+            'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'source_ref_id' => ['required', 'integer'],
+            'used_qty' => ['nullable', 'integer', 'min:1'],
+            'customer_service_package_id' => ['nullable', 'integer'],
+        ]);
+
+        try {
+            if (! empty($validated['customer_service_package_id'])) {
+                $usage = $this->customerServicePackageService->reserveFromSpecificPackage(
+                    (int) $customer->id,
+                    (int) $validated['booking_service_id'],
+                    (int) $validated['customer_service_package_id'],
+                    'BOOKING',
+                    (int) $validated['source_ref_id'],
+                    (int) ($validated['used_qty'] ?? 1),
+                    'Applied from customer booking cart',
+                );
+            } else {
+                $usage = $this->customerServicePackageService->redeem(
+                    (int) $customer->id,
+                    (int) $validated['booking_service_id'],
+                    'BOOKING',
+                    (int) $validated['source_ref_id'],
+                    (int) ($validated['used_qty'] ?? 1),
+                    'Applied from customer booking cart',
+                );
+            }
+        } catch (\Throwable $e) {
+            return $this->respondError($e->getMessage() ?: __('No package balance available.'), 422);
+        }
+
+        return $this->respond($usage);
+    }
+
     public function purchase(Request $request)
     {
         $customer = $request->user('customer');
