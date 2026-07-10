@@ -12,6 +12,7 @@ import PaymentProofNotificationSettingsCard from '@/components/PaymentProofNotif
 import BookingDepositTermsSettingsCard from '@/components/BookingDepositTermsSettingsCard'
 import BookingSlotsHelpNoteSettingsCard from '@/components/BookingSlotsHelpNoteSettingsCard'
 import BookingMaxAdvanceDaysSettingsCard from '@/components/BookingMaxAdvanceDaysSettingsCard'
+import PosAvailabilityVerifyModeSettingsCard from '@/components/PosAvailabilityVerifyModeSettingsCard'
 import { getCurrentUser } from '@/lib/auth'
 
 export default async function BookingShopSettingsPage() {
@@ -50,6 +51,9 @@ export default async function BookingShopSettingsPage() {
       </div>
 
       <ShopSettingsPageContent canEdit={canUpdate} forcedWorkspace="booking" />
+      <div className="mt-6">
+        <PosAvailabilityVerifyModeSettingsCard canEdit={canUpdate} />
+      </div>
       <div className="mt-6">
         <BookingPolicySettingsCard canEdit={canUpdate} />
       </div>

@@ -62,7 +62,8 @@ import CustomerCreateModal from '@/components/CustomerCreateModal'
 import type { CustomerRowData } from '@/components/CustomerRow'
 import OrderViewPanel from '@/components/OrderViewPanel'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
-import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
+import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, parsePosAvailabilityVerifyMode, posAvailabilityShouldHardBlock, posAvailabilityStaffIsUnavailable, POS_SCHEDULE_OVERRIDE_REASONS, type PosAvailabilityVerifyMode } from '@/components/pos/posAvailabilityMessages'
+import { confirmAndVerifyEditSettlementPrimaryStaffChange, resolvePrimaryStaffIdFromSplits } from '@/components/pos/posStaffSplitUtils'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
@@ -434,6 +435,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<AppointmentStatusFilterValue>('')
   const [appointmentFiltersOpen, setAppointmentFiltersOpen] = useState(false)
   const [createAppointmentModalOpen, setCreateAppointmentModalOpen] = useState(false)
+  const [posAvailabilityVerifyMode, setPosAvailabilityVerifyMode] = useState<PosAvailabilityVerifyMode>('holiday_only')
   const [createAppointmentServices, setCreateAppointmentServices] = useState<BookingServiceOption[]>([])
   const [bookingServiceCategories, setBookingServiceCategories] = useState<BookingServiceCategoryOption[]>([])
   const [createAppointmentServiceCategoryId, setCreateAppointmentServiceCategoryId] = useState<number | null>(null)
@@ -618,6 +620,7 @@ export default function PosAppointmentsWorkspace({
   )
   const [editSettledAmount, setEditSettledAmount] = useState('')
   const [editStaffSplits, setEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
+  const [editSettlementOriginalPrimaryStaffId, setEditSettlementOriginalPrimaryStaffId] = useState<number | null>(null)
   const [editStaffSplitAutoBalance, setEditStaffSplitAutoBalance] = useState(true)
   const [editAddonOptionsLoading, setEditAddonOptionsLoading] = useState(false)
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
@@ -1452,14 +1455,15 @@ export default function PosAppointmentsWorkspace({
   const createAppointmentStaffPickerOptions = useMemo(() => {
     if (!createAppointmentDate || !createAppointmentSlotValue) return []
     const unavailableReasons = createAppointmentSelectedSlot?.unavailable_staff_reasons ?? {}
-    return createAppointmentAllowedStaffs.filter((staff) => !POS_HARD_AVAILABILITY_REASONS.has(unavailableReasons[String(staff.id)] ?? ''))
-  }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSelectedSlot, createAppointmentSlotValue])
+    return createAppointmentAllowedStaffs.filter((staff) => !posAvailabilityStaffIsUnavailable(unavailableReasons[String(staff.id)] ?? '', posAvailabilityVerifyMode))
+  }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSelectedSlot, createAppointmentSlotValue, posAvailabilityVerifyMode])
 
   const createAppointmentSelectedSlotScheduleIds = useMemo(() => {
     return Array.isArray(createAppointmentSelectedSlot?.scheduled_staff_ids) ? createAppointmentSelectedSlot.scheduled_staff_ids : []
   }, [createAppointmentSelectedSlot])
 
   const createAppointmentStaffScheduleWarning = useMemo(() => {
+    if (posAvailabilityVerifyMode === 'holiday_only') return null
     if (!createAppointmentAssignedStaffId || !createAppointmentSlotValue || createAppointmentSlotsLoading) {
       return null
     }
@@ -1483,6 +1487,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentSelectedSlotScheduleIds,
     createAppointmentSlotValue,
     createAppointmentSlotsLoading,
+    posAvailabilityVerifyMode,
   ])
 
   const createAppointmentStaffScheduleWarningMessage = useMemo(() => {
@@ -1510,7 +1515,8 @@ export default function PosAppointmentsWorkspace({
   )
 
   const appointmentRescheduleOutsideStaffSchedule = Boolean(
-    appointmentRescheduleDate
+    posAvailabilityVerifyMode !== 'holiday_only'
+    && appointmentRescheduleDate
     && appointmentRescheduleSlotValue
     && appointmentRescheduleStaffId
     && appointmentRescheduleSelectedSlot?.is_in_schedule === false,
@@ -1611,7 +1617,7 @@ export default function PosAppointmentsWorkspace({
       }
     }
     const unavailableReason = createAppointmentSelectedSlot?.unavailable_staff_reasons?.[String(createAppointmentAssignedStaffId)] ?? ''
-    if (POS_HARD_AVAILABILITY_REASONS.has(unavailableReason) && !POS_SCHEDULE_OVERRIDE_REASONS.has(unavailableReason)) {
+    if (posAvailabilityShouldHardBlock(unavailableReason, posAvailabilityVerifyMode)) {
       reportCreateAppointmentError(formatPosAvailabilityErrorMessage({
         reasonCode: unavailableReason,
         staffName: activeStaffs.find((staff) => staff.id === createAppointmentAssignedStaffId)?.name,
@@ -1629,10 +1635,12 @@ export default function PosAppointmentsWorkspace({
         const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
         const availabilityJson = await availabilityRes.json().catch(() => null)
         const reason = String(availabilityJson?.data?.reason_code ?? '')
+        if (availabilityJson?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(availabilityJson.data.verify_mode))
+        }
         if (
-          (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason))
-          && !POS_SCHEDULE_OVERRIDE_REASONS.has(reason)
-          && !availabilityJson?.data?.is_outside_staff_schedule
+          availabilityJson?.data?.is_hard_block
+          || posAvailabilityShouldHardBlock(reason, parsePosAvailabilityVerifyMode(availabilityJson?.data?.verify_mode) || posAvailabilityVerifyMode)
         ) {
           reportCreateAppointmentError(formatPosAvailabilityErrorMessage({
             reasonCode: reason,
@@ -2365,8 +2373,11 @@ export default function PosAppointmentsWorkspace({
       .filter((split) => split.staff_id != null)
     if (initialSplits.length > 0) {
       setEditStaffSplits(rebalanceEditSettlementPrimaryShare(initialSplits))
+      setEditSettlementOriginalPrimaryStaffId(Number(initialSplits[0].staff_id))
     } else {
-      setEditStaffSplits(appointmentDetail.staff?.id ? [{ staff_id: appointmentDetail.staff.id, share_percent: '100' }] : [])
+      const fallbackStaffId = appointmentDetail.staff?.id ?? null
+      setEditStaffSplits(fallbackStaffId ? [{ staff_id: fallbackStaffId, share_percent: '100' }] : [])
+      setEditSettlementOriginalPrimaryStaffId(fallbackStaffId)
     }
 
     if (appointmentDetail.customer?.id) {
@@ -2590,7 +2601,9 @@ export default function PosAppointmentsWorkspace({
     if (!appointmentDetail?.id) return
     reportEditSettlementError(null)
     const isCompletedAppointment = String(appointmentDetail?.status ?? '').toUpperCase() === 'COMPLETED'
-    if (!isCompletedAppointment && editSettlementAvailability?.is_hard_block) {
+    const draftPrimaryStaffId = resolvePrimaryStaffIdFromSplits(editStaffSplits)
+    const primaryStaffUnchanged = draftPrimaryStaffId === editSettlementOriginalPrimaryStaffId
+    if (!isCompletedAppointment && primaryStaffUnchanged && editSettlementAvailability?.is_hard_block) {
       reportEditSettlementError(formatPosAvailabilityErrorMessage({
         reasonCode: String(editSettlementAvailability.reason_code ?? 'booking_conflict'),
         staffName: appointmentDetail.staff?.name ?? activeStaffs.find((staff) => staff.id === appointmentDetail.staff?.id)?.name,
@@ -2677,6 +2690,22 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
+      const primaryStaffCheck = await confirmAndVerifyEditSettlementPrimaryStaffChange({
+        originalStaffId: editSettlementOriginalPrimaryStaffId,
+        nextSplits: normalizedSplits,
+        startAt: appointmentDetail.appointment_start_at,
+        endAt: appointmentDetail.appointment_end_at,
+        ignoreBookingId: appointmentDetail.id,
+        verifyMode: posAvailabilityVerifyMode,
+        staffNameById: (id) => activeStaffs.find((staff) => staff.id === id)?.name ?? appointmentDetail.staff?.id === id ? appointmentDetail.staff?.name : null,
+      })
+      if (!primaryStaffCheck.ok) {
+        if (!primaryStaffCheck.cancelled && primaryStaffCheck.message) {
+          reportEditSettlementError(primaryStaffCheck.message)
+        }
+        return
+      }
+
       payload.settlement_note = editSettlementNoteDraft.trim()
 
       const phonePattern = /^\+?[0-9]{8,15}$/
@@ -2752,7 +2781,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editAddonQuantities, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editAddonLineTotalOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editAddonQuantities, editSettledAmount, editStaffSplits, editSettlementOriginalPrimaryStaffId, editAddonPriceOverrides, editAddonLineTotalOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, posAvailabilityVerifyMode, activeStaffs, fetchAppointments, refreshOpenedAppointmentDetail, showMsg, reportEditSettlementError])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -3099,7 +3128,7 @@ export default function PosAppointmentsWorkspace({
       showMsg('Please select appointment slot/time.', 'error')
       return
     }
-    if (appointmentRescheduleSelectedSlot?.unavailable_reason && POS_HARD_AVAILABILITY_REASONS.has(appointmentRescheduleSelectedSlot.unavailable_reason)) {
+    if (appointmentRescheduleSelectedSlot?.unavailable_reason && posAvailabilityShouldHardBlock(appointmentRescheduleSelectedSlot.unavailable_reason, posAvailabilityVerifyMode)) {
       showMsg(formatPosAvailabilityErrorMessage({
         reasonCode: appointmentRescheduleSelectedSlot.unavailable_reason,
         staffName: activeStaffs.find((staff) => staff.id === appointmentRescheduleStaffId)?.name,
@@ -3174,6 +3203,9 @@ export default function PosAppointmentsWorkspace({
         })
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
+        if (json?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(json.data.verify_mode))
+        }
         const rows: unknown[] = Array.isArray(json?.data?.visible_slots)
           ? json.data.visible_slots
           : (Array.isArray(json?.data?.slots) ? json.data.slots : [])
@@ -3246,6 +3278,9 @@ export default function PosAppointmentsWorkspace({
         })
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
+        if (json?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(json.data.verify_mode))
+        }
         const rows: unknown[] = Array.isArray(json?.data?.visible_slots)
           ? json.data.visible_slots
           : (Array.isArray(json?.data?.slots) ? json.data.slots : [])
@@ -3592,7 +3627,7 @@ export default function PosAppointmentsWorkspace({
 
   useEffect(() => {
     const checkEditSettlementAvailability = async () => {
-      if (!editSettlementOpen || !appointmentDetail?.id || !appointmentDetail?.staff?.id || !appointmentDetail.appointment_start_at || !editSettlementEstimatedEndAt) {
+      if (!editSettlementOpen || !appointmentDetail?.id || !appointmentDetail.appointment_start_at || !editSettlementEstimatedEndAt) {
         setEditSettlementAvailability(null)
         return
       }
@@ -3600,8 +3635,13 @@ export default function PosAppointmentsWorkspace({
         setEditSettlementAvailability(null)
         return
       }
+      const staffId = resolvePrimaryStaffIdFromSplits(editStaffSplits) ?? appointmentDetail.staff?.id
+      if (!staffId) {
+        setEditSettlementAvailability(null)
+        return
+      }
       const params = new URLSearchParams({
-        staff_id: String(appointmentDetail.staff.id),
+        staff_id: String(staffId),
         start_at: appointmentDetail.appointment_start_at,
         end_at: editSettlementEstimatedEndAt,
         ignore_booking_id: String(appointmentDetail.id),
@@ -3612,10 +3652,13 @@ export default function PosAppointmentsWorkspace({
         setEditSettlementAvailability(null)
         return
       }
+      if (json?.data?.verify_mode != null) {
+        setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(json.data.verify_mode))
+      }
       setEditSettlementAvailability((json?.data ?? null) as { reason_code?: string | null; is_hard_block?: boolean; is_outside_staff_schedule?: boolean } | null)
     }
     void checkEditSettlementAvailability()
-  }, [appointmentDetail?.appointment_start_at, appointmentDetail?.id, appointmentDetail?.staff?.id, appointmentDetail?.status, editSettlementEstimatedEndAt, editSettlementOpen])
+  }, [appointmentDetail?.appointment_start_at, appointmentDetail?.id, appointmentDetail?.staff?.id, appointmentDetail?.status, editSettlementEstimatedEndAt, editSettlementOpen, editStaffSplits])
 
   /** Add-on amount still due at settlement (list total minus add-on deposits already paid on orders). */
   const appointmentAddonDueForBreakdown = useMemo(() => {

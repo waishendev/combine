@@ -50,6 +50,7 @@ class ShopSettingController extends Controller
                 'booking_slots_help_note_enabled' => (bool) SettingService::get('booking_slots_help_note_enabled', false, $type),
                 'booking_slots_help_note_text' => (string) SettingService::get('booking_slots_help_note_text', '', $type),
                 'booking_max_advance_days' => (int) SettingService::get('booking_max_advance_days', 365, $type),
+                'pos_availability_verify_mode' => (string) SettingService::get('pos_availability_verify_mode', 'holiday_only', $type),
             ];
 
             return response()->json([
@@ -154,6 +155,7 @@ class ShopSettingController extends Controller
             'booking_slots_help_note_enabled' => false,
             'booking_slots_help_note_text' => '',
             'booking_max_advance_days' => 365,
+            'pos_availability_verify_mode' => 'holiday_only',
         ];
 
         $settingKey = $this->resolveSettingKey($key);
@@ -270,6 +272,9 @@ class ShopSettingController extends Controller
                 break;
             case 'booking_max_advance_days':
                 $data = $this->validateBookingMaxAdvanceDays($request);
+                break;
+            case 'pos_availability_verify_mode':
+                $data = $this->validatePosAvailabilityVerifyMode($request);
                 break;
 
             default:
@@ -704,6 +709,15 @@ class ShopSettingController extends Controller
         return (int) $validated['value'];
     }
 
+    protected function validatePosAvailabilityVerifyMode(Request $request): string
+    {
+        $validated = $request->validate([
+            'value' => ['required', 'string', 'in:holiday_only,full'],
+        ]);
+
+        return (string) $validated['value'];
+    }
+
     protected function validateBookingSlotsHelpNoteText(Request $request): string
     {
         $validated = $request->validate([
@@ -864,6 +878,7 @@ class ShopSettingController extends Controller
                 'booking_slots_help_note_enabled',
                 'booking_slots_help_note_text',
                 'booking_max_advance_days',
+                'pos_availability_verify_mode',
             ];
         }
 

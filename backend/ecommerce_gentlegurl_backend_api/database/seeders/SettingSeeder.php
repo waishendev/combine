@@ -131,6 +131,12 @@ class SettingSeeder extends Seeder
             ]]
         );
 
+        // CRM POS only: holiday_only blocks staff off-day/leave; full enforces schedule + conflicts (customer booking shop is unaffected).
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'pos_availability_verify_mode'],
+            ['value' => 'holiday_only']
+        );
+
         Setting::updateOrCreate(
             ['type' => 'ecommerce', 'key' => 'ecommerce_payment_proof_notification'],
             ['value' => [

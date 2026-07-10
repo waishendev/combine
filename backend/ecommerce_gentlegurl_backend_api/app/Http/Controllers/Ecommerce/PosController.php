@@ -2134,7 +2134,10 @@ class PosController extends Controller
 
                 $startAt = Carbon::parse($lockedBooking->start_at ?? $booking->start_at);
                 $transactionNewEndAt = $startAt->copy()->addMinutes($recalculatedDurationMin);
-                $staffId = (int) ($lockedBooking->staff_id ?? $booking->staff_id ?? 0);
+                $primaryStaffIdFromSplits = (int) data_get($normalizedSplits, 'splits.0.staff_id', 0);
+                $staffId = $primaryStaffIdFromSplits > 0
+                    ? $primaryStaffIdFromSplits
+                    : (int) ($lockedBooking->staff_id ?? $booking->staff_id ?? 0);
                 if ($staffId <= 0) {
                     throw ValidationException::withMessages([
                         'assigned_staff_id' => __('Assigned staff is required.'),
@@ -2151,45 +2154,75 @@ class PosController extends Controller
                 $isCompletedBooking = strtoupper((string) ($lockedBooking->status ?? '')) === 'COMPLETED';
 
                 if (! $isCompletedBooking) {
-                    $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $transactionNewEndAt);
-                    $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-                    $outsideScheduleOverrideRequested = (bool) $request->boolean('availability_override')
-                        && (string) $request->input('availability_override_type') === 'outside_staff_schedule'
-                        && $scheduleFailureReason === 'outside_staff_schedule';
-                    $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-                        $staffId,
-                        $startAt,
-                        $transactionNewEndAt,
-                        $bufferMin,
-                        (int) $lockedBooking->id,
-                        $lockedBooking,
-                        BookingAvailabilityService::SCOPE_CRM,
-                    );
+                    if ($this->posAvailabilityVerifyHolidayOnly()) {
+                        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                            $staffId,
+                            $startAt,
+                            $transactionNewEndAt,
+                            $bufferMin,
+                            (int) $lockedBooking->id,
+                            $lockedBooking,
+                            BookingAvailabilityService::SCOPE_CRM,
+                        );
 
-                    if (((! (bool) ($scheduleDiagnostics['is_available'] ?? false)) && ! $outsideScheduleOverrideRequested) || (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-                        $settlementReasonCode = (bool) ($conflictDiagnostics['has_conflict'] ?? false)
-                            ? $this->posAvailabilityReasonCode($conflictDiagnostics)
-                            : ($scheduleFailureReason ?: 'staff_unavailable');
-                        $settlementConflictDiagnostics = [
-                            ...$conflictDiagnostics,
-                            'reason_code' => $settlementReasonCode,
-                            'staff_schedule' => $scheduleDiagnostics,
-                            'current_booking_id' => (int) $lockedBooking->id,
-                            'current_appointment_id' => (int) $lockedBooking->id,
-                        ];
-                        Log::warning('POS edit settlement appointment duration conflict', $settlementConflictDiagnostics);
+                        if ($this->posAvailabilityConflictIsLeaveOnly($conflictDiagnostics)) {
+                            $settlementReasonCode = $this->posAvailabilityReasonCode($conflictDiagnostics);
+                            $settlementConflictDiagnostics = [
+                                ...$conflictDiagnostics,
+                                'reason_code' => $settlementReasonCode,
+                                'staff_schedule' => ['is_available' => true, 'failure_reason' => null],
+                                'current_booking_id' => (int) $lockedBooking->id,
+                                'current_appointment_id' => (int) $lockedBooking->id,
+                            ];
+                            Log::warning('POS edit settlement appointment leave conflict', $settlementConflictDiagnostics);
 
-                        throw ValidationException::withMessages([
-                            'appointment_end_at' => $this->formatSettlementConflictMessage($settlementConflictDiagnostics),
-                        ]);
-                    }
+                            throw ValidationException::withMessages([
+                                'appointment_end_at' => $this->formatSettlementConflictMessage($settlementConflictDiagnostics),
+                            ]);
+                        }
 
-                    $scheduleOverride = $outsideScheduleOverrideRequested
-                        ? $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, $scheduleDiagnostics, $request->user()?->id)
-                        : $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, ['failure_reason' => null], $request->user()?->id);
+                        $scheduleOverride = $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, ['failure_reason' => null], $request->user()?->id);
+                    } else {
+                        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $transactionNewEndAt);
+                        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+                        $outsideScheduleOverrideRequested = (bool) $request->boolean('availability_override')
+                            && (string) $request->input('availability_override_type') === 'outside_staff_schedule'
+                            && $scheduleFailureReason === 'outside_staff_schedule';
+                        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                            $staffId,
+                            $startAt,
+                            $transactionNewEndAt,
+                            $bufferMin,
+                            (int) $lockedBooking->id,
+                            $lockedBooking,
+                            BookingAvailabilityService::SCOPE_CRM,
+                        );
 
-                    if ((bool) ($scheduleOverride['schedule_override_used'] ?? false)) {
-                        $settlementPolicyWarnings[] = 'Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.';
+                        if (((! (bool) ($scheduleDiagnostics['is_available'] ?? false)) && ! $outsideScheduleOverrideRequested) || (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                            $settlementReasonCode = (bool) ($conflictDiagnostics['has_conflict'] ?? false)
+                                ? $this->posAvailabilityReasonCode($conflictDiagnostics)
+                                : ($scheduleFailureReason ?: 'staff_unavailable');
+                            $settlementConflictDiagnostics = [
+                                ...$conflictDiagnostics,
+                                'reason_code' => $settlementReasonCode,
+                                'staff_schedule' => $scheduleDiagnostics,
+                                'current_booking_id' => (int) $lockedBooking->id,
+                                'current_appointment_id' => (int) $lockedBooking->id,
+                            ];
+                            Log::warning('POS edit settlement appointment duration conflict', $settlementConflictDiagnostics);
+
+                            throw ValidationException::withMessages([
+                                'appointment_end_at' => $this->formatSettlementConflictMessage($settlementConflictDiagnostics),
+                            ]);
+                        }
+
+                        $scheduleOverride = $outsideScheduleOverrideRequested
+                            ? $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, $scheduleDiagnostics, $request->user()?->id)
+                            : $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, ['failure_reason' => null], $request->user()?->id);
+
+                        if ((bool) ($scheduleOverride['schedule_override_used'] ?? false)) {
+                            $settlementPolicyWarnings[] = 'Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.';
+                        }
                     }
                 } else {
                     $scheduleOverride = $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, ['failure_reason' => null], $request->user()?->id);
@@ -3015,27 +3048,43 @@ class PosController extends Controller
 
         $newStart = Carbon::parse($validated['start_at']);
         $newEnd = $newStart->copy()->addMinutes($this->recalculateAppointmentDurationMin($booking));
-        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($targetStaffId, $newStart, $newEnd);
-        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-            && ! in_array($scheduleFailureReason, $this->posScheduleSoftFailureReasons(), true)) {
-            return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', Staff::query()->findOrFail($targetStaffId), $newStart, $newEnd, $scheduleDiagnostics);
-        }
 
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-            $targetStaffId,
-            $newStart,
-            $newEnd,
-            (int) $booking->buffer_min,
-            (int) $booking->id,
-            $booking,
-            BookingAvailabilityService::SCOPE_CRM,
-        );
-        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-            return $this->respondPosAvailabilityError($conflictDiagnostics);
-        }
+        if ($this->posAvailabilityVerifyHolidayOnly()) {
+            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed(
+                $targetStaff,
+                $newStart,
+                $newEnd,
+                (int) $booking->buffer_min,
+                (int) $booking->id,
+                $booking,
+            );
+            if ($leaveBlock) {
+                return $leaveBlock;
+            }
+            $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, ['failure_reason' => null], $request->user()?->id);
+        } else {
+            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($targetStaffId, $newStart, $newEnd);
+            $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+            if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                && ! in_array($scheduleFailureReason, $this->posScheduleSoftFailureReasons(), true)) {
+                return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', Staff::query()->findOrFail($targetStaffId), $newStart, $newEnd, $scheduleDiagnostics);
+            }
 
-        $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, $scheduleDiagnostics, $request->user()?->id);
+            $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                $targetStaffId,
+                $newStart,
+                $newEnd,
+                (int) $booking->buffer_min,
+                (int) $booking->id,
+                $booking,
+                BookingAvailabilityService::SCOPE_CRM,
+            );
+            if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                return $this->respondPosAvailabilityError($conflictDiagnostics);
+            }
+
+            $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, $scheduleDiagnostics, $request->user()?->id);
+        }
 
         $oldStart = $booking->start_at;
         $oldEnd = $booking->end_at;
@@ -3571,6 +3620,33 @@ class PosController extends Controller
             'staff_id' => (int) $staff->id,
             'staff_schedule' => $scheduleDiagnostics,
         ]);
+        $verifyMode = $this->posAvailabilityVerifyMode();
+
+        if ($this->posAvailabilityVerifyHolidayOnly()) {
+            $reasonCode = null;
+            if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                $leaveReason = $this->posAvailabilityReasonCode($conflictPayload);
+                if ($this->isPosLeaveHardReason($leaveReason)) {
+                    $reasonCode = $leaveReason;
+                }
+            }
+            $isHardBlock = $reasonCode !== null;
+            $userMessage = $isHardBlock
+                ? $this->formatPosUserFacingAvailabilityMessage($conflictPayload, $staff, $reasonCode)
+                : null;
+
+            return $this->respond([
+                'is_available' => ! $isHardBlock,
+                'is_hard_block' => $isHardBlock,
+                'is_outside_staff_schedule' => false,
+                'reason_code' => $reasonCode,
+                'message' => $userMessage,
+                'verify_mode' => $verifyMode,
+                'staff_schedule' => $scheduleDiagnostics,
+                'conflict_debug' => $conflictDiagnostics,
+            ]);
+        }
+
         $reasonCode = null;
         if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
             $reasonCode = $this->posAvailabilityReasonCode($conflictPayload);
@@ -3590,6 +3666,7 @@ class PosController extends Controller
             'is_outside_staff_schedule' => $isScheduleOverrideAllowed,
             'reason_code' => $reasonCode,
             'message' => $userMessage,
+            'verify_mode' => $verifyMode,
             'staff_schedule' => $scheduleDiagnostics,
             'conflict_debug' => $conflictDiagnostics,
         ]);
@@ -3666,6 +3743,10 @@ class PosController extends Controller
             ])),
             $ignoreBooking?->id,
             $ignoreBooking,
+            BookingAvailabilityService::SCOPE_CRM,
+            [],
+            [],
+            $this->posAvailabilityVerifyHolidayOnly(),
         );
 
         return $this->respond([
@@ -3677,6 +3758,7 @@ class PosController extends Controller
             'slot_step_min' => 15,
             'has_primary_slot_policy' => ! empty($configuredPrimarySlots),
             'configured_primary_slots' => $configuredPrimarySlots,
+            'verify_mode' => $this->posAvailabilityVerifyMode(),
             'visible_slots' => $visible,
             'slots' => $visible,
         ]);
@@ -3853,24 +3935,31 @@ class PosController extends Controller
         $endAt = $startAt->copy()->addMinutes($totalDurationMin);
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
-        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
-        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-            && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
-            return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
-        }
+        if ($this->posAvailabilityVerifyHolidayOnly()) {
+            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed($staff, $startAt, $endAt, $bufferMin);
+            if ($leaveBlock) {
+                return $leaveBlock;
+            }
+        } else {
+            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+            $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+            if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
+                return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
+            }
 
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-            (int) $staff->id,
-            $startAt,
-            $endAt,
-            $bufferMin,
-            null,
-            null,
-            BookingAvailabilityService::SCOPE_CRM,
-        );
-        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-            return $this->respondPosAvailabilityError($conflictDiagnostics);
+            $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                (int) $staff->id,
+                $startAt,
+                $endAt,
+                $bufferMin,
+                null,
+                null,
+                BookingAvailabilityService::SCOPE_CRM,
+            );
+            if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                return $this->respondPosAvailabilityError($conflictDiagnostics);
+            }
         }
 
 
@@ -4261,27 +4350,35 @@ class PosController extends Controller
 
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
-        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
-        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-            && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
-            return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
-        }
+        if ($this->posAvailabilityVerifyHolidayOnly()) {
+            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed($staff, $startAt, $endAt, $bufferMin);
+            if ($leaveBlock) {
+                return $leaveBlock;
+            }
+            $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, ['failure_reason' => null], $request->user()?->id);
+        } else {
+            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+            $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+            if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
+                return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
+            }
 
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-            (int) $staff->id,
-            $startAt,
-            $endAt,
-            $bufferMin,
-            null,
-            null,
-            BookingAvailabilityService::SCOPE_CRM,
-        );
-        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-            return $this->respondPosAvailabilityError($conflictDiagnostics);
-        }
+            $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                (int) $staff->id,
+                $startAt,
+                $endAt,
+                $bufferMin,
+                null,
+                null,
+                BookingAvailabilityService::SCOPE_CRM,
+            );
+            if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                return $this->respondPosAvailabilityError($conflictDiagnostics);
+            }
 
-        $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
+            $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
+        }
 
         $splits = collect($validated['staff_splits'] ?? [
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
@@ -7305,31 +7402,51 @@ class PosController extends Controller
                     abort(422, __('Assigned staff is inactive.'));
                 }
 
-                $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt);
-                $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-                if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-                    && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
-                    abort(409, __('Selected staff is not available on this day.'));
-                }
-
-                if ($serviceItem->assigned_staff_id) {
-                    $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-                        (int) $serviceItem->assigned_staff_id,
-                        $startAt,
-                        $endAt,
-                        $bufferMin,
-                        null,
-                        null,
-                        BookingAvailabilityService::SCOPE_CRM,
-                        [],
-                        [(int) $serviceItem->id],
-                    );
-                    if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-                        abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
+                if ($this->posAvailabilityVerifyHolidayOnly()) {
+                    if ($serviceItem->assigned_staff_id) {
+                        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                            (int) $serviceItem->assigned_staff_id,
+                            $startAt,
+                            $endAt,
+                            $bufferMin,
+                            null,
+                            null,
+                            BookingAvailabilityService::SCOPE_CRM,
+                            [],
+                            [(int) $serviceItem->id],
+                        );
+                        if ($this->posAvailabilityConflictIsLeaveOnly($conflictDiagnostics)) {
+                            abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
+                        }
                     }
-                }
+                    $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, ['failure_reason' => null], $request->user()?->id);
+                } else {
+                    $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt);
+                    $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+                    if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                        && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+                        abort(409, __('Selected staff is not available on this day.'));
+                    }
 
-                $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
+                    if ($serviceItem->assigned_staff_id) {
+                        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                            (int) $serviceItem->assigned_staff_id,
+                            $startAt,
+                            $endAt,
+                            $bufferMin,
+                            null,
+                            null,
+                            BookingAvailabilityService::SCOPE_CRM,
+                            [],
+                            [(int) $serviceItem->id],
+                        );
+                        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                            abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
+                        }
+                    }
+
+                    $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
+                }
 
                 $booking = Booking::query()->create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -10161,6 +10278,69 @@ class PosController extends Controller
     protected function posScheduleSoftFailureReasons(): array
     {
         return ['outside_staff_schedule', 'hits_staff_break'];
+    }
+
+    protected function posAvailabilityVerifyHolidayOnly(): bool
+    {
+        $mode = strtolower(trim((string) SettingService::get('pos_availability_verify_mode', 'holiday_only', 'booking')));
+
+        return $mode === 'holiday_only';
+    }
+
+    protected function posAvailabilityVerifyMode(): string
+    {
+        return $this->posAvailabilityVerifyHolidayOnly() ? 'holiday_only' : 'full';
+    }
+
+    protected function posLeaveHardReasonCodes(): array
+    {
+        return ['staff_off_day', 'staff_leave', 'staff_inactive'];
+    }
+
+    protected function isPosLeaveHardReason(?string $reasonCode): bool
+    {
+        return in_array((string) $reasonCode, $this->posLeaveHardReasonCodes(), true);
+    }
+
+    protected function posAvailabilityConflictIsLeaveOnly(array $conflictDiagnostics): bool
+    {
+        if (! (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+            return false;
+        }
+
+        return $this->isPosLeaveHardReason($this->posAvailabilityReasonCode($conflictDiagnostics));
+    }
+
+    protected function assertPosWriteLeaveOnlyAllowed(
+        Staff $staff,
+        Carbon $startAt,
+        Carbon $endAt,
+        int $bufferMin = 0,
+        ?int $ignoreBookingId = null,
+        ?Booking $ignoreBooking = null,
+    ) {
+        if (! (bool) ($staff->is_active ?? true)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422, ['reason_code' => 'staff_inactive']);
+        }
+
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+            (int) $staff->id,
+            $startAt,
+            $endAt,
+            $bufferMin,
+            $ignoreBookingId,
+            $ignoreBooking,
+            BookingAvailabilityService::SCOPE_CRM,
+        );
+        $conflictDiagnostics['staff_id'] = (int) $staff->id;
+        $conflictDiagnostics['requested_start'] = $startAt->toDateTimeString();
+        $conflictDiagnostics['requested_end'] = $endAt->toDateTimeString();
+
+        if ($this->posAvailabilityConflictIsLeaveOnly($conflictDiagnostics)) {
+            return $this->respondPosAvailabilityError($conflictDiagnostics);
+        }
+
+        return null;
     }
 
     protected function isPosScheduleOverrideReason(?string $reasonCode): bool

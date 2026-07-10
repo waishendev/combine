@@ -75,7 +75,8 @@ import {
   type PosPriceDisplaySource,
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
-import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
+import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, parsePosAvailabilityVerifyMode, posAvailabilityShouldHardBlock, posAvailabilityStaffIsUnavailable, POS_SCHEDULE_OVERRIDE_REASONS, type PosAvailabilityVerifyMode } from '@/components/pos/posAvailabilityMessages'
+import { confirmAndVerifyEditSettlementPrimaryStaffChange } from '@/components/pos/posStaffSplitUtils'
 import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
@@ -1778,6 +1779,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const packageRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
   const [packageSubmitting, setPackageSubmitting] = useState(false)
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
+  const [posAvailabilityVerifyMode, setPosAvailabilityVerifyMode] = useState<PosAvailabilityVerifyMode>('holiday_only')
   const [bookingSubmitting, setBookingSubmitting] = useState(false)
   const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
   const [bookingAssignedStaffId, setBookingAssignedStaffId] = useState<number | null>(null)
@@ -1855,6 +1857,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }>>([])
   const [cartEditSettledAmount, setCartEditSettledAmount] = useState('')
   const [cartEditStaffSplits, setCartEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
+  const [cartEditSettlementOriginalPrimaryStaffId, setCartEditSettlementOriginalPrimaryStaffId] = useState<number | null>(null)
   const [cartEditStaffSplitAutoBalance, setCartEditStaffSplitAutoBalance] = useState(true)
   const [cartEditAddonOptionsLoading, setCartEditAddonOptionsLoading] = useState(false)
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
@@ -3842,14 +3845,15 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const bookingStaffPickerOptions = useMemo(() => {
     if (!bookingDate || !bookingSlotValue) return []
     const unavailableReasons = bookingSelectedSlot?.unavailable_staff_reasons ?? {}
-    return bookingAllowedStaffs.filter((staff) => !POS_HARD_AVAILABILITY_REASONS.has(unavailableReasons[String(staff.id)] ?? ''))
-  }, [bookingAllowedStaffs, bookingDate, bookingSelectedSlot, bookingSlotValue])
+    return bookingAllowedStaffs.filter((staff) => !posAvailabilityStaffIsUnavailable(unavailableReasons[String(staff.id)] ?? '', posAvailabilityVerifyMode))
+  }, [bookingAllowedStaffs, bookingDate, bookingSelectedSlot, bookingSlotValue, posAvailabilityVerifyMode])
 
   const bookingSelectedSlotScheduleIds = useMemo(() => {
     return Array.isArray(bookingSelectedSlot?.scheduled_staff_ids) ? bookingSelectedSlot.scheduled_staff_ids : []
   }, [bookingSelectedSlot])
 
   const bookingStaffScheduleWarning = useMemo(() => {
+    if (posAvailabilityVerifyMode === 'holiday_only') return null
     if (!bookingAssignedStaffId || !bookingSlotValue || bookingSlotsLoading) {
       return null
     }
@@ -3873,6 +3877,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     bookingSelectedSlotScheduleIds,
     bookingSlotValue,
     bookingSlotsLoading,
+    posAvailabilityVerifyMode,
   ])
 
   const bookingStaffScheduleWarningMessage = useMemo(() => {
@@ -3988,8 +3993,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       }
     }
     const bookingUnavailableReason = bookingSelectedSlot?.unavailable_staff_reasons?.[String(bookingAssignedStaffId)] ?? ''
-    if (POS_HARD_AVAILABILITY_REASONS.has(bookingUnavailableReason)) {
-      reportBookingModalError(bookingUnavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (bookingUnavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+    if (posAvailabilityShouldHardBlock(bookingUnavailableReason, posAvailabilityVerifyMode)) {
+      reportBookingModalError(formatPosAvailabilityErrorMessage({
+        reasonCode: bookingUnavailableReason,
+        staffName: activeStaffs.find((staff) => staff.id === bookingAssignedStaffId)?.name,
+        startAt: bookingSlotValue,
+        endAt: bookingSelectedSlot?.end_at,
+      }))
       return
     }
 
@@ -3999,8 +4009,18 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
         const availabilityJson = await availabilityRes.json().catch(() => null)
         const reason = String(availabilityJson?.data?.reason_code ?? '')
-        if (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason)) {
-          reportBookingModalError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+        if (availabilityJson?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(availabilityJson.data.verify_mode))
+        }
+        if (availabilityJson?.data?.is_hard_block || posAvailabilityShouldHardBlock(reason, parsePosAvailabilityVerifyMode(availabilityJson?.data?.verify_mode) || posAvailabilityVerifyMode)) {
+          reportBookingModalError(formatPosAvailabilityErrorMessage({
+            reasonCode: reason,
+            staffName: activeStaffs.find((staff) => staff.id === bookingAssignedStaffId)?.name,
+            startAt: bookingSlotValue,
+            endAt: bookingSelectedSlot.end_at,
+            conflictDebug: availabilityJson?.data?.conflict_debug ?? null,
+            backendMessage: availabilityJson?.data?.message ?? availabilityJson?.message ?? null,
+          }))
           setBookingSubmitting(false)
           return
         }
@@ -4168,6 +4188,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         })
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
+        if (json?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(json.data.verify_mode))
+        }
         const rows: unknown[] = Array.isArray(json?.data?.visible_slots) ? json.data.visible_slots : (Array.isArray(json?.data?.slots) ? json.data.slots : [])
         const slots = rows
           .map((row: unknown) => {
@@ -4863,8 +4886,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       .filter((split) => split.staff_id != null)
     if (initialSplits.length > 0) {
       setCartEditStaffSplits(rebalanceSettlementPrimaryShare(initialSplits))
+      setCartEditSettlementOriginalPrimaryStaffId(Number(initialSplits[0].staff_id))
     } else {
-      setCartEditStaffSplits([{ staff_id: settlement.staff_splits?.[0]?.staff_id ?? null, share_percent: '100' }])
+      const fallbackStaffId = settlement.staff_splits?.[0]?.staff_id ?? null
+      setCartEditStaffSplits([{ staff_id: fallbackStaffId, share_percent: '100' }])
+      setCartEditSettlementOriginalPrimaryStaffId(fallbackStaffId ?? null)
     }
 
     const settlementCustomerId = Number(settlement.customer_id ?? 0)
@@ -5244,6 +5270,22 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         return
       }
       payload.staff_splits = normalizedSplits
+
+      const primaryStaffCheck = await confirmAndVerifyEditSettlementPrimaryStaffChange({
+        originalStaffId: cartEditSettlementOriginalPrimaryStaffId,
+        nextSplits: normalizedSplits,
+        startAt: cartEditSettlementItem?.appointment_start_at,
+        endAt: cartEditSettlementItem ? getSettlementDisplayEndAt(cartEditSettlementItem) : null,
+        ignoreBookingId: cartEditSettlementBookingId ?? undefined,
+        verifyMode: posAvailabilityVerifyMode,
+        staffNameById: (id) => activeStaffs.find((staff) => staff.id === id)?.name ?? cartEditSettlementItem?.staff_splits?.find((split) => split.staff_id === id)?.staff_name ?? null,
+      })
+      if (!primaryStaffCheck.ok) {
+        if (!primaryStaffCheck.cancelled && primaryStaffCheck.message) {
+          reportCartEditSettlementError(primaryStaffCheck.message)
+        }
+        return
+      }
 
       payload.settlement_note = cartEditSettlementNoteDraft.trim()
 
