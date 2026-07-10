@@ -62,8 +62,8 @@ type BookingRequestRow = {
   bookingId: number
   bookingIds: number[]
   requestId?: number
-  requestTypes: Array<'Cancellation request' | 'Hold confirmation' | 'Deposit proof'>
-  requestType: 'Cancellation request' | 'Hold confirmation' | 'Deposit proof'
+  requestTypes: Array<'Cancellation request' | 'Hold confirmation' | 'Deposit proof' | 'Package purchase'>
+  requestType: 'Cancellation request' | 'Hold confirmation' | 'Deposit proof' | 'Package purchase'
   number: string
   orderId?: number
   orderNumber?: string
@@ -121,6 +121,11 @@ const ECOMMERCE_REQUEST_FILTERS = [
   { payment_status: 'failed' },
 ]
 
+const BOOKING_PACKAGE_ORDER_FILTERS = [
+  { status: 'pending', payment_status: 'unpaid' },
+  { status: 'processing', payment_status: 'unpaid' },
+]
+
 const BOOKING_HOLD_FILTERS = ['HOLD', 'PENDING', 'PENDING_CONFIRMATION']
 
 const BTN_ICON = 'inline-flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50'
@@ -165,7 +170,9 @@ function mergeBookingRequestRows(primary: BookingRequestRow, secondary: BookingR
       ? 'Deposit proof'
       : requestTypes.includes('Hold confirmation')
         ? 'Hold confirmation'
-        : 'Cancellation request',
+        : requestTypes.includes('Package purchase')
+          ? 'Package purchase'
+          : 'Cancellation request',
     requestedAt,
     amount: secondary.amount ?? primary.amount,
     slipUrl: secondary.slipUrl ?? primary.slipUrl,
@@ -177,7 +184,9 @@ function mergeBookingRequestRows(primary: BookingRequestRow, secondary: BookingR
       ? 'bg-blue-100 text-blue-800 ring-blue-200'
       : requestTypes.includes('Hold confirmation')
         ? 'bg-amber-100 text-amber-800 ring-amber-200'
-        : primary.badgeClassName,
+        : requestTypes.includes('Package purchase')
+          ? 'bg-purple-100 text-purple-800 ring-purple-200'
+          : primary.badgeClassName,
   }
 }
 
@@ -217,32 +226,35 @@ function enrichHoldRowsWithSharedOrder(rows: BookingRequestRow[]): BookingReques
 function consolidateBookingRequests(rows: BookingRequestRow[]): BookingRequestRow[] {
   const cancellations = rows.filter((row) => row.requestType === 'Cancellation request')
   const actionable = rows.filter((row) => row.requestType !== 'Cancellation request')
-  const holdOrderGroups = new Map<number, BookingRequestRow[]>()
+  const orderGroups = new Map<number, BookingRequestRow[]>()
   const standalone: BookingRequestRow[] = []
 
   for (const row of actionable) {
-    if (row.orderId && row.requestTypes.includes('Hold confirmation')) {
-      const group = holdOrderGroups.get(row.orderId) ?? []
+    if (
+      row.orderId &&
+      (row.requestTypes.includes('Hold confirmation') || row.requestTypes.includes('Package purchase'))
+    ) {
+      const group = orderGroups.get(row.orderId) ?? []
       group.push(row)
-      holdOrderGroups.set(row.orderId, group)
+      orderGroups.set(row.orderId, group)
       continue
     }
     standalone.push(row)
   }
 
-  const mergedHoldOrders: BookingRequestRow[] = []
-  for (const [orderId, group] of holdOrderGroups) {
+  const mergedOrderRows: BookingRequestRow[] = []
+  for (const [orderId, group] of orderGroups) {
     const base = group.reduce((acc, row) => mergeBookingRequestRows(acc, row))
     const bookingIds = Array.from(new Set(group.flatMap((row) => row.bookingIds)))
     const bookingCodes = Array.from(new Set(group.flatMap((row) => row.bookingCodes).filter(Boolean)))
     const orderNumber = base.orderNumber || group[0]?.number || `Order #${orderId}`
-    mergedHoldOrders.push({
+    mergedOrderRows.push({
       ...base,
       key: `order-${orderId}`,
       orderId,
       orderNumber,
       number: orderNumber,
-      bookingId: Math.min(...bookingIds),
+      bookingId: bookingIds.length ? Math.min(...bookingIds) : 0,
       bookingIds,
       bookingCodes,
       linkedBookingCount: Math.max(bookingIds.length, base.linkedBookingCount),
@@ -250,8 +262,10 @@ function consolidateBookingRequests(rows: BookingRequestRow[]): BookingRequestRo
   }
 
   const byBookingId = new Map<number, BookingRequestRow>()
-  for (const row of [...standalone, ...mergedHoldOrders]) {
-    const mergeKey = row.orderId && row.requestTypes.includes('Hold confirmation') ? -row.orderId : row.bookingId
+  for (const row of [...standalone, ...mergedOrderRows]) {
+    const mergeKey = row.orderId && (row.requestTypes.includes('Hold confirmation') || row.requestTypes.includes('Package purchase'))
+      ? -row.orderId
+      : row.bookingId
     const existing = byBookingId.get(mergeKey)
     if (existing) {
       byBookingId.set(mergeKey, mergeBookingRequestRows(existing, row))
@@ -263,7 +277,7 @@ function consolidateBookingRequests(rows: BookingRequestRow[]): BookingRequestRo
   const mergedRows = [...cancellations, ...Array.from(byBookingId.values())]
   const bookingIdsCoveredByOrder = new Set<number>()
   for (const row of mergedRows) {
-    if (row.orderId && row.requestTypes.includes('Hold confirmation')) {
+    if (row.orderId && (row.requestTypes.includes('Hold confirmation') || row.requestTypes.includes('Package purchase'))) {
       row.bookingIds.forEach((id) => bookingIdsCoveredByOrder.add(id))
     }
   }
@@ -302,7 +316,62 @@ function bookingRequestSubtitle(row: BookingRequestRow): string | null {
   if (row.requestTypes.includes('Deposit proof') && row.amount) {
     parts.push(formatMoney(row.amount))
   }
+  if (row.requestTypes.includes('Package purchase') && row.amount) {
+    parts.push(formatMoney(row.amount))
+  }
   return parts.length ? parts.join(' · ') : null
+}
+
+function orderHasServicePackage(order: OrderApiItem): boolean {
+  if ((order.package_items?.length ?? 0) > 0) return true
+  return (order.line_types ?? []).includes('service_package')
+}
+
+function shouldShowBookingPackageOrder(order: OrderApiItem): boolean {
+  const orderType = order.order_type ?? detectOrderType(order)
+  if (orderType !== 'booking' && orderType !== 'mixed') return false
+  if (!orderHasServicePackage(order)) return false
+
+  const status = String(order.status ?? '').toLowerCase()
+  const payment = String(order.payment_status ?? '').toLowerCase()
+
+  if (status === 'cancelled' || status === 'completed') return false
+  if (payment === 'paid' || payment === 'refunded') return false
+  if (status === 'reject_payment_proof') return false
+
+  return true
+}
+
+function buildPackagePurchaseRequest(order: OrderApiItem): BookingRequestRow {
+  const orderId = Number(order.id)
+  const orderNo = order.order_no ?? order.order_number ?? `#${orderId}`
+  const status = String(order.status ?? '').toLowerCase()
+  const payment = String(order.payment_status ?? '').toLowerCase()
+  const statusLabel = payment === 'unpaid' && status === 'processing'
+    ? 'AWAITING VERIFICATION'
+    : payment === 'unpaid'
+      ? 'AWAITING PAYMENT'
+      : String(order.status ?? 'PENDING').toUpperCase()
+
+  return {
+    key: `package-order-${orderId}`,
+    id: orderId,
+    bookingId: 0,
+    bookingIds: [],
+    requestType: 'Package purchase',
+    requestTypes: ['Package purchase'],
+    number: orderNo,
+    orderId,
+    orderNumber: orderNo,
+    bookingCodes: [],
+    linkedBookingCount: 0,
+    customerName: order.customer?.name || '-',
+    contact: order.customer?.phone || order.customer?.email || '-',
+    requestedAt: order.created_at ?? null,
+    status: statusLabel,
+    badgeClassName: 'bg-purple-100 text-purple-800 ring-purple-200',
+    amount: Number(order.grand_total ?? 0),
+  }
 }
 
 function shouldShowEcommerceOrder(order: OrderApiItem): boolean {
@@ -494,6 +563,12 @@ export default function PosRequestCenter({
           const qs = new URLSearchParams({ status, per_page: '50' })
           return fetch(`/api/proxy/pos/appointments?${qs.toString()}`, { cache: 'no-store' })
         }),
+        ...BOOKING_PACKAGE_ORDER_FILTERS.map((filter) => {
+          const qs = new URLSearchParams({ per_page: '25', order_type: 'booking' })
+          if (filter.status) qs.set('status', filter.status)
+          if (filter.payment_status) qs.set('payment_status', filter.payment_status)
+          return fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, { cache: 'no-store' })
+        }),
         ...ECOMMERCE_REQUEST_FILTERS.map((filter) => {
           const qs = new URLSearchParams({ per_page: '25', order_type: 'ecommerce' })
           if (filter.status) qs.set('status', filter.status)
@@ -503,7 +578,11 @@ export default function PosRequestCenter({
       ])
 
       const holdResponses = remainingResponses.slice(0, BOOKING_HOLD_FILTERS.length)
-      const orderResponses = remainingResponses.slice(BOOKING_HOLD_FILTERS.length)
+      const bookingOrderResponses = remainingResponses.slice(
+        BOOKING_HOLD_FILTERS.length,
+        BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length,
+      )
+      const orderResponses = remainingResponses.slice(BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length)
 
       const cancellationPayload = await cancellationRes.json().catch(() => null)
       if (!cancellationRes.ok) {
@@ -534,9 +613,16 @@ export default function PosRequestCenter({
         : []
       const depositProofRequests = depositProofRows.map(buildDepositProofRequest)
 
+      const bookingOrderPayloads = await Promise.all(bookingOrderResponses.map((res) => res.json().catch(() => null)))
+      const bookingOrders = bookingOrderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
+      const uniqueBookingOrders = Array.from(new Map(bookingOrders.map((order) => [Number(order.id), order])).values())
+      const packagePurchaseRequests = uniqueBookingOrders
+        .filter(shouldShowBookingPackageOrder)
+        .map(buildPackagePurchaseRequest)
+
       const nextBookingRows = consolidateBookingRequests(
         enrichHoldRowsWithSharedOrder(
-          dedupeByKey([...cancellationRequests, ...holdRequests, ...depositProofRequests]),
+          dedupeByKey([...cancellationRequests, ...holdRequests, ...depositProofRequests, ...packagePurchaseRequests]),
         ),
       )
 
@@ -585,6 +671,16 @@ export default function PosRequestCenter({
     { label: 'Ecommerce requests', value: ecommerceRows.length, className: 'border-blue-200 bg-blue-50 text-blue-900' },
     { label: 'Total pending', value: totalCount, className: 'border-slate-200 bg-slate-50 text-slate-900' },
   ], [bookingRows.length, ecommerceRows.length, totalCount])
+
+  const openBookingRowDetail = (row: BookingRequestRow) => {
+    if (row.bookingId <= 0 && row.orderId) {
+      openOrderView(row)
+      return
+    }
+    if (row.bookingId > 0) {
+      void openBookingReview(row)
+    }
+  }
 
   const openBookingReview = async (row: BookingRequestRow) => {
     if (row.bookingId <= 0) return
@@ -775,7 +871,7 @@ export default function PosRequestCenter({
                               <td className="px-4 py-3 align-top">
                                 <button
                                   type="button"
-                                  onClick={() => void openBookingReview(row)}
+                                  onClick={() => openBookingRowDetail(row)}
                                   className="block max-w-full truncate text-left font-bold text-slate-950 hover:text-amber-700"
                                   title={row.number}
                                 >
@@ -810,7 +906,7 @@ export default function PosRequestCenter({
                             <div className="min-w-0 flex-1">
                               <button
                                 type="button"
-                                onClick={() => void openBookingReview(row)}
+                                onClick={() => openBookingRowDetail(row)}
                                 className="block max-w-full truncate text-left text-base font-bold text-slate-950 hover:text-amber-700"
                                 title={row.number}
                               >

@@ -13,6 +13,7 @@ import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/
 import type { PosDepositTransaction, PosRefundTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
+import SettlementCartPaymentBreakdown from '@/components/pos/SettlementCartPaymentBreakdown'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import BookingAddonOptionRow, { PosAddonLineName, PosAddonSelectionDurationLabel, PosAddonSelectionPriceLabel, PosAddonSettlementPriceLabel } from '@/components/pos/BookingAddonOptionRow'
@@ -8667,7 +8668,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           ) : null}
                         </div>
                         <div className="pos-cart-settlement-actions flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
-                            {Number(settlement.customer_id ?? 0) > 0 && settlement.package_status?.status === 'reserved' ? (
+                            {Number(settlement.customer_id ?? 0) > 0 &&
+                            (settlement.package_status?.status === 'reserved' ||
+                              (settlement.package_claims?.length ?? 0) > 0) ? (
                               <button
                                 type="button"
                                 disabled={settlementUnclaimingIds[settlement.id] || settlementRedeemingIds[settlement.id]}
@@ -8682,8 +8685,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   type="button"
                                   disabled={
                                     settlementRedeemingIds[settlement.id] ||
-                                    settlementUnclaimingIds[settlement.id] ||
-                                    settlement.package_status?.status === 'consumed'
+                                    settlementUnclaimingIds[settlement.id]
                                   }
                                   title={
                                     !settlement.can_apply_package && settlement.package_disabled_reason && settlement.package_disabled_reason !== 'No eligible package available.'
@@ -8693,7 +8695,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   onClick={() => openSettlementPackageModal({ bookingId: settlement.booking_id, customerName: settlement.customer_name ?? undefined })}
                                   className="rounded-lg border border-cyan-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-cyan-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  Apply package
+                                  {(settlement.package_claims?.length ?? 0) > 0 || settlement.package_status?.status === 'reserved'
+                                    ? 'Manage packages'
+                                    : 'Apply package'}
                                 </button>
                               </span>
                             ) : null}
@@ -8896,30 +8900,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               </div>
                             ) : null}
 
-                            {mainCoveredByPkg && addonDueSum > 0.0001 ? (
-                              <p className="text-[10px] leading-snug text-gray-600">
-                                Your package covers the <strong className="font-medium text-gray-900">main service</strong>{' '}
-                                only. Add-ons above are still due at checkout.
-                              </p>
-                            ) : null}
-
-                            {settlementShowsSeparateDepositCredit(settlement) ? (
-                              <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
-                                <span className="text-gray-700">Deposit paid</span>
-                                <span className="font-semibold tabular-nums text-emerald-700">
-                                  − RM {depositCredit.toFixed(2)}
-                                </span>
-                              </div>
-                            ) : null}
-
-                            <div className="mt-2 flex items-baseline justify-between gap-3 pt-2">
-                              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">
-                                Total to pay
-                              </span>
-                              <div className="text-right">
-                                <span className="text-sm font-bold tabular-nums text-orange-700">{totalDueLabel}</span>
-                              </div>
-                            </div>
+                            <SettlementCartPaymentBreakdown
+                              settlement={settlement}
+                              variant="cart"
+                              className="mt-2 border-t border-gray-200 pt-2"
+                            />
                           </div>
                         </div>
                       )
@@ -10895,8 +10880,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                     className="px-4 py-2 pl-7 text-[10px] leading-snug text-gray-600 sm:px-5 sm:pl-8"
                                     colSpan={5}
                                   >
-                                    Your package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
-                                    only. Add-ons above are still due at checkout.
+                                    Package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
+                                    only. Add-on lines above are still due at checkout.
                                   </td>
                                   <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                 </tr>
@@ -10906,48 +10891,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             </>
                           )}
 
-                          {settlementShowsSeparateDepositCredit(settlement) ? (
-                            <tr className={`${stRowClass} align-top`}>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                              <td className="px-4 py-2 pl-7 text-xs text-gray-700 sm:px-5 sm:pl-8">
-                                Deposit paid
-                              </td>
-                              <td className="min-w-[260px] px-4 py-2" aria-hidden />
-                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
-                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                <p className="text-lg font-bold leading-tight text-emerald-700">− RM {depositCredit.toFixed(2)}</p>
-                              </td>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                            </tr>
-                          ) : null}
-                          {Number(settlement.overpaid_amount ?? settlement.refund_needed ?? 0) > 0.0001 ? (
-                            <tr className={`${stRowClass} align-top`}>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                              <td className="px-4 py-2 pl-7 text-xs font-bold text-rose-800 sm:px-5 sm:pl-8">
-                                Refund / Credit Required
-                              </td>
-                              <td className="min-w-[260px] px-4 py-2 text-[11px] font-semibold text-rose-700">Open Edit Settlement to handle before checkout.</td>
-                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
-                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                <p className="text-lg font-bold leading-tight text-rose-700">RM {Number(settlement.overpaid_amount ?? settlement.refund_needed ?? 0).toFixed(2)}</p>
-                              </td>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                            </tr>
-                          ) : null}
-                          {hasServiceBlocks ? (
-                            <tr className={`${stRowClass} align-top`}>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                              <td className="px-4 py-2 pl-7 text-xs font-bold text-gray-900 sm:px-5 sm:pl-8">
-                                Total to pay
-                              </td>
-                              <td className="min-w-[260px] px-4 py-2" aria-hidden />
-                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
-                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                <p className="text-lg font-bold leading-tight text-orange-700">{settlementTotalDueLabel}</p>
-                              </td>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                            </tr>
-                          ) : null}
+                          <tr className={`${stRowClass} align-top`}>
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
+                            <td className="px-4 py-2 pl-7 sm:px-5 sm:pl-8" colSpan={4}>
+                              <SettlementCartPaymentBreakdown settlement={settlement} variant="checkout" />
+                            </td>
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
+                          </tr>
                         </Fragment>
                       )
                     })}

@@ -289,7 +289,7 @@ class ServicePackageTestingSeeder extends Seeder
             ->all();
 
         $starterServiceIds = $eligibleServiceIds->take(min(8, $eligibleServiceIds->count()))->all();
-        $comboServiceIds = $eligibleServiceIds->take(min(16, $eligibleServiceIds->count()))->all();
+        $comboServiceIds = $eligibleServiceIds->all();
 
         $packages = [
             'Seed Hair Wash 10x' => [

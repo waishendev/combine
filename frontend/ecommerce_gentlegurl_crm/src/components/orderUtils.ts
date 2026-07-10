@@ -13,6 +13,7 @@ export type OrderApiItem = {
     phone?: string | null
   } | null
   order_type?: OrderType | string | null
+  line_types?: string[] | null
   notes?: string | null
   items?: unknown[] | null
   booking_deposit_items?: unknown[] | null

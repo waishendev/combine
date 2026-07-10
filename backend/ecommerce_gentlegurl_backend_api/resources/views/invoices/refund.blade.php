@@ -153,12 +153,6 @@
                 <td>Channel</td>
                 <td>{{ ucfirst((string) $refund->channel) }}</td>
               </tr>
-              <?php if($bookingCode): ?>
-                <tr>
-                  <td>Booking</td>
-                  <td>{{ $bookingCode }}</td>
-                </tr>
-              <?php endif; ?>
             </table>
           </td>
         </tr>
@@ -199,9 +193,6 @@
             <td>
               <div class="item-name">Overpaid deposit refund</div>
               <div class="sku">{{ $methodLabel }}</div>
-              <?php if($refund->reason): ?>
-                <div class="sku" style="margin-top:2px;">Reason: {{ $refund->reason }}</div>
-              <?php endif; ?>
               <?php if($refund->remark): ?>
                 <div class="sku" style="margin-top:2px;">{{ $refund->remark }}</div>
               <?php endif; ?>

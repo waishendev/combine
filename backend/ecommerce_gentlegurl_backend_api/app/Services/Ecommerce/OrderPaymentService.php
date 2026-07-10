@@ -9,6 +9,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\PointsEarnBatch;
 use App\Models\Ecommerce\PointsTransaction;
 use App\Models\Ecommerce\StockMovement;
+use App\Services\Booking\CustomerServicePackageService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -18,6 +19,7 @@ class OrderPaymentService
     {
         DB::transaction(function () use ($order) {
             $this->deductStock($order);
+            app(CustomerServicePackageService::class)->fulfillPendingPackagesForPaidOrder($order->fresh(['items', 'customer']));
             $this->issuePoints($order);
         });
     }

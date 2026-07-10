@@ -715,17 +715,9 @@ class CartController extends Controller
                         ->findOrFail((int) $packageItem->service_package_id);
 
                     for ($i = 0; $i < (int) $packageItem->qty; $i++) {
-                        $owned = $this->customerServicePackageService->purchase(
-                            (int) $customer->id,
-                            $servicePackage,
-                            'BOOKING',
-                            null,
-                        );
-
-                        $ownedPackageIds[] = (int) $owned->id;
+                        $unitPrice = (float) ($packageItem->price_snapshot ?? 0);
 
                         if ($order) {
-                            $unitPrice = (float) ($packageItem->price_snapshot ?? 0);
                             OrderItem::query()->create([
                                 'order_id' => (int) $order->id,
                                 'line_type' => 'service_package',
@@ -740,7 +732,7 @@ class CartController extends Controller
                                 'effective_line_total' => $unitPrice,
                                 'locked' => true,
                                 'service_package_id' => (int) $packageItem->service_package_id,
-                                'customer_service_package_id' => (int) $owned->id,
+                                'customer_service_package_id' => null,
                             ]);
                         }
                     }
@@ -761,6 +753,14 @@ class CartController extends Controller
                 $order->payment_url = null;
                 $order->save();
                 $this->orderPaymentService->handlePaid($order->fresh(['items', 'customer']));
+                $ownedPackageIds = $order->fresh(['items'])
+                    ->items
+                    ->filter(fn ($item) => strtolower((string) ($item->line_type ?? '')) === 'service_package')
+                    ->pluck('customer_service_package_id')
+                    ->filter(fn ($id) => (int) $id > 0)
+                    ->map(fn ($id) => (int) $id)
+                    ->values()
+                    ->all();
 
                 if (! empty($bookingIds)) {
                     Booking::query()

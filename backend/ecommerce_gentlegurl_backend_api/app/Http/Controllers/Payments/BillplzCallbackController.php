@@ -10,6 +10,7 @@ use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\Cart;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Services\Booking\BookingOrderConfirmationService;
+use App\Services\Booking\CustomerServicePackageService;
 use App\Services\SettingService;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
@@ -312,6 +313,8 @@ class BillplzCallbackController extends Controller
 
     protected function confirmOrderBookings(Order $order, ?string $billId = null): void
     {
+        app(CustomerServicePackageService::class)->fulfillPendingPackagesForPaidOrder($order->fresh(['items', 'customer']));
+
         $confirmedIds = $this->bookingOrderConfirmationService->confirmLinkedBookingsForPaidOrder(
             $order,
             'order_callback',

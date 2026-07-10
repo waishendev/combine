@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Ecommerce\Order;
+use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Ecommerce\OrderReserveService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +44,7 @@ class ExpirePendingOrders extends Command
                         $lockedOrder->status = 'cancelled';
                         $lockedOrder->save();
 
+                        app(CustomerServicePackageService::class)->revokeUnpaidBookingPackagesForOrder($lockedOrder);
                         $this->orderReserveService->releaseStockForOrder($lockedOrder);
                     });
                 }

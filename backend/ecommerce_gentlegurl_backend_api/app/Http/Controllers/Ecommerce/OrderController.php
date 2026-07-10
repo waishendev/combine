@@ -15,6 +15,7 @@ use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Booking\BookingCancellationService;
 use App\Services\Booking\BookingOrderConfirmationService;
+use App\Services\Booking\CustomerServicePackageService;
 // use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
@@ -157,6 +158,7 @@ class OrderController extends Controller
                         'name' => $customerName,
                         'email' => $customerEmail,
                     ] : null,
+                    'line_types' => $order->items->pluck('line_type')->unique()->values()->all(),
                     'order_type' => $this->detectOrderType($order),
                     'status' => $order->status,
                     'payment_status' => $order->payment_status,
@@ -788,6 +790,7 @@ class OrderController extends Controller
 
                 if ($isBookingOrder) {
                     $this->cancelLinkedOrderBookings($lockedOrder, $request, $validated['admin_note']);
+                    app(CustomerServicePackageService::class)->revokeUnpaidBookingPackagesForOrder($lockedOrder);
                 }
 
                 // $this->orderReserveService->releaseStockForOrder($lockedOrder);

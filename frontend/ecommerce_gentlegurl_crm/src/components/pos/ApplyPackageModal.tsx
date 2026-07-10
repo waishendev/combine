@@ -560,6 +560,15 @@ export default function ApplyPackageModal(props: Props) {
                             )}
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-semibold text-gray-900">
+                                {onVisit && line?.line_type === 'addon' ? (
+                                  <span className="mr-1.5 inline-flex rounded bg-cyan-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-800">
+                                    Add-on
+                                  </span>
+                                ) : onVisit && line?.line_type === 'main_service' ? (
+                                  <span className="mr-1.5 inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-700">
+                                    Service
+                                  </span>
+                                ) : null}
                                 {item.service_name}
                                 {line?.cn_name ? (
                                   <span className="ml-1 font-normal text-gray-400">({line.cn_name})</span>

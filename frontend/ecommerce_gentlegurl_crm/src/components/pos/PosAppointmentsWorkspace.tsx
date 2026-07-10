@@ -27,6 +27,8 @@ import {
   posPriceDisplayWithOverride,
   resolveEditSettlementAddonLineAmount,
   resolveEditSettlementAddonUnitDisplay,
+  resolveSettlementRefundNeededAmount,
+  computeSettlementRefundSummary,
   seedAddonLineTotalOverrides,
   seedFinalizedAddonPriceOverrides,
   settlementNeedsSettledAmount,
@@ -63,6 +65,7 @@ import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
 import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRefundCreditSection'
+import { SettlementRefundBreakdownRows } from '@/components/pos/SettlementCartPaymentBreakdown'
 import PosAppointmentPaymentLinksSection from '@/components/pos/PosAppointmentPaymentLinksSection'
 import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
@@ -1998,7 +2001,11 @@ export default function PosAppointmentsWorkspace({
     const settlementPaidSnapshot = Number(appointmentDetail?.settlement_paid ?? 0)
     const isZeroBalanceFinalize =
       settlementPaidSnapshot <= 0.0001 && dueAmount <= 0.0001 && appointmentNeedsZeroBalanceCheckout(appointmentDetail)
-    const overpaidAmount = Number(appointmentDetail?.overpaid_amount ?? appointmentDetail?.refund_needed ?? 0)
+    const overpaidAmount = resolveSettlementRefundNeededAmount({
+      refund_needed: appointmentDetail?.refund_needed,
+      overpaid_amount: appointmentDetail?.overpaid_amount,
+      refund_handled: appointmentDetail?.refund_handled,
+    })
     const refundPending = overpaidAmount > 0.0001 && !appointmentDetail?.refund_handled
     if (isZeroBalanceFinalize && refundPending) {
       reportAppointmentCheckoutError('This booking has overpaid deposit. Please handle refund/credit in Edit Settlement before checkout.')
@@ -3385,8 +3392,17 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentDepositContributionForSettlement = useMemo(() => {
     const contribution = Number(appointmentDetail?.deposit_contribution ?? appointmentDetail?.deposit_paid ?? 0)
-    return appointmentIsFullyPackageCovered ? 0 : contribution
-  }, [appointmentDetail?.deposit_contribution, appointmentDetail?.deposit_paid, appointmentIsFullyPackageCovered])
+    if (contribution > 0.0001) return contribution
+    if (appointmentDetail?.deposit_previously_collected) {
+      return Number(appointmentDetail?.deposit_previously_collected_amount ?? 0)
+    }
+    return 0
+  }, [
+    appointmentDetail?.deposit_contribution,
+    appointmentDetail?.deposit_paid,
+    appointmentDetail?.deposit_previously_collected,
+    appointmentDetail?.deposit_previously_collected_amount,
+  ])
 
   const appointmentPreviouslyCollectedDeposit = useMemo(() => {
     const wasCollected = Boolean(appointmentDetail?.deposit_previously_collected)
@@ -3628,7 +3644,6 @@ export default function PosAppointmentsWorkspace({
   )
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
-  const appointmentOverpaidAmount = Number(appointmentDetail?.overpaid_amount ?? appointmentDetail?.refund_needed ?? 0)
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
   const appointmentPackageApplied =
     ['reserved', 'consumed'].includes(String(appointmentDetail?.package_status?.status ?? '').toLowerCase()) ||
@@ -3741,6 +3756,33 @@ export default function PosAppointmentsWorkspace({
       : null
   const appointmentCanApplyPackage = Boolean(appointmentDetail?.can_apply_package)
   const appointmentStatusUpper = String(appointmentDetail?.status ?? '').toUpperCase()
+  const appointmentRefundSummary = useMemo(
+    () => computeSettlementRefundSummary(
+      {
+        overpaid_amount: appointmentDetail?.overpaid_amount,
+        refund_needed: appointmentDetail?.refund_needed,
+        refund_handled: appointmentDetail?.refund_handled,
+        refund_handled_amount: appointmentDetail?.refund_handled_amount,
+        refund_transactions: appointmentDetail?.refund_transactions,
+      },
+      {
+        mode:
+          appointmentStatusUpper === 'COMPLETED' && appointmentPaymentBadgeIsPaid
+            ? 'history'
+            : 'active',
+      },
+    ),
+    [
+      appointmentDetail?.overpaid_amount,
+      appointmentDetail?.refund_handled,
+      appointmentDetail?.refund_handled_amount,
+      appointmentDetail?.refund_needed,
+      appointmentDetail?.refund_transactions,
+      appointmentPaymentBadgeIsPaid,
+      appointmentStatusUpper,
+    ],
+  )
+  const appointmentRefundNeededAmount = appointmentRefundSummary.remainingRefund
   const appointmentIsHold = appointmentStatusUpper === 'HOLD'
   const appointmentHoldProofCount = appointmentDetail?.payment_proofs?.length ?? 0
   const appointmentHoldDepositOrder = appointmentDetail?.hold_deposit_order ?? null
@@ -4766,12 +4808,11 @@ export default function PosAppointmentsWorkspace({
                         <span className="text-slate-600">Total Covered</span>
                         <span className="font-semibold tabular-nums text-slate-900">RM {appointmentTotalCovered.toFixed(2)}</span>
                       </div> */}
-                      {appointmentOverpaidAmount > 0.0001 ? (
-                        <div className="flex items-center justify-between gap-3 py-3.5">
-                          <span className="font-semibold text-rose-700">Refund Needed</span>
-                          <span className="font-bold tabular-nums text-rose-700">RM {appointmentOverpaidAmount.toFixed(2)}</span>
-                        </div>
-                      ) : null}
+                      <SettlementRefundBreakdownRows
+                        summary={appointmentRefundSummary}
+                        variant="checkout"
+                        rowClass="py-3.5"
+                      />
 
                       <div className="-mx-4 flex items-center justify-between gap-3 border-t-2 border-slate-200 bg-emerald-50/50 px-4 py-4">
                         <span className="text-base font-bold text-slate-900">Amount To Pay</span>
@@ -6927,7 +6968,7 @@ export default function PosAppointmentsWorkspace({
                   {canEditAppointmentSettlement ? (
                   <PosAppointmentRefundCreditSection
                     bookingId={appointmentDetail.id}
-                    refundNeeded={Number(appointmentDetail.refund_needed ?? appointmentDetail.overpaid_amount ?? 0)}
+                    refundNeeded={appointmentRefundNeededAmount}
                     initialTransactions={appointmentDetail.refund_transactions}
                     onError={reportEditSettlementError}
                     showMsg={showMsg}
@@ -7602,11 +7643,11 @@ export default function PosAppointmentsWorkspace({
                   </label>
                 </div>
               ) : null}
-              {checkoutZeroBalanceSettlement && appointmentOverpaidAmount > 0.0001 && !appointmentDetail?.refund_handled ? (
+              {checkoutZeroBalanceSettlement && appointmentRefundNeededAmount > 0.0001 && !appointmentDetail?.refund_handled ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
                   <p className="text-sm font-bold text-rose-900">Refund / Credit Required</p>
                   <p className="mt-2 text-xs text-rose-800">
-                    Overpaid by RM {appointmentOverpaidAmount.toFixed(2)}. Open <span className="font-semibold">Edit Settlement</span> and use the refund section to record Cash Refund or Customer Credit before checkout.
+                    Overpaid by RM {appointmentRefundNeededAmount.toFixed(2)}. Open <span className="font-semibold">Edit Settlement</span> and use the refund section to record Cash Refund or Customer Credit before checkout.
                   </p>
                 </div>
               ) : null}
@@ -7721,7 +7762,7 @@ export default function PosAppointmentsWorkspace({
                   disabled={
                     cashShiftActionDisabled ||
                     appointmentActionLoading ||
-                    (checkoutZeroBalanceSettlement && appointmentOverpaidAmount > 0.0001 && !appointmentDetail?.refund_handled) ||
+                    (checkoutZeroBalanceSettlement && appointmentRefundNeededAmount > 0.0001 && !appointmentDetail?.refund_handled) ||
                     (!checkoutZeroBalanceSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementPaymentValid))
                   }
                   onClick={() => void settleAppointmentPayment()}
