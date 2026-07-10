@@ -346,6 +346,82 @@ export function seedAddonLineTotalOverrides(
   return Object.fromEntries(entries)
 }
 
+export type AddedMainServiceSeedRow = {
+  linked_booking_service_id?: number | null
+  id?: number | null
+  extra_price?: number | string | null
+  price_finalized?: boolean | null
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
+}
+
+export type AddedMainSettlementLineSeedRow = AddedMainServiceSeedRow & {
+  gross_amount?: number | string | null
+  balance_due?: number | string | null
+  is_original?: boolean
+}
+
+export function matchAddedMainSettlementLine(
+  service: AddedMainServiceSeedRow,
+  settlementLines?: AddedMainSettlementLineSeedRow[] | null,
+): AddedMainSettlementLineSeedRow | undefined {
+  const serviceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
+  if (serviceId <= 0) return undefined
+  return (settlementLines ?? []).find((line) => {
+    if (line.is_original) return false
+    return Number(line.linked_booking_service_id ?? line.id ?? 0) === serviceId
+  })
+}
+
+export function resolveAddedMainServiceReferenceUnitPrice(
+  service: AddedMainServiceSeedRow,
+  settlementLine?: AddedMainSettlementLineSeedRow | null,
+): number {
+  const catalog = finiteNumber(service.extra_price)
+  const settlementCatalog = finiteNumber(settlementLine?.extra_price)
+  if (!service.price_finalized && !settlementLine?.price_finalized && catalog != null) return catalog
+  if (settlementCatalog != null && !settlementLine?.price_finalized) return settlementCatalog
+  if (catalog != null) return catalog
+  const min = finiteNumber(service.price_range_min ?? settlementLine?.price_range_min)
+  if (min != null) return min
+  return finiteNumber(settlementLine?.gross_amount ?? settlementLine?.balance_due) ?? 0
+}
+
+export function resolveAddedMainServiceSeedPrice(
+  service: AddedMainServiceSeedRow,
+  settlementLine?: AddedMainSettlementLineSeedRow | null,
+): number {
+  if (settlementLine) {
+    const gross = finiteNumber(settlementLine.gross_amount)
+    const balance = finiteNumber(settlementLine.balance_due)
+    const extra = finiteNumber(settlementLine.extra_price)
+    const fromLine = gross ?? balance ?? extra
+    if (fromLine != null && (fromLine > 0 || settlementLine.price_finalized)) {
+      return fromLine
+    }
+  }
+  return finiteNumber(service.extra_price) ?? 0
+}
+
+export function resolveAddedMainServiceSeedFinalized(
+  service: AddedMainServiceSeedRow,
+  settlementLine: AddedMainSettlementLineSeedRow | null | undefined,
+  resolvedPrice: number,
+): boolean {
+  if (service.price_finalized || settlementLine?.price_finalized) return true
+  const source: PosPriceDisplaySource = {
+    price_mode: service.price_mode ?? settlementLine?.price_mode ?? null,
+    price_range_min: service.price_range_min ?? settlementLine?.price_range_min ?? null,
+    price_range_max: service.price_range_max ?? settlementLine?.price_range_max ?? null,
+    extra_price: resolvedPrice,
+  }
+  if (posPriceDisplayHasRange(source)) {
+    return resolvedPrice > 0
+  }
+  return resolvedPrice > 0
+}
+
 export function resolveSettlementAddonLineGross(
   addon?: (StoredAddonRowLike & { balance_due?: number | null; line_total_after_discount?: number | null }) | null,
 ): number {

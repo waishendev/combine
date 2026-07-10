@@ -25,6 +25,10 @@ import {
   posPriceDisplayHasRange,
   posPriceDisplayForAddonLine,
   posPriceDisplayWithOverride,
+  matchAddedMainSettlementLine,
+  resolveAddedMainServiceReferenceUnitPrice,
+  resolveAddedMainServiceSeedFinalized,
+  resolveAddedMainServiceSeedPrice,
   resolveEditSettlementAddonLineAmount,
   resolveEditSettlementAddonUnitDisplay,
   resolveSettlementRefundNeededAmount,
@@ -67,7 +71,7 @@ import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentD
 import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRefundCreditSection'
 import { SettlementRefundBreakdownRows } from '@/components/pos/SettlementCartPaymentBreakdown'
 import PosAppointmentPaymentLinksSection from '@/components/pos/PosAppointmentPaymentLinksSection'
-import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
+import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
@@ -260,6 +264,33 @@ function getAppointmentAddonPriceEditTarget(target: AppointmentPriceEditTarget):
     return target
   }
   return null
+}
+
+function buildAddedServicePriceEditTarget(block: {
+  tmp_id: string
+  service_name: string
+  price: number
+  reference_unit_price?: number
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
+  price_finalized?: boolean | null
+}): Extract<AppointmentPriceEditTarget, { kind: 'addedService' }> {
+  return {
+    kind: 'addedService',
+    tmpId: block.tmp_id,
+    name: block.service_name,
+    currentUnitPrice: Number(block.price ?? 0),
+    originalUnitPrice: Number(block.reference_unit_price ?? block.price_range_min ?? block.price ?? 0),
+    quantity: 1,
+    priceSource: {
+      price_mode: block.price_mode ?? null,
+      price_range_min: block.price_range_min ?? null,
+      price_range_max: block.price_range_max ?? null,
+      extra_price: block.price,
+      price_finalized: block.price_finalized,
+    },
+  }
 }
 
 
@@ -544,6 +575,7 @@ export default function PosAppointmentsWorkspace({
     service_name: string
     service_cn_name?: string | null
     price: number
+    reference_unit_price?: number
     price_mode?: string | null
     price_range_min?: number | null
     price_range_max?: number | null
@@ -2253,15 +2285,21 @@ export default function PosAppointmentsWorkspace({
     )
     const addedMainBlocksSeed = appointmentDisplayMainServices
       .filter((service) => !service.is_original)
-      .map((service) => ({
+      .map((service) => {
+        const settlementLine = matchAddedMainSettlementLine(service, appointmentDetail.main_service_settlement_items)
+        const resolvedPrice = resolveAddedMainServiceSeedPrice(service, settlementLine)
+        const referenceUnitPrice = resolveAddedMainServiceReferenceUnitPrice(service, settlementLine)
+        return {
         tmp_id: `seed-${Number(service.linked_booking_service_id ?? service.id ?? 0)}-${Math.random()}`,
         service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
         service_name: String(service.name ?? 'Service'),
         service_cn_name: typeof service.cn_name === 'string' ? service.cn_name : null,
-        price: Number(service.extra_price ?? 0),
-        price_mode: service.price_mode ?? null,
-        price_range_min: service.price_range_min ?? null,
-        price_range_max: service.price_range_max ?? null,
+        price: resolvedPrice,
+        reference_unit_price: referenceUnitPrice,
+        price_mode: service.price_mode ?? settlementLine?.price_mode ?? null,
+        price_range_min: service.price_range_min ?? settlementLine?.price_range_min ?? null,
+        price_range_max: service.price_range_max ?? settlementLine?.price_range_max ?? null,
+        price_finalized: resolveAddedMainServiceSeedFinalized(service, settlementLine, resolvedPrice),
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as ServiceAddonQuestion[],
         selected_addon_ids: selectionFromAddonRows((service.add_ons ?? []).map((addon) => ({ id: addon.id, quantity: addon.quantity ?? 1 }))),
@@ -2272,7 +2310,7 @@ export default function PosAppointmentsWorkspace({
           share_percent: String(split.share_percent ?? ''),
         })),
         auto_balance: true,
-      }))
+      }})
       .filter((block) => block.service_id > 0)
     setAppointmentLineStaffSplits((prev) => {
       const next = { ...prev }
@@ -2456,12 +2494,14 @@ export default function PosAppointmentsWorkspace({
     } catch {
       questions = []
     }
+    const catalogPrice = Number(service.service_price ?? service.price ?? 0)
     setEditAddedMainBlocks((prev) => [...prev, {
       tmp_id: `added-${service.id}-${Math.random()}`,
       service_id: service.id,
       service_name: service.name,
       service_cn_name: service.cn_name ?? null,
-      price: Number(service.service_price ?? service.price ?? 0),
+      price: catalogPrice,
+      reference_unit_price: catalogPrice,
       price_mode: service.price_mode ?? null,
       price_range_min: service.price_range_min ?? null,
       price_range_max: service.price_range_max ?? null,
@@ -4395,17 +4435,18 @@ export default function PosAppointmentsWorkspace({
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-bold uppercase tracking-wide text-violet-900">Deposit review</p>
                             {appointmentHoldDepositOrder ? (
-                              <p className="mt-2 text-xs text-violet-900/80">
-                                <span className="font-semibold">{appointmentHoldDepositOrder.order_number}</span>
-                                {' · '}
-                                RM {Number(appointmentHoldDepositOrder.grand_total ?? 0).toFixed(2)}
-                                {' · '}
-                                {appointmentHoldDepositOrder.status === 'processing'
-                                  ? 'Waiting for verification'
-                                  : appointmentHoldDepositOrder.status === 'reject_payment_proof'
-                                    ? 'Payment proof rejected'
-                                    : appointmentHoldDepositOrder.status.replaceAll('_', ' ')}
-                              </p>
+                              <>
+                                <p className="mt-2 text-xs font-semibold text-violet-900">
+                                  {appointmentHoldDepositOrder.order_number}
+                                </p>
+                                <p className="mt-1 text-xs text-violet-900/80">
+                                  {appointmentHoldDepositOrder.status === 'processing'
+                                    ? 'Waiting for verification'
+                                    : appointmentHoldDepositOrder.status === 'reject_payment_proof'
+                                      ? 'Payment proof rejected'
+                                      : appointmentHoldDepositOrder.status.replaceAll('_', ' ')}
+                                </p>
+                              </>
                             ) : (
                               <p className="mt-2 text-xs text-violet-800/80">No pending deposit order linked to this hold.</p>
                             )}
@@ -7049,7 +7090,7 @@ export default function PosAppointmentsWorkspace({
                               primaryClassName="text-sm font-semibold text-gray-900"
                               secondaryClassName="mt-0.5 text-xs text-gray-500"
                             />
-                            <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'addedService', tmpId: block.tmp_id, name: block.service_name, currentUnitPrice: Number(block.price ?? 0), originalUnitPrice: Number(block.price ?? 0), quantity: 1, priceSource: block })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price, price_finalized: block.price_finalized })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice({ ...block, extra_price: block.price, price_finalized: block.price_finalized }) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice({ ...block, extra_price: block.price, price_finalized: block.price_finalized }) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => openAppointmentPriceEditModal(buildAddedServicePriceEditTarget(block))} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button></div>
                           </>
                         ) : (
                           <p className="text-sm font-semibold text-gray-700">Select a service</p>
@@ -7456,17 +7497,35 @@ export default function PosAppointmentsWorkspace({
             />
               )
             })()}
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Edit Method</p>
-              <div className="flex flex-wrap gap-4 text-sm font-semibold text-gray-700">
-                <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'unit'} onChange={() => setAppointmentPriceEditMode('unit')} /> Unit Price</label>
-                <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'line'} onChange={() => setAppointmentPriceEditMode('line')} /> Line Total</label>
+            {priceEditTargetUsesSimpleServicePriceLayout(appointmentPriceEditTarget.kind) ? (
+              <div className="mt-4 rounded-lg border border-gray-200 p-3">
+                <label className="block text-sm font-semibold text-gray-700">New Price
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={appointmentPriceEditValueDraft}
+                    onChange={(event) => setAppointmentPriceEditValueDraft(event.target.value)}
+                    placeholder={appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(appointmentPriceEditTarget.priceSource) ? 'Enter final price' : '0.00'}
+                    className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm tabular-nums"
+                  />
+                </label>
               </div>
-            </div>
-            {appointmentPriceEditMode === 'unit' ? (
-              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Unit Price</label><input type="number" min={0} step="0.01" value={appointmentPriceEditValueDraft} onChange={(event) => setAppointmentPriceEditValueDraft(event.target.value)} placeholder={appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(appointmentPriceEditTarget.priceSource) ? 'Enter final price' : '0.00'} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(appointmentPriceEditValueDraft || 0)) * resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
             ) : (
-              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Line Total</label><input type="number" min={0} step="0.01" value={appointmentPriceEditLineTotalDraft} onChange={(event) => setAppointmentPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(appointmentPriceEditLineTotalDraft || 0)) / resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
+              <>
+                <div className="mt-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Edit Method</p>
+                  <div className="flex flex-wrap gap-4 text-sm font-semibold text-gray-700">
+                    <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'unit'} onChange={() => setAppointmentPriceEditMode('unit')} /> Unit Price</label>
+                    <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'line'} onChange={() => setAppointmentPriceEditMode('line')} /> Line Total</label>
+                  </div>
+                </div>
+                {appointmentPriceEditMode === 'unit' ? (
+                  <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Unit Price</label><input type="number" min={0} step="0.01" value={appointmentPriceEditValueDraft} onChange={(event) => setAppointmentPriceEditValueDraft(event.target.value)} placeholder={appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(appointmentPriceEditTarget.priceSource) ? 'Enter final price' : '0.00'} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(appointmentPriceEditValueDraft || 0)) * resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
+                ) : (
+                  <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Line Total</label><input type="number" min={0} step="0.01" value={appointmentPriceEditLineTotalDraft} onChange={(event) => setAppointmentPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(appointmentPriceEditLineTotalDraft || 0)) / resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
+                )}
+              </>
             )}
             <div className="mt-4"><label className="text-xs font-semibold text-gray-600">Reason / remark</label><textarea value={appointmentPriceEditReasonDraft} onChange={(event) => setAppointmentPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" /></div>
             </div>

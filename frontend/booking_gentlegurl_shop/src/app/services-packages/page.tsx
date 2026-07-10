@@ -2,10 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ServicePackageDetailModal } from "@/components/booking/ServicePackageDetailModal";
 import { addPackageCartItem, getServicePackages } from "@/lib/apiClient";
+import {
+  buildPackageLoginRedirect,
+  clearPendingPackageId,
+  openBookingCart,
+  readPendingPackageId,
+  shouldOpenCartFromUrl,
+  syncCartCount,
+} from "@/lib/packageCartFlow";
 import type { ServicePackage } from "@/lib/types";
 
 function formatRm(price: number) {
@@ -14,6 +22,10 @@ function formatRm(price: number) {
   return n.toFixed(2);
 }
 
+type PageNotice =
+  | { type: "error"; text: string }
+  | null;
+
 export default function ServicePackagesPage() {
   const pathname = usePathname();
   const router = useRouter();
@@ -21,8 +33,10 @@ export default function ServicePackagesPage() {
   const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<PageNotice>(null);
   const [detailPkg, setDetailPkg] = useState<ServicePackage | null>(null);
+  const [addingPackageId, setAddingPackageId] = useState<number | null>(null);
+  const pendingPackageHandledRef = useRef(false);
 
   useEffect(() => {
     const run = async () => {
@@ -42,21 +56,59 @@ export default function ServicePackagesPage() {
     void run();
   }, []);
 
+  useEffect(() => {
+    if (!user || loading || pendingPackageHandledRef.current) return;
+
+    const pendingId = readPendingPackageId();
+    const shouldOpenCart = shouldOpenCartFromUrl();
+    if (!pendingId && !shouldOpenCart) return;
+
+    pendingPackageHandledRef.current = true;
+
+    const run = async () => {
+      try {
+        if (pendingId) {
+          const updatedCart = await addPackageCartItem({ service_package_id: pendingId, qty: 1 });
+          syncCartCount(updatedCart);
+        }
+        clearPendingPackageId();
+        if (pendingId || shouldOpenCart) {
+          openBookingCart();
+        }
+      } catch (err) {
+        clearPendingPackageId();
+        setNotice({
+          type: "error",
+          text: err instanceof Error ? err.message : "Unable to add package into cart.",
+        });
+      }
+    };
+
+    void run();
+  }, [user, loading]);
+
   const onAddToCart = async (pkg: ServicePackage): Promise<boolean> => {
+    setNotice(null);
+
     if (!user) {
-      router.push(`/login?redirect=${encodeURIComponent(pathname || "/services-packages")}`);
+      router.push(buildPackageLoginRedirect(pathname || "/services-packages", pkg.id));
       return false;
     }
 
+    setAddingPackageId(pkg.id);
     try {
       const updatedCart = await addPackageCartItem({ service_package_id: pkg.id, qty: 1 });
-      const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
-      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
-      setMessage(`Added ${pkg.name} to cart. Open the cart icon when you're ready to pay.`);
+      syncCartCount(updatedCart);
+      openBookingCart();
       return true;
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Unable to add package into cart.");
+      setNotice({
+        type: "error",
+        text: err instanceof Error ? err.message : "Unable to add package into cart.",
+      });
       return false;
+    } finally {
+      setAddingPackageId(null);
     }
   };
 
@@ -68,20 +120,15 @@ export default function ServicePackagesPage() {
         <div className="h-px max-w-xs bg-gradient-to-r from-[var(--accent-strong)]/50 to-transparent" />
       </div>
 
-
-      {/* {!user ? (
-        <div className="rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[var(--status-warning)]">
-          Log in to add packages to your cart.{" "}
-          <Link
-            href={`/login?redirect=${encodeURIComponent(pathname || "/services-packages")}`}
-            className="font-semibold underline"
-          >
-            Login
-          </Link>
+      {notice?.type === "error" ? (
+        <div
+          className="rounded-2xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm text-[var(--status-error)]"
+          role="alert"
+        >
+          {notice.text}
         </div>
-      ) : null} */}
+      ) : null}
 
-      {message ? <p className="text-sm text-[var(--accent)]">{message}</p> : null}
       {error ? <p className="text-sm text-[var(--status-error)]">{error}</p> : null}
 
       {loading ? (
@@ -101,6 +148,7 @@ export default function ServicePackagesPage() {
             const lines = pkg.items?.filter((row) => row.quantity > 0) ?? [];
             const servicesBadge = lines.length === 1 ? "1 Service" : `${lines.length} Services`;
             const blurb = pkg.description?.trim() || "Bundle of salon services at a package rate.";
+            const isAdding = addingPackageId === pkg.id;
 
             return (
               <article
@@ -128,9 +176,10 @@ export default function ServicePackagesPage() {
                   <button
                     type="button"
                     onClick={() => void onAddToCart(pkg)}
-                    className="inline-flex h-12 w-full shrink-0 touch-manipulation items-center justify-center rounded-full bg-[var(--accent-strong)] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] hover:shadow-md active:scale-[0.99] sm:h-11 sm:flex-1"
+                    disabled={isAdding}
+                    className="inline-flex h-12 w-full shrink-0 touch-manipulation items-center justify-center rounded-full bg-[var(--accent-strong)] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] hover:shadow-md active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:flex-1"
                   >
-                    Add to Cart
+                    {isAdding ? "Adding..." : "Add to Cart"}
                   </button>
                   <button
                     type="button"

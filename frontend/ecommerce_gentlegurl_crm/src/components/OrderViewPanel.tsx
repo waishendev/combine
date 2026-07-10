@@ -898,34 +898,55 @@ export default function OrderViewPanel({
                     )}
 
                     {hasPackageItems && (
-                      <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Service Packages</p>
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[640px] text-sm">
-                            <thead>
-                              <tr className="border-b border-slate-200 text-slate-600">
-                                <th className="px-2 py-2 text-left font-medium">Package</th>
-                                <th className="px-2 py-2 text-left font-medium">Member</th>
-                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
-                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
-                                <th className="px-2 py-2 text-right font-medium">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {order.package_items?.map((item, idx) => (
-                                <tr key={`package-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
-                                  <td className="px-2 py-2 text-slate-900">{item.package_name || 'Service Package'}</td>
-                                  <td className="px-2 py-2 text-slate-700">{item.customer_name || '-'}</td>
-                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
-                                  <td className="px-2 py-2 text-right text-slate-700">
-                                    {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
-                                  </td>
-                                  <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Service Packages</p>
+                        {isBookingOrder ? (
+                          <div className="space-y-3">
+                            {order.package_items?.map((item, idx) => (
+                              <div
+                                key={`package-${idx}`}
+                                className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-medium text-slate-900">{item.package_name || 'Service Package'}</p>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    Qty: <span className="font-medium text-slate-700">{item.quantity}</span>
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="font-semibold text-slate-900">RM {formatAmount(item.line_total)}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                            <table className="w-full min-w-[640px] text-sm">
+                              <thead>
+                                <tr className="border-b border-slate-200 text-slate-600">
+                                  <th className="px-2 py-2 text-left font-medium">Package</th>
+                                  <th className="px-2 py-2 text-left font-medium">Member</th>
+                                  <th className="px-2 py-2 text-right font-medium">Quantity</th>
+                                  <th className="px-2 py-2 text-right font-medium">Unit Price</th>
+                                  <th className="px-2 py-2 text-right font-medium">Total</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                              </thead>
+                              <tbody>
+                                {order.package_items?.map((item, idx) => (
+                                  <tr key={`package-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
+                                    <td className="px-2 py-2 text-slate-900">{item.package_name || 'Service Package'}</td>
+                                    <td className="px-2 py-2 text-slate-700">{item.customer_name || '-'}</td>
+                                    <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
+                                    <td className="px-2 py-2 text-right text-slate-700">
+                                      {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     )}
 

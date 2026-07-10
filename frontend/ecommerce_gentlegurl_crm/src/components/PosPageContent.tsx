@@ -9,7 +9,7 @@ import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/com
 import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components/pos/PosCatalogInCartIndicator'
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
 import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRefundCreditSection'
-import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
+import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import type { PosDepositTransaction, PosRefundTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
@@ -52,6 +52,10 @@ import {
   seedFinalizedAddonPriceOverrides,
   buildAddonSettlementSaveOverrides,
   buildSettlementCartMainServicePriceSource,
+  matchAddedMainSettlementLine,
+  resolveAddedMainServiceReferenceUnitPrice,
+  resolveAddedMainServiceSeedFinalized,
+  resolveAddedMainServiceSeedPrice,
   resolveEditSettlementAddonUnitDisplay,
   seedAddonLineTotalOverrides,
   computeSettlementCartItemDueBounds,
@@ -677,6 +681,7 @@ type PriceEditTarget =
   | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null }
   | { kind: 'cartEditSettlementAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
   | { kind: 'cartEditSettlementBlockAddon'; tmpId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
+  | { kind: 'cartEditSettlementAddedService'; tmpId: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
   | { kind: 'bookingMainAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
   | { kind: 'bookingBlockAddon'; blockId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
 
@@ -1835,6 +1840,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     service_name: string
     service_cn_name?: string | null
     price: number
+    reference_unit_price?: number
     price_mode?: string | null
     price_range_min?: number | null
     price_range_max?: number | null
@@ -4434,9 +4440,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const submitPriceEditModal = async () => {
     if (!priceEditTarget || priceEditSaving) return
     const quantity = resolvePriceEditQuantity(priceEditTarget.quantity)
-    const parsedInput = parseSettlementAmountInput(priceEditMode === 'line' ? priceEditLineTotalDraft : priceEditValueDraft)
+    const usesSimpleServicePrice = priceEditTargetUsesSimpleServicePriceLayout(priceEditTarget.kind)
+    const parsedInput = parseSettlementAmountInput(usesSimpleServicePrice || priceEditMode === 'unit' ? priceEditValueDraft : priceEditLineTotalDraft)
     if (parsedInput == null) {
-      showMsg(priceEditMode === 'line' ? 'Please enter a valid line total.' : 'Please enter a valid price.', 'error')
+      showMsg(usesSimpleServicePrice || priceEditMode === 'unit' ? 'Please enter a valid price.' : 'Please enter a valid line total.', 'error')
       return
     }
     const nextInput = parsedInput
@@ -4455,13 +4462,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               priceEditTarget.optionId,
             ))
             : quantity
-    const next = priceEditMode === 'line' ? nextInput / qty : nextInput
+    const next = usesSimpleServicePrice || priceEditMode === 'unit' ? nextInput : nextInput / qty
     if (!Number.isFinite(next) || next < 0) {
       showMsg(priceEditMode === 'line' ? 'New line total must be 0 or higher.' : 'New price must be 0 or higher.', 'error')
       return
     }
     const roundedNext = Number(next.toFixed(2))
-    const roundedLineTotal = priceEditMode === 'line' ? Number(nextInput.toFixed(2)) : null
+    const roundedLineTotal = !usesSimpleServicePrice && priceEditMode === 'line' ? Number(nextInput.toFixed(2)) : null
 
     if (priceEditTarget.kind === 'cartEditSettlementAddon') {
       setCartEditAddonPriceOverrides((prev) => ({ ...prev, [priceEditTarget.optionId]: roundedNext }))
@@ -4487,6 +4494,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             return nextOverrides
           })(),
         }
+        : block))
+      setPriceEditTarget(null)
+      showMsg('Price updated.', 'success')
+      return
+    }
+    if (priceEditTarget.kind === 'cartEditSettlementAddedService') {
+      setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === priceEditTarget.tmpId
+        ? { ...block, price: roundedNext, price_finalized: true }
         : block))
       setPriceEditTarget(null)
       showMsg('Price updated.', 'success')
@@ -4807,15 +4822,21 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setCartEditAddonQuantities(currentAddonIds)
     const addedMainBlocksSeed = (settlement.main_services ?? [])
       .filter((service) => !service.is_original)
-      .map((service) => ({
+      .map((service) => {
+        const settlementLine = matchAddedMainSettlementLine(service, settlement.main_service_settlement_items)
+        const resolvedPrice = resolveAddedMainServiceSeedPrice(service, settlementLine)
+        const referenceUnitPrice = resolveAddedMainServiceReferenceUnitPrice(service, settlementLine)
+        return {
         tmp_id: `seed-${Number(service.linked_booking_service_id ?? service.id ?? 0)}-${Math.random()}`,
         service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
         service_name: String(service.name ?? 'Service'),
         service_cn_name: typeof service.cn_name === 'string' ? service.cn_name : null,
-        price: Number(service.extra_price ?? 0),
-        price_mode: service.price_mode ?? null,
-        price_range_min: service.price_range_min ?? null,
-        price_range_max: service.price_range_max ?? null,
+        price: resolvedPrice,
+        reference_unit_price: referenceUnitPrice,
+        price_mode: service.price_mode ?? settlementLine?.price_mode ?? null,
+        price_range_min: service.price_range_min ?? settlementLine?.price_range_min ?? null,
+        price_range_max: service.price_range_max ?? settlementLine?.price_range_max ?? null,
+        price_finalized: resolveAddedMainServiceSeedFinalized(service, settlementLine, resolvedPrice),
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as typeof cartEditAddonQuestions,
         selected_addon_ids: selectionFromAddonRows((service.add_ons ?? []).map((addon) => ({ id: addon.id, quantity: addon.quantity ?? 1 }))),
@@ -4826,7 +4847,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           share_percent: String(split.share_percent ?? ''),
         })),
         auto_balance: true,
-      }))
+      }})
       .filter((block) => block.service_id > 0)
     setCartEditAddedMainBlocks(addedMainBlocksSeed)
     setCartEditMainServicePickerQuery('')
@@ -4989,12 +5010,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     } catch {
       questions = []
     }
+    const catalogPrice = Number(service.service_price ?? service.price ?? 0)
     setCartEditAddedMainBlocks((prev) => [...prev, {
       tmp_id: `added-${service.id}-${Math.random()}`,
       service_id: service.id,
       service_name: service.name,
       service_cn_name: service.cn_name ?? null,
-      price: Number(service.service_price ?? service.price ?? 0),
+      price: catalogPrice,
+      reference_unit_price: catalogPrice,
       price_mode: service.price_mode ?? null,
       price_range_min: service.price_range_min ?? null,
       price_range_max: service.price_range_max ?? null,
@@ -5125,12 +5148,22 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     })
   }
 
-  const editCartAddedMainServicePrice = (tmpId: string, currentPrice: number) => {
-    const raw = window.prompt('New service block price', Number(currentPrice ?? 0).toFixed(2))
-    if (raw == null) return
-    const next = Number(raw)
-    if (!Number.isFinite(next) || next < 0) return
-    setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === tmpId ? { ...block, price: next, price_finalized: true } : block))
+  const editCartAddedMainServicePrice = (block: (typeof cartEditAddedMainBlocks)[number]) => {
+    openPriceEditModal({
+      kind: 'cartEditSettlementAddedService',
+      tmpId: block.tmp_id,
+      name: block.service_name,
+      currentUnitPrice: Number(block.price ?? 0),
+      originalUnitPrice: Number(block.reference_unit_price ?? block.price_range_min ?? block.price ?? 0),
+      quantity: 1,
+      priceSource: {
+        price_mode: block.price_mode ?? null,
+        price_range_min: block.price_range_min ?? null,
+        price_range_max: block.price_range_max ?? null,
+        extra_price: block.price,
+        price_finalized: block.price_finalized,
+      },
+    })
   }
 
   const saveCartEditSettlement = async () => {
@@ -9866,7 +9899,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
                         <ServiceNameStack name={block.service_name} cnName={block.service_cn_name} />
-                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price, price_finalized: block.price_finalized })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice({ ...block, extra_price: block.price, price_finalized: block.price_finalized }) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice({ ...block, extra_price: block.price, price_finalized: block.price_finalized }) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block)} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button></div>
                       </div>
                       <button
                         type="button"
@@ -11614,6 +11647,20 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               lineTotalOverride={'lineTotalOverride' in priceEditTarget ? priceEditTarget.lineTotalOverride : null}
               hasLineTotalOverrideKey={'hasLineTotalOverrideKey' in priceEditTarget ? priceEditTarget.hasLineTotalOverrideKey : false}
             />
+            {priceEditTargetUsesSimpleServicePriceLayout(priceEditTarget.kind) ? (
+              <label className="mt-4 block rounded-lg border border-gray-200 p-3 text-sm font-semibold text-gray-700">New Price
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={priceEditValueDraft}
+                  onChange={(event) => setPriceEditValueDraft(event.target.value)}
+                  onFocus={(event) => event.currentTarget.select()}
+                  placeholder={'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(priceEditTarget.priceSource) ? 'Enter final price' : '0.00'}
+                  className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm tabular-nums"
+                />
+              </label>
+            ) : (
             <div className="mt-4 rounded-lg border border-gray-200 p-3">
               <p className="text-sm font-semibold text-gray-700">Edit by</p>
               <div className="mt-2 flex gap-3 text-sm">
@@ -11650,6 +11697,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 </label>
               )}
             </div>
+            )}
             <label className="mt-3 block text-sm font-semibold text-gray-700">Reason / remark
               <textarea value={priceEditReasonDraft} onChange={(event) => setPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" />
             </label>

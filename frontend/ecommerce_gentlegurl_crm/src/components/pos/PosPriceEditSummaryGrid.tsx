@@ -26,10 +26,17 @@ function normalizeAddonLinePriceSource(
 }
 
 export function priceEditTargetUsesQuantityBreakdown(kind: string, quantity?: number | null): boolean {
+  if (priceEditTargetUsesSimpleServicePriceLayout(kind)) {
+    return false
+  }
   if (['originalAddon', 'addedAddon', 'createMainAddon', 'createBlockAddon', 'cartEditSettlementAddon', 'cartEditSettlementBlockAddon', 'bookingMainAddon', 'bookingBlockAddon'].includes(kind)) {
     return true
   }
   return resolvePriceEditQuantity(quantity) > 1
+}
+
+export function priceEditTargetUsesSimpleServicePriceLayout(kind: string): boolean {
+  return ['originalService', 'addedService', 'cartEditSettlementAddedService'].includes(kind)
 }
 
 export function formatPriceEditOriginalUnitDisplay(
@@ -246,6 +253,19 @@ export default function PosPriceEditSummaryGrid({
         currentLineTotalDisplay={currentLineTotalDisplay}
         quantity={qty}
       />
+    )
+  }
+
+  if (priceEditTargetUsesSimpleServicePriceLayout(kind)) {
+    return (
+      <div className="mt-4 space-y-3 text-sm">
+        <SummarySection tone="reference">
+          <SummaryCell tone="reference" label="Original Price / Reference Range" value={originalUnitDisplay} />
+        </SummarySection>
+        <SummarySection tone="current">
+          <SummaryCell tone="current" label="Current Price" value={currentUnitDisplay} />
+        </SummarySection>
+      </div>
     )
   }
 
