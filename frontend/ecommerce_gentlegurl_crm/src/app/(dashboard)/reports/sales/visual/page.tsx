@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 
+import PosCashShiftGate from '@/components/pos/PosCashShiftGate'
 import SalesVisualWorkspaceClient from '@/components/reports/SalesVisualWorkspaceClient'
 import { getCurrentUser } from '@/lib/auth'
 
@@ -22,10 +23,19 @@ export default async function SalesVisualPage() {
     user.permissions.includes('pos.checkout')
     || user.permissions.includes('pos.appointments.manage')
     || canUpdateOrder
+  const canManageCashShift = user.permissions.includes('pos.checkout')
 
   return (
-    <Suspense fallback={<div className="p-10 text-sm text-slate-600">Loading report…</div>}>
-      <SalesVisualWorkspaceClient canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} />
-    </Suspense>
+    <div className="crm-page-shell min-h-0">
+      <PosCashShiftGate
+        defaultStaffId={user.staff_id ?? null}
+        cashShiftRequired
+        canManageCashShift={canManageCashShift}
+      >
+        <Suspense fallback={<div className="p-10 text-sm text-slate-600">Loading report…</div>}>
+          <SalesVisualWorkspaceClient canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} />
+        </Suspense>
+      </PosCashShiftGate>
+    </div>
   )
 }
