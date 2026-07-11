@@ -12,6 +12,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\Voucher;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\Ecommerce\StaffSplitNormalizer;
 use App\Support\BookingNotes;
 use App\Models\Booking\BookingPayment;
 use App\Models\Setting;
@@ -655,12 +656,13 @@ class AppointmentController extends Controller
             ->pluck('name', 'id');
 
         $mapped = $splits
-            ->map(fn ($split) => [
+            ->map(fn ($split) => StaffSplitNormalizer::toReportSplit([
                 'staff_id' => (int) ($split['staff_id'] ?? 0),
-                'staff_name' => (string) ($split['staff_name'] ?? $split['name'] ?? $staffNameLookup[(int) ($split['staff_id'] ?? 0)] ?? '-'),
                 'share_percent' => (int) ($split['share_percent'] ?? $split['split_percent'] ?? 0),
-            ])
-            ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+                'share_amount' => $split['share_amount'] ?? null,
+                'split_mode' => $split['split_mode'] ?? null,
+            ], (string) ($split['staff_name'] ?? $split['name'] ?? $staffNameLookup[(int) ($split['staff_id'] ?? 0)] ?? '-')))
+            ->filter(fn (array $split) => $split['staff_id'] > 0 && ($split['share_percent'] > 0 || ($split['share_amount'] ?? 0) > 0))
             ->values()
             ->all();
 
@@ -690,13 +692,14 @@ class AppointmentController extends Controller
             ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
             ->where('splits.booking_id', (int) $booking->id)
             ->orderBy('splits.id')
-            ->get(['splits.staff_id', 'staffs.name as staff_name', 'splits.split_percent'])
-            ->map(fn ($row) => [
+            ->get(['splits.staff_id', 'staffs.name as staff_name', 'splits.split_percent', 'splits.share_amount', 'splits.split_mode'])
+            ->map(fn ($row) => StaffSplitNormalizer::toReportSplit([
                 'staff_id' => (int) ($row->staff_id ?? 0),
-                'staff_name' => (string) ($row->staff_name ?? '-'),
                 'share_percent' => (int) ($row->split_percent ?? 0),
-            ])
-            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+                'share_amount' => $row->share_amount,
+                'split_mode' => $row->split_mode ?? null,
+            ], (string) ($row->staff_name ?? '-')))
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && ($row['share_percent'] > 0 || ($row['share_amount'] ?? 0) > 0))
             ->values();
 
         if ($rows->isNotEmpty()) {
@@ -747,12 +750,13 @@ class AppointmentController extends Controller
                     ->whereIn('id', collect($item['staff_splits'] ?? [])->pluck('staff_id')->filter()->unique()->values()->all())
                     ->pluck('name', 'id');
                 $explicitSplits = collect($item['staff_splits'] ?? [])
-                    ->map(fn ($split) => [
+                    ->map(fn ($split) => StaffSplitNormalizer::toReportSplit([
                         'staff_id' => (int) ($split['staff_id'] ?? 0),
-                        'staff_name' => (string) ($split['staff_name'] ?? $split['name'] ?? $staffNameLookup[(int) ($split['staff_id'] ?? 0)] ?? '-'),
                         'share_percent' => (int) ($split['share_percent'] ?? $split['split_percent'] ?? 0),
-                    ])
-                    ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+                        'share_amount' => $split['share_amount'] ?? null,
+                        'split_mode' => $split['split_mode'] ?? null,
+                    ], (string) ($split['staff_name'] ?? $split['name'] ?? $staffNameLookup[(int) ($split['staff_id'] ?? 0)] ?? '-')))
+                    ->filter(fn (array $split) => $split['staff_id'] > 0 && ($split['share_percent'] > 0 || ($split['share_amount'] ?? 0) > 0))
                     ->values()
                     ->all();
 

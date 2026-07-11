@@ -16,6 +16,8 @@ class OrderItemStaffSplit extends Model
         'line_ref_id',
         'staff_id',
         'share_percent',
+        'share_amount',
+        'split_mode',
         'amount_basis',
         'snapshot',
         'commission_rate_snapshot',
@@ -25,6 +27,7 @@ class OrderItemStaffSplit extends Model
     {
         return [
             'share_percent' => 'integer',
+            'share_amount' => 'decimal:2',
             'commission_rate_snapshot' => 'decimal:4',
             'amount_basis' => 'decimal:2',
             'snapshot' => 'array',

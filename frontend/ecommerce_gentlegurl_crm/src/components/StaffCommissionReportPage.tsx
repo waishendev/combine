@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import { formatReportStaffSplitLabel } from '@/components/pos/staffSplitCore'
 
 type StaffOption = {
   id: number
@@ -37,6 +38,8 @@ type DetailRow = {
   qty: number
   item_net_amount: number
   share_percent: number
+  share_amount?: number | null
+  split_mode?: 'percent' | 'amount'
   staff_item_sales: number
   commission_rate: number
   staff_item_commission: number
@@ -609,7 +612,11 @@ export default function StaffCommissionReportPage() {
                                 RM {money(Number(row.item_net_amount))}
                               </td>
                               <td className="px-4 py-2 text-right">
-                                {row.share_percent}%
+                                {formatReportStaffSplitLabel({
+                                  share_percent: row.share_percent,
+                                  share_amount: row.share_amount,
+                                  split_mode: row.split_mode,
+                                })}
                               </td>
                               <td className="px-4 py-2 text-right">
                                 {(Number(row.commission_rate) * 100).toFixed(2)}%

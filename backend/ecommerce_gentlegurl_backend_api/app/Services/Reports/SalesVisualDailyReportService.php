@@ -3,6 +3,7 @@
 namespace App\Services\Reports;
 
 use App\Models\Ecommerce\PaymentGateway;
+use App\Services\Ecommerce\StaffSplitNormalizer;
 use App\Support\WorkspaceType;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
@@ -592,7 +593,8 @@ class SalesVisualDailyReportService
 
     private function ecommerceStaffProductSales(Carbon $start, Carbon $end, string $lineTotal): array
     {
-        $rows = $this->applyOrderScope(
+        $splitSalesSql = StaffSplitNormalizer::splitSalesSql('sps', $lineTotal);
+        $productRows = $this->applyOrderScope(
             DB::table('order_item_staff_splits as sps')
                 ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
@@ -601,18 +603,46 @@ class SalesVisualDailyReportService
         )
             ->where('oi.line_type', 'product')
             ->groupBy('st.id', 'st.name')
-            ->orderByDesc(DB::raw('product_sales'))
             ->selectRaw('st.id as staff_id')
             ->selectRaw('st.name as staff_name')
-            ->selectRaw('COALESCE(SUM(('.$lineTotal.') * (sps.share_percent / 100.0)), 0) as product_sales')
+            ->selectRaw("COALESCE(SUM({$splitSalesSql}), 0) as product_sales")
             ->get();
 
-        return $rows->map(fn ($r) => [
-            'staff_id' => (int) $r->staff_id,
-            'name' => (string) $r->staff_name,
-            'product_sales' => round((float) $r->product_sales, 2),
-            'total' => round((float) $r->product_sales, 2),
-        ])->values()->all();
+        $packageRows = $this->applyOrderScope(
+            DB::table('service_package_staff_splits as sps')
+                ->join('orders as o', 'o.id', '=', 'sps.order_id')
+                ->join('staffs as st', 'st.id', '=', 'sps.staff_id')
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
+        )
+            ->groupBy('st.id', 'st.name')
+            ->selectRaw('st.id as staff_id')
+            ->selectRaw('st.name as staff_name')
+            ->selectRaw('COALESCE(SUM(sps.split_sales_amount), 0) as product_sales')
+            ->get();
+
+        $byStaff = [];
+        foreach ($productRows->concat($packageRows) as $row) {
+            $staffId = (int) ($row->staff_id ?? 0);
+            if ($staffId <= 0) {
+                continue;
+            }
+            $byStaff[$staffId] = [
+                'staff_id' => $staffId,
+                'staff_name' => (string) ($row->staff_name ?? ('Staff #' . $staffId)),
+                'product_sales' => round((float) ($byStaff[$staffId]['product_sales'] ?? 0) + (float) ($row->product_sales ?? 0), 2),
+            ];
+        }
+
+        return collect($byStaff)
+            ->sortByDesc('product_sales')
+            ->values()
+            ->map(fn (array $row) => [
+                'staff_id' => $row['staff_id'],
+                'name' => $row['staff_name'],
+                'product_sales' => $row['product_sales'],
+                'total' => $row['product_sales'],
+            ])
+            ->all();
     }
 
 
@@ -654,6 +684,10 @@ class SalesVisualDailyReportService
 
         if (! empty($settledBookingIds)) {
             // Step 2a: Get amounts from order_item_staff_splits (POS deposits and all settlements)
+            $bookingSplitSalesSql = StaffSplitNormalizer::splitSalesSql(
+                'order_item_staff_splits',
+                $this->effectiveBookingLineTotalExpr(),
+            );
             $splitRows = $this->applyOrderScope(
                 DB::table('order_item_staff_splits')
                     ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
@@ -667,7 +701,7 @@ class SalesVisualDailyReportService
                 ->selectRaw('staffs.name as staff_name')
                 ->selectRaw('order_items.booking_id as booking_id')
                 ->selectRaw('order_items.id as order_item_id')
-                ->selectRaw("({$this->effectiveBookingLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100) as split_amount")
+                ->selectRaw("({$bookingSplitSalesSql}) as split_amount")
                 ->get();
 
             $orderItemsWithSplits = [];
@@ -725,7 +759,7 @@ class SalesVisualDailyReportService
                 $bookingSplits = DB::table('booking_service_staff_splits')
                     ->join('staffs', 'staffs.id', '=', 'booking_service_staff_splits.staff_id')
                     ->whereIn('booking_service_staff_splits.booking_id', $fallbackBookingIds)
-                    ->get(['booking_service_staff_splits.booking_id', 'booking_service_staff_splits.staff_id', 'booking_service_staff_splits.split_percent', 'staffs.name as staff_name'])
+                    ->get(['booking_service_staff_splits.booking_id', 'booking_service_staff_splits.staff_id', 'booking_service_staff_splits.split_percent', 'booking_service_staff_splits.share_amount', 'staffs.name as staff_name'])
                     ->groupBy('booking_id');
 
                 // Fallback to bookings.staff_id if no booking_service_staff_splits exist
@@ -744,8 +778,11 @@ class SalesVisualDailyReportService
                     if ($splits && $splits->isNotEmpty()) {
                         foreach ($splits as $split) {
                             $staffId = (int) $split->staff_id;
+                            $shareAmount = (float) ($split->share_amount ?? 0);
                             $sharePercent = (float) $split->split_percent;
-                            $splitAmount = $lineAmount * ($sharePercent / 100);
+                            $splitAmount = $shareAmount > 0
+                                ? $shareAmount
+                                : $lineAmount * ($sharePercent / 100);
 
                             if (! isset($byStaff[$staffId])) {
                                 $byStaff[$staffId] = [
@@ -791,6 +828,10 @@ class SalesVisualDailyReportService
         }
 
         // Step 3: Add booking_product counts (these count when their order is paid, not tied to settlement)
+        $bookingProductSplitSalesSql = StaffSplitNormalizer::splitSalesSql(
+            'order_item_staff_splits',
+            $this->effectiveBookingLineTotalExpr(),
+        );
         $productRows = $this->applyOrderScope(
             DB::table('order_item_staff_splits')
                 ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
@@ -804,7 +845,7 @@ class SalesVisualDailyReportService
             ->selectRaw('staffs.id as staff_id')
             ->selectRaw('staffs.name as staff_name')
             ->selectRaw('COUNT(DISTINCT order_items.id) as product_count')
-            ->selectRaw("COALESCE(SUM(({$this->effectiveBookingLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100)), 0) as product_amount")
+            ->selectRaw("COALESCE(SUM({$bookingProductSplitSalesSql}), 0) as product_amount")
             ->get();
 
         foreach ($productRows as $row) {
@@ -1242,7 +1283,7 @@ class SalesVisualDailyReportService
             ? collect()
             : DB::table('booking_service_staff_splits')
                 ->whereIn('booking_id', $bookingIds)
-                ->get(['booking_id', 'staff_id', 'split_percent'])
+                ->get(['booking_id', 'staff_id', 'split_percent', 'share_amount'])
                 ->groupBy('booking_id');
 
         $bookingTotals = empty($bookingIds)
@@ -1267,19 +1308,23 @@ class SalesVisualDailyReportService
                 ->map(fn ($row) => [
                     'staff_id' => (int) ($row->staff_id ?? 0),
                     'share_percent' => (float) ($row->split_percent ?? 0),
+                    'share_amount' => $row->share_amount !== null ? (float) $row->share_amount : null,
                 ])
-                ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+                ->filter(fn (array $row) => $row['staff_id'] > 0 && ($row['share_percent'] > 0 || ($row['share_amount'] ?? 0) > 0))
                 ->values();
 
             if ($splits->isEmpty() && (int) ($booking->staff_id ?? 0) > 0) {
-                $splits = collect([['staff_id' => (int) $booking->staff_id, 'share_percent' => 100.0]]);
+                $splits = collect([['staff_id' => (int) $booking->staff_id, 'share_percent' => 100.0, 'share_amount' => null]]);
             }
 
             foreach ($splits as $split) {
+                $splitAmount = ($split['share_amount'] ?? 0) > 0
+                    ? round((float) $split['share_amount'], 2)
+                    : round($serviceAmount * (((float) $split['share_percent']) / 100), 2);
                 $this->addStaffServiceActivity(
                     $byStaff,
                     (int) $split['staff_id'],
-                    round($serviceAmount * (((float) $split['share_percent']) / 100), 2)
+                    $splitAmount
                 );
             }
         }
@@ -1287,6 +1332,7 @@ class SalesVisualDailyReportService
         $bookingProductOptionTotal = "COALESCE((SELECT SUM(COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(oi.quantity, 1)::numeric, 0)) FROM jsonb_array_elements(COALESCE(oi.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option)), 0)";
         $bookingProductMatchingOption = "COALESCE((SELECT COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(oi.quantity, 1)::numeric, 0) FROM jsonb_array_elements(COALESCE(oi.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option) WHERE option_row.option->>'id' = sps.line_ref_id LIMIT 1), sps.amount_basis)";
         $bookingProductSplitAmount = "(CASE WHEN sps.line_type = 'booking_product_base' THEN GREATEST(0, ($lineTotal) - ($bookingProductOptionTotal)) WHEN sps.line_type = 'booking_product_option' THEN COALESCE($bookingProductMatchingOption, sps.amount_basis, $lineTotal) ELSE COALESCE(sps.amount_basis, $lineTotal) END)";
+        $bookingProductSplitSalesSql = StaffSplitNormalizer::splitSalesSql('sps', $bookingProductSplitAmount);
 
         $bookingProductSplitRows = $this->applyOrderScope(
             DB::table('order_item_staff_splits as sps')
@@ -1299,7 +1345,7 @@ class SalesVisualDailyReportService
             ->groupBy('sps.staff_id')
             ->selectRaw('sps.staff_id as staff_id')
             ->selectRaw('COUNT(*) as service_count')
-            ->selectRaw("COALESCE(SUM(($bookingProductSplitAmount) * (COALESCE(sps.share_percent, 0) / 100.0)), 0) as service_amount")
+            ->selectRaw("COALESCE(SUM({$bookingProductSplitSalesSql}), 0) as service_amount")
             ->get();
 
         foreach ($bookingProductSplitRows as $row) {

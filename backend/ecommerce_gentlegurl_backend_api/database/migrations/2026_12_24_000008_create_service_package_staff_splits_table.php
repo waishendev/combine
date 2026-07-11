@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('customer_id')->constrained('customers')->cascadeOnDelete();
             $table->foreignId('staff_id')->constrained('staffs')->cascadeOnDelete();
             $table->unsignedTinyInteger('share_percent');
+            $table->string('split_mode', 16)->nullable();
             $table->decimal('split_sales_amount', 10, 2)->default(0);
             $table->decimal('service_commission_rate_snapshot', 6, 4)->default(0);
             $table->decimal('commission_amount_snapshot', 10, 2)->default(0);

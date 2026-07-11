@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Ecommerce;
 
-use App\Http\Controllers\Admin\Booking\CancellationRequestController;
+use App\Services\Ecommerce\StaffSplitNormalizer;
 use App\Http\Controllers\Controller;
 use App\Mail\BookingConfirmationMail;
 use App\Mail\BookingRescheduledMail;
@@ -1275,7 +1275,7 @@ class PosController extends Controller
         $this->mergeJsonPayload($request);
         $hasPaymentsPayload = is_array($request->input('payments')) && count((array) $request->input('payments')) > 0;
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'payment_method' => $hasPaymentsPayload
                 ? ['nullable', 'string', 'max:50']
                 : ['required', 'in:cash,qrpay,billplz_credit_card,credit_card'],
@@ -1293,7 +1293,7 @@ class PosController extends Controller
             'settlement_line_staff_splits.*.staff_splits' => ['nullable', 'array'],
             'settlement_line_staff_splits.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'settlement_line_staff_splits.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
-        ]);
+        ], $this->posStaffSplitAmountValidationRules()));
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
         if (! $this->bookingEligibleForPosSettlement($booking)) {
@@ -1385,16 +1385,13 @@ class PosController extends Controller
             }
 
             $normalizeSplits = function ($splits) {
-                return collect($splits ?? [])->map(fn ($split) => [
-                    'staff_id' => (int) ($split['staff_id'] ?? 0),
-                    'share_percent' => (int) ($split['share_percent'] ?? 0),
-                ])->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values();
+                return collect($splits ?? [])
+                    ->map(fn ($split) => StaffSplitNormalizer::mapIncomingRow(is_array($split) ? $split : []))
+                    ->filter(fn (array $split) => $split['staff_id'] > 0 && ($split['share_percent'] > 0 || ($split['share_amount'] ?? 0) > 0))
+                    ->values();
             };
             $findLineSplitPayload = function (string $lineKey) use ($lineSplitPayloads) {
-                return $lineSplitPayloads->first(function (array $payload) use ($lineKey) {
-                    $payloadKey = (string) ($payload['line_key'] ?? '');
-                    return $payloadKey === $lineKey || str_ends_with($payloadKey, ':' . $lineKey);
-                });
+                return StaffSplitNormalizer::findLineStaffSplitPayload($lineSplitPayloads, $lineKey);
             };
             $bookingSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))->values()->all();
             $packageRedemptionUnitsByService = $this->resolvePackageRedemptionUnitsForBooking((int) $booking->id);
@@ -1418,14 +1415,13 @@ class PosController extends Controller
                 return $normalizeSplits($splits);
             };
             $persistLineSplits = function (OrderItem $orderItem, $splits, string $lineType, string $lineKey, float $amountBasis, array $snapshot = []) use ($staffCommissionRates): void {
-                $splitRows = collect($splits ?? [])->values();
+                $normalized = app(StaffSplitNormalizer::class)->normalizeIncoming(is_array($splits) ? $splits : [], $amountBasis);
+                if ($normalized['error']) {
+                    abort(422, $normalized['error']);
+                }
+                $splitRows = collect($normalized['splits'] ?? [])->values();
                 if ($splitRows->isEmpty()) {
                     return;
-                }
-                $sum = (int) $splitRows->sum('share_percent');
-                $uniqueCount = $splitRows->pluck('staff_id')->unique()->count();
-                if ($sum !== 100 || $uniqueCount !== $splitRows->count()) {
-                    abort(422, __('Invalid settlement line staff split.'));
                 }
                 foreach ($splitRows as $split) {
                     OrderItemStaffSplit::query()->create([
@@ -1434,6 +1430,8 @@ class PosController extends Controller
                         'line_ref_id' => $lineKey,
                         'staff_id' => (int) $split['staff_id'],
                         'share_percent' => (int) $split['share_percent'],
+                        'share_amount' => StaffSplitNormalizer::persistedShareAmount($split),
+                        'split_mode' => StaffSplitNormalizer::persistedSplitMode($split),
                         'amount_basis' => round(max(0, $amountBasis), 2),
                         'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
                         'snapshot' => $snapshot,
@@ -1778,7 +1776,7 @@ class PosController extends Controller
             'original_service_price',
             'booking_service_id',
         ]);
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'booking_service_id' => ['nullable', 'integer', 'exists:booking_services,id'],
             'settled_service_amount' => ['nullable', 'numeric', 'min:0'],
             'main_service_ids' => ['nullable', 'array'],
@@ -1832,7 +1830,7 @@ class PosController extends Controller
             'refund_method' => ['nullable', 'string', 'in:cash,qrpay,manual_transfer,credit_card'],
             'refund_remark' => ['nullable', 'string', 'max:1000'],
             'settlement_note' => ['nullable', 'string', 'max:2000'],
-        ]);
+        ], $this->posStaffSplitAmountValidationRules()));
 
         $isDepositOnlyAdjustment = $request->has('adjusted_deposit_amount')
             && ! $isEditingSettlement
@@ -2115,9 +2113,15 @@ class PosController extends Controller
 
         $booking->end_at = $newEndAt;
 
+        $bookingLineTotal = round(max(0, (float) $this->resolveAppointmentFinancialSummary($booking)['service_total'] ?? 0), 2);
+        if ($bookingLineTotal <= 0 && $booking->service) {
+            $bookingLineTotal = round(max(0, (float) ($booking->service->service_price ?? $booking->service->price ?? 0)), 2);
+        }
+
         $normalizedSplits = $this->normalizeBookingStaffSplits(
             collect($validated['staff_splits'] ?? []),
             (int) ($booking->staff_id ?? 0),
+            $bookingLineTotal,
         );
         if ($normalizedSplits['error']) {
             return $this->respondError((string) $normalizedSplits['error'], 422);
@@ -3766,7 +3770,7 @@ class PosController extends Controller
 
     public function addService(Request $request)
     {
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'guest_name' => ['nullable', 'string', 'max:255'],
@@ -3812,7 +3816,7 @@ class PosController extends Controller
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
             'availability_override' => ['nullable', 'boolean'],
             'availability_override_reason' => ['nullable', 'string', 'max:1000'],
-        ]);
+        ], $this->posStaffSplitAmountValidationRules()));
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
             'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
@@ -3967,13 +3971,13 @@ class PosController extends Controller
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
         ])->values();
 
-        $sum = (int) $splits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
-        $uniqueCount = $splits->pluck('staff_id')->filter()->unique()->count();
-        if ($sum !== 100 || $uniqueCount !== $splits->count()) {
-            return $this->respondError(__('Invalid staff split. Total must be 100% and staffs must be unique.'), 422);
+        $serviceLineTotal = round(max(0, (float) ($service->price ?? $service->service_price ?? 0) + $addonPrice), 2);
+        $normalizedResult = app(StaffSplitNormalizer::class)->normalize($splits->all(), $serviceLineTotal);
+        if ($normalizedResult['error']) {
+            return $this->respondError((string) $normalizedResult['error'], 422);
         }
 
-        $staffIds = $splits->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
+        $staffIds = collect($normalizedResult['splits'])->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
 
         foreach ($staffIds as $splitStaffId) {
             if (! $service->isStaffAllowed((int) $splitStaffId)) {
@@ -3986,9 +3990,10 @@ class PosController extends Controller
             ->map(fn ($rate) => (float) $rate)
             ->all();
 
-        $normalizedSplits = $splits->map(fn (array $split) => [
+        $normalizedSplits = collect($normalizedResult['splits'])->map(fn (array $split) => [
             'staff_id' => (int) $split['staff_id'],
             'share_percent' => (int) $split['share_percent'],
+            'share_amount' => $split['share_amount'] ?? null,
             'service_commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
         ])->values()->all();
         $addonItems = collect($addonItems)
@@ -4187,7 +4192,7 @@ class PosController extends Controller
     {
         $this->mergeJsonPayload($request);
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'guest_name' => ['nullable', 'string', 'max:255'],
@@ -4227,7 +4232,7 @@ class PosController extends Controller
             'deposit_qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'availability_override' => ['nullable', 'boolean'],
             'availability_override_reason' => ['nullable', 'string', 'max:1000'],
-        ]);
+        ], $this->posStaffSplitAmountValidationRules()));
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
             'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
@@ -4384,13 +4389,13 @@ class PosController extends Controller
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
         ])->values();
 
-        $sum = (int) $splits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
-        $uniqueCount = $splits->pluck('staff_id')->filter()->unique()->count();
-        if ($sum !== 100 || $uniqueCount !== $splits->count()) {
-            return $this->respondError(__('Invalid staff split. Total must be 100% and staffs must be unique.'), 422);
+        $bookingLineTotal = round(max(0, (float) ($service->service_price ?? $service->price ?? 0) + $addonPrice), 2);
+        $normalizedResult = app(StaffSplitNormalizer::class)->normalize($splits->all(), $bookingLineTotal);
+        if ($normalizedResult['error']) {
+            return $this->respondError((string) $normalizedResult['error'], 422);
         }
 
-        $staffIds = $splits->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
+        $staffIds = collect($normalizedResult['splits'])->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
         foreach ($staffIds as $splitStaffId) {
             if (! $service->isStaffAllowed((int) $splitStaffId)) {
                 return $this->respondError(__('Selected staff split contains staff not allowed for this service.'), 422);
@@ -4403,9 +4408,10 @@ class PosController extends Controller
             ->map(fn ($rate) => (float) $rate)
             ->all();
 
-        $normalizedSplits = $splits->map(fn (array $split) => [
+        $normalizedSplits = collect($normalizedResult['splits'])->map(fn (array $split) => [
             'staff_id' => (int) $split['staff_id'],
             'share_percent' => (int) $split['share_percent'],
+            'share_amount' => $split['share_amount'] ?? null,
             'service_commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
         ])->values()->all();
         $addonItems = collect($addonItems)
@@ -4541,16 +4547,22 @@ class PosController extends Controller
                     'item_type' => 'service',
                 ]);
 
-                $persistDepositLineSplits = function (OrderItem $orderItem, array $splits, float $amountBasis, string $lineRefId): void {
-                    $rows = collect($splits)
+                $persistDepositLineSplits = function (OrderItem $orderItem, array $splits, float $amountBasis, string $lineRefId) use ($staffCommissionRates): void {
+                    $normalized = app(StaffSplitNormalizer::class)->normalizeIncoming($splits, $amountBasis);
+                    if ($normalized['error']) {
+                        abort(422, $normalized['error']);
+                    }
+                    $rows = collect($normalized['splits'] ?? [])
                         ->map(fn (array $split) => [
                             'order_item_id' => (int) $orderItem->id,
                             'line_type' => 'booking_deposit',
                             'line_ref_id' => $lineRefId,
                             'staff_id' => (int) ($split['staff_id'] ?? 0),
                             'share_percent' => (int) ($split['share_percent'] ?? 0),
+                            'share_amount' => StaffSplitNormalizer::persistedShareAmount($split),
+                            'split_mode' => StaffSplitNormalizer::persistedSplitMode($split),
                             'amount_basis' => round(max(0, $amountBasis), 2),
-                            'commission_rate_snapshot' => (float) ($split['service_commission_rate_snapshot'] ?? 0),
+                            'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) ($split['staff_id'] ?? 0)] ?? 0),
                             'snapshot' => json_encode([
                                 'booking_id' => (int) $orderItem->booking_id,
                                 'booking_service_id' => (int) $orderItem->booking_service_id,
@@ -4559,7 +4571,7 @@ class PosController extends Controller
                             'created_at' => now(),
                             'updated_at' => now(),
                         ])
-                        ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+                        ->filter(fn (array $row) => $row['staff_id'] > 0 && ($row['share_percent'] > 0 || ($row['share_amount'] ?? 0) > 0))
                         ->values()
                         ->all();
 
@@ -4623,6 +4635,8 @@ class PosController extends Controller
                         'booking_id' => (int) $booking->id,
                         'staff_id' => (int) ($split['staff_id'] ?? 0),
                         'split_percent' => (int) ($split['share_percent'] ?? 0),
+                        'share_amount' => StaffSplitNormalizer::persistedShareAmount($split),
+                        'split_mode' => StaffSplitNormalizer::persistedSplitMode($split),
                         'service_commission_rate_snapshot' => (float) ($split['service_commission_rate_snapshot'] ?? 0),
                         'created_at' => now(),
                         'updated_at' => now(),
@@ -6648,7 +6662,7 @@ class PosController extends Controller
 
         $hasPaymentsPayload = is_array($request->input('payments')) && count((array) $request->input('payments')) > 0;
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'payment_method' => $hasPaymentsPayload
                 ? ['nullable', 'string', 'max:50']
                 : ['nullable', 'in:cash,qrpay,billplz_credit_card,credit_card'],
@@ -6707,7 +6721,7 @@ class PosController extends Controller
             'package_items.*.staff_splits' => ['nullable', 'array'],
             'package_items.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'package_items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
-        ]);
+        ], $this->posStaffSplitAmountValidationRules()));
 
         $cart = $this->resolveCart((int) $request->user()->id)->load([
             'items.variant.product',
@@ -7104,6 +7118,7 @@ class PosController extends Controller
                 ->merge($lineStaffSplitsByCartItemId->flatMap(fn (array $lines) => collect($lines)->flatMap(fn (array $line) => collect($line['staff_splits'] ?? [])->pluck('staff_id'))))
                 ->merge($lineStaffSplitsByServiceItemId->flatMap(fn (array $lines) => collect($lines)->flatMap(fn (array $line) => collect($line['staff_splits'] ?? [])->pluck('staff_id'))))
                 ->merge($lineStaffSplitsBySettlementItemId->flatMap(fn ($lines) => collect($lines)->flatMap(fn (array $line) => collect($line['staff_splits'] ?? [])->pluck('staff_id'))))
+                ->merge(collect($validated['package_items'] ?? [])->flatMap(fn (array $item) => collect($item['staff_splits'] ?? [])->pluck('staff_id')))
                 ->filter()
                 ->map(fn ($staffId) => (int) $staffId)
                 ->unique()
@@ -7116,19 +7131,14 @@ class PosController extends Controller
                 ->all();
 
             $persistOrderItemLineSplits = function (OrderItem $orderItem, $splits, string $lineType, ?string $lineRefId, float $amountBasis, array $snapshot = []) use ($staffCommissionRates): void {
-                $splitRows = collect($splits ?? [])->map(fn ($split) => [
-                    'staff_id' => (int) ($split['staff_id'] ?? 0),
-                    'share_percent' => (int) ($split['share_percent'] ?? 0),
-                ])->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values();
+                $normalized = app(StaffSplitNormalizer::class)->normalizeIncoming(is_array($splits) ? $splits : [], $amountBasis);
+                if ($normalized['error']) {
+                    abort(422, $normalized['error']);
+                }
+                $splitRows = collect($normalized['splits'] ?? [])->values();
 
                 if ($splitRows->isEmpty()) {
                     return;
-                }
-
-                $sum = (int) $splitRows->sum('share_percent');
-                $uniqueCount = $splitRows->pluck('staff_id')->unique()->count();
-                if ($sum !== 100 || $uniqueCount !== $splitRows->count()) {
-                    abort(422, __('Invalid line staff split.'));
                 }
 
                 foreach ($splitRows as $split) {
@@ -7138,6 +7148,8 @@ class PosController extends Controller
                         'line_ref_id' => $lineRefId,
                         'staff_id' => (int) $split['staff_id'],
                         'share_percent' => (int) $split['share_percent'],
+                        'share_amount' => StaffSplitNormalizer::persistedShareAmount($split),
+                        'split_mode' => StaffSplitNormalizer::persistedSplitMode($split),
                         'amount_basis' => round(max(0, $amountBasis), 2),
                         'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
                         'snapshot' => $snapshot,
@@ -7145,12 +7157,7 @@ class PosController extends Controller
                 }
             };
 
-            $findLineSplitPayload = function ($linePayloads, string $lineKey) {
-                return collect($linePayloads ?? [])->first(function (array $line) use ($lineKey) {
-                    $payloadKey = (string) ($line['line_key'] ?? '');
-                    return $payloadKey === $lineKey || str_ends_with($payloadKey, ':' . $lineKey);
-                });
-            };
+            $findLineSplitPayload = fn ($linePayloads, string $lineKey) => StaffSplitNormalizer::findLineStaffSplitPayload($linePayloads ?? [], $lineKey);
 
             $resolveLineSplits = function ($linePayloads, string $lineKey, $fallbackSplits = []) use ($findLineSplitPayload) {
                 $payload = $findLineSplitPayload($linePayloads, $lineKey);
@@ -7227,30 +7234,20 @@ class PosController extends Controller
                     );
 
                     if ($itemSplits->isNotEmpty()) {
-                        $sum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
-                        $uniqueCount = $itemSplits->pluck('staff_id')->filter()->unique()->count();
-                        if ($sum !== 100 || $uniqueCount !== $itemSplits->count()) {
-                            abort(422, __('Invalid staff split.'));
-                        }
-
                         $baseCommissionLine = collect($bookingProductCommissionLines)
                             ->first(fn (array $line) => ($line['line_type'] ?? '') === 'booking_product_base');
-                        foreach (($baseCommissionLine['staff_splits'] ?? []) as $split) {
-                            OrderItemStaffSplit::create([
-                                'order_item_id' => $orderItem->id,
+                        $persistOrderItemLineSplits(
+                            $orderItem,
+                            $itemSplits->values()->all(),
+                            'booking_product_base',
+                            (string) $item->id,
+                            (float) ($baseCommissionLine['amount_basis'] ?? 0),
+                            [
+                                'cart_item_id' => (int) $item->id,
                                 'line_type' => 'booking_product_base',
-                                'line_ref_id' => (string) $item->id,
-                                'staff_id' => (int) $split['staff_id'],
-                                'share_percent' => (int) $split['share_percent'],
-                                'amount_basis' => (float) ($baseCommissionLine['amount_basis'] ?? 0),
-                                'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
-                                'snapshot' => [
-                                    'cart_item_id' => (int) $item->id,
-                                    'line_type' => 'booking_product_base',
-                                    'staff_split_source' => 'parent',
-                                ],
-                            ]);
-                        }
+                                'staff_split_source' => 'parent',
+                            ],
+                        );
                     }
 
 
@@ -7267,28 +7264,19 @@ class PosController extends Controller
                         if ($splits->isEmpty()) {
                             continue;
                         }
-                        $sum = (int) $splits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
-                        $uniqueCount = $splits->pluck('staff_id')->filter()->unique()->count();
-                        if ($sum !== 100 || $uniqueCount !== $splits->count()) {
-                            abort(422, __('Invalid line staff split.'));
-                        }
-                        foreach ($splits as $split) {
-                            OrderItemStaffSplit::create([
-                                'order_item_id' => $orderItem->id,
-                                'line_type' => 'booking_product_option',
-                                'line_ref_id' => $optionId,
-                                'staff_id' => (int) $split['staff_id'],
-                                'share_percent' => (int) $split['share_percent'],
-                                'amount_basis' => (float) ($commissionLine['amount_basis'] ?? 0),
-                                'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
-                                'snapshot' => [
-                                    'cart_item_id' => (int) $item->id,
-                                    'line_key' => $commissionLine['line_key'] ?? sprintf('booking_product_option:%s', $optionId),
-                                    'staff_split_source' => $commissionLine['staff_split_source'] ?? 'inherited',
-                                    'option' => $optionSnapshot,
-                                ],
-                            ]);
-                        }
+                        $persistOrderItemLineSplits(
+                            $orderItem,
+                            $splits->all(),
+                            'booking_product_option',
+                            $optionId,
+                            (float) ($commissionLine['amount_basis'] ?? 0),
+                            [
+                                'cart_item_id' => (int) $item->id,
+                                'line_key' => $commissionLine['line_key'] ?? sprintf('booking_product_option:%s', $optionId),
+                                'staff_split_source' => $commissionLine['staff_split_source'] ?? 'inherited',
+                                'option' => $optionSnapshot,
+                            ],
+                        );
                     }
 
                     continue;
@@ -7355,20 +7343,8 @@ class PosController extends Controller
                 ]);
 
                 if ($itemSplits->isNotEmpty()) {
-                    $sum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
-                    $uniqueCount = $itemSplits->pluck('staff_id')->filter()->unique()->count();
-                    if ($sum !== 100 || $uniqueCount !== $itemSplits->count()) {
-                        abort(422, __('Invalid staff split.'));
-                    }
-
-                    foreach ($itemSplits as $split) {
-                        OrderItemStaffSplit::create([
-                            'order_item_id' => $orderItem->id,
-                            'staff_id' => (int) $split['staff_id'],
-                            'share_percent' => (int) $split['share_percent'],
-                            'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
-                        ]);
-                    }
+                    $lineNetTotal = round((float) ($pricing['line_total_after_discount'] ?? $pricing['effective_line_total'] ?? 0), 2);
+                    $persistOrderItemLineSplits($orderItem, $itemSplits->values()->all(), 'product', null, $lineNetTotal);
                 }
             }
 
@@ -7485,11 +7461,29 @@ class PosController extends Controller
                 }
 
                 $lineTotal = round(((float) $serviceItem->price_snapshot) * (int) $serviceItem->qty, 2);
-                $splits = collect($serviceItem->staff_splits ?? []);
+                $serviceLinePayloads = $lineStaffSplitsByServiceItemId->get((int) $serviceItem->id, []);
+                $mainPayloadSplits = $resolveLineSplits($serviceLinePayloads, 'main', collect($serviceItem->staff_splits ?? [])->values()->all());
+                $bookingSplitBasis = round(max(0, (float) ($depositByServiceItemId[(int) $serviceItem->id] ?? 0)), 2);
+                if ($bookingSplitBasis <= 0) {
+                    $bookingSplitBasis = $lineTotal;
+                }
+                $normalizedBookingSplits = app(StaffSplitNormalizer::class)->normalizeIncoming($mainPayloadSplits, $bookingSplitBasis);
+                if ($normalizedBookingSplits['error']) {
+                    abort(422, $normalizedBookingSplits['error']);
+                }
+                $splits = collect($normalizedBookingSplits['splits'] ?? [])->map(function (array $split) use ($staffCommissionRates, $serviceItem) {
+                    return [
+                        'staff_id' => (int) ($split['staff_id'] ?? 0),
+                        'share_percent' => (int) ($split['share_percent'] ?? 0),
+                        'share_amount' => $split['share_amount'] ?? null,
+                        'service_commission_rate_snapshot' => (float) ($staffCommissionRates[(int) ($split['staff_id'] ?? 0)] ?? $serviceItem->commission_rate_used ?? 0),
+                    ];
+                });
                 if ($splits->isEmpty()) {
                     $splits = collect([[
                         'staff_id' => (int) ($serviceItem->assigned_staff_id ?? 0),
                         'share_percent' => 100,
+                        'share_amount' => $bookingSplitBasis > 0 ? $bookingSplitBasis : null,
                         'service_commission_rate_snapshot' => (float) ($serviceItem->commission_rate_used ?? 0),
                     ]]);
                 }
@@ -7498,6 +7492,8 @@ class PosController extends Controller
                     'booking_id' => (int) $booking->id,
                     'staff_id' => (int) ($split['staff_id'] ?? 0),
                     'split_percent' => (int) ($split['share_percent'] ?? 0),
+                    'share_amount' => StaffSplitNormalizer::persistedShareAmount($split),
+                    'split_mode' => StaffSplitNormalizer::persistedSplitMode($split),
                     'service_commission_rate_snapshot' => (float) ($split['service_commission_rate_snapshot'] ?? 0),
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -7597,11 +7593,8 @@ class PosController extends Controller
 
                     $extraMainLineKey = 'main_service:' . (string) ($extraMainServiceId > 0 ? $extraMainServiceId : ($extraMainRow['id'] ?? $extraMainName));
                     $extraMainStoredSplits = collect($extraMainRow['staff_splits'] ?? [])
-                        ->map(fn ($split) => [
-                            'staff_id' => (int) ($split['staff_id'] ?? 0),
-                            'share_percent' => (int) ($split['share_percent'] ?? 0),
-                        ])
-                        ->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+                        ->map(fn ($split) => StaffSplitNormalizer::mapIncomingRow(is_array($split) ? $split : []))
+                        ->filter(fn (array $split) => $split['staff_id'] > 0 && ($split['share_percent'] > 0 || ($split['share_amount'] ?? 0) > 0))
                         ->values();
                     $extraMainDepositSplits = $resolveLineSplits(
                         $serviceLinePayloads,
@@ -7655,11 +7648,8 @@ class PosController extends Controller
 
                     $addonLineKey = 'addon:' . $addonId;
                     $addonStoredSplits = collect($addonRow['staff_splits'] ?? [])
-                        ->map(fn ($split) => [
-                            'staff_id' => (int) ($split['staff_id'] ?? 0),
-                            'share_percent' => (int) ($split['share_percent'] ?? 0),
-                        ])
-                        ->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+                        ->map(fn ($split) => StaffSplitNormalizer::mapIncomingRow(is_array($split) ? $split : []))
+                        ->filter(fn (array $split) => $split['staff_id'] > 0 && ($split['share_percent'] > 0 || ($split['share_amount'] ?? 0) > 0))
                         ->values();
                     $addonDepositSplits = $resolveLineSplits($serviceLinePayloads, $addonLineKey, $addonStoredSplits->isNotEmpty() ? $addonStoredSplits->all() : $splits->values()->all());
                     $persistOrderItemLineSplits($addonDepositOrderItem, $addonDepositSplits, 'service_addon_deposit', (string) $addonId, (float) $addonDepositAmount, [
@@ -7687,7 +7677,16 @@ class PosController extends Controller
 
                 $payloadItem = $packagePayloadByCartId->get((int) $packageItem->id) ?? [];
                 $splitRows = collect($payloadItem['staff_splits'] ?? []);
-                for ($i = 0; $i < (int) $packageItem->qty; $i++) {
+                $normalizedPackageSplits = app(StaffSplitNormalizer::class)->normalizeIncoming(
+                    $splitRows->values()->all(),
+                    round($packageLineNet, 2),
+                );
+                if ($normalizedPackageSplits['error']) {
+                    abort(422, $normalizedPackageSplits['error']);
+                }
+                $normalizedSplits = collect($normalizedPackageSplits['splits'] ?? [])->values();
+                $packageQty = max(1, (int) $packageItem->qty);
+                for ($i = 0; $i < $packageQty; $i++) {
                     $ownedPackage = $this->customerServicePackageService->purchase(
                         (int) $customerId,
                         $servicePackage,
@@ -7695,14 +7694,16 @@ class PosController extends Controller
                         (int) $order->id,
                     );
 
-                    foreach ($splitRows as $split) {
+                    foreach ($normalizedSplits as $split) {
                         $staffId = (int) ($split['staff_id'] ?? 0);
                         if ($staffId <= 0) {
                             continue;
                         }
                         $sharePercent = (int) ($split['share_percent'] ?? 0);
-                        $splitSales = round($unitNetAmount * ($sharePercent / 100), 2);
-                        $rate = (float) ($split['service_commission_rate_snapshot'] ?? 0);
+                        $splitSales = isset($split['share_amount']) && $split['share_amount'] !== null
+                            ? round(((float) $split['share_amount']) / $packageQty, 2)
+                            : round($unitNetAmount * ($sharePercent / 100), 2);
+                        $rate = (float) ($staffCommissionRates[$staffId] ?? 0);
 
                         ServicePackageStaffSplit::query()->create([
                             'order_id' => (int) $order->id,
@@ -7711,6 +7712,7 @@ class PosController extends Controller
                             'customer_id' => (int) $customerId,
                             'staff_id' => $staffId,
                             'share_percent' => $sharePercent,
+                            'split_mode' => StaffSplitNormalizer::persistedSplitMode($split),
                             'split_sales_amount' => $splitSales,
                             'service_commission_rate_snapshot' => $rate,
                             'commission_amount_snapshot' => round($splitSales * $rate, 2),
@@ -7845,10 +7847,10 @@ class PosController extends Controller
                             'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? ($booking->service_id ?? 0)),
                         ]);
 
-                        $lineSplits = collect($mainLine['staff_splits'] ?? [])->map(fn ($split) => [
-                            'staff_id' => (int) ($split['staff_id'] ?? 0),
-                            'share_percent' => (int) ($split['share_percent'] ?? 0),
-                        ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values();
+                        $lineSplits = collect($mainLine['staff_splits'] ?? [])
+                            ->map(fn ($split) => StaffSplitNormalizer::mapIncomingRow(is_array($split) ? $split : []))
+                            ->filter(fn (array $split) => $split['staff_id'] > 0 && ($split['share_percent'] > 0 || ($split['share_amount'] ?? 0) > 0))
+                            ->values();
                         if ($lineSplits->isEmpty() && (($mainLine['is_original'] ?? false) === true)) {
                             $lineSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))
                                 ->map(fn ($split) => [
@@ -10004,21 +10006,12 @@ class PosController extends Controller
     {
         $qty = max(1, $qty);
         $normalizeSplits = fn ($splits) => collect($splits ?? [])
-            ->map(fn ($split) => [
-                'staff_id' => (int) ($split['staff_id'] ?? 0),
-                'share_percent' => (int) ($split['share_percent'] ?? 0),
-            ])
-            ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+            ->map(fn ($split) => StaffSplitNormalizer::mapIncomingRow(is_array($split) ? $split : []))
+            ->filter(fn (array $split) => $split['staff_id'] > 0 && ($split['share_percent'] > 0 || ($split['share_amount'] ?? 0) > 0))
             ->values();
         $findLineSplitPayload = function (string $lineKey, string $fallbackKey = '') use ($lineSplitPayloads) {
-            return collect($lineSplitPayloads ?? [])->first(function (array $line) use ($lineKey, $fallbackKey) {
-                $payloadKey = (string) ($line['line_key'] ?? '');
-
-                return $payloadKey === $lineKey
-                    || ($fallbackKey !== '' && $payloadKey === $fallbackKey)
-                    || str_ends_with($payloadKey, ':' . $lineKey)
-                    || ($fallbackKey !== '' && str_ends_with($payloadKey, ':' . $fallbackKey));
-            });
+            return StaffSplitNormalizer::findLineStaffSplitPayload($lineSplitPayloads ?? [], $lineKey)
+                ?? ($fallbackKey !== '' ? StaffSplitNormalizer::findLineStaffSplitPayload($lineSplitPayloads ?? [], $fallbackKey) : null);
         };
 
         $parentSplitRows = $normalizeSplits($parentSplits);
@@ -11968,7 +11961,7 @@ class PosController extends Controller
         ]]);
     }
 
-    protected function normalizeBookingStaffSplits($splits, int $fallbackStaffId): array
+    protected function normalizeBookingStaffSplits($splits, int $fallbackStaffId, float $lineTotal = 0): array
     {
         $rows = collect($splits)->values();
         if ($rows->isEmpty() && $fallbackStaffId > 0) {
@@ -11978,32 +11971,27 @@ class PosController extends Controller
             return ['error' => __('At least one staff split is required.'), 'splits' => []];
         }
 
-        $normalized = $rows->map(fn ($row) => [
-            'staff_id' => (int) ($row['staff_id'] ?? 0),
-            'share_percent' => (int) ($row['share_percent'] ?? 0),
-        ])->values();
-
-        $uniqueStaff = $normalized->pluck('staff_id')->unique();
-        if ($uniqueStaff->count() !== $normalized->count()) {
-            return ['error' => __('Duplicate staff is not allowed in split.'), 'splits' => []];
+        $incoming = $rows->map(fn ($row) => StaffSplitNormalizer::mapIncomingRow(is_array($row) ? $row : []))->all();
+        $normalized = app(StaffSplitNormalizer::class)->normalize(
+            $incoming,
+            round(max(0, $lineTotal), 2),
+            collect($incoming)->contains(fn (array $row) => ($row['share_amount'] ?? 0) > 0)
+                ? StaffSplitNormalizer::MODE_AMOUNT
+                : null,
+        );
+        if ($normalized['error']) {
+            return ['error' => $normalized['error'], 'splits' => []];
         }
 
-        if ($normalized->contains(fn ($row) => $row['staff_id'] <= 0 || $row['share_percent'] <= 0)) {
-            return ['error' => __('Each staff split must have valid staff and percent.'), 'splits' => []];
-        }
-
-        $sum = (int) $normalized->sum('share_percent');
-        if ($sum !== 100) {
-            return ['error' => __('Staff split total must equal 100% (current: :sum%).', ['sum' => $sum]), 'splits' => []];
-        }
-
+        $uniqueStaff = collect($normalized['splits'])->pluck('staff_id')->unique();
         $staffRates = Staff::query()
             ->whereIn('id', $uniqueStaff->all())
             ->pluck('service_commission_rate', 'id');
 
-        $withRate = $normalized->map(fn ($row) => [
+        $withRate = collect($normalized['splits'])->map(fn ($row) => [
             'staff_id' => (int) $row['staff_id'],
             'share_percent' => (int) $row['share_percent'],
+            'share_amount' => $row['share_amount'] ?? null,
             'service_commission_rate_snapshot' => (float) ($staffRates[(int) $row['staff_id']] ?? 0),
         ])->values();
 
@@ -12020,10 +12008,12 @@ class PosController extends Controller
             'booking_id' => (int) $booking->id,
             'staff_id' => (int) ($split['staff_id'] ?? 0),
             'split_percent' => (int) ($split['share_percent'] ?? 0),
+            'share_amount' => StaffSplitNormalizer::persistedShareAmount($split),
+            'split_mode' => StaffSplitNormalizer::persistedSplitMode($split),
             'service_commission_rate_snapshot' => (float) ($split['service_commission_rate_snapshot'] ?? 0),
             'created_at' => now(),
             'updated_at' => now(),
-        ])->filter(fn ($row) => $row['staff_id'] > 0 && $row['split_percent'] > 0)->values()->all();
+        ])->filter(fn ($row) => $row['staff_id'] > 0 && ($row['split_percent'] > 0 || ($row['share_amount'] ?? 0) > 0))->values()->all();
 
         if (! empty($rows)) {
             DB::table('booking_service_staff_splits')->insert($rows);
@@ -12233,5 +12223,34 @@ class PosController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function staffSplitAmountFieldRules(string $wildcardPrefix): array
+    {
+        return [
+            "{$wildcardPrefix}.*.share_amount" => ['nullable', 'numeric', 'min:0'],
+            "{$wildcardPrefix}.*.split_mode" => ['nullable', 'string', 'in:percent,amount'],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function posStaffSplitAmountValidationRules(): array
+    {
+        return array_merge(
+            $this->staffSplitAmountFieldRules('settlement_line_staff_splits.*.staff_splits'),
+            $this->staffSplitAmountFieldRules('main_service_items.*.staff_splits'),
+            $this->staffSplitAmountFieldRules('main_service_items.*.addon_staff_splits.*.*'),
+            $this->staffSplitAmountFieldRules('addon_staff_splits.*.*'),
+            $this->staffSplitAmountFieldRules('staff_splits'),
+            $this->staffSplitAmountFieldRules('items.*.staff_splits'),
+            $this->staffSplitAmountFieldRules('items.*.line_staff_splits.*.staff_splits'),
+            $this->staffSplitAmountFieldRules('service_items.*.line_staff_splits.*.staff_splits'),
+            $this->staffSplitAmountFieldRules('package_items.*.staff_splits'),
+        );
     }
 }

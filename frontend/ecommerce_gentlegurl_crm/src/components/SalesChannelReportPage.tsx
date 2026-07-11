@@ -13,6 +13,7 @@ import OrderReceiptAction from './reports/OrderReceiptAction'
 import RefundReportActions from './reports/RefundReportActions'
 import { ReportDetailDrawer, ReportViewDetailsButton } from './reports/ReportActions'
 import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
+import { formatReportStaffSplitList } from '@/components/pos/staffSplitCore'
 import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
 import { getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
 import { formatBookingAddonReceiptLabel } from '@/lib/bookingReceiptDisplay'
@@ -186,6 +187,7 @@ type OrderDetailLine = {
     staff_id: number
     staff_name: string
     share_percent: number
+    share_amount?: number | null
     commission_rate_snapshot?: number
   }>
   children?: OrderDetailLine[]
@@ -379,7 +381,7 @@ const staffSplitColumnLabel = (lineType?: string | null) =>
 const staffSplitDisplay = (line: OrderDetailLine) => {
   const splits = Array.isArray(line.staff_splits) ? line.staff_splits : []
   if (splits.length > 0) {
-    return splits.map((split) => `${split.staff_name} ${split.share_percent}%`).join(', ')
+    return formatReportStaffSplitList(splits)
   }
   return line.assigned_staff_name || line.staff_name || '—'
 }

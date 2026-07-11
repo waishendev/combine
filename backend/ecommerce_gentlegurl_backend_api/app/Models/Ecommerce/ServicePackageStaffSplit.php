@@ -13,6 +13,7 @@ class ServicePackageStaffSplit extends Model
         'customer_id',
         'staff_id',
         'share_percent',
+        'split_mode',
         'split_sales_amount',
         'service_commission_rate_snapshot',
         'commission_amount_snapshot',

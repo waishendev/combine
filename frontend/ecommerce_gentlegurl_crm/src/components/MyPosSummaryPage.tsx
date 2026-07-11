@@ -11,6 +11,7 @@ import { ReportViewDetailsButton } from './reports/ReportActions'
 import { VariantNameStack } from './NameStack'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { formatBookingAddonReceiptLabel } from '@/lib/bookingReceiptDisplay'
+import { formatReportStaffSplitLabel } from '@/components/pos/staffSplitCore'
 
 type Summary = {
   orders_count: number
@@ -36,6 +37,8 @@ type StaffSplit = {
   staff_id: number | null
   staff_name: string | null
   share_percent: number
+  share_amount?: number | null
+  split_mode?: 'percent' | 'amount'
   commission_rate_snapshot: number
   staff_commission_amount: number
 }
@@ -828,7 +831,7 @@ export default function MyPosSummaryPage({
                               Staff
                             </th>
                             <th className="px-4 py-2 font-semibold text-right text-gray-700">
-                              Share %
+                              Split
                             </th>
                             {!isBookingWorkerSplitItem(selectedRow.item_type) ? (
                               <>
@@ -849,7 +852,7 @@ export default function MyPosSummaryPage({
                                 {split.staff_name ?? (split.staff_id ? `#${split.staff_id}` : '-')}
                               </td>
                               <td className="px-4 py-2 text-right">
-                                {split.share_percent}%
+                                {formatReportStaffSplitLabel(split)}
                               </td>
                               {!isBookingWorkerSplitItem(selectedRow.item_type) ? (
                                 <>

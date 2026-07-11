@@ -6,6 +6,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\StaffCommissionLog;
 use App\Models\Booking\StaffCommissionTier;
 use App\Models\Booking\StaffMonthlySale;
+use App\Services\Ecommerce\StaffSplitNormalizer;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -232,7 +233,7 @@ class StaffCommissionService
         // Step 1: Get amounts and booking IDs from order_item_staff_splits (most cases)
         $mainQueryRows = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart)
             ->where('order_item_staff_splits.staff_id', $staffId)
-            ->selectRaw("({$this->effectiveLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100) as split_sales")
+            ->selectRaw('('.StaffSplitNormalizer::splitSalesSql('order_item_staff_splits', $this->effectiveLineTotalExpr()).') as split_sales')
             ->selectRaw('order_items.booking_id as booking_id')
             ->get();
 
@@ -276,7 +277,7 @@ class StaffCommissionService
             $bookingSplits = DB::table('booking_service_staff_splits')
                 ->whereIn('booking_id', $fallbackBookingIds)
                 ->where('staff_id', $staffId)
-                ->get(['booking_id', 'split_percent'])
+                ->get(['booking_id', 'split_percent', 'share_amount'])
                 ->keyBy('booking_id');
 
             // Fallback to bookings.staff_id if no explicit splits
@@ -294,8 +295,11 @@ class StaffCommissionService
 
                 $split = $bookingSplits->get($bookingId);
                 if ($split) {
+                    $shareAmount = (float) ($split->share_amount ?? 0);
                     $sharePercent = (float) $split->split_percent;
-                    $totalSales += $lineAmount * ($sharePercent / 100);
+                    $totalSales += $shareAmount > 0
+                        ? $shareAmount
+                        : $lineAmount * ($sharePercent / 100);
                     // Only count as new booking if not already counted from main query
                     if (! isset($alreadyCountedBookingIds[$bookingId])) {
                         $alreadyCountedBookingIds[$bookingId] = true;
@@ -391,9 +395,13 @@ class StaffCommissionService
     {
         [$start, $nextMonthStart] = $this->monthWindow($year, $month);
 
+        $splitSalesExpr = StaffSplitNormalizer::splitSalesSql(
+            'order_item_staff_splits',
+            $this->effectiveLineTotalExpr(),
+        );
         $productSales = (float) $this->baseEcommerceProductSplitQuery($start, $nextMonthStart)
             ->where('order_item_staff_splits.staff_id', $staffId)
-            ->selectRaw("COALESCE(SUM(({$this->effectiveLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100) * ({$this->productCommissionRateExpr()})), 0) AS total_sales")
+            ->selectRaw("COALESCE(SUM(({$splitSalesExpr}) * ({$this->productCommissionRateExpr()})), 0) AS total_sales")
             ->value('total_sales');
 
         $productCount = (int) $this->baseEcommerceProductSplitQuery($start, $nextMonthStart)
@@ -672,6 +680,7 @@ class StaffCommissionService
             ->whereNull('orders.refunded_at')
             ->selectRaw('order_item_staff_splits.staff_id AS staff_id')
             ->selectRaw('order_item_staff_splits.share_percent AS share_percent')
+            ->selectRaw('order_item_staff_splits.share_amount AS share_amount')
             ->selectRaw("({$this->effectiveLineTotalExpr()}) AS amount_basis")
             ->selectRaw('order_items.line_type AS order_line_type')
             ->selectRaw('order_item_staff_splits.line_type AS split_line_type')
@@ -680,12 +689,14 @@ class StaffCommissionService
                 'staff_id' => (int) ($row->staff_id ?? 0),
                 'share_percent' => (float) ($row->share_percent ?? 0),
                 'amount_basis' => round((float) ($row->amount_basis ?? 0), 2),
-                'split_sales' => round(((float) ($row->amount_basis ?? 0)) * (((float) ($row->share_percent ?? 0)) / 100), 2),
+                'split_sales' => round((float) ($row->share_amount ?? 0) > 0
+                    ? (float) $row->share_amount
+                    : ((float) ($row->amount_basis ?? 0)) * (((float) ($row->share_percent ?? 0)) / 100), 2),
                 'order_line_type' => (string) ($row->order_line_type ?? ''),
                 'split_line_type' => (string) ($row->split_line_type ?? ''),
                 'source' => 'order_item_staff_splits',
             ])
-            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0 && $row['amount_basis'] > 0)
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && (($row['share_percent'] ?? 0) > 0 || ($row['split_sales'] ?? 0) > 0) && ($row['amount_basis'] ?? 0) > 0)
             ->values();
 
         // Step 2: Also check for order_items WITHOUT order_item_staff_splits (e.g., online deposits)
@@ -718,13 +729,16 @@ class StaffCommissionService
 
                 foreach ($bookingSplits as $split) {
                     $staffId = (int) ($split['staff_id'] ?? 0);
+                    $shareAmount = (float) ($split['share_amount'] ?? 0);
                     $sharePercent = (float) ($split['share_percent'] ?? 0);
 
-                    if ($staffId <= 0 || $sharePercent <= 0 || $lineAmount <= 0) {
+                    if ($staffId <= 0 || $lineAmount <= 0 || ($shareAmount <= 0 && $sharePercent <= 0)) {
                         continue;
                     }
 
-                    $splitSales = round($lineAmount * ($sharePercent / 100), 2);
+                    $splitSales = $shareAmount > 0
+                        ? round($shareAmount, 2)
+                        : round($lineAmount * ($sharePercent / 100), 2);
 
                     $lineRows->push([
                         'staff_id' => $staffId,
@@ -748,12 +762,14 @@ class StaffCommissionService
                     'staff_id' => (int) ($split['staff_id'] ?? 0),
                     'share_percent' => (float) ($split['share_percent'] ?? 0),
                     'amount_basis' => $servicePrice,
-                    'split_sales' => round($servicePrice * (((float) ($split['share_percent'] ?? 0)) / 100), 2),
+                    'split_sales' => ((float) ($split['share_amount'] ?? 0)) > 0
+                        ? round((float) $split['share_amount'], 2)
+                        : round($servicePrice * (((float) ($split['share_percent'] ?? 0)) / 100), 2),
                     'order_line_type' => 'legacy_booking_total',
                     'split_line_type' => 'legacy_booking_total',
                     'source' => 'booking_service_staff_splits',
                 ])
-                ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0 && $row['amount_basis'] > 0)
+                ->filter(fn (array $row) => $row['staff_id'] > 0 && (($row['share_percent'] ?? 0) > 0 || ($row['split_sales'] ?? 0) > 0) && ($row['amount_basis'] ?? 0) > 0)
                 ->values();
         }
 
@@ -765,12 +781,13 @@ class StaffCommissionService
         $rows = DB::table('booking_service_staff_splits')
             ->where('booking_id', (int) $booking->id)
             ->orderBy('id')
-            ->get(['staff_id', 'split_percent'])
+            ->get(['staff_id', 'split_percent', 'share_amount'])
             ->map(fn ($row) => [
                 'staff_id' => (int) ($row->staff_id ?? 0),
                 'share_percent' => (int) ($row->split_percent ?? 0),
+                'share_amount' => $row->share_amount !== null ? round((float) $row->share_amount, 2) : null,
             ])
-            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && ($row['share_percent'] > 0 || ($row['share_amount'] ?? 0) > 0))
             ->values();
 
         if ($rows->isNotEmpty()) {
@@ -778,7 +795,7 @@ class StaffCommissionService
         }
 
         if ($booking->staff_id) {
-            return collect([['staff_id' => (int) $booking->staff_id, 'share_percent' => 100]]);
+            return collect([['staff_id' => (int) $booking->staff_id, 'share_percent' => 100, 'share_amount' => null]]);
         }
 
         return collect();
