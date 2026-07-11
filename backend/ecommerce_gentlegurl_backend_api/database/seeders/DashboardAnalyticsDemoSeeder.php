@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class DashboardAnalyticsDemoSeeder extends Seeder
@@ -138,26 +139,33 @@ class DashboardAnalyticsDemoSeeder extends Seeder
 
     private function upsertOrder(Customer $customer, Product $product, string $number, string $status, string $paymentStatus, string $method, int $quantity, float $unitPrice, float $refundTotal, Carbon $date): void
     {
+        $orderData = [
+            'customer_id' => $customer->id,
+            'status' => $status,
+            'payment_status' => $paymentStatus,
+            'payment_method' => $method,
+            'subtotal' => $quantity * $unitPrice,
+            'discount_total' => 0,
+            'shipping_fee' => 0,
+            'grand_total' => $quantity * $unitPrice,
+            'pickup_or_shipping' => 'pickup',
+            'shipping_country' => 'Malaysia',
+            'placed_at' => $date,
+            'paid_at' => in_array($paymentStatus, ['paid', 'refunded', 'partially_refunded'], true) ? $date : null,
+            'completed_at' => $status === 'completed' ? $date : null,
+            'notes' => self::PREFIX.' analytics demo order.',
+        ];
+
+        if (Schema::hasColumn('orders', 'refund_total')) {
+            $orderData['refund_total'] = $refundTotal;
+        }
+        if (Schema::hasColumn('orders', 'refunded_at')) {
+            $orderData['refunded_at'] = $refundTotal > 0 ? $date : null;
+        }
+
         $order = Order::updateOrCreate(
             ['order_number' => $number],
-            [
-                'customer_id' => $customer->id,
-                'status' => $status,
-                'payment_status' => $paymentStatus,
-                'payment_method' => $method,
-                'subtotal' => $quantity * $unitPrice,
-                'discount_total' => 0,
-                'shipping_fee' => 0,
-                'grand_total' => $quantity * $unitPrice,
-                'pickup_or_shipping' => 'pickup',
-                'shipping_country' => 'Malaysia',
-                'placed_at' => $date,
-                'paid_at' => in_array($paymentStatus, ['paid', 'refunded', 'partially_refunded'], true) ? $date : null,
-                'completed_at' => $status === 'completed' ? $date : null,
-                'refund_total' => $refundTotal,
-                'refunded_at' => $refundTotal > 0 ? $date : null,
-                'notes' => self::PREFIX.' analytics demo order.',
-            ]
+            $orderData
         );
 
         OrderItem::updateOrCreate(

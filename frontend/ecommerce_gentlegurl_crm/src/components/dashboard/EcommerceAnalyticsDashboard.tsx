@@ -21,7 +21,7 @@ type InventoryItem = {
 type AnalyticsResponse = {
   products: { active_count: number; sku_count: number; current_stock_qty: number; missing_cost_count: number; low_stock_count: number }
   inventory: { current_cost: number; retail_value: number; potential_gross_profit: number; potential_margin_percent: number }
-  sales: { gross_product_sales: number; refund_amount: number; net_product_sales: number }
+  sales: { gross_product_sales: number; refund_amount: number; refund_available?: boolean; net_product_sales: number }
   items: { data: InventoryItem[]; current_page: number; last_page: number; total: number }
 }
 
@@ -106,7 +106,7 @@ export default function EcommerceAnalyticsDashboard() {
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard label="Net Product Sales" value={money(data.sales.net_product_sales)} note={`Gross ${money(data.sales.gross_product_sales)}`} />
-              <MetricCard label="Refunds" value={money(data.sales.refund_amount)} />
+              <MetricCard label="Refunds" value={data.sales.refund_available === false ? 'Not Available' : money(data.sales.refund_amount)} />
               <MetricCard label="Low Stock" value={String(data.products.low_stock_count)} />
               <MetricCard label="Missing Cost" value={String(data.products.missing_cost_count)} />
             </div>
