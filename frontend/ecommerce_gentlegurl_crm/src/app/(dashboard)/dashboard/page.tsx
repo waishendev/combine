@@ -3,9 +3,26 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
+import EcommerceAnalyticsDashboard from '@/components/dashboard/EcommerceAnalyticsDashboard'
+import PackageAnalyticsDashboard from '@/components/dashboard/PackageAnalyticsDashboard'
 import { getCurrentUser } from '@/lib/auth'
 import { getTranslator } from '@/lib/i18n-server'
 import type { LangCode } from '@/lib/i18n'
+
+function WelcomeCard({ title, greeting, hint }: { title: string; greeting: string; hint: string }) {
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col items-center justify-center py-8 sm:py-12">
+      <div className="w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-10">
+        <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+          <i className="fa-solid fa-hand-sparkles text-2xl" aria-hidden />
+        </div>
+        <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{title}</h1>
+        <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">{greeting}</p>
+        <p className="mt-2 text-sm text-slate-500">{hint}</p>
+      </div>
+    </div>
+  )
+}
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
@@ -17,6 +34,13 @@ export default async function DashboardPage() {
   const lang: LangCode = 'EN'
   const t = await getTranslator(lang)
   const displayName = user.staff_name?.trim() || user.name?.trim() || user.username
+  const canViewEcommerceAnalytics = user.permissions.some((permission) =>
+    ['dashboard.ecommerce_analytics.view', 'dashboard.analytics.view'].includes(permission),
+  )
+  const canViewPackageAnalytics = user.permissions.some((permission) =>
+    ['dashboard.package_analytics.view', 'dashboard.analytics.view'].includes(permission),
+  )
+  const canViewAnyAnalytics = canViewEcommerceAnalytics || canViewPackageAnalytics
 
   return (
     <div className="crm-page-shell py-6 px-4 sm:px-6 lg:px-10">
@@ -28,18 +52,25 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <div className="mx-auto flex max-w-2xl flex-col items-center justify-center py-12 sm:py-20">
-        <div className="w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-10">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-            <i className="fa-solid fa-hand-sparkles text-2xl" aria-hidden />
+      {canViewAnyAnalytics ? (
+        <div className="space-y-6">
+          <WelcomeCard
+            title={t('dashboard.welcomeTitle')}
+            greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
+            hint="Welcome content is retained above your permission-aware analytics workspace."
+          />
+          <div className="space-y-8">
+            {canViewEcommerceAnalytics ? <EcommerceAnalyticsDashboard /> : null}
+            {canViewPackageAnalytics ? <PackageAnalyticsDashboard /> : null}
           </div>
-          <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{t('dashboard.welcomeTitle')}</h1>
-          <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-            {t('dashboard.welcomeGreeting').replace('{name}', displayName)}
-          </p>
-          <p className="mt-2 text-sm text-slate-500">{t('dashboard.welcomeHint')}</p>
         </div>
-      </div>
+      ) : (
+        <WelcomeCard
+          title={t('dashboard.welcomeTitle')}
+          greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
+          hint={t('dashboard.welcomeHint')}
+        />
+      )}
     </div>
   )
 }

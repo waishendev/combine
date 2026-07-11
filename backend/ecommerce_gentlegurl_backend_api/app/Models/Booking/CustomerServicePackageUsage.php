@@ -9,7 +9,8 @@ class CustomerServicePackageUsage extends Model
 {
     protected $fillable = [
         'customer_service_package_id', 'customer_id', 'booking_id', 'booking_service_id',
-        'used_qty', 'used_from', 'used_ref_id', 'status', 'reserved_at', 'consumed_at', 'released_at', 'notes',
+        'service_name_snapshot', 'used_qty', 'redemption_value_snapshot', 'used_from', 'used_ref_id',
+        'status', 'reserved_at', 'consumed_at', 'released_at', 'notes',
     ];
 
     protected $casts = [
