@@ -9,6 +9,8 @@ import OrderCancelModal from './OrderCancelModal'
 import OrderShipModal from './OrderShipModal'
 import OrderRefundModal from './OrderRefundModal'
 import OrderCompleteModal from './OrderCompleteModal'
+import PosBookingDetailContent from '@/components/pos/PosBookingDetailContent'
+import type { PosAppointmentDetail } from '@/components/pos/posAppointmentTypes'
 
 interface OrderViewPanelProps {
   orderId: number
@@ -35,12 +37,14 @@ type BookingDetailData = {
     name?: string | null
     cn_name?: string | null
     duration_min?: number | null
+    deposit_amount?: string | number | null
   } | null
   add_ons?: Array<{
     name: string
     cn_name?: string | null
     extra_duration_min?: number | null
     extra_price?: number | string | null
+    linked_deposit_amount?: number | string | null
   }>
   staff?: {
     id?: number
@@ -54,6 +58,11 @@ type BookingDetailData = {
   settlement_paid?: string | number | null
   balance_due?: string | number | null
   package_offset?: string | number | null
+  package_claims?: Array<{
+    package_name: string
+    booking_service_id?: number
+    status?: string
+  }>
   uploaded_item_photos?: Array<{
     id: number
     file_url: string
@@ -81,6 +90,7 @@ type BookingOrderLine = {
 type BookingOrderGroup = {
   key: string
   bookingId?: number | null
+  bookingCode?: string | null
   serviceName?: string | null
   serviceCnName?: string | null
   bookingDetail?: BookingDetailData | null
@@ -233,6 +243,9 @@ export default function OrderViewPanel({
   const [showComplete, setShowComplete] = useState(false)
   const [completeSuccess, setCompleteSuccess] = useState<string | null>(null)
   const [viewingBookingDetail, setViewingBookingDetail] = useState<BookingDetailData | null>(null)
+  const [posAppointmentDetail, setPosAppointmentDetail] = useState<PosAppointmentDetail | null>(null)
+  const [posAppointmentLoading, setPosAppointmentLoading] = useState(false)
+  const [posAppointmentError, setPosAppointmentError] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -240,6 +253,7 @@ export default function OrderViewPanel({
     const loadOrder = async () => {
       setLoading(true)
       setError(null)
+      setOrder(null)
       try {
         const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
           cache: 'no-store',
@@ -251,6 +265,8 @@ export default function OrderViewPanel({
         })
 
         const data = await res.json().catch(() => null)
+        if (controller.signal.aborted) return
+
         if (data && typeof data === 'object') {
           if (data?.success === false && data?.message === 'Unauthorized') {
             window.location.replace('/dashboard')
@@ -278,18 +294,18 @@ export default function OrderViewPanel({
 
         setOrder(orderData)
       } catch (err) {
+        if (controller.signal.aborted) return
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           setError('Failed to load order')
         }
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }
 
-    loadOrder().catch(() => {
-      setLoading(false)
-      setError('Failed to load order')
-    })
+    void loadOrder()
 
     return () => controller.abort()
   }, [orderId])
@@ -338,13 +354,43 @@ export default function OrderViewPanel({
     })
   }
 
+  const PackageBadge = ({ name }: { name: string }) => (
+    <span className="mt-1 inline-flex w-fit items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-100">
+      [PKG] {name}
+    </span>
+  )
+
+  const getActivePackageClaims = (detail: BookingDetailData | null | undefined) =>
+    (detail?.package_claims ?? []).filter((claim) => ['reserved', 'consumed'].includes(String(claim.status)))
+
+  const resolveMainBookingServiceId = (group: BookingOrderGroup) => {
+    const candidates = [
+      group.bookingDetail?.service?.id,
+      ...group.deposits.map((line) => line.booking_service_id),
+    ]
+    for (const candidate of candidates) {
+      const id = Number(candidate ?? 0)
+      if (id > 0) return id
+    }
+    return 0
+  }
+
+  const claimForMainService = (detail: BookingDetailData | null | undefined, mainBookingServiceId: number) =>
+    getActivePackageClaims(detail).find((claim) => Number(claim.booking_service_id) === Number(mainBookingServiceId))
+
+  const claimForAddonLine = (
+    detail: BookingDetailData | null | undefined,
+    addonBookingServiceId: number | null | undefined,
+    mainBookingServiceId: number,
+  ) => {
+    const addonId = Number(addonBookingServiceId ?? 0)
+    if (!addonId || addonId === mainBookingServiceId) return undefined
+    return getActivePackageClaims(detail).find((claim) => Number(claim.booking_service_id) === addonId)
+  }
+
   const toNumber = (value: string | number | null | undefined) => {
     if (value === null || value === undefined) return 0
     return typeof value === 'string' ? Number.parseFloat(value) : Number(value)
-  }
-
-  const formatBookingMoney = (amount: string | number | null | undefined) => {
-    return `RM ${formatAmount(amount)}`
   }
 
   const getLineAddonCnName = (line: BookingOrderLine, group: BookingOrderGroup) => {
@@ -363,22 +409,48 @@ export default function OrderViewPanel({
     return addOn?.cn_name ?? null
   }
 
-  const openBookingGroupDetail = (group: BookingOrderGroup) => {
-    if (group.bookingDetail) {
-      setViewingBookingDetail(group.bookingDetail)
-      return
-    }
+  const openBookingGroupDetail = async (group: BookingOrderGroup) => {
+    if (!group.bookingId) return
 
-    if (group.bookingId) {
-      setViewingBookingDetail({
+    setViewingBookingDetail(
+      group.bookingDetail ?? {
         id: group.bookingId,
+        booking_code: group.bookingCode,
         service: {
           name: group.serviceName ?? null,
           cn_name: group.serviceCnName ?? null,
         },
-      })
+      },
+    )
+    setPosAppointmentDetail(null)
+    setPosAppointmentError(null)
+    setPosAppointmentLoading(true)
+
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${group.bookingId}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(String(json?.message ?? 'Unable to load booking detail.'))
+      }
+      setPosAppointmentDetail((json?.data ?? null) as PosAppointmentDetail | null)
+    } catch (err) {
+      setPosAppointmentError(err instanceof Error ? err.message : 'Unable to load booking detail.')
+    } finally {
+      setPosAppointmentLoading(false)
     }
   }
+
+  const closeBookingGroupDetail = () => {
+    setViewingBookingDetail(null)
+    setPosAppointmentDetail(null)
+    setPosAppointmentError(null)
+    setPosAppointmentLoading(false)
+  }
+
+  const bookingGroupLabel = (group: BookingOrderGroup) =>
+    group.bookingCode
+    || group.bookingDetail?.booking_code
+    || (group.bookingId ? `Booking #${group.bookingId}` : 'Booking')
 
   const formatPaymentMethod = (method: string | null | undefined) => {
     if (!method) return '-'
@@ -496,7 +568,7 @@ export default function OrderViewPanel({
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
-            <div className="py-8 text-center text-sm text-slate-500">Loading...</div>
+            <div className="py-8 text-center text-sm text-slate-500">Loading order details...</div>
           </div>
         </aside>
       </div>
@@ -560,12 +632,14 @@ export default function OrderViewPanel({
         existing.serviceName ||= line.booking_details?.service?.name || line.booking_service_name
         existing.serviceCnName ||= line.booking_details?.service?.cn_name || line.booking_service_cn_name
         existing.bookingDetail ||= line.booking_details
+        existing.bookingCode ||= line.booking_details?.booking_code
         return existing
       }
 
       const group: BookingOrderGroup = {
         key,
         bookingId: line.booking_id,
+        bookingCode: line.booking_details?.booking_code,
         serviceName: line.booking_details?.service?.name || line.booking_service_name,
         serviceCnName: line.booking_details?.service?.cn_name || line.booking_service_cn_name,
         bookingDetail: line.booking_details,
@@ -591,9 +665,90 @@ export default function OrderViewPanel({
 
     return Array.from(groups.values())
   })()
+
+  const bookingOrderGuestContact = (() => {
+    if (order.customer) {
+      return {
+        name: order.customer.name,
+        phone: order.customer.phone ?? order.billing_address?.phone ?? '—',
+        email: order.customer.email ?? '—',
+      }
+    }
+    const firstBooking = bookingOrderGroups[0]?.bookingDetail
+    return {
+      name: firstBooking?.customer?.name || firstBooking?.guest_name || order.billing_address?.name || '—',
+      phone: firstBooking?.customer?.phone || firstBooking?.guest_phone || order.billing_address?.phone || '—',
+      email: firstBooking?.customer?.email || firstBooking?.guest_email || '—',
+    }
+  })()
+
+  const cleanBookingLineName = (name?: string | null) =>
+    String(name ?? '')
+      .replace(/^booking\s+(deposit|add-on)\s*[-–:]\s*/i, '')
+      .trim()
+
+  const formatAddonLineName = (line: BookingOrderLine) =>
+    cleanBookingLineName(line.booking_service_name || line.display_name || 'Add-on')
+
+  const bookingDepositTotal = bookingOrderGroups.reduce((sum, group) => sum + group.subtotal, 0)
+
+  const resolveMainServiceAmounts = (group: BookingOrderGroup, mainClaim?: { package_name: string }) => {
+    const depositFromLines = group.deposits.reduce((sum, line) => sum + toNumber(line.line_total), 0)
+    const serviceDepositDue = toNumber(group.bookingDetail?.service?.deposit_amount)
+    const depositDue = depositFromLines > 0.0001 ? depositFromLines : serviceDepositDue
+    const covered = Boolean(mainClaim) || Number(group.bookingDetail?.package_offset ?? 0) > 0.0001
+
+    if (covered) {
+      return { covered: true, originalAmount: depositDue, finalAmount: 0 }
+    }
+
+    return { covered: false, originalAmount: depositDue, finalAmount: depositDue }
+  }
+
+  const resolveAddonDepositAmount = (item: BookingOrderLine, group: BookingOrderGroup) => {
+    const depositFromLine = toNumber(item.line_total) || toNumber(item.unit_price)
+    if (depositFromLine > 0.0001) return depositFromLine
+
+    const lineName = formatAddonLineName(item).toLowerCase()
+    const matchedAddon = group.bookingDetail?.add_ons?.find((addon) => {
+      const addonName = addon.name.toLowerCase().trim()
+      return addonName === lineName || lineName.endsWith(addonName) || addonName.endsWith(lineName)
+    })
+    return toNumber(matchedAddon?.linked_deposit_amount)
+  }
+
+  const renderLineAmount = (covered: boolean, originalAmount: number, finalAmount: number) => {
+    if (covered) {
+      if (originalAmount > 0.0001) {
+        return (
+          <div className="shrink-0 text-right text-sm leading-tight">
+            <p className="text-slate-400 line-through">RM {formatAmount(originalAmount)}</p>
+            <p className="mt-0.5 font-medium text-slate-900">RM {formatAmount(finalAmount)}</p>
+          </div>
+        )
+      }
+
+      return (
+        <div className="shrink-0 text-right text-sm font-medium text-slate-900">
+          RM {formatAmount(finalAmount)}
+        </div>
+      )
+    }
+
+    if (finalAmount > 0.0001) {
+      return (
+        <div className="shrink-0 text-right text-sm font-medium text-slate-900">
+          RM {formatAmount(finalAmount)}
+        </div>
+      )
+    }
+
+    return null
+  }
+
   return (
     <>
-      <div className={`fixed inset-0 ${zIndexClassName} flex h-[100dvh] max-h-[100dvh] bg-black/40`} role="dialog" aria-modal="true" onClick={onClose}>
+      <div className={`fixed inset-0 ${zIndexClassName} flex h-[100dvh] max-h-[100dvh] bg-black/40`} role="dialog" aria-modal="true">
         <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
         <aside
           className="relative ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl"
@@ -635,6 +790,26 @@ export default function OrderViewPanel({
                     <p className="text-sm font-semibold text-slate-900">{isBookingOrder ? 'Booking Order Details' : 'Order Details'}</p>
                   </div>
                   <div className="space-y-4 px-4 py-3 text-sm">
+                    {isBookingOrder ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer / Guest</p>
+                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <div>
+                            <p className="text-xs text-slate-500">Name</p>
+                            <p className="font-medium text-slate-900">{bookingOrderGuestContact.name}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Phone</p>
+                            <p className="font-medium text-slate-900">{bookingOrderGuestContact.phone}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Email</p>
+                            <p className="font-medium text-slate-900">{bookingOrderGuestContact.email}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
                     {hasProductItems && !isBookingOrder && (
                       <div>
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Products</p>
@@ -685,7 +860,7 @@ export default function OrderViewPanel({
                       </div>
                     )}
 
-                    {hasServiceItems && (
+                    {hasServiceItems && !isBookingOrder && (
                       <div>
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Services</p>
                         <div className="overflow-x-auto">
@@ -723,109 +898,142 @@ export default function OrderViewPanel({
                     )}
 
                     {hasPackageItems && (
-                      <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Service Packages</p>
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[640px] text-sm">
-                            <thead>
-                              <tr className="border-b border-slate-200 text-slate-600">
-                                <th className="px-2 py-2 text-left font-medium">Package</th>
-                                <th className="px-2 py-2 text-left font-medium">Member</th>
-                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
-                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
-                                <th className="px-2 py-2 text-right font-medium">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {order.package_items?.map((item, idx) => (
-                                <tr key={`package-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
-                                  <td className="px-2 py-2 text-slate-900">{item.package_name || 'Service Package'}</td>
-                                  <td className="px-2 py-2 text-slate-700">{item.customer_name || '-'}</td>
-                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
-                                  <td className="px-2 py-2 text-right text-slate-700">
-                                    {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
-                                  </td>
-                                  <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Service Packages</p>
+                        {isBookingOrder ? (
+                          <div className="space-y-3">
+                            {order.package_items?.map((item, idx) => (
+                              <div
+                                key={`package-${idx}`}
+                                className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-medium text-slate-900">{item.package_name || 'Service Package'}</p>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    Qty: <span className="font-medium text-slate-700">{item.quantity}</span>
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="font-semibold text-slate-900">RM {formatAmount(item.line_total)}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                            <table className="w-full min-w-[640px] text-sm">
+                              <thead>
+                                <tr className="border-b border-slate-200 text-slate-600">
+                                  <th className="px-2 py-2 text-left font-medium">Package</th>
+                                  <th className="px-2 py-2 text-left font-medium">Member</th>
+                                  <th className="px-2 py-2 text-right font-medium">Quantity</th>
+                                  <th className="px-2 py-2 text-right font-medium">Unit Price</th>
+                                  <th className="px-2 py-2 text-right font-medium">Total</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                              </thead>
+                              <tbody>
+                                {order.package_items?.map((item, idx) => (
+                                  <tr key={`package-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
+                                    <td className="px-2 py-2 text-slate-900">{item.package_name || 'Service Package'}</td>
+                                    <td className="px-2 py-2 text-slate-700">{item.customer_name || '-'}</td>
+                                    <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
+                                    <td className="px-2 py-2 text-right text-slate-700">
+                                      {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     )}
 
                     {bookingOrderGroups.length > 0 && (
-                      <div>
-                        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Bookings</p>
-                        <div className="space-y-4">
-                          {bookingOrderGroups.map((group) => (
-                            <div key={group.key} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                      <div className="space-y-4">
+                          {bookingOrderGroups.map((group) => {
+                            const mainBookingServiceId = resolveMainBookingServiceId(group)
+                            const mainClaim = mainBookingServiceId
+                              ? claimForMainService(group.bookingDetail, mainBookingServiceId)
+                              : undefined
+                            const mainServiceAmounts = resolveMainServiceAmounts(group, mainClaim)
+
+                            return (
+                              <div key={group.key} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                              <div className="mb-3 flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
                                 <div>
-                                  <p className="text-sm font-semibold text-slate-900">
-                                    {group.bookingId ? `Booking #${group.bookingId}` : 'Booking'}
-                                  </p>
-                                  <p className="mt-1 text-sm font-medium text-slate-900">{group.serviceName || '-'}</p>
-                                  {group.serviceCnName ? (
-                                    <p className="text-xs text-slate-500">{group.serviceCnName}</p>
-                                  ) : null}
+                                  <p className="font-mono text-sm font-semibold text-slate-900">{bookingGroupLabel(group)}</p>
+                                  <p className="mt-1 text-xs font-bold uppercase tracking-wide text-amber-700">Deposit</p>
                                 </div>
-                                {group.bookingId && (
+                                {group.bookingId ? (
                                   <button
                                     type="button"
-                                    onClick={() => openBookingGroupDetail(group)}
-                                    className="inline-flex items-center gap-2 rounded bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
-                                    aria-label={`View booking ${group.bookingId}`}
-                                    title="View Booking"
+                                    onClick={() => void openBookingGroupDetail(group)}
+                                    className="inline-flex shrink-0 items-center gap-2 rounded bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                                    aria-label={`View booking ${bookingGroupLabel(group)}`}
+                                    title="View booking details"
                                   >
                                     <i className="fa-solid fa-eye" />
                                     View
                                   </button>
-                                )}
+                                ) : null}
                               </div>
 
-                              {group.deposits.length > 0 && (
-                                <div className="mt-3">
-                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Deposit</p>
-                                  <div className="space-y-2">
-                                    {group.deposits.map((item, idx) => (
-                                      <div key={`deposit-${group.key}-${idx}`} className="flex justify-between gap-4 text-sm">
-                                        <span className="text-slate-700">{item.display_name || 'Booking Deposit'}</span>
-                                        <span className="shrink-0 font-medium text-slate-900">RM {formatAmount(item.line_total)}</span>
-                                      </div>
-                                    ))}
+                              {group.serviceName ? (
+                                <div>
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Service</p>
+                                  <div className="flex items-start justify-between gap-4 text-sm text-slate-700">
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-slate-900">{group.serviceName}</p>
+                                      {group.serviceCnName ? (
+                                        <p className="mt-0.5 text-slate-600">{group.serviceCnName}</p>
+                                      ) : null}
+                                      {mainClaim ? <PackageBadge name={mainClaim.package_name} /> : null}
+                                    </div>
+                                    {renderLineAmount(
+                                      mainServiceAmounts.covered,
+                                      mainServiceAmounts.originalAmount,
+                                      mainServiceAmounts.finalAmount,
+                                    )}
                                   </div>
                                 </div>
-                              )}
+                              ) : null}
 
                               {group.addOns.length > 0 && (
                                 <div className="mt-3">
                                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Add-ons</p>
-                                  <div className="space-y-2">
+                                  <div className="space-y-3">
                                     {group.addOns.map((item, idx) => {
                                       const addonCnName = getLineAddonCnName(item, group)
+                                      const addonClaim = claimForAddonLine(
+                                        group.bookingDetail,
+                                        item.booking_service_id,
+                                        mainBookingServiceId,
+                                      )
+                                      const addonCovered = Boolean(addonClaim)
+                                      const addonDepositDue = resolveAddonDepositAmount(item, group)
+                                      const addonFinalAmount = addonCovered ? 0 : addonDepositDue
 
                                       return (
-                                        <div key={`addon-${group.key}-${idx}`} className="flex justify-between gap-4 text-sm">
-                                          <span className="text-slate-700">
-                                            {item.display_name || 'Booking Add-on'}
-                                            {addonCnName ? <span className="text-slate-500"> / {addonCnName}</span> : null}
-                                          </span>
-                                          <span className="shrink-0 font-medium text-slate-900">RM {formatAmount(item.line_total)}</span>
+                                        <div key={`addon-${group.key}-${idx}`} className="flex items-start justify-between gap-4 text-sm text-slate-700">
+                                          <div className="min-w-0">
+                                            <p className="font-medium text-slate-900">{formatAddonLineName(item)}</p>
+                                            {addonCnName ? (
+                                              <p className="mt-0.5 text-slate-600">{addonCnName}</p>
+                                            ) : null}
+                                            {addonClaim ? <PackageBadge name={addonClaim.package_name} /> : null}
+                                          </div>
+                                          {renderLineAmount(addonCovered, addonDepositDue, addonFinalAmount)}
                                         </div>
                                       )
                                     })}
                                   </div>
                                 </div>
                               )}
-
-                              <div className="mt-3 flex justify-between border-t border-slate-200 pt-3 text-sm font-semibold">
-                                <span className="text-slate-900">Subtotal</span>
-                                <span className="text-slate-900">RM {formatAmount(group.subtotal)}</span>
-                              </div>
                             </div>
-                          ))}
-                        </div>
+                            )
+                          })}
                       </div>
                     )}
                   </div>
@@ -838,6 +1046,21 @@ export default function OrderViewPanel({
                   <p className="text-sm font-semibold text-slate-900">{isBookingOrder ? 'Payment Summary' : 'Order Summary'}</p>
                 </div>
                 <div className="space-y-2 px-4 py-3 text-sm">
+                  {isBookingOrder ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Deposit</span>
+                        <span className="font-medium text-slate-900">
+                          RM {formatAmount(bookingDepositTotal || order.subtotal)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold">
+                        <span className="text-slate-900">Paid Total</span>
+                        <span className="text-slate-900">RM {formatAmount(order.grand_total)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Subtotal</span>
                     <span className="font-medium text-slate-900">RM {formatAmount(order.subtotal)}</span>
@@ -868,6 +1091,8 @@ export default function OrderViewPanel({
                     <span className="text-slate-900">Net Total</span>
                     <span className="text-slate-900">RM {formatAmount(netTotal)}</span>
                   </div>
+                    </>
+                  )}
                 </div>
               </section>
 
@@ -922,14 +1147,15 @@ export default function OrderViewPanel({
               </div>
 
               {/* Order Information */}
+              {!isBookingOrder && (
               <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">{isBookingOrder ? 'Booking Information' : 'Order Information'}</p>
+                  <p className="text-sm font-semibold text-slate-900">Order Information</p>
                 </div>
                 <div className="space-y-3 px-4 py-3 text-sm">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <p className="text-xs text-slate-500">{isBookingOrder ? 'Booking Order Number' : 'Order Number'}</p>
+                      <p className="text-xs text-slate-500">Order Number</p>
                       <p className="font-medium text-slate-900">{order.order_no || order.order_number}</p>
                     </div>
                     <div>
@@ -942,22 +1168,20 @@ export default function OrderViewPanel({
                       <p className="text-xs text-slate-500">Payment Method</p>
                       <p className="font-medium text-slate-900">{formatPaymentMethod(order.payment_info?.payment_method)}</p>
                     </div>
-                    {!isBookingOrder && (
-                      <div>
-                        <p className="text-xs text-slate-500">Shipping Method</p>
-                        <p className="font-medium text-slate-900">
-                          {order.shipping_method === 'in_store'
-                            ? 'In-store'
-                            : order.shipping_method === 'pickup'
-                              ? 'Pickup'
-                              : order.shipping_method === 'shipping'
-                                ? 'Shipping'
-                                : order.shipping_method
-                                  ? order.shipping_method.replace(/_/g, ' ')
-                                  : '-'}
-                        </p>
-                      </div>
-                    )}
+                    <div>
+                      <p className="text-xs text-slate-500">Shipping Method</p>
+                      <p className="font-medium text-slate-900">
+                        {order.shipping_method === 'in_store'
+                          ? 'In-store'
+                          : order.shipping_method === 'pickup'
+                            ? 'Pickup'
+                            : order.shipping_method === 'shipping'
+                              ? 'Shipping'
+                              : order.shipping_method
+                                ? order.shipping_method.replace(/_/g, ' ')
+                                : '-'}
+                      </p>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
@@ -978,9 +1202,10 @@ export default function OrderViewPanel({
                   </div>
                 </div>
               </section>
+              )}
 
               {/* Customer Information */}
-              {order.customer && (
+              {order.customer && !isBookingOrder && (
                 <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                     <p className="text-sm font-semibold text-slate-900">Customer Information</p>
@@ -1308,188 +1533,50 @@ export default function OrderViewPanel({
       </div>
 
       {viewingBookingDetail && (
-        <div className={`fixed inset-0 ${nestedModalZIndexClassName} flex items-center justify-center overflow-y-auto bg-black/50 p-4`} role="dialog" aria-modal="true" onClick={() => setViewingBookingDetail(null)}>
-          <div className="flex max-h-[min(90dvh,calc(100vh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div
+          className={`fixed inset-0 ${nestedModalZIndexClassName} flex items-center justify-end bg-black/50`}
+          role="dialog"
+          aria-modal="true"
+        >
+          <aside
+            className="relative ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">Booking Details</h3>
-                <p className="text-sm text-slate-500">{viewingBookingDetail.booking_code || `Booking #${viewingBookingDetail.id}`}</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-indigo-600">Booking Detail</p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                  {posAppointmentDetail?.booking_code
+                    || viewingBookingDetail.booking_code
+                    || `Booking #${viewingBookingDetail.id}`}
+                </h3>
+                <p className="text-sm text-slate-500">{viewingBookingDetail.service?.name || '-'}</p>
               </div>
               <button
                 type="button"
                 className="text-slate-500 hover:text-slate-700"
-                onClick={() => setViewingBookingDetail(null)}
+                onClick={closeBookingGroupDetail}
                 aria-label="Close booking details"
               >
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto space-y-5 bg-slate-50 p-5 text-sm">
-              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="font-semibold text-slate-900">Overview</p>
-                </div>
-                <div className="grid grid-cols-1 gap-4 px-4 py-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-slate-500">Booking Code / ID</p>
-                    <p className="font-medium text-slate-900">{viewingBookingDetail.booking_code || `Booking #${viewingBookingDetail.id}`}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Status</p>
-                    <StatusBadge status={(viewingBookingDetail.status || '').toLowerCase()} label={viewingBookingDetail.status || '-'} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Payment Status</p>
-                    <StatusBadge status={(viewingBookingDetail.payment_status || '').toLowerCase()} label={viewingBookingDetail.payment_status || '-'} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Staff</p>
-                    <p className="font-medium text-slate-900">{viewingBookingDetail.staff?.name || '-'}</p>
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="font-semibold text-slate-900">Customer & Appointment</p>
-                </div>
-                <div className="grid grid-cols-1 gap-4 px-4 py-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-slate-500">Customer / Guest</p>
-                    <p className="font-medium text-slate-900">{viewingBookingDetail.customer?.name || viewingBookingDetail.guest_name || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Phone</p>
-                    <p className="font-medium text-slate-900">{viewingBookingDetail.customer?.phone || viewingBookingDetail.guest_phone || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Service</p>
-                    <p className="font-medium text-slate-900">{viewingBookingDetail.service?.name || '-'}</p>
-                    {viewingBookingDetail.service?.cn_name ? <p className="text-xs text-slate-500">{viewingBookingDetail.service.cn_name}</p> : null}
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Duration</p>
-                    <p className="font-medium text-slate-900">{viewingBookingDetail.service?.duration_min ? `${viewingBookingDetail.service.duration_min} mins` : '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Start</p>
-                    <p className="font-medium text-slate-900">{formatDate(viewingBookingDetail.start_at)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">End</p>
-                    <p className="font-medium text-slate-900">{formatDate(viewingBookingDetail.end_at)}</p>
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="font-semibold text-slate-900">Add-ons</p>
-                </div>
-                <div className="px-4 py-3">
-                  {(viewingBookingDetail.add_ons?.length ?? 0) > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="text-slate-600">
-                          <tr className="border-b border-slate-200">
-                            <th className="px-2 py-2 text-left font-medium">Name</th>
-                            <th className="px-2 py-2 text-right font-medium">Duration</th>
-                            <th className="px-2 py-2 text-right font-medium">Price</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {viewingBookingDetail.add_ons?.map((addon, idx) => (
-                            <tr key={`${addon.name}-${idx}`} className="border-b border-slate-100">
-                              <td className="px-2 py-2 text-slate-900">
-                                <p>{addon.name}</p>
-                                {addon.cn_name ? <p className="text-xs text-slate-500">{addon.cn_name}</p> : null}
-                              </td>
-                              <td className="px-2 py-2 text-right text-slate-700">+{Number(addon.extra_duration_min ?? 0)} mins</td>
-                              <td className="px-2 py-2 text-right text-slate-700">{formatBookingMoney(addon.extra_price)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-slate-500">No add-ons selected.</p>
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="font-semibold text-slate-900">Payment Summary</p>
-                </div>
-                <div className="grid grid-cols-1 gap-4 px-4 py-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-slate-500">Deposit Paid</p>
-                    <p className="font-medium text-slate-900">{formatBookingMoney(viewingBookingDetail.deposit_paid)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Settlement Paid</p>
-                    <p className="font-medium text-slate-900">{formatBookingMoney(viewingBookingDetail.settlement_paid)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Package Offset</p>
-                    <p className="font-medium text-slate-900">{formatBookingMoney(viewingBookingDetail.package_offset)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Balance Due</p>
-                    <p className="font-medium text-slate-900">{formatBookingMoney(viewingBookingDetail.balance_due)}</p>
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="font-semibold text-slate-900">Settlement Notes</p>
-                </div>
-                <div className="px-4 py-3 text-sm whitespace-pre-wrap text-slate-800">{viewingBookingDetail.settlement_notes || '—'}</div>
-              </section>
-
-              {((viewingBookingDetail.uploaded_item_photos?.length ?? 0) > 0 || (viewingBookingDetail.service_photos?.length ?? 0) > 0) && (
-                <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="font-semibold text-slate-900">Photos</p>
-                  </div>
-                  <div className="space-y-4 px-4 py-3">
-                    {(viewingBookingDetail.uploaded_item_photos?.length ?? 0) > 0 && (
-                      <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Customer Photos</p>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                          {viewingBookingDetail.uploaded_item_photos?.map((photo) => (
-                            <a key={photo.id} href={photo.file_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded border border-slate-200">
-                              <img src={photo.file_url} alt={photo.original_name || 'Customer photo'} className="h-24 w-full object-cover" />
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {(viewingBookingDetail.service_photos?.length ?? 0) > 0 && (
-                      <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Salon Photos</p>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                          {viewingBookingDetail.service_photos?.map((photo) => (
-                            <a key={photo.id} href={photo.file_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded border border-slate-200">
-                              <img src={photo.file_url} alt={photo.caption || 'Salon photo'} className="h-24 w-full object-cover" />
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </section>
-              )}
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
+              <PosBookingDetailContent
+                detail={posAppointmentDetail}
+                loading={posAppointmentLoading}
+                error={posAppointmentError}
+              />
             </div>
-          </div>
+          </aside>
         </div>
       )}
 
       {showConfirmPayment && (
         <OrderConfirmPaymentModal
           orderId={orderId}
+          linkedBookingCount={isBookingOrder ? bookingOrderGroups.length : 0}
           onClose={() => setShowConfirmPayment(false)}
           onSuccess={handleOrderUpdated}
           zIndexClassName={nestedModalZIndexClassName}

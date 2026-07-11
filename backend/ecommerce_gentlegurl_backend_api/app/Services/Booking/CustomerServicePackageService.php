@@ -7,7 +7,10 @@ use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageBalance;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\ServicePackage;
+use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderItemStaffSplit;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 class CustomerServicePackageService
@@ -370,5 +373,135 @@ class CustomerServicePackageService
         $remaining = (int) $package->balances->sum('remaining_qty');
         $package->status = $remaining <= 0 ? 'exhausted' : 'active';
         $package->save();
+    }
+
+    /**
+     * Packages the customer may view or redeem (excludes unpaid booking-shop purchases).
+     */
+    public function redeemablePackagesQuery(int $customerId): Builder
+    {
+        return CustomerServicePackage::query()
+            ->where('customer_id', $customerId)
+            ->where('status', 'active')
+            ->where(function (Builder $outer) {
+                $outer->where('purchased_from', '!=', 'BOOKING')
+                    ->orWhere(function (Builder $booking) {
+                        $booking->where('purchased_from', 'BOOKING')
+                            ->whereNotNull('purchased_ref_id')
+                            ->whereExists(function ($sub) {
+                                $sub->select(DB::raw(1))
+                                    ->from('orders')
+                                    ->whereColumn('orders.id', 'customer_service_packages.purchased_ref_id')
+                                    ->where('orders.payment_status', 'paid');
+                            });
+                    })
+                    ->orWhere(function (Builder $legacy) {
+                        $legacy->where('purchased_from', 'BOOKING')
+                            ->whereExists(function ($sub) {
+                                $sub->select(DB::raw(1))
+                                    ->from('order_items')
+                                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                                    ->whereColumn('order_items.customer_service_package_id', 'customer_service_packages.id')
+                                    ->where('orders.payment_status', 'paid');
+                            });
+                    });
+            })
+            ->whereNotExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('order_items')
+                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                    ->whereColumn('order_items.customer_service_package_id', 'customer_service_packages.id')
+                    ->where('orders.payment_status', '!=', 'paid');
+            });
+    }
+
+    /**
+     * Grant booking-shop service packages after the order is paid.
+     *
+     * @return int[]
+     */
+    public function fulfillPendingPackagesForPaidOrder(Order $order): array
+    {
+        if (strtolower((string) $order->payment_status) !== 'paid' || ! $order->customer_id) {
+            return [];
+        }
+
+        $order->loadMissing(['items', 'customer']);
+        $ownedIds = [];
+
+        foreach ($order->items as $item) {
+            if (! $item instanceof OrderItem) {
+                continue;
+            }
+
+            if (strtolower((string) ($item->line_type ?? '')) !== 'service_package') {
+                continue;
+            }
+
+            if ((int) ($item->customer_service_package_id ?? 0) > 0) {
+                $ownedIds[] = (int) $item->customer_service_package_id;
+
+                continue;
+            }
+
+            $servicePackageId = (int) ($item->service_package_id ?? 0);
+            if ($servicePackageId <= 0) {
+                continue;
+            }
+
+            $servicePackage = ServicePackage::query()
+                ->with('items')
+                ->where('is_active', true)
+                ->find($servicePackageId);
+
+            if (! $servicePackage) {
+                continue;
+            }
+
+            $owned = $this->purchase(
+                (int) $order->customer_id,
+                $servicePackage,
+                'BOOKING',
+                (int) $order->id,
+            );
+
+            $item->customer_service_package_id = (int) $owned->id;
+            $item->save();
+
+            $ownedIds[] = (int) $owned->id;
+        }
+
+        return array_values(array_unique($ownedIds));
+    }
+
+    public function revokeUnpaidBookingPackagesForOrder(Order $order): void
+    {
+        if (strtolower((string) $order->payment_status) === 'paid') {
+            return;
+        }
+
+        $order->loadMissing('items');
+        $packageIds = CustomerServicePackage::query()
+            ->where('purchased_from', 'BOOKING')
+            ->where('purchased_ref_id', (int) $order->id)
+            ->where('status', 'active')
+            ->pluck('id');
+
+        $packageIds = $packageIds->merge(
+            $order->items
+                ->filter(fn (OrderItem $item) => strtolower((string) ($item->line_type ?? '')) === 'service_package')
+                ->pluck('customer_service_package_id')
+                ->filter(fn ($id) => (int) $id > 0)
+                ->map(fn ($id) => (int) $id)
+        )->unique()->values();
+
+        if ($packageIds->isEmpty()) {
+            return;
+        }
+
+        CustomerServicePackage::query()
+            ->whereIn('id', $packageIds->all())
+            ->where('status', 'active')
+            ->update(['status' => 'cancelled']);
     }
 }

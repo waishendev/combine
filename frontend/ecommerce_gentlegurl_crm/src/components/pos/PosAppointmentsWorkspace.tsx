@@ -25,8 +25,14 @@ import {
   posPriceDisplayHasRange,
   posPriceDisplayForAddonLine,
   posPriceDisplayWithOverride,
+  matchAddedMainSettlementLine,
+  resolveAddedMainServiceReferenceUnitPrice,
+  resolveAddedMainServiceSeedFinalized,
+  resolveAddedMainServiceSeedPrice,
   resolveEditSettlementAddonLineAmount,
   resolveEditSettlementAddonUnitDisplay,
+  resolveSettlementRefundNeededAmount,
+  computeSettlementRefundSummary,
   seedAddonLineTotalOverrides,
   seedFinalizedAddonPriceOverrides,
   settlementNeedsSettledAmount,
@@ -54,17 +60,19 @@ import {
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import CustomerCreateModal from '@/components/CustomerCreateModal'
 import type { CustomerRowData } from '@/components/CustomerRow'
-import PaymentProofModal from '@/components/payment/PaymentProofModal'
+import OrderViewPanel from '@/components/OrderViewPanel'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
-import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
+import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, parsePosAvailabilityVerifyMode, posAvailabilityShouldHardBlock, posAvailabilityStaffIsUnavailable, POS_SCHEDULE_OVERRIDE_REASONS, type PosAvailabilityVerifyMode } from '@/components/pos/posAvailabilityMessages'
+import { confirmAndVerifyEditSettlementPrimaryStaffChange, resolvePrimaryStaffIdFromSplits } from '@/components/pos/posStaffSplitUtils'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
 import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRefundCreditSection'
+import { SettlementRefundBreakdownRows } from '@/components/pos/SettlementCartPaymentBreakdown'
 import PosAppointmentPaymentLinksSection from '@/components/pos/PosAppointmentPaymentLinksSection'
-import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
+import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
@@ -259,6 +267,33 @@ function getAppointmentAddonPriceEditTarget(target: AppointmentPriceEditTarget):
   return null
 }
 
+function buildAddedServicePriceEditTarget(block: {
+  tmp_id: string
+  service_name: string
+  price: number
+  reference_unit_price?: number
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
+  price_finalized?: boolean | null
+}): Extract<AppointmentPriceEditTarget, { kind: 'addedService' }> {
+  return {
+    kind: 'addedService',
+    tmpId: block.tmp_id,
+    name: block.service_name,
+    currentUnitPrice: Number(block.price ?? 0),
+    originalUnitPrice: Number(block.reference_unit_price ?? block.price_range_min ?? block.price ?? 0),
+    quantity: 1,
+    priceSource: {
+      price_mode: block.price_mode ?? null,
+      price_range_min: block.price_range_min ?? null,
+      price_range_max: block.price_range_max ?? null,
+      extra_price: block.price,
+      price_finalized: block.price_finalized,
+    },
+  }
+}
+
 
 /** POS member search row (`/api/proxy/pos/members/search`) */
 type PosMemberSearchRow = {
@@ -400,6 +435,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<AppointmentStatusFilterValue>('')
   const [appointmentFiltersOpen, setAppointmentFiltersOpen] = useState(false)
   const [createAppointmentModalOpen, setCreateAppointmentModalOpen] = useState(false)
+  const [posAvailabilityVerifyMode, setPosAvailabilityVerifyMode] = useState<PosAvailabilityVerifyMode>('holiday_only')
   const [createAppointmentServices, setCreateAppointmentServices] = useState<BookingServiceOption[]>([])
   const [bookingServiceCategories, setBookingServiceCategories] = useState<BookingServiceCategoryOption[]>([])
   const [createAppointmentServiceCategoryId, setCreateAppointmentServiceCategoryId] = useState<number | null>(null)
@@ -503,6 +539,7 @@ export default function PosAppointmentsWorkspace({
   const [holdReviewNote, setHoldReviewNote] = useState('')
   const [holdCancelReason, setHoldCancelReason] = useState('')
   const [holdRejectNote, setHoldRejectNote] = useState('')
+  const [depositReviewViewOrderId, setDepositReviewViewOrderId] = useState<number | null>(null)
   const [appointmentStatusConfirmOpen, setAppointmentStatusConfirmOpen] = useState(false)
   const [appointmentStatusConfirmTarget, setAppointmentStatusConfirmTarget] = useState<AppointmentTerminalStatusAction | null>(null)
   const [appointmentStatusVoidDeposit, setAppointmentStatusVoidDeposit] = useState(false)
@@ -540,6 +577,7 @@ export default function PosAppointmentsWorkspace({
     service_name: string
     service_cn_name?: string | null
     price: number
+    reference_unit_price?: number
     price_mode?: string | null
     price_range_min?: number | null
     price_range_max?: number | null
@@ -582,6 +620,7 @@ export default function PosAppointmentsWorkspace({
   )
   const [editSettledAmount, setEditSettledAmount] = useState('')
   const [editStaffSplits, setEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
+  const [editSettlementOriginalPrimaryStaffId, setEditSettlementOriginalPrimaryStaffId] = useState<number | null>(null)
   const [editStaffSplitAutoBalance, setEditStaffSplitAutoBalance] = useState(true)
   const [editAddonOptionsLoading, setEditAddonOptionsLoading] = useState(false)
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
@@ -1416,14 +1455,15 @@ export default function PosAppointmentsWorkspace({
   const createAppointmentStaffPickerOptions = useMemo(() => {
     if (!createAppointmentDate || !createAppointmentSlotValue) return []
     const unavailableReasons = createAppointmentSelectedSlot?.unavailable_staff_reasons ?? {}
-    return createAppointmentAllowedStaffs.filter((staff) => !POS_HARD_AVAILABILITY_REASONS.has(unavailableReasons[String(staff.id)] ?? ''))
-  }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSelectedSlot, createAppointmentSlotValue])
+    return createAppointmentAllowedStaffs.filter((staff) => !posAvailabilityStaffIsUnavailable(unavailableReasons[String(staff.id)] ?? '', posAvailabilityVerifyMode))
+  }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSelectedSlot, createAppointmentSlotValue, posAvailabilityVerifyMode])
 
   const createAppointmentSelectedSlotScheduleIds = useMemo(() => {
     return Array.isArray(createAppointmentSelectedSlot?.scheduled_staff_ids) ? createAppointmentSelectedSlot.scheduled_staff_ids : []
   }, [createAppointmentSelectedSlot])
 
   const createAppointmentStaffScheduleWarning = useMemo(() => {
+    if (posAvailabilityVerifyMode === 'holiday_only') return null
     if (!createAppointmentAssignedStaffId || !createAppointmentSlotValue || createAppointmentSlotsLoading) {
       return null
     }
@@ -1447,6 +1487,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentSelectedSlotScheduleIds,
     createAppointmentSlotValue,
     createAppointmentSlotsLoading,
+    posAvailabilityVerifyMode,
   ])
 
   const createAppointmentStaffScheduleWarningMessage = useMemo(() => {
@@ -1474,7 +1515,8 @@ export default function PosAppointmentsWorkspace({
   )
 
   const appointmentRescheduleOutsideStaffSchedule = Boolean(
-    appointmentRescheduleDate
+    posAvailabilityVerifyMode !== 'holiday_only'
+    && appointmentRescheduleDate
     && appointmentRescheduleSlotValue
     && appointmentRescheduleStaffId
     && appointmentRescheduleSelectedSlot?.is_in_schedule === false,
@@ -1575,7 +1617,7 @@ export default function PosAppointmentsWorkspace({
       }
     }
     const unavailableReason = createAppointmentSelectedSlot?.unavailable_staff_reasons?.[String(createAppointmentAssignedStaffId)] ?? ''
-    if (POS_HARD_AVAILABILITY_REASONS.has(unavailableReason) && !POS_SCHEDULE_OVERRIDE_REASONS.has(unavailableReason)) {
+    if (posAvailabilityShouldHardBlock(unavailableReason, posAvailabilityVerifyMode)) {
       reportCreateAppointmentError(formatPosAvailabilityErrorMessage({
         reasonCode: unavailableReason,
         staffName: activeStaffs.find((staff) => staff.id === createAppointmentAssignedStaffId)?.name,
@@ -1593,10 +1635,12 @@ export default function PosAppointmentsWorkspace({
         const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
         const availabilityJson = await availabilityRes.json().catch(() => null)
         const reason = String(availabilityJson?.data?.reason_code ?? '')
+        if (availabilityJson?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(availabilityJson.data.verify_mode))
+        }
         if (
-          (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason))
-          && !POS_SCHEDULE_OVERRIDE_REASONS.has(reason)
-          && !availabilityJson?.data?.is_outside_staff_schedule
+          availabilityJson?.data?.is_hard_block
+          || posAvailabilityShouldHardBlock(reason, parsePosAvailabilityVerifyMode(availabilityJson?.data?.verify_mode) || posAvailabilityVerifyMode)
         ) {
           reportCreateAppointmentError(formatPosAvailabilityErrorMessage({
             reasonCode: reason,
@@ -1997,7 +2041,11 @@ export default function PosAppointmentsWorkspace({
     const settlementPaidSnapshot = Number(appointmentDetail?.settlement_paid ?? 0)
     const isZeroBalanceFinalize =
       settlementPaidSnapshot <= 0.0001 && dueAmount <= 0.0001 && appointmentNeedsZeroBalanceCheckout(appointmentDetail)
-    const overpaidAmount = Number(appointmentDetail?.overpaid_amount ?? appointmentDetail?.refund_needed ?? 0)
+    const overpaidAmount = resolveSettlementRefundNeededAmount({
+      refund_needed: appointmentDetail?.refund_needed,
+      overpaid_amount: appointmentDetail?.overpaid_amount,
+      refund_handled: appointmentDetail?.refund_handled,
+    })
     const refundPending = overpaidAmount > 0.0001 && !appointmentDetail?.refund_handled
     if (isZeroBalanceFinalize && refundPending) {
       reportAppointmentCheckoutError('This booking has overpaid deposit. Please handle refund/credit in Edit Settlement before checkout.')
@@ -2245,15 +2293,21 @@ export default function PosAppointmentsWorkspace({
     )
     const addedMainBlocksSeed = appointmentDisplayMainServices
       .filter((service) => !service.is_original)
-      .map((service) => ({
+      .map((service) => {
+        const settlementLine = matchAddedMainSettlementLine(service, appointmentDetail.main_service_settlement_items)
+        const resolvedPrice = resolveAddedMainServiceSeedPrice(service, settlementLine)
+        const referenceUnitPrice = resolveAddedMainServiceReferenceUnitPrice(service, settlementLine)
+        return {
         tmp_id: `seed-${Number(service.linked_booking_service_id ?? service.id ?? 0)}-${Math.random()}`,
         service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
         service_name: String(service.name ?? 'Service'),
         service_cn_name: typeof service.cn_name === 'string' ? service.cn_name : null,
-        price: Number(service.extra_price ?? 0),
-        price_mode: service.price_mode ?? null,
-        price_range_min: service.price_range_min ?? null,
-        price_range_max: service.price_range_max ?? null,
+        price: resolvedPrice,
+        reference_unit_price: referenceUnitPrice,
+        price_mode: service.price_mode ?? settlementLine?.price_mode ?? null,
+        price_range_min: service.price_range_min ?? settlementLine?.price_range_min ?? null,
+        price_range_max: service.price_range_max ?? settlementLine?.price_range_max ?? null,
+        price_finalized: resolveAddedMainServiceSeedFinalized(service, settlementLine, resolvedPrice),
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as ServiceAddonQuestion[],
         selected_addon_ids: selectionFromAddonRows((service.add_ons ?? []).map((addon) => ({ id: addon.id, quantity: addon.quantity ?? 1 }))),
@@ -2264,7 +2318,7 @@ export default function PosAppointmentsWorkspace({
           share_percent: String(split.share_percent ?? ''),
         })),
         auto_balance: true,
-      }))
+      }})
       .filter((block) => block.service_id > 0)
     setAppointmentLineStaffSplits((prev) => {
       const next = { ...prev }
@@ -2319,8 +2373,11 @@ export default function PosAppointmentsWorkspace({
       .filter((split) => split.staff_id != null)
     if (initialSplits.length > 0) {
       setEditStaffSplits(rebalanceEditSettlementPrimaryShare(initialSplits))
+      setEditSettlementOriginalPrimaryStaffId(Number(initialSplits[0].staff_id))
     } else {
-      setEditStaffSplits(appointmentDetail.staff?.id ? [{ staff_id: appointmentDetail.staff.id, share_percent: '100' }] : [])
+      const fallbackStaffId = appointmentDetail.staff?.id ?? null
+      setEditStaffSplits(fallbackStaffId ? [{ staff_id: fallbackStaffId, share_percent: '100' }] : [])
+      setEditSettlementOriginalPrimaryStaffId(fallbackStaffId)
     }
 
     if (appointmentDetail.customer?.id) {
@@ -2448,12 +2505,14 @@ export default function PosAppointmentsWorkspace({
     } catch {
       questions = []
     }
+    const catalogPrice = Number(service.service_price ?? service.price ?? 0)
     setEditAddedMainBlocks((prev) => [...prev, {
       tmp_id: `added-${service.id}-${Math.random()}`,
       service_id: service.id,
       service_name: service.name,
       service_cn_name: service.cn_name ?? null,
-      price: Number(service.service_price ?? service.price ?? 0),
+      price: catalogPrice,
+      reference_unit_price: catalogPrice,
       price_mode: service.price_mode ?? null,
       price_range_min: service.price_range_min ?? null,
       price_range_max: service.price_range_max ?? null,
@@ -2542,7 +2601,9 @@ export default function PosAppointmentsWorkspace({
     if (!appointmentDetail?.id) return
     reportEditSettlementError(null)
     const isCompletedAppointment = String(appointmentDetail?.status ?? '').toUpperCase() === 'COMPLETED'
-    if (!isCompletedAppointment && editSettlementAvailability?.is_hard_block) {
+    const draftPrimaryStaffId = resolvePrimaryStaffIdFromSplits(editStaffSplits)
+    const primaryStaffUnchanged = draftPrimaryStaffId === editSettlementOriginalPrimaryStaffId
+    if (!isCompletedAppointment && primaryStaffUnchanged && editSettlementAvailability?.is_hard_block) {
       reportEditSettlementError(formatPosAvailabilityErrorMessage({
         reasonCode: String(editSettlementAvailability.reason_code ?? 'booking_conflict'),
         staffName: appointmentDetail.staff?.name ?? activeStaffs.find((staff) => staff.id === appointmentDetail.staff?.id)?.name,
@@ -2629,6 +2690,22 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
+      const primaryStaffCheck = await confirmAndVerifyEditSettlementPrimaryStaffChange({
+        originalStaffId: editSettlementOriginalPrimaryStaffId,
+        nextSplits: normalizedSplits,
+        startAt: appointmentDetail.appointment_start_at,
+        endAt: appointmentDetail.appointment_end_at,
+        ignoreBookingId: appointmentDetail.id,
+        verifyMode: posAvailabilityVerifyMode,
+        staffNameById: (id) => activeStaffs.find((staff) => staff.id === id)?.name ?? appointmentDetail.staff?.id === id ? appointmentDetail.staff?.name : null,
+      })
+      if (!primaryStaffCheck.ok) {
+        if (!primaryStaffCheck.cancelled && primaryStaffCheck.message) {
+          reportEditSettlementError(primaryStaffCheck.message)
+        }
+        return
+      }
+
       payload.settlement_note = editSettlementNoteDraft.trim()
 
       const phonePattern = /^\+?[0-9]{8,15}$/
@@ -2704,7 +2781,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editAddonQuantities, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editAddonLineTotalOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editAddonQuantities, editSettledAmount, editStaffSplits, editSettlementOriginalPrimaryStaffId, editAddonPriceOverrides, editAddonLineTotalOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, posAvailabilityVerifyMode, activeStaffs, fetchAppointments, refreshOpenedAppointmentDetail, showMsg, reportEditSettlementError])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -3051,7 +3128,7 @@ export default function PosAppointmentsWorkspace({
       showMsg('Please select appointment slot/time.', 'error')
       return
     }
-    if (appointmentRescheduleSelectedSlot?.unavailable_reason && POS_HARD_AVAILABILITY_REASONS.has(appointmentRescheduleSelectedSlot.unavailable_reason)) {
+    if (appointmentRescheduleSelectedSlot?.unavailable_reason && posAvailabilityShouldHardBlock(appointmentRescheduleSelectedSlot.unavailable_reason, posAvailabilityVerifyMode)) {
       showMsg(formatPosAvailabilityErrorMessage({
         reasonCode: appointmentRescheduleSelectedSlot.unavailable_reason,
         staffName: activeStaffs.find((staff) => staff.id === appointmentRescheduleStaffId)?.name,
@@ -3126,6 +3203,9 @@ export default function PosAppointmentsWorkspace({
         })
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
+        if (json?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(json.data.verify_mode))
+        }
         const rows: unknown[] = Array.isArray(json?.data?.visible_slots)
           ? json.data.visible_slots
           : (Array.isArray(json?.data?.slots) ? json.data.slots : [])
@@ -3198,6 +3278,9 @@ export default function PosAppointmentsWorkspace({
         })
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
+        if (json?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(json.data.verify_mode))
+        }
         const rows: unknown[] = Array.isArray(json?.data?.visible_slots)
           ? json.data.visible_slots
           : (Array.isArray(json?.data?.slots) ? json.data.slots : [])
@@ -3384,8 +3467,17 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentDepositContributionForSettlement = useMemo(() => {
     const contribution = Number(appointmentDetail?.deposit_contribution ?? appointmentDetail?.deposit_paid ?? 0)
-    return appointmentIsFullyPackageCovered ? 0 : contribution
-  }, [appointmentDetail?.deposit_contribution, appointmentDetail?.deposit_paid, appointmentIsFullyPackageCovered])
+    if (contribution > 0.0001) return contribution
+    if (appointmentDetail?.deposit_previously_collected) {
+      return Number(appointmentDetail?.deposit_previously_collected_amount ?? 0)
+    }
+    return 0
+  }, [
+    appointmentDetail?.deposit_contribution,
+    appointmentDetail?.deposit_paid,
+    appointmentDetail?.deposit_previously_collected,
+    appointmentDetail?.deposit_previously_collected_amount,
+  ])
 
   const appointmentPreviouslyCollectedDeposit = useMemo(() => {
     const wasCollected = Boolean(appointmentDetail?.deposit_previously_collected)
@@ -3535,7 +3627,7 @@ export default function PosAppointmentsWorkspace({
 
   useEffect(() => {
     const checkEditSettlementAvailability = async () => {
-      if (!editSettlementOpen || !appointmentDetail?.id || !appointmentDetail?.staff?.id || !appointmentDetail.appointment_start_at || !editSettlementEstimatedEndAt) {
+      if (!editSettlementOpen || !appointmentDetail?.id || !appointmentDetail.appointment_start_at || !editSettlementEstimatedEndAt) {
         setEditSettlementAvailability(null)
         return
       }
@@ -3543,8 +3635,13 @@ export default function PosAppointmentsWorkspace({
         setEditSettlementAvailability(null)
         return
       }
+      const staffId = resolvePrimaryStaffIdFromSplits(editStaffSplits) ?? appointmentDetail.staff?.id
+      if (!staffId) {
+        setEditSettlementAvailability(null)
+        return
+      }
       const params = new URLSearchParams({
-        staff_id: String(appointmentDetail.staff.id),
+        staff_id: String(staffId),
         start_at: appointmentDetail.appointment_start_at,
         end_at: editSettlementEstimatedEndAt,
         ignore_booking_id: String(appointmentDetail.id),
@@ -3555,10 +3652,13 @@ export default function PosAppointmentsWorkspace({
         setEditSettlementAvailability(null)
         return
       }
+      if (json?.data?.verify_mode != null) {
+        setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(json.data.verify_mode))
+      }
       setEditSettlementAvailability((json?.data ?? null) as { reason_code?: string | null; is_hard_block?: boolean; is_outside_staff_schedule?: boolean } | null)
     }
     void checkEditSettlementAvailability()
-  }, [appointmentDetail?.appointment_start_at, appointmentDetail?.id, appointmentDetail?.staff?.id, appointmentDetail?.status, editSettlementEstimatedEndAt, editSettlementOpen])
+  }, [appointmentDetail?.appointment_start_at, appointmentDetail?.id, appointmentDetail?.staff?.id, appointmentDetail?.status, editSettlementEstimatedEndAt, editSettlementOpen, editStaffSplits])
 
   /** Add-on amount still due at settlement (list total minus add-on deposits already paid on orders). */
   const appointmentAddonDueForBreakdown = useMemo(() => {
@@ -3627,7 +3727,6 @@ export default function PosAppointmentsWorkspace({
   )
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
-  const appointmentOverpaidAmount = Number(appointmentDetail?.overpaid_amount ?? appointmentDetail?.refund_needed ?? 0)
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
   const appointmentPackageApplied =
     ['reserved', 'consumed'].includes(String(appointmentDetail?.package_status?.status ?? '').toLowerCase()) ||
@@ -3740,6 +3839,33 @@ export default function PosAppointmentsWorkspace({
       : null
   const appointmentCanApplyPackage = Boolean(appointmentDetail?.can_apply_package)
   const appointmentStatusUpper = String(appointmentDetail?.status ?? '').toUpperCase()
+  const appointmentRefundSummary = useMemo(
+    () => computeSettlementRefundSummary(
+      {
+        overpaid_amount: appointmentDetail?.overpaid_amount,
+        refund_needed: appointmentDetail?.refund_needed,
+        refund_handled: appointmentDetail?.refund_handled,
+        refund_handled_amount: appointmentDetail?.refund_handled_amount,
+        refund_transactions: appointmentDetail?.refund_transactions,
+      },
+      {
+        mode:
+          appointmentStatusUpper === 'COMPLETED' && appointmentPaymentBadgeIsPaid
+            ? 'history'
+            : 'active',
+      },
+    ),
+    [
+      appointmentDetail?.overpaid_amount,
+      appointmentDetail?.refund_handled,
+      appointmentDetail?.refund_handled_amount,
+      appointmentDetail?.refund_needed,
+      appointmentDetail?.refund_transactions,
+      appointmentPaymentBadgeIsPaid,
+      appointmentStatusUpper,
+    ],
+  )
+  const appointmentRefundNeededAmount = appointmentRefundSummary.remainingRefund
   const appointmentIsHold = appointmentStatusUpper === 'HOLD'
   const appointmentHoldProofCount = appointmentDetail?.payment_proofs?.length ?? 0
   const appointmentHoldDepositOrder = appointmentDetail?.hold_deposit_order ?? null
@@ -4351,86 +4477,63 @@ export default function PosAppointmentsWorkspace({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-bold uppercase tracking-wide text-violet-900">Deposit review</p>
-                            <p className="mt-1 text-sm leading-snug text-violet-950/90">
-                              Verify payment proof, then approve to confirm this booking — no need to open shop orders.
-                            </p>
+                            {appointmentHoldDepositOrder ? (
+                              <>
+                                <p className="mt-2 text-xs font-semibold text-violet-900">
+                                  {appointmentHoldDepositOrder.order_number}
+                                </p>
+                                <p className="mt-1 text-xs text-violet-900/80">
+                                  {appointmentHoldDepositOrder.status === 'processing'
+                                    ? 'Waiting for verification'
+                                    : appointmentHoldDepositOrder.status === 'reject_payment_proof'
+                                      ? 'Payment proof rejected'
+                                      : appointmentHoldDepositOrder.status.replaceAll('_', ' ')}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="mt-2 text-xs text-violet-800/80">No pending deposit order linked to this hold.</p>
+                            )}
                             {appointmentDetail.hold_expires_at ? (
                               <p className="mt-2 text-xs font-medium text-violet-800/90">
                                 Hold expires {formatDateTime12Hour(appointmentDetail.hold_expires_at)}
                               </p>
                             ) : null}
-                            {appointmentHoldDepositOrder ? (
-                              <p className="mt-2 text-xs text-violet-900/80">
-                                <span className="font-semibold">{appointmentHoldDepositOrder.order_number}</span>
-                                {' · '}
-                                RM {Number(appointmentHoldDepositOrder.grand_total ?? 0).toFixed(2)}
-                                {' · '}
-                                {appointmentHoldDepositOrder.status === 'processing'
-                                  ? 'Waiting for verification'
-                                  : appointmentHoldDepositOrder.status === 'reject_payment_proof'
-                                    ? 'Payment proof rejected'
-                                    : appointmentHoldDepositOrder.status.replaceAll('_', ' ')}
-                              </p>
-                            ) : (
-                              <p className="mt-2 text-xs text-violet-800/80">No pending deposit order — approve if no deposit is required.</p>
-                            )}
                           </div>
-                          <PaymentProofModal
-                            proofs={appointmentDetail.payment_proofs}
-                            bookingCode={appointmentDetail.booking_code}
-                            layout="icon"
-                            className="shrink-0"
-                          />
-                        </div>
-                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                           <button
                             type="button"
-                            disabled={appointmentActionLoading}
+                            disabled={!appointmentHoldDepositOrder}
                             onClick={() => {
-                              setHoldCancelReason('')
-                              setHoldCancelConfirmOpen(true)
+                              if (appointmentHoldDepositOrder) {
+                                setDepositReviewViewOrderId(appointmentHoldDepositOrder.id)
+                              }
                             }}
-                            className="min-h-[48px] rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-900 shadow-sm transition hover:bg-rose-50 disabled:opacity-50"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            disabled={appointmentActionLoading || !canRejectHoldPaymentProof}
                             title={
-                              canRejectHoldPaymentProof
-                                ? 'Reject invalid payment proof — customer can re-upload'
-                                : 'Available when slip is uploaded and waiting for verification'
+                              appointmentHoldDepositOrder
+                                ? `View order ${appointmentHoldDepositOrder.order_number}`
+                                : 'No deposit order available'
                             }
-                            onClick={() => {
-                              setHoldRejectNote('')
-                              setHoldRejectConfirmOpen(true)
-                            }}
-                            className="min-h-[48px] rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-950 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-45"
+                            className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-white text-violet-800 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-45"
+                            aria-label={
+                              appointmentHoldDepositOrder
+                                ? `View order ${appointmentHoldDepositOrder.order_number}`
+                                : 'No deposit order available'
+                            }
                           >
-                            Reject proof
-                          </button>
-                          <button
-                            type="button"
-                            disabled={appointmentActionLoading}
-                            onClick={() => {
-                              setHoldReviewNote('')
-                              setHoldApproveConfirmOpen(true)
-                            }}
-                            className="min-h-[48px] rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
-                          >
-                            Approve
+                            <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1 1 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
                           </button>
                         </div>
-                        {appointmentHoldProofCount === 0 && appointmentHoldDepositOrder?.status === 'processing' ? (
-                          <p className="mt-2 text-[11px] font-medium text-amber-800">
-                            Waiting for customer slip — tap the eye icon to check; it opens even when empty.
-                          </p>
-                        ) : appointmentHoldProofCount === 0 ? (
+                        {!appointmentHoldDepositOrder ? (
                           <p className="mt-2 text-[11px] font-medium text-violet-800/80">
-                            Tap the eye icon — proof shows after customer uploads a transfer slip (Manual Transfer orders only).
+                            Deposit order is not available yet for this hold.
                           </p>
-                        ) : null}
+                        ) : (
+                          <p className="mt-2 text-[11px] font-medium text-violet-800/80">
+                            Tap the eye icon to open booking order details, review payment proof, and confirm or reject from there.
+                          </p>
+                        )}
                       </div>
                     ) : null}
 
@@ -4789,12 +4892,11 @@ export default function PosAppointmentsWorkspace({
                         <span className="text-slate-600">Total Covered</span>
                         <span className="font-semibold tabular-nums text-slate-900">RM {appointmentTotalCovered.toFixed(2)}</span>
                       </div> */}
-                      {appointmentOverpaidAmount > 0.0001 ? (
-                        <div className="flex items-center justify-between gap-3 py-3.5">
-                          <span className="font-semibold text-rose-700">Refund Needed</span>
-                          <span className="font-bold tabular-nums text-rose-700">RM {appointmentOverpaidAmount.toFixed(2)}</span>
-                        </div>
-                      ) : null}
+                      <SettlementRefundBreakdownRows
+                        summary={appointmentRefundSummary}
+                        variant="checkout"
+                        rowClass="py-3.5"
+                      />
 
                       <div className="-mx-4 flex items-center justify-between gap-3 border-t-2 border-slate-200 bg-emerald-50/50 px-4 py-4">
                         <span className="text-base font-bold text-slate-900">Amount To Pay</span>
@@ -6950,7 +7052,7 @@ export default function PosAppointmentsWorkspace({
                   {canEditAppointmentSettlement ? (
                   <PosAppointmentRefundCreditSection
                     bookingId={appointmentDetail.id}
-                    refundNeeded={Number(appointmentDetail.refund_needed ?? appointmentDetail.overpaid_amount ?? 0)}
+                    refundNeeded={appointmentRefundNeededAmount}
                     initialTransactions={appointmentDetail.refund_transactions}
                     onError={reportEditSettlementError}
                     showMsg={showMsg}
@@ -7031,7 +7133,7 @@ export default function PosAppointmentsWorkspace({
                               primaryClassName="text-sm font-semibold text-gray-900"
                               secondaryClassName="mt-0.5 text-xs text-gray-500"
                             />
-                            <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'addedService', tmpId: block.tmp_id, name: block.service_name, currentUnitPrice: Number(block.price ?? 0), originalUnitPrice: Number(block.price ?? 0), quantity: 1, priceSource: block })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price, price_finalized: block.price_finalized })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice({ ...block, extra_price: block.price, price_finalized: block.price_finalized }) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice({ ...block, extra_price: block.price, price_finalized: block.price_finalized }) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => openAppointmentPriceEditModal(buildAddedServicePriceEditTarget(block))} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button></div>
                           </>
                         ) : (
                           <p className="text-sm font-semibold text-gray-700">Select a service</p>
@@ -7438,17 +7540,35 @@ export default function PosAppointmentsWorkspace({
             />
               )
             })()}
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Edit Method</p>
-              <div className="flex flex-wrap gap-4 text-sm font-semibold text-gray-700">
-                <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'unit'} onChange={() => setAppointmentPriceEditMode('unit')} /> Unit Price</label>
-                <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'line'} onChange={() => setAppointmentPriceEditMode('line')} /> Line Total</label>
+            {priceEditTargetUsesSimpleServicePriceLayout(appointmentPriceEditTarget.kind) ? (
+              <div className="mt-4 rounded-lg border border-gray-200 p-3">
+                <label className="block text-sm font-semibold text-gray-700">New Price
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={appointmentPriceEditValueDraft}
+                    onChange={(event) => setAppointmentPriceEditValueDraft(event.target.value)}
+                    placeholder={appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(appointmentPriceEditTarget.priceSource) ? 'Enter final price' : '0.00'}
+                    className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm tabular-nums"
+                  />
+                </label>
               </div>
-            </div>
-            {appointmentPriceEditMode === 'unit' ? (
-              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Unit Price</label><input type="number" min={0} step="0.01" value={appointmentPriceEditValueDraft} onChange={(event) => setAppointmentPriceEditValueDraft(event.target.value)} placeholder={appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(appointmentPriceEditTarget.priceSource) ? 'Enter final price' : '0.00'} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(appointmentPriceEditValueDraft || 0)) * resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
             ) : (
-              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Line Total</label><input type="number" min={0} step="0.01" value={appointmentPriceEditLineTotalDraft} onChange={(event) => setAppointmentPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(appointmentPriceEditLineTotalDraft || 0)) / resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
+              <>
+                <div className="mt-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Edit Method</p>
+                  <div className="flex flex-wrap gap-4 text-sm font-semibold text-gray-700">
+                    <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'unit'} onChange={() => setAppointmentPriceEditMode('unit')} /> Unit Price</label>
+                    <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'line'} onChange={() => setAppointmentPriceEditMode('line')} /> Line Total</label>
+                  </div>
+                </div>
+                {appointmentPriceEditMode === 'unit' ? (
+                  <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Unit Price</label><input type="number" min={0} step="0.01" value={appointmentPriceEditValueDraft} onChange={(event) => setAppointmentPriceEditValueDraft(event.target.value)} placeholder={appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(appointmentPriceEditTarget.priceSource) ? 'Enter final price' : '0.00'} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(appointmentPriceEditValueDraft || 0)) * resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
+                ) : (
+                  <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Line Total</label><input type="number" min={0} step="0.01" value={appointmentPriceEditLineTotalDraft} onChange={(event) => setAppointmentPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(appointmentPriceEditLineTotalDraft || 0)) / resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
+                )}
+              </>
             )}
             <div className="mt-4"><label className="text-xs font-semibold text-gray-600">Reason / remark</label><textarea value={appointmentPriceEditReasonDraft} onChange={(event) => setAppointmentPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" /></div>
             </div>
@@ -7625,11 +7745,11 @@ export default function PosAppointmentsWorkspace({
                   </label>
                 </div>
               ) : null}
-              {checkoutZeroBalanceSettlement && appointmentOverpaidAmount > 0.0001 && !appointmentDetail?.refund_handled ? (
+              {checkoutZeroBalanceSettlement && appointmentRefundNeededAmount > 0.0001 && !appointmentDetail?.refund_handled ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
                   <p className="text-sm font-bold text-rose-900">Refund / Credit Required</p>
                   <p className="mt-2 text-xs text-rose-800">
-                    Overpaid by RM {appointmentOverpaidAmount.toFixed(2)}. Open <span className="font-semibold">Edit Settlement</span> and use the refund section to record Cash Refund or Customer Credit before checkout.
+                    Overpaid by RM {appointmentRefundNeededAmount.toFixed(2)}. Open <span className="font-semibold">Edit Settlement</span> and use the refund section to record Cash Refund or Customer Credit before checkout.
                   </p>
                 </div>
               ) : null}
@@ -7744,7 +7864,7 @@ export default function PosAppointmentsWorkspace({
                   disabled={
                     cashShiftActionDisabled ||
                     appointmentActionLoading ||
-                    (checkoutZeroBalanceSettlement && appointmentOverpaidAmount > 0.0001 && !appointmentDetail?.refund_handled) ||
+                    (checkoutZeroBalanceSettlement && appointmentRefundNeededAmount > 0.0001 && !appointmentDetail?.refund_handled) ||
                     (!checkoutZeroBalanceSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementPaymentValid))
                   }
                   onClick={() => void settleAppointmentPayment()}
@@ -7891,6 +8011,19 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
       ) : null,
+        bodyModalRoot,
+      )}
+
+      {renderPosBodyModalPortal(
+        depositReviewViewOrderId !== null ? (
+          <OrderViewPanel
+            key={depositReviewViewOrderId}
+            orderId={depositReviewViewOrderId}
+            onClose={() => setDepositReviewViewOrderId(null)}
+            onOrderUpdated={() => void refreshOpenedAppointmentDetail()}
+            zIndexClassName="pos-body-stack-modal-detail"
+          />
+        ) : null,
         bodyModalRoot,
       )}
 

@@ -184,6 +184,10 @@ export type PosAppointmentDetail = {
   total_covered?: number
   overpaid_amount?: number
   refund_needed?: number
+  refund_handled_amount?: number
+  refund_handled?: boolean
+  refund_pending_amount?: number
+  refund_pending?: boolean
   /** Latest POS order that registered this booking via an order_service_items row (checkout closure). */
   visit_register_order_id?: number | null
   visit_checkout_finalized?: boolean

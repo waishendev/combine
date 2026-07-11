@@ -39,6 +39,34 @@ export const POS_HARD_AVAILABILITY_REASONS = new Set([
   'schedule_inactive',
 ])
 
+export type PosAvailabilityVerifyMode = 'full' | 'holiday_only'
+
+export const POS_LEAVE_ONLY_HARD_REASONS = new Set([
+  'staff_off_day',
+  'staff_leave',
+  'staff_inactive',
+])
+
+export function parsePosAvailabilityVerifyMode(value: unknown): PosAvailabilityVerifyMode {
+  return String(value ?? '').toLowerCase() === 'holiday_only' ? 'holiday_only' : 'full'
+}
+
+export function posAvailabilityStaffIsUnavailable(reason: string, verifyMode: PosAvailabilityVerifyMode): boolean {
+  if (!reason) return false
+  if (verifyMode === 'holiday_only') {
+    return POS_LEAVE_ONLY_HARD_REASONS.has(reason)
+  }
+  return POS_HARD_AVAILABILITY_REASONS.has(reason) && !POS_SCHEDULE_OVERRIDE_REASONS.has(reason)
+}
+
+export function posAvailabilityShouldHardBlock(reason: string, verifyMode: PosAvailabilityVerifyMode): boolean {
+  if (!reason) return false
+  if (verifyMode === 'holiday_only') {
+    return POS_LEAVE_ONLY_HARD_REASONS.has(reason)
+  }
+  return POS_HARD_AVAILABILITY_REASONS.has(reason) && !POS_SCHEDULE_OVERRIDE_REASONS.has(reason)
+}
+
 import { formatDateTimeRange } from './posAppointmentHelpers'
 
 function formatPosAvailabilityTimeLabel(startAt?: string | null, endAt?: string | null): string {

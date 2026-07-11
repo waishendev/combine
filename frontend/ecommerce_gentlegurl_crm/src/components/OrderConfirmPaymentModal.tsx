@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n'
 
 interface OrderConfirmPaymentModalProps {
   orderId: number
+  linkedBookingCount?: number
   onClose: () => void
   onSuccess: () => void
   zIndexClassName?: string
@@ -12,6 +13,7 @@ interface OrderConfirmPaymentModalProps {
 
 export default function OrderConfirmPaymentModal({
   orderId,
+  linkedBookingCount = 0,
   onClose,
   onSuccess,
   zIndexClassName = 'z-[60]',
@@ -104,6 +106,11 @@ export default function OrderConfirmPaymentModal({
           <p className="text-sm text-gray-700">
             Are you sure you want to confirm payment for this order?
           </p>
+          {linkedBookingCount > 1 ? (
+            <p className="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
+              This deposit order is linked to {linkedBookingCount} bookings. Confirming payment will confirm all linked bookings together.
+            </p>
+          ) : null}
 
           {error && (
             <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">

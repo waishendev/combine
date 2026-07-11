@@ -8,6 +8,7 @@ use App\Models\Booking\BookingServicePhoto;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\Booking\CustomerServicePackageService;
 use App\Support\WorkspaceType;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
@@ -494,6 +495,7 @@ class PublicOrderHistoryController extends Controller
             $lockedOrder->status = 'cancelled';
             $lockedOrder->save();
 
+            app(CustomerServicePackageService::class)->revokeUnpaidBookingPackagesForOrder($lockedOrder);
             $this->orderReserveService->releaseStockForOrder($lockedOrder);
         });
 

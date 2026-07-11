@@ -46,15 +46,30 @@ type BookingHoldRow = {
   created_at?: string | null
   status?: string | null
   payment_status?: string | null
+  hold_deposit_order?: {
+    id: number
+    order_number: string
+    status?: string
+    payment_status?: string
+    grand_total?: number
+  } | null
+  hold_linked_bookings?: Array<{ id: number; booking_code: string; service_name?: string }>
 }
 
 type BookingRequestRow = {
   key: string
   id: number
   bookingId: number
+  bookingIds: number[]
   requestId?: number
-  requestType: 'Cancellation request' | 'Hold confirmation' | 'Deposit proof'
+  requestTypes: Array<'Cancellation request' | 'Hold confirmation' | 'Deposit proof' | 'Package purchase'>
+  requestType: 'Cancellation request' | 'Hold confirmation' | 'Deposit proof' | 'Package purchase'
   number: string
+  orderId?: number
+  orderNumber?: string
+  bookingCode?: string
+  bookingCodes: string[]
+  linkedBookingCount: number
   customerName: string
   contact: string
   requestedAt: string | null
@@ -106,6 +121,11 @@ const ECOMMERCE_REQUEST_FILTERS = [
   { payment_status: 'failed' },
 ]
 
+const BOOKING_PACKAGE_ORDER_FILTERS = [
+  { status: 'pending', payment_status: 'unpaid' },
+  { status: 'processing', payment_status: 'unpaid' },
+]
+
 const BOOKING_HOLD_FILTERS = ['HOLD', 'PENDING', 'PENDING_CONFIRMATION']
 
 const BTN_ICON = 'inline-flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50'
@@ -129,6 +149,229 @@ function RefreshIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 function dedupeByKey<T extends { key: string }>(rows: T[]): T[] {
   return Array.from(new Map(rows.map((row) => [row.key, row])).values())
+}
+
+function mergeBookingRequestRows(primary: BookingRequestRow, secondary: BookingRequestRow): BookingRequestRow {
+  const requestTypes = Array.from(new Set([...primary.requestTypes, ...secondary.requestTypes]))
+  const bookingIds = Array.from(new Set([...primary.bookingIds, ...secondary.bookingIds]))
+  const bookingCodes = Array.from(new Set([...primary.bookingCodes, ...secondary.bookingCodes].filter(Boolean)))
+  const requestedAt = [primary.requestedAt, secondary.requestedAt]
+    .filter(Boolean)
+    .sort((a, b) => new Date(String(b)).getTime() - new Date(String(a)).getTime())[0] ?? null
+
+  return {
+    ...primary,
+    key: primary.orderId ? `order-${primary.orderId}` : `booking-${primary.bookingId}`,
+    bookingIds,
+    bookingCodes,
+    linkedBookingCount: Math.max(primary.linkedBookingCount, secondary.linkedBookingCount, bookingIds.length),
+    requestTypes,
+    requestType: requestTypes.includes('Deposit proof')
+      ? 'Deposit proof'
+      : requestTypes.includes('Hold confirmation')
+        ? 'Hold confirmation'
+        : requestTypes.includes('Package purchase')
+          ? 'Package purchase'
+          : 'Cancellation request',
+    requestedAt,
+    amount: secondary.amount ?? primary.amount,
+    slipUrl: secondary.slipUrl ?? primary.slipUrl,
+    linkId: secondary.linkId ?? primary.linkId,
+    reason: secondary.reason ?? primary.reason,
+    adminNote: secondary.adminNote ?? primary.adminNote,
+    status: secondary.status || primary.status,
+    badgeClassName: requestTypes.includes('Deposit proof')
+      ? 'bg-blue-100 text-blue-800 ring-blue-200'
+      : requestTypes.includes('Hold confirmation')
+        ? 'bg-amber-100 text-amber-800 ring-amber-200'
+        : requestTypes.includes('Package purchase')
+          ? 'bg-purple-100 text-purple-800 ring-purple-200'
+          : primary.badgeClassName,
+  }
+}
+
+function enrichHoldRowsWithSharedOrder(rows: BookingRequestRow[]): BookingRequestRow[] {
+  const sharedOrderByBookingId = new Map<
+    number,
+    { orderId: number; orderNumber?: string; bookingIds: number[]; bookingCodes: string[] }
+  >()
+
+  for (const row of rows) {
+    if (!row.orderId || !row.requestTypes.includes('Hold confirmation')) continue
+    const payload = {
+      orderId: row.orderId,
+      orderNumber: row.orderNumber,
+      bookingIds: row.bookingIds,
+      bookingCodes: row.bookingCodes,
+    }
+    row.bookingIds.forEach((id) => sharedOrderByBookingId.set(id, payload))
+  }
+
+  return rows.map((row) => {
+    if (row.orderId || !row.requestTypes.includes('Hold confirmation')) return row
+    const shared = sharedOrderByBookingId.get(row.bookingId)
+    if (!shared) return row
+    return {
+      ...row,
+      orderId: shared.orderId,
+      orderNumber: shared.orderNumber,
+      number: shared.orderNumber || row.number,
+      bookingIds: shared.bookingIds,
+      bookingCodes: shared.bookingCodes,
+      linkedBookingCount: Math.max(shared.bookingIds.length, row.linkedBookingCount),
+    }
+  })
+}
+
+function consolidateBookingRequests(rows: BookingRequestRow[]): BookingRequestRow[] {
+  const cancellations = rows.filter((row) => row.requestType === 'Cancellation request')
+  const actionable = rows.filter((row) => row.requestType !== 'Cancellation request')
+  const orderGroups = new Map<number, BookingRequestRow[]>()
+  const standalone: BookingRequestRow[] = []
+
+  for (const row of actionable) {
+    if (
+      row.orderId &&
+      (row.requestTypes.includes('Hold confirmation') || row.requestTypes.includes('Package purchase'))
+    ) {
+      const group = orderGroups.get(row.orderId) ?? []
+      group.push(row)
+      orderGroups.set(row.orderId, group)
+      continue
+    }
+    standalone.push(row)
+  }
+
+  const mergedOrderRows: BookingRequestRow[] = []
+  for (const [orderId, group] of orderGroups) {
+    const base = group.reduce((acc, row) => mergeBookingRequestRows(acc, row))
+    const bookingIds = Array.from(new Set(group.flatMap((row) => row.bookingIds)))
+    const bookingCodes = Array.from(new Set(group.flatMap((row) => row.bookingCodes).filter(Boolean)))
+    const orderNumber = base.orderNumber || group[0]?.number || `Order #${orderId}`
+    mergedOrderRows.push({
+      ...base,
+      key: `order-${orderId}`,
+      orderId,
+      orderNumber,
+      number: orderNumber,
+      bookingId: bookingIds.length ? Math.min(...bookingIds) : 0,
+      bookingIds,
+      bookingCodes,
+      linkedBookingCount: Math.max(bookingIds.length, base.linkedBookingCount),
+    })
+  }
+
+  const byBookingId = new Map<number, BookingRequestRow>()
+  for (const row of [...standalone, ...mergedOrderRows]) {
+    const mergeKey = row.orderId && (row.requestTypes.includes('Hold confirmation') || row.requestTypes.includes('Package purchase'))
+      ? -row.orderId
+      : row.bookingId
+    const existing = byBookingId.get(mergeKey)
+    if (existing) {
+      byBookingId.set(mergeKey, mergeBookingRequestRows(existing, row))
+    } else {
+      byBookingId.set(mergeKey, row)
+    }
+  }
+
+  const mergedRows = [...cancellations, ...Array.from(byBookingId.values())]
+  const bookingIdsCoveredByOrder = new Set<number>()
+  for (const row of mergedRows) {
+    if (row.orderId && (row.requestTypes.includes('Hold confirmation') || row.requestTypes.includes('Package purchase'))) {
+      row.bookingIds.forEach((id) => bookingIdsCoveredByOrder.add(id))
+    }
+  }
+
+  return mergedRows
+    .filter((row) => {
+      if (row.requestTypes.includes('Hold confirmation') && !row.orderId && bookingIdsCoveredByOrder.has(row.bookingId)) {
+        return false
+      }
+      return true
+    })
+    .sort((a, b) => {
+      const aTime = a.requestedAt ? new Date(a.requestedAt).getTime() : 0
+      const bTime = b.requestedAt ? new Date(b.requestedAt).getTime() : 0
+      return bTime - aTime
+    })
+}
+
+function bookingRequestTypeLabel(row: BookingRequestRow): string {
+  if (row.requestTypes.length <= 1) return row.requestType
+  return row.requestTypes.join(' + ')
+}
+
+function bookingRequestSubtitle(row: BookingRequestRow): string | null {
+  const parts: string[] = []
+  if (row.orderId) {
+    if (row.linkedBookingCount > 1) {
+      parts.push(`${row.linkedBookingCount} bookings`)
+    }
+  } else if (row.linkedBookingCount > 1) {
+    parts.push(`${row.linkedBookingCount} bookings on this order`)
+  }
+  if (row.requestTypes.length > 1 || row.requestType !== 'Hold confirmation') {
+    parts.push(bookingRequestTypeLabel(row))
+  }
+  if (row.requestTypes.includes('Deposit proof') && row.amount) {
+    parts.push(formatMoney(row.amount))
+  }
+  if (row.requestTypes.includes('Package purchase') && row.amount) {
+    parts.push(formatMoney(row.amount))
+  }
+  return parts.length ? parts.join(' · ') : null
+}
+
+function orderHasServicePackage(order: OrderApiItem): boolean {
+  if ((order.package_items?.length ?? 0) > 0) return true
+  return (order.line_types ?? []).includes('service_package')
+}
+
+function shouldShowBookingPackageOrder(order: OrderApiItem): boolean {
+  const orderType = order.order_type ?? detectOrderType(order)
+  if (orderType !== 'booking' && orderType !== 'mixed') return false
+  if (!orderHasServicePackage(order)) return false
+
+  const status = String(order.status ?? '').toLowerCase()
+  const payment = String(order.payment_status ?? '').toLowerCase()
+
+  if (status === 'cancelled' || status === 'completed') return false
+  if (payment === 'paid' || payment === 'refunded') return false
+  if (status === 'reject_payment_proof') return false
+
+  return true
+}
+
+function buildPackagePurchaseRequest(order: OrderApiItem): BookingRequestRow {
+  const orderId = Number(order.id)
+  const orderNo = order.order_no ?? order.order_number ?? `#${orderId}`
+  const status = String(order.status ?? '').toLowerCase()
+  const payment = String(order.payment_status ?? '').toLowerCase()
+  const statusLabel = payment === 'unpaid' && status === 'processing'
+    ? 'AWAITING VERIFICATION'
+    : payment === 'unpaid'
+      ? 'AWAITING PAYMENT'
+      : String(order.status ?? 'PENDING').toUpperCase()
+
+  return {
+    key: `package-order-${orderId}`,
+    id: orderId,
+    bookingId: 0,
+    bookingIds: [],
+    requestType: 'Package purchase',
+    requestTypes: ['Package purchase'],
+    number: orderNo,
+    orderId,
+    orderNumber: orderNo,
+    bookingCodes: [],
+    linkedBookingCount: 0,
+    customerName: order.customer?.name || '-',
+    contact: order.customer?.phone || order.customer?.email || '-',
+    requestedAt: order.created_at ?? null,
+    status: statusLabel,
+    badgeClassName: 'bg-purple-100 text-purple-800 ring-purple-200',
+    amount: Number(order.grand_total ?? 0),
+  }
 }
 
 function shouldShowEcommerceOrder(order: OrderApiItem): boolean {
@@ -172,14 +415,20 @@ function buildCancellationRequest(row: BookingCancellationRequestRow): BookingRe
   const booking = row.booking
   const customer = booking?.customer
   const bookingId = Number(row.booking_id ?? booking?.id ?? 0)
+  const bookingCode = booking?.booking_code || (bookingId > 0 ? `#${bookingId}` : `Request #${row.id}`)
 
   return {
     key: `cancel-${row.id}`,
     id: row.id,
     requestId: row.id,
     bookingId,
+    bookingIds: bookingId > 0 ? [bookingId] : [],
     requestType: 'Cancellation request',
-    number: booking?.booking_code || (bookingId > 0 ? `#${bookingId}` : `Request #${row.id}`),
+    requestTypes: ['Cancellation request'],
+    number: bookingCode,
+    bookingCode,
+    bookingCodes: bookingCode ? [bookingCode] : [],
+    linkedBookingCount: 1,
     customerName: customer?.name || booking?.guest_name || 'Guest',
     contact: customer?.phone || booking?.guest_phone || customer?.email || booking?.guest_email || '-',
     requestedAt: row.requested_at ?? row.created_at ?? null,
@@ -220,12 +469,27 @@ function Info({ label, value }: { label: string; value?: string | number | null 
 }
 
 function buildHoldRequest(row: BookingHoldRow): BookingRequestRow {
+  const holdOrder = row.hold_deposit_order
+  const linkedBookings = row.hold_linked_bookings ?? []
+  const bookingCode = row.booking_code || `#${row.id}`
+  const orderNumber = holdOrder?.order_number
+  const linkedBookingCount = Math.max(linkedBookings.length, 1)
+
   return {
-    key: `hold-${row.id}`,
+    key: holdOrder?.id ? `hold-order-${holdOrder.id}-${row.id}` : `hold-${row.id}`,
     id: row.id,
     bookingId: row.id,
+    bookingIds: linkedBookings.length ? linkedBookings.map((item) => item.id) : [row.id],
     requestType: 'Hold confirmation',
-    number: row.booking_code || `#${row.id}`,
+    requestTypes: ['Hold confirmation'],
+    number: orderNumber || bookingCode,
+    orderId: holdOrder?.id,
+    orderNumber,
+    bookingCode,
+    bookingCodes: linkedBookings.length
+      ? linkedBookings.map((item) => item.booking_code)
+      : [bookingCode],
+    linkedBookingCount,
     customerName: row.customer_name || row.guest_name || 'Guest',
     contact: row.customer_phone || row.guest_phone || row.customer_email || row.guest_email || '-',
     requestedAt: row.created_at ?? row.appointment_start_at ?? null,
@@ -236,13 +500,19 @@ function buildHoldRequest(row: BookingHoldRow): BookingRequestRow {
 
 function buildDepositProofRequest(row: PaymentLinkReviewRow): BookingRequestRow {
   const bookingId = Number(row.booking_id ?? 0)
+  const bookingCode = row.booking_code || (bookingId > 0 ? `#${bookingId}` : `Link #${row.id}`)
   return {
     key: `deposit-proof-${row.id}`,
     id: row.id,
     linkId: row.id,
     bookingId,
+    bookingIds: bookingId > 0 ? [bookingId] : [],
     requestType: 'Deposit proof',
-    number: row.booking_code || (bookingId > 0 ? `#${bookingId}` : `Link #${row.id}`),
+    requestTypes: ['Deposit proof'],
+    number: bookingCode,
+    bookingCode,
+    bookingCodes: bookingCode ? [bookingCode] : [],
+    linkedBookingCount: 1,
     customerName: row.customer_name || 'Guest',
     contact: row.customer_contact || '-',
     requestedAt: row.slip_uploaded_at ?? null,
@@ -293,6 +563,12 @@ export default function PosRequestCenter({
           const qs = new URLSearchParams({ status, per_page: '50' })
           return fetch(`/api/proxy/pos/appointments?${qs.toString()}`, { cache: 'no-store' })
         }),
+        ...BOOKING_PACKAGE_ORDER_FILTERS.map((filter) => {
+          const qs = new URLSearchParams({ per_page: '25', order_type: 'booking' })
+          if (filter.status) qs.set('status', filter.status)
+          if (filter.payment_status) qs.set('payment_status', filter.payment_status)
+          return fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, { cache: 'no-store' })
+        }),
         ...ECOMMERCE_REQUEST_FILTERS.map((filter) => {
           const qs = new URLSearchParams({ per_page: '25', order_type: 'ecommerce' })
           if (filter.status) qs.set('status', filter.status)
@@ -302,7 +578,11 @@ export default function PosRequestCenter({
       ])
 
       const holdResponses = remainingResponses.slice(0, BOOKING_HOLD_FILTERS.length)
-      const orderResponses = remainingResponses.slice(BOOKING_HOLD_FILTERS.length)
+      const bookingOrderResponses = remainingResponses.slice(
+        BOOKING_HOLD_FILTERS.length,
+        BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length,
+      )
+      const orderResponses = remainingResponses.slice(BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length)
 
       const cancellationPayload = await cancellationRes.json().catch(() => null)
       if (!cancellationRes.ok) {
@@ -311,12 +591,21 @@ export default function PosRequestCenter({
 
       const cancellationRequests = extractRows<BookingCancellationRequestRow>(cancellationPayload).map(buildCancellationRequest)
       const holdPayloads = await Promise.all(holdResponses.map((res) => res.json().catch(() => null)))
-      const holdRequests = dedupeByKey(
-        holdPayloads
-          .flatMap((payload) => extractRows<BookingHoldRow>(payload))
-          .filter((row) => ['HOLD', 'PENDING', 'PENDING_CONFIRMATION'].includes(String(row.status ?? '').toUpperCase()))
-          .map(buildHoldRequest),
-      )
+      const holdRowsRaw = holdPayloads
+        .flatMap((payload) => extractRows<BookingHoldRow>(payload))
+        .filter((row) => ['HOLD', 'PENDING', 'PENDING_CONFIRMATION'].includes(String(row.status ?? '').toUpperCase()))
+      const holdRowsById = new Map<number, BookingHoldRow>()
+      for (const row of holdRowsRaw) {
+        const existing = holdRowsById.get(row.id)
+        if (!existing) {
+          holdRowsById.set(row.id, row)
+          continue
+        }
+        if (row.hold_deposit_order && !existing.hold_deposit_order) {
+          holdRowsById.set(row.id, row)
+        }
+      }
+      const holdRequests = Array.from(holdRowsById.values()).map(buildHoldRequest)
 
       const depositProofPayload = await depositProofPromise
       const depositProofRows = Array.isArray(depositProofPayload?.data?.payment_links)
@@ -324,7 +613,18 @@ export default function PosRequestCenter({
         : []
       const depositProofRequests = depositProofRows.map(buildDepositProofRequest)
 
-      const nextBookingRows = dedupeByKey([...cancellationRequests, ...holdRequests, ...depositProofRequests])
+      const bookingOrderPayloads = await Promise.all(bookingOrderResponses.map((res) => res.json().catch(() => null)))
+      const bookingOrders = bookingOrderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
+      const uniqueBookingOrders = Array.from(new Map(bookingOrders.map((order) => [Number(order.id), order])).values())
+      const packagePurchaseRequests = uniqueBookingOrders
+        .filter(shouldShowBookingPackageOrder)
+        .map(buildPackagePurchaseRequest)
+
+      const nextBookingRows = consolidateBookingRequests(
+        enrichHoldRowsWithSharedOrder(
+          dedupeByKey([...cancellationRequests, ...holdRequests, ...depositProofRequests, ...packagePurchaseRequests]),
+        ),
+      )
 
       const orderPayloads = await Promise.all(orderResponses.map((res) => res.json().catch(() => null)))
       const orders = orderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
@@ -372,8 +672,19 @@ export default function PosRequestCenter({
     { label: 'Total pending', value: totalCount, className: 'border-slate-200 bg-slate-50 text-slate-900' },
   ], [bookingRows.length, ecommerceRows.length, totalCount])
 
-  const openBookingDetail = async (row: BookingRequestRow) => {
+  const openBookingRowDetail = (row: BookingRequestRow) => {
+    if (row.bookingId <= 0 && row.orderId) {
+      openOrderView(row)
+      return
+    }
+    if (row.bookingId > 0) {
+      void openBookingReview(row)
+    }
+  }
+
+  const openBookingReview = async (row: BookingRequestRow) => {
     if (row.bookingId <= 0) return
+    setViewingOrderId(null)
     setViewingBooking(row)
     setBookingDetail(null)
     setBookingDetailError(null)
@@ -390,8 +701,20 @@ export default function PosRequestCenter({
     }
   }
 
+  const openOrderView = (row: BookingRequestRow) => {
+    if (!row.orderId) {
+      void openBookingReview(row)
+      return
+    }
+    setViewingBooking(null)
+    setBookingDetail(null)
+    setBookingDetailError(null)
+    setViewingOrderId(row.orderId)
+  }
+
   const closeBookingDetail = () => {
     setViewingBooking(null)
+    setViewingOrderId(null)
     setBookingDetail(null)
     setBookingDetailError(null)
   }
@@ -406,8 +729,11 @@ export default function PosRequestCenter({
   )
 
   const renderBookingActions = (row: BookingRequestRow) => {
-    if (row.bookingId <= 0) return null
-    return renderViewAction(() => void openBookingDetail(row), `View booking ${row.number}`)
+    if (row.bookingId <= 0 && !row.orderId) return null
+    return renderViewAction(
+      () => openOrderView(row),
+      row.orderId ? `View order ${row.orderNumber ?? row.number}` : `View booking ${row.number}`,
+    )
   }
 
   const renderEcommerceActions = (row: EcommerceRequestRow) =>
@@ -532,7 +858,7 @@ export default function PosRequestCenter({
                       <table className="w-full table-fixed text-left text-sm">
                         <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
                           <tr>
-                            <th className="w-[20%] px-4 py-3">Booking</th>
+                            <th className="w-[20%] px-4 py-3">Order</th>
                             <th className="w-[24%] px-4 py-3">Customer</th>
                             <th className="w-[22%] px-4 py-3">Requested</th>
                             <th className="w-[18%] px-4 py-3">Status</th>
@@ -543,11 +869,17 @@ export default function PosRequestCenter({
                           {bookingRows.map((row) => (
                             <tr key={row.key} className="hover:bg-slate-50/80">
                               <td className="px-4 py-3 align-top">
-                                <p className="truncate font-bold text-slate-950" title={row.number}>{row.number}</p>
-                                {row.requestType !== 'Hold confirmation' ? (
-                                  <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">
-                                    {row.requestType}
-                                    {row.requestType === 'Deposit proof' && row.amount ? ` · ${formatMoney(row.amount)}` : ''}
+                                <button
+                                  type="button"
+                                  onClick={() => openBookingRowDetail(row)}
+                                  className="block max-w-full truncate text-left font-bold text-slate-950 hover:text-amber-700"
+                                  title={row.number}
+                                >
+                                  {row.number}
+                                </button>
+                                {bookingRequestSubtitle(row) ? (
+                                  <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500" title={bookingRequestSubtitle(row) ?? undefined}>
+                                    {bookingRequestSubtitle(row)}
                                   </p>
                                 ) : null}
                               </td>
@@ -572,11 +904,17 @@ export default function PosRequestCenter({
                         <article key={row.key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-base font-bold text-slate-950" title={row.number}>{row.number}</p>
-                              {row.requestType !== 'Hold confirmation' ? (
-                                <p className="mt-0.5 truncate text-[11px] text-slate-500">
-                                  {row.requestType}
-                                  {row.requestType === 'Deposit proof' && row.amount ? ` · ${formatMoney(row.amount)}` : ''}
+                              <button
+                                type="button"
+                                onClick={() => openBookingRowDetail(row)}
+                                className="block max-w-full truncate text-left text-base font-bold text-slate-950 hover:text-amber-700"
+                                title={row.number}
+                              >
+                                {row.number}
+                              </button>
+                              {bookingRequestSubtitle(row) ? (
+                                <p className="mt-0.5 truncate text-[11px] text-slate-500" title={bookingRequestSubtitle(row) ?? undefined}>
+                                  {bookingRequestSubtitle(row)}
                                 </p>
                               ) : null}
                             </div>
@@ -679,7 +1017,14 @@ export default function PosRequestCenter({
                   ? (bookingConfirm.action === 'approve' ? 'Confirm deposit payment?' : 'Reject payment proof?')
                   : (bookingConfirm.action === 'approve' ? 'Approve cancellation?' : 'Reject cancellation?')}
             </h3>
-            <p className="mt-1 text-sm text-slate-600">{bookingConfirm.row.number} · {bookingConfirm.row.customerName}</p>
+            <p className="mt-1 text-sm text-slate-600">
+              {bookingConfirm.row.number} · {bookingConfirm.row.customerName}
+              {bookingConfirm.row.linkedBookingCount > 1 ? (
+                <span className="block text-xs text-slate-500">
+                  Approving confirms {bookingConfirm.row.linkedBookingCount} linked booking(s) on this deposit order.
+                </span>
+              ) : null}
+            </p>
             <textarea value={adminNote} onChange={(e) => setAdminNote(e.target.value)} className="mt-4 min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Admin note (optional)" />
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" disabled={submitting} onClick={() => setBookingConfirm(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-50">Cancel</button>
@@ -690,17 +1035,30 @@ export default function PosRequestCenter({
       ) : null)}
 
       {renderPosBodyModalPortal(
-        viewingBooking ? (
-        <div className={`pos-body-stack-modal-detail flex items-center justify-end bg-slate-950/50${confirmStackOpen ? ' pointer-events-none' : ''}`} role="dialog" aria-modal="true" onClick={closeBookingDetail}>
+        viewingBooking && viewingOrderId === null ? (
+        <div className={`pos-body-stack-modal-detail flex items-center justify-end bg-slate-950/50${confirmStackOpen ? ' pointer-events-none' : ''}`} role="dialog" aria-modal="true">
           <aside className="pointer-events-auto flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="border-b border-slate-200 px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-amber-600">Booking Detail</p>
-                  <h3 className="mt-1 text-xl font-bold text-slate-950">{bookingDetail?.booking_code ?? viewingBooking.number}</h3>
-                  <p className="text-sm text-slate-500">
-                    {viewingBooking.requestType === 'Cancellation request' ? viewingBooking.requestType : viewingBooking.status} · requested {fmtDateTime(viewingBooking.requestedAt)}
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-600">
+                    {viewingBooking.orderNumber ? 'Order review' : 'Booking detail'}
                   </p>
+                  <h3 className="mt-1 text-xl font-bold text-slate-950">
+                    {viewingBooking.orderNumber ?? bookingDetail?.booking_code ?? viewingBooking.number}
+                  </h3>
+                  <p className="text-sm text-slate-500">
+                    {bookingRequestTypeLabel(viewingBooking)} · requested {fmtDateTime(viewingBooking.requestedAt)}
+                  </p>
+                  {viewingBooking.orderId ? (
+                    <button
+                      type="button"
+                      onClick={() => setViewingOrderId(viewingBooking.orderId!)}
+                      className="mt-2 text-xs font-semibold text-blue-700 hover:text-blue-900"
+                    >
+                      View full order {viewingBooking.orderNumber}
+                    </button>
+                  ) : null}
                 </div>
                 <button type="button" onClick={closeBookingDetail} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label="Close booking detail">×</button>
               </div>
@@ -717,7 +1075,7 @@ export default function PosRequestCenter({
                       <Info label="Booking status" value={bookingDetail.status ?? viewingBooking.status} />
                       <Info label="Payment status" value={bookingDetail.payment_status ?? '—'} />
                       <Info label="Created time" value={fmtDateTime((bookingDetail as { created_at?: string | null }).created_at)} />
-                      <Info label="Request type" value={viewingBooking.requestType} />
+                      <Info label="Request type" value={bookingRequestTypeLabel(viewingBooking)} />
                       <Info label="Request created time" value={fmtDateTime(viewingBooking.requestedAt)} />
                     </div>
                   </section>
@@ -814,7 +1172,7 @@ export default function PosRequestCenter({
                       <Info label="Duration" value={calcDurationMinutes(bookingDetail.appointment_start_at, bookingDetail.appointment_end_at) != null ? `${calcDurationMinutes(bookingDetail.appointment_start_at, bookingDetail.appointment_end_at)} min` : bookingDetail.estimated_duration_min ? `${bookingDetail.estimated_duration_min} min` : '—'} />
                     </div>
                   </section>
-                  {viewingBooking.requestType === 'Deposit proof' ? (
+                  {viewingBooking.requestTypes.includes('Deposit proof') ? (
                     <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 shadow-sm">
                       <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Deposit Payment Link · Uploaded Proof</p>
                       <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -846,9 +1204,9 @@ export default function PosRequestCenter({
               ) : null}
             </div>
             <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
-              {canReviewBookingRequests && viewingBooking.requestType === 'Cancellation request' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Approve</button><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
-              {canReviewBookingRequests && viewingBooking.requestType === 'Hold confirmation' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Confirm booking</button><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
-              {canReviewBookingRequests && viewingBooking.requestType === 'Deposit proof' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'deposit_proof', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Confirm deposit</button><button type="button" onClick={() => setBookingConfirm({ kind: 'deposit_proof', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject proof</button></> : null}
+              {canReviewBookingRequests && viewingBooking.requestTypes.includes('Cancellation request') ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Approve</button><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
+              {canReviewBookingRequests && viewingBooking.requestTypes.includes('Hold confirmation') ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Confirm booking</button><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
+              {canReviewBookingRequests && viewingBooking.requestTypes.includes('Deposit proof') ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'deposit_proof', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Confirm deposit</button><button type="button" onClick={() => setBookingConfirm({ kind: 'deposit_proof', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject proof</button></> : null}
               <button type="button" onClick={closeBookingDetail} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Close</button>
             </div>
           </aside>
@@ -856,7 +1214,18 @@ export default function PosRequestCenter({
       ) : null)}
 
       {renderPosBodyModalPortal(
-        viewingOrderId !== null ? <OrderViewPanel orderId={viewingOrderId} onClose={() => setViewingOrderId(null)} onOrderUpdated={() => void load()} zIndexClassName="pos-body-stack-modal-detail" /> : null,
+        viewingOrderId !== null ? (
+          <OrderViewPanel
+            key={viewingOrderId}
+            orderId={viewingOrderId}
+            onClose={() => {
+              setViewingOrderId(null)
+              setViewingBooking(null)
+            }}
+            onOrderUpdated={() => void load()}
+            zIndexClassName="pos-body-stack-modal-detail"
+          />
+        ) : null,
       )}
     </>
   )

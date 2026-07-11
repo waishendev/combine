@@ -264,6 +264,15 @@ class PublicReceiptController extends Controller
             }), 2);
         }
 
+        $displayGrandTotal = (float) $order->grand_total;
+        if (in_array($receiptStage, ['booking_deposit', 'final_settlement'], true)) {
+            $collectedFromLines = round((float) $displayItemsForResponse->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2);
+            if ($collectedFromLines > 0.0001) {
+                $displayGrandTotal = $collectedFromLines;
+                $summarySubtotal = $collectedFromLines;
+            }
+        }
+
         return $this->respond([
             'order_number' => $order->order_number,
             'status' => $order->status,
@@ -278,7 +287,7 @@ class PublicReceiptController extends Controller
             'subtotal' => $summarySubtotal,
             'discount_total' => $order->discount_total,
             'shipping_fee' => $order->shipping_fee,
-            'grand_total' => $order->grand_total,
+            'grand_total' => $displayGrandTotal,
             'promotion_snapshot' => $order->promotion_snapshot,
             'receipt_stage' => $receiptStage,
             'receipt_stage_label' => match ($receiptStage) {

@@ -5,6 +5,30 @@ type BookingTimeInput = {
   estimated_duration_min?: number | null;
 };
 
+export const BOOKING_DISPLAY_TIMEZONE = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
+
+export function formatAccountDateTime(value?: string | null): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  const datePart = date.toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: BOOKING_DISPLAY_TIMEZONE,
+  });
+  const timePart = date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: BOOKING_DISPLAY_TIMEZONE,
+  });
+
+  return `${datePart}  ${timePart}`;
+}
+
 export function getBookingEndDate(booking: BookingTimeInput): Date {
   const endIso = booking.ends_at ?? booking.end_at;
   if (endIso) {

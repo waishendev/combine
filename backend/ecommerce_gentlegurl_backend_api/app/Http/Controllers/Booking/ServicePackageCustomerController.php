@@ -18,9 +18,8 @@ class ServicePackageCustomerController extends Controller
     {
         $customer = $request->user('customer');
 
-        $rows = CustomerServicePackage::query()
+        $rows = $this->customerServicePackageService->redeemablePackagesQuery((int) $customer->id)
             ->with(['servicePackage.items.bookingService:id,name', 'balances.bookingService:id,name'])
-            ->where('customer_id', (int) $customer->id)
             ->orderByDesc('id')
             ->get();
 

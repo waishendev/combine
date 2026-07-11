@@ -7,7 +7,6 @@ use App\Mail\BookingConfirmationMail;
 use App\Mail\OrderShippedMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItemPhoto;
-use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPayment;
 use App\Models\Booking\BookingServicePhoto;
 use App\Models\Ecommerce\Order;
@@ -15,6 +14,8 @@ use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Booking\BookingCancellationService;
+use App\Services\Booking\BookingOrderConfirmationService;
+use App\Services\Booking\CustomerServicePackageService;
 // use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
@@ -32,6 +33,7 @@ class OrderController extends Controller
         // protected OrderReserveService $orderReserveService,
         protected InvoiceService $invoiceService,
         protected BookingCancellationService $bookingCancellationService,
+        protected BookingOrderConfirmationService $bookingOrderConfirmationService,
     )
     {
     }
@@ -156,6 +158,7 @@ class OrderController extends Controller
                         'name' => $customerName,
                         'email' => $customerEmail,
                     ] : null,
+                    'line_types' => $order->items->pluck('line_type')->unique()->values()->all(),
                     'order_type' => $this->detectOrderType($order),
                     'status' => $order->status,
                     'payment_status' => $order->payment_status,
@@ -182,7 +185,7 @@ class OrderController extends Controller
             'items.productVariant',
             'items.booking:id,booking_code,customer_id,guest_name,guest_phone,guest_email,staff_id,service_id,start_at,end_at,status,payment_status,deposit_amount,addon_items_json,settled_service_amount',
             'items.booking.customer:id,name,phone,email',
-            'items.booking.service:id,name,cn_name,duration_min,service_price,price',
+            'items.booking.service:id,name,cn_name,duration_min,service_price,price,deposit_amount',
             'items.booking.staff:id,name',
             'items.booking.itemPhotos:id,booking_id,file_path,original_name,mime_type,size,sort_order,created_at',
             'items.booking.servicePhotos:id,booking_id,image_path,caption,sort_order,created_at,updated_at',
@@ -463,7 +466,8 @@ class OrderController extends Controller
             : (float) $booking->payments()->where('status', 'PAID')->sum('amount');
         $depositPaid = max($orderDepositPaid, $bookingPaymentPaid, (float) ($booking->payment_status === 'PAID' ? $booking->deposit_amount : 0));
 
-        $packageUsage = CustomerServicePackageUsage::query()
+        $packageClaims = CustomerServicePackageUsage::query()
+            ->with(['customerServicePackage.servicePackage:id,name'])
             ->where(function ($query) use ($booking) {
                 $query->where('booking_id', (int) $booking->id)
                     ->orWhere(function ($posQuery) use ($booking) {
@@ -472,7 +476,17 @@ class OrderController extends Controller
                     });
             })
             ->whereIn('status', ['reserved', 'consumed'])
-            ->first();
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (CustomerServicePackageUsage $usage) => [
+                'package_name' => (string) ($usage->customerServicePackage?->servicePackage?->name ?? 'Package'),
+                'booking_service_id' => (int) $usage->booking_service_id,
+                'status' => (string) $usage->status,
+            ])
+            ->values()
+            ->all();
+
+        $packageUsage = collect($packageClaims)->first();
         $packageOffset = $packageUsage ? max(0.0, $serviceTotal) : 0.0;
         $balanceDue = round(max(0, $totalAmount - $depositPaid - $settlementPaid - $packageOffset), 2);
 
@@ -501,6 +515,7 @@ class OrderController extends Controller
                 'name' => (string) $booking->service->name,
                 'cn_name' => $booking->service->cn_name,
                 'duration_min' => (int) ($booking->service->duration_min ?? 0),
+                'deposit_amount' => round((float) ($booking->service->deposit_amount ?? 0), 2),
             ] : null,
             'add_ons' => $addonItems,
             'staff' => $booking->staff ? [
@@ -515,6 +530,7 @@ class OrderController extends Controller
             'settlement_paid' => round($settlementPaid, 2),
             'balance_due' => $balanceDue,
             'package_offset' => round($packageOffset, 2),
+            'package_claims' => $packageClaims,
             'uploaded_item_photos' => $itemPhotos->map(fn (BookingItemPhoto $photo) => [
                 'id' => (int) $photo->id,
                 'file_url' => $photo->file_url,
@@ -546,6 +562,7 @@ class OrderController extends Controller
                     'cn_name' => $item['cn_name'] ?? $item['cn_label'] ?? $item['linked_cn_name'] ?? null,
                     'extra_duration_min' => (int) ($item['extra_duration_min'] ?? $item['duration_min'] ?? 0),
                     'extra_price' => (float) ($item['extra_price'] ?? $item['price'] ?? 0),
+                    'linked_deposit_amount' => (float) ($item['linked_deposit_amount'] ?? $item['deposit_contribution'] ?? 0),
                 ];
             })
             ->filter()
@@ -773,6 +790,7 @@ class OrderController extends Controller
 
                 if ($isBookingOrder) {
                     $this->cancelLinkedOrderBookings($lockedOrder, $request, $validated['admin_note']);
+                    app(CustomerServicePackageService::class)->revokeUnpaidBookingPackagesForOrder($lockedOrder);
                 }
 
                 // $this->orderReserveService->releaseStockForOrder($lockedOrder);
@@ -881,19 +899,7 @@ class OrderController extends Controller
 
     protected function linkedBookingIdsForOrder(Order $order)
     {
-        $itemBookingIds = $order->items()
-            ->whereNotNull('booking_id')
-            ->pluck('booking_id');
-
-        $serviceBookingIds = $order->serviceItems()
-            ->whereNotNull('booking_id')
-            ->pluck('booking_id');
-
-        return $itemBookingIds
-            ->merge($serviceBookingIds)
-            ->unique()
-            ->filter()
-            ->values();
+        return $this->bookingOrderConfirmationService->linkedBookingIdsForOrder($order);
     }
 
     protected function cancelLinkedOrderBookings(Order $order, Request $request, string $reason): void
@@ -942,44 +948,17 @@ class OrderController extends Controller
 
     protected function confirmOrderBookings(Order $order): void
     {
-        $bookingIds = $order->items()
-            ->whereNotNull('booking_id')
-            ->pluck('booking_id')
-            ->unique()
-            ->filter()
-            ->values();
+        $confirmedIds = $this->bookingOrderConfirmationService->confirmLinkedBookingsForPaidOrder(
+            $order,
+            'admin_confirm',
+        );
 
-        if ($bookingIds->isEmpty()) {
+        if ($confirmedIds === []) {
             return;
         }
 
-        Booking::query()
-            ->whereIn('id', $bookingIds)
-            ->where('payment_status', '!=', 'PAID')
-            ->update([
-                'status' => 'CONFIRMED',
-                'payment_status' => 'PAID',
-                'hold_expires_at' => null,
-                'updated_at' => now(),
-            ]);
-
-        foreach ($bookingIds as $bookingId) {
-            BookingLog::create([
-                'booking_id' => $bookingId,
-                'actor_type' => 'SYSTEM',
-                'actor_id' => null,
-                'action' => 'PAYMENT_CONFIRMED',
-                'meta' => [
-                    'order_id' => $order->id,
-                    'order_no' => $order->order_number,
-                    'source' => 'admin_confirm',
-                ],
-                'created_at' => now(),
-            ]);
-        }
-
         $bookings = Booking::query()
-            ->whereIn('id', $bookingIds)
+            ->whereIn('id', $confirmedIds)
             ->where('status', 'CONFIRMED')
             ->with(['service', 'staff', 'customer'])
             ->get();
@@ -991,7 +970,7 @@ class OrderController extends Controller
         Log::info('Order bookings confirmed via admin payment confirmation', [
             'order_id' => $order->id,
             'order_no' => $order->order_number,
-            'booking_ids' => $bookingIds->all(),
+            'booking_ids' => $confirmedIds,
         ]);
     }
 

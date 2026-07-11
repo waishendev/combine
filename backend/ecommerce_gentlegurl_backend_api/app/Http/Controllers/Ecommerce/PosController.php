@@ -43,6 +43,7 @@ use App\Models\Staff;
 use App\Services\Booking\BookingAddonQuantityService;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCancellationService;
+use App\Services\Booking\BookingOrderConfirmationService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\SettingService;
@@ -81,6 +82,7 @@ class PosController extends Controller
         protected StaffCommissionService $staffCommissionService,
         protected OrderPaymentService $orderPaymentService,
         protected BookingCancellationService $bookingCancellationService,
+        protected BookingOrderConfirmationService $bookingOrderConfirmationService,
         protected BookingAddonQuantityService $addonQuantityService,
     ) {}
 
@@ -368,6 +370,10 @@ class PosController extends Controller
             $guestName = trim((string) ($booking->guest_name ?? ''));
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
             $guestEmail = trim((string) ($booking->guest_email ?? ''));
+            $holdDepositMeta = in_array((string) $booking->status, ['HOLD', 'PENDING', 'PENDING_CONFIRMATION'], true)
+                ? $this->resolveHoldDepositOrderMeta($booking)
+                : null;
+
             return [
                 'id' => (int) $booking->id,
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
@@ -419,6 +425,8 @@ class PosController extends Controller
                 'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
                 'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
                 'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
+                'hold_deposit_order' => $holdDepositMeta['order'] ?? null,
+                'hold_linked_bookings' => $holdDepositMeta['linked_bookings'] ?? [],
                 ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
             ];
         })->when($statusFilterNeedsActiveCheck, function ($rows) use ($unpaidOnly) {
@@ -484,7 +492,7 @@ class PosController extends Controller
         $packageClaims = $this->resolvePerLinePackageClaims($booking, $summary);
         $history = $this->resolveAppointmentPaymentHistory((int) $booking->id);
         $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
-        $holdOrder = $this->resolveHoldDepositOrderForReview($booking);
+        $holdDepositMeta = $this->resolveHoldDepositOrderMeta($booking);
 
         $guestName = trim((string) ($booking->guest_name ?? ''));
         $guestPhone = trim((string) ($booking->guest_phone ?? ''));
@@ -496,14 +504,8 @@ class PosController extends Controller
             'status' => (string) $booking->status,
             'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
             'hold_expires_at' => optional($booking->hold_expires_at)?->toIso8601String(),
-            'hold_deposit_order' => $holdOrder ? [
-                'id' => (int) $holdOrder->id,
-                'order_number' => (string) $holdOrder->order_number,
-                'status' => (string) $holdOrder->status,
-                'payment_status' => (string) $holdOrder->payment_status,
-                'payment_method' => (string) ($holdOrder->payment_method ?? ''),
-                'grand_total' => (float) ($holdOrder->grand_total ?? 0),
-            ] : null,
+            'hold_deposit_order' => $holdDepositMeta['order'] ?? null,
+            'hold_linked_bookings' => $holdDepositMeta['linked_bookings'] ?? [],
             'payment_proofs' => $this->mapAppointmentPaymentProofs($booking),
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
@@ -696,43 +698,10 @@ class PosController extends Controller
         }
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
-        $mainServices = collect($summary['main_services'] ?? []);
-        $allLines = [];
+        $allLines = $this->resolveAppointmentPackageLinesForBooking($booking, $summary);
+        $currentClaims = $this->resolveAppointmentPackageClaimsCollection($booking);
 
-        foreach ($mainServices as $idx => $service) {
-            $serviceId = (int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0);
-            if ($serviceId > 0) {
-                $allLines[] = [
-                    'line_type' => 'main_service',
-                    'line_index' => $idx,
-                    'booking_service_id' => $serviceId,
-                    'service_name' => (string) ($service['name'] ?? 'Service'),
-                    'cn_name' => $service['cn_name'] ?? null,
-                ];
-            }
-
-            foreach (($service['add_ons'] ?? []) as $addonIdx => $addon) {
-                $addonServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
-                if ($addonServiceId > 0) {
-                    $allLines[] = [
-                        'line_type' => 'addon',
-                        'line_index' => $addonIdx,
-                        'booking_service_id' => $addonServiceId,
-                        'service_name' => (string) ($addon['name'] ?? 'Add-on'),
-                        'cn_name' => $addon['cn_name'] ?? null,
-                        'parent_service_index' => $idx,
-                    ];
-                }
-            }
-        }
-
-        $customerId = (int) $booking->customer_id;
-        $currentClaims = CustomerServicePackageUsage::query()
-            ->where('booking_id', (int) $booking->id)
-            ->whereIn('status', ['reserved', 'consumed'])
-            ->get();
-
-        return $this->respond($this->buildEligiblePackagesPayload($customerId, $allLines, $currentClaims));
+        return $this->respond($this->buildEligiblePackagesPayload((int) $booking->customer_id, $allLines, $currentClaims));
     }
 
     public function eligiblePackagesForServiceCartItem(Request $request, int $itemId)
@@ -937,6 +906,171 @@ class PosController extends Controller
         return $lines;
     }
 
+    protected function resolveAppointmentPackageClaimsCollection(Booking $booking): \Illuminate\Support\Collection
+    {
+        $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking((int) $booking->id);
+
+        return CustomerServicePackageUsage::query()
+            ->where(function ($q) use ($booking, $posCartItemIds) {
+                $q->where('booking_id', (int) $booking->id)
+                    ->orWhere(function ($q2) use ($booking) {
+                        $q2->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id)
+                            ->whereNull('booking_id');
+                    });
+
+                if ($posCartItemIds !== []) {
+                    $q->orWhere(function ($q3) use ($posCartItemIds) {
+                        $q3->where('used_from', 'POS')
+                            ->whereIn('used_ref_id', $posCartItemIds);
+                    })->orWhereIn('booking_id', $posCartItemIds);
+                }
+            })
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->get();
+    }
+
+    protected function resolveAddonPackageLineBookingServiceId(array $addon, \Illuminate\Support\Collection $optionsById): int
+    {
+        $linkedId = (int) ($addon['linked_booking_service_id'] ?? 0);
+        if ($linkedId > 0) {
+            return $linkedId;
+        }
+
+        $optionId = (int) ($addon['id'] ?? 0);
+        if ($optionId <= 0) {
+            return 0;
+        }
+
+        $option = $optionsById->get($optionId);
+
+        return $option ? (int) ($option->linked_booking_service_id ?? 0) : 0;
+    }
+
+    /**
+     * @return array<int, array{line_type: string, line_index: int, booking_service_id: int, service_name: string, cn_name?: string|null, parent_service_index?: int}>
+     */
+    protected function resolveAppointmentPackageLinesForBooking(Booking $booking, ?array $summary = null): array
+    {
+        $summary = $summary ?? $this->resolveAppointmentFinancialSummary($booking);
+        $mainServices = collect($summary['main_services'] ?? []);
+        $addonCandidates = collect($summary['addon_settlement_items'] ?? [])
+            ->concat($summary['add_ons'] ?? [])
+            ->concat($mainServices->flatMap(fn (array $service) => $service['add_ons'] ?? []))
+            ->filter(fn ($addon) => is_array($addon))
+            ->values();
+
+        $optionIds = $addonCandidates
+            ->filter(fn (array $addon) => (int) ($addon['linked_booking_service_id'] ?? 0) <= 0)
+            ->map(fn (array $addon) => (int) ($addon['id'] ?? 0))
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $optionsById = $optionIds->isNotEmpty()
+            ? BookingServiceQuestionOption::query()
+                ->whereIn('id', $optionIds->all())
+                ->get(['id', 'linked_booking_service_id', 'label', 'cn_label'])
+                ->keyBy('id')
+            : collect();
+
+        $allLines = [];
+        $seenKeys = [];
+
+        $appendLine = function (array $line) use (&$allLines, &$seenKeys): void {
+            $serviceId = (int) ($line['booking_service_id'] ?? 0);
+            if ($serviceId <= 0) {
+                return;
+            }
+
+            $key = (string) ($line['line_type'] ?? 'main_service')
+                . ':'
+                . (int) ($line['line_index'] ?? 0)
+                . ':'
+                . $serviceId;
+            if (isset($seenKeys[$key])) {
+                return;
+            }
+
+            $seenKeys[$key] = true;
+            $allLines[] = $line;
+        };
+
+        foreach ($mainServices as $idx => $service) {
+            $serviceId = (int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0);
+            if ($serviceId > 0) {
+                $appendLine([
+                    'line_type' => 'main_service',
+                    'line_index' => $idx,
+                    'booking_service_id' => $serviceId,
+                    'service_name' => (string) ($service['name'] ?? 'Service'),
+                    'cn_name' => $service['cn_name'] ?? null,
+                ]);
+            }
+
+            foreach (($service['add_ons'] ?? []) as $addonIdx => $addon) {
+                if (! is_array($addon)) {
+                    continue;
+                }
+                $addonServiceId = $this->resolveAddonPackageLineBookingServiceId($addon, $optionsById);
+                if ($addonServiceId <= 0) {
+                    continue;
+                }
+                $appendLine([
+                    'line_type' => 'addon',
+                    'line_index' => $addonIdx,
+                    'booking_service_id' => $addonServiceId,
+                    'service_name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                    'cn_name' => $addon['cn_name'] ?? $addon['cn_label'] ?? null,
+                    'parent_service_index' => $idx,
+                ]);
+            }
+        }
+
+        foreach ((array) ($summary['addon_settlement_items'] ?? []) as $addonIdx => $addon) {
+            if (! is_array($addon)) {
+                continue;
+            }
+            $addonServiceId = $this->resolveAddonPackageLineBookingServiceId($addon, $optionsById);
+            if ($addonServiceId <= 0) {
+                continue;
+            }
+            $appendLine([
+                'line_type' => 'addon',
+                'line_index' => $addonIdx,
+                'booking_service_id' => $addonServiceId,
+                'service_name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                'cn_name' => $addon['cn_name'] ?? $addon['cn_label'] ?? null,
+            ]);
+        }
+
+        $listedAddonServiceIds = collect($allLines)
+            ->filter(fn (array $line) => ($line['line_type'] ?? '') === 'addon')
+            ->pluck('booking_service_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique();
+
+        foreach ((array) ($summary['add_ons'] ?? []) as $addonIdx => $addon) {
+            if (! is_array($addon)) {
+                continue;
+            }
+            $addonServiceId = $this->resolveAddonPackageLineBookingServiceId($addon, $optionsById);
+            if ($addonServiceId <= 0 || $listedAddonServiceIds->contains($addonServiceId)) {
+                continue;
+            }
+            $appendLine([
+                'line_type' => 'addon',
+                'line_index' => 1000 + $addonIdx,
+                'booking_service_id' => $addonServiceId,
+                'service_name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                'cn_name' => $addon['cn_name'] ?? $addon['cn_label'] ?? null,
+            ]);
+        }
+
+        return $allLines;
+    }
+
     protected function buildEligiblePackagesPayload(int $customerId, array $allLines, $currentClaims): array
     {
         $customerPackages = CustomerServicePackage::query()
@@ -1116,8 +1250,14 @@ class PosController extends Controller
 
         $released = CustomerServicePackageUsage::query()
             ->whereIn('id', $usageIds)
-            ->where('booking_id', (int) $booking->id)
             ->where('status', 'reserved')
+            ->where(function ($query) use ($booking) {
+                $query->where('booking_id', (int) $booking->id)
+                    ->orWhere(function ($q) use ($booking) {
+                        $q->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id);
+                    });
+            })
             ->update([
                 'status' => 'released',
                 'released_at' => now(),
@@ -1994,7 +2134,10 @@ class PosController extends Controller
 
                 $startAt = Carbon::parse($lockedBooking->start_at ?? $booking->start_at);
                 $transactionNewEndAt = $startAt->copy()->addMinutes($recalculatedDurationMin);
-                $staffId = (int) ($lockedBooking->staff_id ?? $booking->staff_id ?? 0);
+                $primaryStaffIdFromSplits = (int) data_get($normalizedSplits, 'splits.0.staff_id', 0);
+                $staffId = $primaryStaffIdFromSplits > 0
+                    ? $primaryStaffIdFromSplits
+                    : (int) ($lockedBooking->staff_id ?? $booking->staff_id ?? 0);
                 if ($staffId <= 0) {
                     throw ValidationException::withMessages([
                         'assigned_staff_id' => __('Assigned staff is required.'),
@@ -2011,45 +2154,75 @@ class PosController extends Controller
                 $isCompletedBooking = strtoupper((string) ($lockedBooking->status ?? '')) === 'COMPLETED';
 
                 if (! $isCompletedBooking) {
-                    $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $transactionNewEndAt);
-                    $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-                    $outsideScheduleOverrideRequested = (bool) $request->boolean('availability_override')
-                        && (string) $request->input('availability_override_type') === 'outside_staff_schedule'
-                        && $scheduleFailureReason === 'outside_staff_schedule';
-                    $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-                        $staffId,
-                        $startAt,
-                        $transactionNewEndAt,
-                        $bufferMin,
-                        (int) $lockedBooking->id,
-                        $lockedBooking,
-                        BookingAvailabilityService::SCOPE_CRM,
-                    );
+                    if ($this->posAvailabilityVerifyHolidayOnly()) {
+                        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                            $staffId,
+                            $startAt,
+                            $transactionNewEndAt,
+                            $bufferMin,
+                            (int) $lockedBooking->id,
+                            $lockedBooking,
+                            BookingAvailabilityService::SCOPE_CRM,
+                        );
 
-                    if (((! (bool) ($scheduleDiagnostics['is_available'] ?? false)) && ! $outsideScheduleOverrideRequested) || (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-                        $settlementReasonCode = (bool) ($conflictDiagnostics['has_conflict'] ?? false)
-                            ? $this->posAvailabilityReasonCode($conflictDiagnostics)
-                            : ($scheduleFailureReason ?: 'staff_unavailable');
-                        $settlementConflictDiagnostics = [
-                            ...$conflictDiagnostics,
-                            'reason_code' => $settlementReasonCode,
-                            'staff_schedule' => $scheduleDiagnostics,
-                            'current_booking_id' => (int) $lockedBooking->id,
-                            'current_appointment_id' => (int) $lockedBooking->id,
-                        ];
-                        Log::warning('POS edit settlement appointment duration conflict', $settlementConflictDiagnostics);
+                        if ($this->posAvailabilityConflictIsLeaveOnly($conflictDiagnostics)) {
+                            $settlementReasonCode = $this->posAvailabilityReasonCode($conflictDiagnostics);
+                            $settlementConflictDiagnostics = [
+                                ...$conflictDiagnostics,
+                                'reason_code' => $settlementReasonCode,
+                                'staff_schedule' => ['is_available' => true, 'failure_reason' => null],
+                                'current_booking_id' => (int) $lockedBooking->id,
+                                'current_appointment_id' => (int) $lockedBooking->id,
+                            ];
+                            Log::warning('POS edit settlement appointment leave conflict', $settlementConflictDiagnostics);
 
-                        throw ValidationException::withMessages([
-                            'appointment_end_at' => $this->formatSettlementConflictMessage($settlementConflictDiagnostics),
-                        ]);
-                    }
+                            throw ValidationException::withMessages([
+                                'appointment_end_at' => $this->formatSettlementConflictMessage($settlementConflictDiagnostics),
+                            ]);
+                        }
 
-                    $scheduleOverride = $outsideScheduleOverrideRequested
-                        ? $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, $scheduleDiagnostics, $request->user()?->id)
-                        : $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, ['failure_reason' => null], $request->user()?->id);
+                        $scheduleOverride = $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, ['failure_reason' => null], $request->user()?->id);
+                    } else {
+                        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $transactionNewEndAt);
+                        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+                        $outsideScheduleOverrideRequested = (bool) $request->boolean('availability_override')
+                            && (string) $request->input('availability_override_type') === 'outside_staff_schedule'
+                            && $scheduleFailureReason === 'outside_staff_schedule';
+                        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                            $staffId,
+                            $startAt,
+                            $transactionNewEndAt,
+                            $bufferMin,
+                            (int) $lockedBooking->id,
+                            $lockedBooking,
+                            BookingAvailabilityService::SCOPE_CRM,
+                        );
 
-                    if ((bool) ($scheduleOverride['schedule_override_used'] ?? false)) {
-                        $settlementPolicyWarnings[] = 'Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.';
+                        if (((! (bool) ($scheduleDiagnostics['is_available'] ?? false)) && ! $outsideScheduleOverrideRequested) || (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                            $settlementReasonCode = (bool) ($conflictDiagnostics['has_conflict'] ?? false)
+                                ? $this->posAvailabilityReasonCode($conflictDiagnostics)
+                                : ($scheduleFailureReason ?: 'staff_unavailable');
+                            $settlementConflictDiagnostics = [
+                                ...$conflictDiagnostics,
+                                'reason_code' => $settlementReasonCode,
+                                'staff_schedule' => $scheduleDiagnostics,
+                                'current_booking_id' => (int) $lockedBooking->id,
+                                'current_appointment_id' => (int) $lockedBooking->id,
+                            ];
+                            Log::warning('POS edit settlement appointment duration conflict', $settlementConflictDiagnostics);
+
+                            throw ValidationException::withMessages([
+                                'appointment_end_at' => $this->formatSettlementConflictMessage($settlementConflictDiagnostics),
+                            ]);
+                        }
+
+                        $scheduleOverride = $outsideScheduleOverrideRequested
+                            ? $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, $scheduleDiagnostics, $request->user()?->id)
+                            : $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, ['failure_reason' => null], $request->user()?->id);
+
+                        if ((bool) ($scheduleOverride['schedule_override_used'] ?? false)) {
+                            $settlementPolicyWarnings[] = 'Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.';
+                        }
                     }
                 } else {
                     $scheduleOverride = $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, ['failure_reason' => null], $request->user()?->id);
@@ -2875,27 +3048,43 @@ class PosController extends Controller
 
         $newStart = Carbon::parse($validated['start_at']);
         $newEnd = $newStart->copy()->addMinutes($this->recalculateAppointmentDurationMin($booking));
-        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($targetStaffId, $newStart, $newEnd);
-        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-            && ! in_array($scheduleFailureReason, $this->posScheduleSoftFailureReasons(), true)) {
-            return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', Staff::query()->findOrFail($targetStaffId), $newStart, $newEnd, $scheduleDiagnostics);
-        }
 
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-            $targetStaffId,
-            $newStart,
-            $newEnd,
-            (int) $booking->buffer_min,
-            (int) $booking->id,
-            $booking,
-            BookingAvailabilityService::SCOPE_CRM,
-        );
-        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-            return $this->respondPosAvailabilityError($conflictDiagnostics);
-        }
+        if ($this->posAvailabilityVerifyHolidayOnly()) {
+            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed(
+                $targetStaff,
+                $newStart,
+                $newEnd,
+                (int) $booking->buffer_min,
+                (int) $booking->id,
+                $booking,
+            );
+            if ($leaveBlock) {
+                return $leaveBlock;
+            }
+            $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, ['failure_reason' => null], $request->user()?->id);
+        } else {
+            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($targetStaffId, $newStart, $newEnd);
+            $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+            if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                && ! in_array($scheduleFailureReason, $this->posScheduleSoftFailureReasons(), true)) {
+                return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', Staff::query()->findOrFail($targetStaffId), $newStart, $newEnd, $scheduleDiagnostics);
+            }
 
-        $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, $scheduleDiagnostics, $request->user()?->id);
+            $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                $targetStaffId,
+                $newStart,
+                $newEnd,
+                (int) $booking->buffer_min,
+                (int) $booking->id,
+                $booking,
+                BookingAvailabilityService::SCOPE_CRM,
+            );
+            if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                return $this->respondPosAvailabilityError($conflictDiagnostics);
+            }
+
+            $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, $scheduleDiagnostics, $request->user()?->id);
+        }
 
         $oldStart = $booking->start_at;
         $oldEnd = $booking->end_at;
@@ -3431,6 +3620,33 @@ class PosController extends Controller
             'staff_id' => (int) $staff->id,
             'staff_schedule' => $scheduleDiagnostics,
         ]);
+        $verifyMode = $this->posAvailabilityVerifyMode();
+
+        if ($this->posAvailabilityVerifyHolidayOnly()) {
+            $reasonCode = null;
+            if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                $leaveReason = $this->posAvailabilityReasonCode($conflictPayload);
+                if ($this->isPosLeaveHardReason($leaveReason)) {
+                    $reasonCode = $leaveReason;
+                }
+            }
+            $isHardBlock = $reasonCode !== null;
+            $userMessage = $isHardBlock
+                ? $this->formatPosUserFacingAvailabilityMessage($conflictPayload, $staff, $reasonCode)
+                : null;
+
+            return $this->respond([
+                'is_available' => ! $isHardBlock,
+                'is_hard_block' => $isHardBlock,
+                'is_outside_staff_schedule' => false,
+                'reason_code' => $reasonCode,
+                'message' => $userMessage,
+                'verify_mode' => $verifyMode,
+                'staff_schedule' => $scheduleDiagnostics,
+                'conflict_debug' => $conflictDiagnostics,
+            ]);
+        }
+
         $reasonCode = null;
         if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
             $reasonCode = $this->posAvailabilityReasonCode($conflictPayload);
@@ -3450,6 +3666,7 @@ class PosController extends Controller
             'is_outside_staff_schedule' => $isScheduleOverrideAllowed,
             'reason_code' => $reasonCode,
             'message' => $userMessage,
+            'verify_mode' => $verifyMode,
             'staff_schedule' => $scheduleDiagnostics,
             'conflict_debug' => $conflictDiagnostics,
         ]);
@@ -3526,6 +3743,10 @@ class PosController extends Controller
             ])),
             $ignoreBooking?->id,
             $ignoreBooking,
+            BookingAvailabilityService::SCOPE_CRM,
+            [],
+            [],
+            $this->posAvailabilityVerifyHolidayOnly(),
         );
 
         return $this->respond([
@@ -3537,6 +3758,7 @@ class PosController extends Controller
             'slot_step_min' => 15,
             'has_primary_slot_policy' => ! empty($configuredPrimarySlots),
             'configured_primary_slots' => $configuredPrimarySlots,
+            'verify_mode' => $this->posAvailabilityVerifyMode(),
             'visible_slots' => $visible,
             'slots' => $visible,
         ]);
@@ -3713,24 +3935,31 @@ class PosController extends Controller
         $endAt = $startAt->copy()->addMinutes($totalDurationMin);
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
-        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
-        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-            && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
-            return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
-        }
+        if ($this->posAvailabilityVerifyHolidayOnly()) {
+            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed($staff, $startAt, $endAt, $bufferMin);
+            if ($leaveBlock) {
+                return $leaveBlock;
+            }
+        } else {
+            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+            $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+            if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
+                return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
+            }
 
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-            (int) $staff->id,
-            $startAt,
-            $endAt,
-            $bufferMin,
-            null,
-            null,
-            BookingAvailabilityService::SCOPE_CRM,
-        );
-        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-            return $this->respondPosAvailabilityError($conflictDiagnostics);
+            $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                (int) $staff->id,
+                $startAt,
+                $endAt,
+                $bufferMin,
+                null,
+                null,
+                BookingAvailabilityService::SCOPE_CRM,
+            );
+            if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                return $this->respondPosAvailabilityError($conflictDiagnostics);
+            }
         }
 
 
@@ -4121,27 +4350,35 @@ class PosController extends Controller
 
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
-        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
-        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-            && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
-            return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
-        }
+        if ($this->posAvailabilityVerifyHolidayOnly()) {
+            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed($staff, $startAt, $endAt, $bufferMin);
+            if ($leaveBlock) {
+                return $leaveBlock;
+            }
+            $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, ['failure_reason' => null], $request->user()?->id);
+        } else {
+            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+            $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+            if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
+                return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
+            }
 
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-            (int) $staff->id,
-            $startAt,
-            $endAt,
-            $bufferMin,
-            null,
-            null,
-            BookingAvailabilityService::SCOPE_CRM,
-        );
-        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-            return $this->respondPosAvailabilityError($conflictDiagnostics);
-        }
+            $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                (int) $staff->id,
+                $startAt,
+                $endAt,
+                $bufferMin,
+                null,
+                null,
+                BookingAvailabilityService::SCOPE_CRM,
+            );
+            if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                return $this->respondPosAvailabilityError($conflictDiagnostics);
+            }
 
-        $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
+            $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
+        }
 
         $splits = collect($validated['staff_splits'] ?? [
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
@@ -7165,31 +7402,51 @@ class PosController extends Controller
                     abort(422, __('Assigned staff is inactive.'));
                 }
 
-                $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt);
-                $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
-                if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-                    && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
-                    abort(409, __('Selected staff is not available on this day.'));
-                }
-
-                if ($serviceItem->assigned_staff_id) {
-                    $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
-                        (int) $serviceItem->assigned_staff_id,
-                        $startAt,
-                        $endAt,
-                        $bufferMin,
-                        null,
-                        null,
-                        BookingAvailabilityService::SCOPE_CRM,
-                        [],
-                        [(int) $serviceItem->id],
-                    );
-                    if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-                        abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
+                if ($this->posAvailabilityVerifyHolidayOnly()) {
+                    if ($serviceItem->assigned_staff_id) {
+                        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                            (int) $serviceItem->assigned_staff_id,
+                            $startAt,
+                            $endAt,
+                            $bufferMin,
+                            null,
+                            null,
+                            BookingAvailabilityService::SCOPE_CRM,
+                            [],
+                            [(int) $serviceItem->id],
+                        );
+                        if ($this->posAvailabilityConflictIsLeaveOnly($conflictDiagnostics)) {
+                            abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
+                        }
                     }
-                }
+                    $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, ['failure_reason' => null], $request->user()?->id);
+                } else {
+                    $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt);
+                    $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+                    if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                        && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+                        abort(409, __('Selected staff is not available on this day.'));
+                    }
 
-                $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
+                    if ($serviceItem->assigned_staff_id) {
+                        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                            (int) $serviceItem->assigned_staff_id,
+                            $startAt,
+                            $endAt,
+                            $bufferMin,
+                            null,
+                            null,
+                            BookingAvailabilityService::SCOPE_CRM,
+                            [],
+                            [(int) $serviceItem->id],
+                        );
+                        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                            abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
+                        }
+                    }
+
+                    $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
+                }
 
                 $booking = Booking::query()->create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -8952,17 +9209,45 @@ class PosController extends Controller
             $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
 
             $lineTotal = round($balanceDue, 2);
+            $packageClaims = $this->resolvePerLinePackageClaims($booking, $summary);
+            $claimedServiceIds = collect($packageClaims)
+                ->pluck('booking_service_id')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn (int $id) => $id > 0)
+                ->unique()
+                ->values();
+            $depositContribution = max(0.0, (float) ($summary['deposit_contribution'] ?? 0));
+            $legacyPackageOffset = max(0.0, (float) ($summary['package_offset'] ?? 0));
             $rawMainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
-            $mainSettlementItems = $rawMainSettlementItems->map(function (array $line) use ($item, $summary) {
+            $originalMainLine = $rawMainSettlementItems->first(
+                fn (array $line, int $idx) => (bool) ($line['is_original'] ?? ($idx === 0))
+            );
+            $originalMainServiceId = (int) (
+                (is_array($originalMainLine) ? ($originalMainLine['linked_booking_service_id'] ?? null) : null)
+                ?: ($booking->service_id ?? 0)
+            );
+            $mainSettlementItems = $rawMainSettlementItems->map(function (array $line) use (
+                $item,
+                $claimedServiceIds,
+                $legacyPackageOffset,
+                $depositContribution,
+            ) {
                 $lineFullAmount = max(0.0, (float) ($line['extra_price'] ?? 0));
                 $lineKey = (string) ($line['line_key'] ?? '');
                 $priceOverride = $this->applyPriceOverrideToAmount($item, $lineKey, $lineFullAmount);
                 $gross = (float) $priceOverride['amount'];
                 $isOriginal = (bool) ($line['is_original'] ?? false);
                 $paidAmount = max(0.0, (float) ($line['paid_amount'] ?? 0));
-                $depositCredit = $isOriginal ? max(0.0, (float) ($summary['deposit_contribution'] ?? 0)) : 0.0;
-                $packageOffset = $isOriginal ? max(0.0, (float) ($summary['package_offset'] ?? 0)) : 0.0;
-                $balanceDue = max(0.0, $gross - $paidAmount - $depositCredit - $packageOffset);
+                $serviceId = (int) ($line['linked_booking_service_id'] ?? $line['id'] ?? 0);
+                $linePackageOffset = 0.0;
+                if ($claimedServiceIds->isNotEmpty()) {
+                    $linePackageOffset = $claimedServiceIds->contains($serviceId) ? $gross : 0.0;
+                } elseif ($isOriginal) {
+                    $linePackageOffset = $legacyPackageOffset;
+                }
+                $mainLineCovered = $gross > 0.0001 && $linePackageOffset >= $gross - 0.0001;
+                $depositCredit = ($isOriginal && ! $mainLineCovered) ? $depositContribution : 0.0;
+                $balanceDue = max(0.0, $gross - $paidAmount - $depositCredit - $linePackageOffset);
                 $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $balanceDue);
 
                 return [
@@ -8977,7 +9262,10 @@ class PosController extends Controller
                     'line_total_after_discount' => $discount['line_total_after_discount'],
                 ];
             })->values();
-            $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []))->map(function (array $line) use ($item) {
+            $originalMainCovered = $claimedServiceIds->contains($originalMainServiceId)
+                || ($claimedServiceIds->isEmpty() && $legacyPackageOffset > 0.0001);
+            $addonDepositCreditRemaining = $originalMainCovered ? $depositContribution : 0.0;
+            $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []))->map(function (array $line) use ($item, &$addonDepositCreditRemaining, $claimedServiceIds) {
                 $lineGrossFromSnapshot = max(0.0, (float) ($line['line_gross_amount'] ?? 0));
                 $lineFullAmount = $lineGrossFromSnapshot > 0.0001
                     ? $lineGrossFromSnapshot
@@ -8995,8 +9283,24 @@ class PosController extends Controller
                 $gross = $lineGrossFromSnapshot > 0.0001
                     ? $lineGrossFromSnapshot
                     : (float) $priceOverride['amount'];
+                $summaryGross = max(0.0, (float) ($line['gross_amount'] ?? 0));
+                $summaryBalanceDue = max(0.0, (float) ($line['balance_due'] ?? 0));
                 $paidAmount = max(0.0, (float) ($line['paid_amount'] ?? 0));
-                $balanceDue = max(0.0, $gross - $paidAmount);
+                $addonServiceId = (int) ($line['linked_booking_service_id'] ?? 0);
+                $linePackageOffset = 0.0;
+                if ($claimedServiceIds->isNotEmpty() && $addonServiceId > 0 && $claimedServiceIds->contains($addonServiceId)) {
+                    $linePackageOffset = $gross;
+                }
+                $lineCoveredByPackage = $gross > 0.0001 && $linePackageOffset >= $gross - 0.0001;
+                $depositCredit = 0.0;
+                if (! $lineCoveredByPackage && $addonDepositCreditRemaining > 0.0001 && $paidAmount <= 0.0001) {
+                    $depositCredit = min($addonDepositCreditRemaining, $gross);
+                    $addonDepositCreditRemaining = max(0.0, round($addonDepositCreditRemaining - $depositCredit, 2));
+                }
+                $balanceDue = max(0.0, $gross - $paidAmount - $depositCredit - $linePackageOffset);
+                if ($linePackageOffset <= 0.0001 && $depositCredit <= 0.0001 && abs($gross - $summaryGross) < 0.01) {
+                    $balanceDue = $summaryBalanceDue;
+                }
                 $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $balanceDue);
 
                 return [
@@ -9011,12 +9315,49 @@ class PosController extends Controller
                     'line_total_after_discount' => $discount['line_total_after_discount'],
                 ];
             })->values();
+            if ($originalMainCovered && $addonDepositCreditRemaining > 0.0001) {
+                $mainSettlementItems = $mainSettlementItems->map(function (array $line) use (
+                    $item,
+                    &$addonDepositCreditRemaining,
+                    $claimedServiceIds,
+                ) {
+                    if (($line['is_original'] ?? false) === true || $addonDepositCreditRemaining <= 0.0001) {
+                        return $line;
+                    }
+
+                    $serviceId = (int) ($line['linked_booking_service_id'] ?? $line['id'] ?? 0);
+                    $gross = max(0.0, (float) ($line['gross_amount'] ?? $line['extra_price'] ?? 0));
+                    if ($serviceId > 0 && $claimedServiceIds->contains($serviceId) && $gross > 0.0001) {
+                        return $line;
+                    }
+
+                    $currentDue = max(0.0, (float) ($line['balance_due'] ?? 0));
+                    if ($currentDue <= 0.0001) {
+                        return $line;
+                    }
+
+                    $depositCredit = min($addonDepositCreditRemaining, $currentDue);
+                    $addonDepositCreditRemaining = max(0.0, round($addonDepositCreditRemaining - $depositCredit, 2));
+                    $newDue = max(0.0, round($currentDue - $depositCredit, 2));
+                    $lineKey = (string) ($line['line_key'] ?? '');
+                    $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $newDue);
+
+                    return [
+                        ...$line,
+                        'balance_due' => round($newDue, 2),
+                        'discount_type' => $discount['discount_type'],
+                        'discount_value' => $discount['discount_value'],
+                        'discount_amount' => $discount['discount_amount'],
+                        'discount_remark' => $discount['discount_remark'],
+                        'line_total_after_discount' => $discount['line_total_after_discount'],
+                    ];
+                })->values();
+            }
             $lineTotal = round(
                 (float) $mainSettlementItems->sum(fn (array $row) => (float) ($row['line_total_after_discount'] ?? $row['balance_due'] ?? 0))
                 + (float) $addonSettlementItems->sum(fn (array $row) => (float) ($row['line_total_after_discount'] ?? $row['balance_due'] ?? 0)),
                 2,
             );
-            $packageClaims = $this->resolvePerLinePackageClaims($booking, $summary);
             $hasPerLineDiscounts = ! empty($this->normalizeAppointmentSettlementDiscountLines($item->discount_lines ?? []));
             $discountAmount = $hasPerLineDiscounts
                 ? round((float) $mainSettlementItems->sum('discount_amount') + (float) $addonSettlementItems->sum('discount_amount'), 2)
@@ -9939,6 +10280,69 @@ class PosController extends Controller
         return ['outside_staff_schedule', 'hits_staff_break'];
     }
 
+    protected function posAvailabilityVerifyHolidayOnly(): bool
+    {
+        $mode = strtolower(trim((string) SettingService::get('pos_availability_verify_mode', 'holiday_only', 'booking')));
+
+        return $mode === 'holiday_only';
+    }
+
+    protected function posAvailabilityVerifyMode(): string
+    {
+        return $this->posAvailabilityVerifyHolidayOnly() ? 'holiday_only' : 'full';
+    }
+
+    protected function posLeaveHardReasonCodes(): array
+    {
+        return ['staff_off_day', 'staff_leave', 'staff_inactive'];
+    }
+
+    protected function isPosLeaveHardReason(?string $reasonCode): bool
+    {
+        return in_array((string) $reasonCode, $this->posLeaveHardReasonCodes(), true);
+    }
+
+    protected function posAvailabilityConflictIsLeaveOnly(array $conflictDiagnostics): bool
+    {
+        if (! (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+            return false;
+        }
+
+        return $this->isPosLeaveHardReason($this->posAvailabilityReasonCode($conflictDiagnostics));
+    }
+
+    protected function assertPosWriteLeaveOnlyAllowed(
+        Staff $staff,
+        Carbon $startAt,
+        Carbon $endAt,
+        int $bufferMin = 0,
+        ?int $ignoreBookingId = null,
+        ?Booking $ignoreBooking = null,
+    ) {
+        if (! (bool) ($staff->is_active ?? true)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422, ['reason_code' => 'staff_inactive']);
+        }
+
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+            (int) $staff->id,
+            $startAt,
+            $endAt,
+            $bufferMin,
+            $ignoreBookingId,
+            $ignoreBooking,
+            BookingAvailabilityService::SCOPE_CRM,
+        );
+        $conflictDiagnostics['staff_id'] = (int) $staff->id;
+        $conflictDiagnostics['requested_start'] = $startAt->toDateTimeString();
+        $conflictDiagnostics['requested_end'] = $endAt->toDateTimeString();
+
+        if ($this->posAvailabilityConflictIsLeaveOnly($conflictDiagnostics)) {
+            return $this->respondPosAvailabilityError($conflictDiagnostics);
+        }
+
+        return null;
+    }
+
     protected function isPosScheduleOverrideReason(?string $reasonCode): bool
     {
         return in_array((string) $reasonCode, $this->posScheduleSoftFailureReasons(), true);
@@ -10341,6 +10745,10 @@ class PosController extends Controller
             'total_covered' => (float) ($summary['total_covered'] ?? 0),
             'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
             'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
+            'refund_handled_amount' => (float) ($summary['refund_handled_amount'] ?? 0),
+            'refund_pending_amount' => (float) ($summary['refund_pending_amount'] ?? 0),
+            'refund_handled' => (bool) ($summary['refund_handled'] ?? false),
+            'refund_pending' => (bool) ($summary['refund_pending'] ?? false),
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
             'amount_due_now' => (float) $summary['amount_due_now'],
@@ -10449,30 +10857,93 @@ class PosController extends Controller
             ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
             ->orderBy('id')
             ->get()
-            ->map(fn (OrderItem $item) => [
-                'order_id' => (int) ($item->order?->id ?? 0),
-                'order_number' => (string) ($item->order?->order_number ?? '-'),
-                'line_type' => (string) ($item->line_type ?? ''),
-                'stage_label' => match ((string) ($item->line_type ?? '')) {
-                    'booking_deposit' => 'Booking Deposit Receipt',
-                    'booking_settlement' => 'Final Settlement Receipt',
-                    'booking_addon' => strcasecmp((string) ($item->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0
-                        ? 'Booking Add-on Settlement Receipt'
-                        : 'Booking Add-on Deposit Receipt',
-                    default => 'Receipt',
-                },
-                'amount' => (float) ($item->line_total ?? 0),
-                'payment_method' => (string) ($item->order?->payment_method ?? ''),
-                'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
-                'receipt_public_url' => $item->order ? $this->buildReceiptUrlForOrder((int) $item->order->id) : null,
-            ])->values()->all();
+            ->map(function (OrderItem $item) {
+                $collectedAmount = (float) ($item->line_total_after_discount
+                    ?? $item->effective_line_total
+                    ?? $item->line_total
+                    ?? 0);
+                $serviceGross = (float) ($item->line_total_snapshot ?? 0);
+
+                return [
+                    'order_id' => (int) ($item->order?->id ?? 0),
+                    'order_number' => (string) ($item->order?->order_number ?? '-'),
+                    'line_type' => (string) ($item->line_type ?? ''),
+                    'stage_label' => match ((string) ($item->line_type ?? '')) {
+                        'booking_deposit' => 'Booking Deposit Receipt',
+                        'booking_settlement' => 'Final Settlement Receipt',
+                        'booking_addon' => strcasecmp((string) ($item->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0
+                            ? 'Booking Add-on Settlement Receipt'
+                            : 'Booking Add-on Deposit Receipt',
+                        default => 'Receipt',
+                    },
+                    'amount' => round($collectedAmount, 2),
+                    'service_gross' => $serviceGross > $collectedAmount + 0.0001 ? round($serviceGross, 2) : null,
+                    'payment_method' => (string) ($item->order?->payment_method ?? ''),
+                    'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
+                    'receipt_public_url' => $item->order ? $this->buildReceiptUrlForOrder((int) $item->order->id) : null,
+                ];
+            })->values()->all();
+    }
+
+    /**
+     * Pending deposit order + sibling bookings on the same checkout order (shop HOLD flow).
+     *
+     * @return array{
+     *   order:?array{id:int,order_number:string,status:string,payment_status:string,payment_method:string,grand_total:float},
+     *   order_model:?Order,
+     *   linked_bookings:array<int,array{id:int,booking_code:string,service_name:string}>
+     * }
+     */
+    protected function resolveHoldDepositOrderMeta(Booking $booking): array
+    {
+        $holdOrder = $this->resolveHoldDepositOrderForReview($booking);
+        if (! $holdOrder) {
+            return [
+                'order' => null,
+                'order_model' => null,
+                'linked_bookings' => [],
+            ];
+        }
+
+        $linkedBookings = Booking::query()
+            ->with('service:id,name')
+            ->whereIn('id', OrderItem::query()
+                ->where('order_id', (int) $holdOrder->id)
+                ->whereNotNull('booking_id')
+                ->pluck('booking_id')
+                ->unique()
+                ->filter()
+                ->values()
+                ->all())
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Booking $linked) => [
+                'id' => (int) $linked->id,
+                'booking_code' => (string) ($linked->booking_code ?: ('BOOKING-' . $linked->id)),
+                'service_name' => (string) ($linked->service?->name ?? 'Service'),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'order' => [
+                'id' => (int) $holdOrder->id,
+                'order_number' => (string) $holdOrder->order_number,
+                'status' => (string) $holdOrder->status,
+                'payment_status' => (string) $holdOrder->payment_status,
+                'payment_method' => (string) ($holdOrder->payment_method ?? ''),
+                'grand_total' => (float) ($holdOrder->grand_total ?? 0),
+            ],
+            'order_model' => $holdOrder,
+            'linked_bookings' => $linkedBookings,
+        ];
     }
 
     protected function resolveHoldDepositOrder(Booking $booking): ?Order
     {
         $orderIds = OrderItem::query()
             ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_deposit')
+            ->whereIn('line_type', ['booking_deposit', 'booking_addon'])
             ->pluck('order_id')
             ->filter()
             ->unique()
@@ -10494,7 +10965,7 @@ class PosController extends Controller
     {
         $orderIds = OrderItem::query()
             ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_deposit')
+            ->whereIn('line_type', ['booking_deposit', 'booking_addon'])
             ->pluck('order_id')
             ->filter()
             ->unique()
@@ -10517,43 +10988,10 @@ class PosController extends Controller
      */
     protected function confirmHoldOrderBookings(Order $order): array
     {
-        $bookingIds = $order->items()
-            ->whereNotNull('booking_id')
-            ->pluck('booking_id')
-            ->unique()
-            ->filter()
-            ->values();
-
-        if ($bookingIds->isEmpty()) {
-            return [];
-        }
-
-        Booking::query()
-            ->whereIn('id', $bookingIds)
-            ->where('payment_status', '!=', 'PAID')
-            ->update([
-                'status' => 'CONFIRMED',
-                'payment_status' => 'PAID',
-                'hold_expires_at' => null,
-                'updated_at' => now(),
-            ]);
-
-        foreach ($bookingIds as $bookingId) {
-            BookingLog::create([
-                'booking_id' => (int) $bookingId,
-                'actor_type' => 'SYSTEM',
-                'actor_id' => null,
-                'action' => 'PAYMENT_CONFIRMED',
-                'meta' => [
-                    'order_id' => $order->id,
-                    'order_no' => $order->order_number,
-                    'source' => 'pos_hold_approve',
-                ],
-                'created_at' => now(),
-            ]);
-        }
-
-        return $bookingIds->map(fn ($id) => (int) $id)->all();
+        return $this->bookingOrderConfirmationService->confirmLinkedBookingsForPaidOrder(
+            $order,
+            'pos_hold_approve',
+        );
     }
 
     protected function cancelHoldLinkedBookings(Order $order, Request $request, string $reason): void
@@ -10817,6 +11255,30 @@ class PosController extends Controller
         }
 
         return false;
+    }
+
+    protected function resolveSettlementLineRangeBoundMin(array $item): float
+    {
+        $quantity = max(1, (int) ($item['quantity'] ?? 1));
+        $mode = (string) ($item['price_mode'] ?? $item['linked_price_mode'] ?? 'fixed');
+        $finalized = (bool) ($item['price_finalized'] ?? false);
+
+        if ($mode === 'range' && ! $finalized) {
+            $minRaw = $item['price_range_min'] ?? $item['linked_price_range_min'] ?? null;
+            $maxRaw = $item['price_range_max'] ?? $item['linked_price_range_max'] ?? null;
+            if ($minRaw !== null || $maxRaw !== null) {
+                $min = round(max(0, (float) ($minRaw ?? $maxRaw ?? 0)), 2);
+                $max = round(max(0, (float) ($maxRaw ?? $minRaw ?? 0)), 2);
+
+                return round(min($min, $max) * $quantity, 2);
+            }
+        }
+
+        if (array_key_exists('line_gross_amount', $item) && $item['line_gross_amount'] !== null) {
+            return round(max(0, (float) $item['line_gross_amount']), 2);
+        }
+
+        return round(max(0, (float) ($item['extra_price'] ?? 0)) * $quantity, 2);
     }
 
     protected function mapFinancialSummaryAddonRow(array $item, callable $effectivePriceForItem, callable $priceIsFinalizedForItem, callable $priceMetaForServiceId): array
@@ -11139,11 +11601,15 @@ class PosController extends Controller
             ->filter(fn (OrderItem $row) => strcasecmp((string) ($row->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0)
             ->sum(fn (OrderItem $row) => $this->resolveOrderItemSettlementGrossAmount($row));
 
-        $packageUsage = CustomerServicePackageUsage::query()
-            ->where('booking_id', (int) $booking->id)
-            ->whereIn('status', ['reserved', 'consumed'])
-            ->latest('id')
-            ->first();
+        $packageUsages = collect($this->resolvePerLinePackageClaims($booking, []));
+        $packageUsage = null;
+        if ($packageUsages->isNotEmpty()) {
+            $reservedUsage = $packageUsages->first(fn (array $claim) => ($claim['status'] ?? '') === 'reserved');
+            $usageId = (int) (($reservedUsage ?? $packageUsages->last())['usage_id'] ?? 0);
+            $packageUsage = $usageId > 0
+                ? CustomerServicePackageUsage::query()->find($usageId)
+                : null;
+        }
 
         $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking((int) $booking->id);
 
@@ -11240,7 +11706,59 @@ class PosController extends Controller
         $settlementPaid = round($serviceSettlementPaid + $addonPaidSettlement, 2);
         $payableTotal = round($serviceTotal + $addonTotalPrice, 2);
         $paidTotal = round($depositPaid + $settlementPaid + $packageOffset, 2);
-        $overpaidAmount = max(0.0, round($paidTotal - $payableTotal, 2));
+        $hasUnsettledRangePricing = ($isMainRangePriced && ! $originalServicePriceFinalized)
+            || $addonItems->contains(function (array $addon): bool {
+                $mode = (string) ($addon['price_mode'] ?? $addon['linked_price_mode'] ?? 'fixed');
+
+                return $mode === 'range' && ! ($addon['price_finalized'] ?? false);
+            });
+        $totalOutstanding = round($serviceBalanceDue + $addonBalanceDue, 2);
+        $rangeAwareGrossMin = round(
+            (float) $mainServices->sum(fn (array $main) => $this->resolveSettlementLineRangeBoundMin($main))
+            + (float) $addonItems->sum(fn (array $addon) => $this->resolveSettlementLineRangeBoundMin($addon)),
+            2
+        );
+        $rangeAwarePackageCoveredMin = 0.0;
+        if ($claimedServiceIds->isNotEmpty()) {
+            $mainServiceIds = $mainServices
+                ->map(fn (array $service) => (int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0))
+                ->filter(fn (int $id) => $id > 0)
+                ->unique()
+                ->values();
+            $rangeAwarePackageCoveredMin = round(
+                (float) $mainServices
+                    ->filter(fn (array $service) => $claimedServiceIds->contains((int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0)))
+                    ->sum(fn (array $service) => $this->resolveSettlementLineRangeBoundMin($service))
+                + (float) $addonItems
+                    ->filter(function (array $addon) use ($claimedServiceIds, $mainServiceIds) {
+                        $addonServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+                        if ($addonServiceId <= 0 || $mainServiceIds->contains($addonServiceId)) {
+                            return false;
+                        }
+
+                        return $claimedServiceIds->contains($addonServiceId);
+                    })
+                    ->sum(fn (array $addon) => $this->resolveSettlementLineRangeBoundMin($addon)),
+                2
+            );
+        } elseif ($coveredByPackage) {
+            $originalMain = $mainServices->first(fn (array $service) => ($service['is_original'] ?? false) === true);
+            $rangeAwarePackageCoveredMin = $originalMain
+                ? $this->resolveSettlementLineRangeBoundMin($originalMain)
+                : 0.0;
+        }
+        $netOwedAtRangeMin = max(0.0, round($rangeAwareGrossMin - $rangeAwarePackageCoveredMin, 2));
+        $netPaidTowardBalance = round($depositPaid + $settlementPaid, 2);
+        if ($hasUnsettledRangePricing) {
+            // Mirror settlement UI: compare collected cash against range-min obligation after package credits.
+            $overpaidAmount = $netOwedAtRangeMin > $netPaidTowardBalance + 0.0001
+                ? 0.0
+                : max(0.0, round($netPaidTowardBalance - $netOwedAtRangeMin, 2));
+        } elseif ($totalOutstanding > 0.0001) {
+            $overpaidAmount = 0.0;
+        } else {
+            $overpaidAmount = max(0.0, round($paidTotal - $payableTotal, 2));
+        }
         $balanceDue = max(0.0, round($payableTotal - $paidTotal, 2));
         $refundRows = BookingRefund::query()
             ->where('booking_id', (int) $booking->id)
@@ -11256,6 +11774,7 @@ class PosController extends Controller
             'settled_service_amount' => $settledServiceAmount !== null ? round($settledServiceAmount, 2) : null,
             'is_range_priced' => $isRangePriced,
             'requires_settled_amount' => $isMainRangePriced && ! $originalServicePriceFinalized,
+            'has_pending_range_pricing' => $hasUnsettledRangePricing,
             'add_ons' => $addonItems->all(),
             'addon_settlement_items' => $addonSettlementItems->all(),
             'addon_total_duration_min' => $addonTotalDurationMin,
@@ -11316,7 +11835,7 @@ class PosController extends Controller
             ];
         }
 
-        $serviceIds = $this->resolveAppointmentMainServiceIds($booking);
+        $serviceIds = $this->resolveAppointmentPackageServiceIds($booking);
 
         $claimedServiceIds = collect($this->resolvePerLinePackageClaims($booking, []))
             ->pluck('booking_service_id')
@@ -11345,6 +11864,31 @@ class PosController extends Controller
 
         foreach ((array) ($booking->addon_items_json ?? []) as $item) {
             if (strtolower((string) ($item['item_kind'] ?? '')) !== 'main_service') {
+                continue;
+            }
+
+            $linkedId = (int) ($item['linked_booking_service_id'] ?? 0);
+            if ($linkedId > 0) {
+                $ids->push($linkedId);
+            }
+        }
+
+        return $ids->filter(fn (int $id) => $id > 0)->unique()->values();
+    }
+
+    protected function resolveAppointmentPackageServiceIds(Booking $booking): \Illuminate\Support\Collection
+    {
+        $ids = $this->resolveAppointmentMainServiceIds($booking);
+
+        foreach ((array) ($booking->addon_items_json ?? []) as $item) {
+            $itemKind = strtolower((string) ($item['item_kind'] ?? 'addon'));
+            if ($itemKind === 'main_service') {
+                foreach ((array) ($item['addon_items'] ?? []) as $addon) {
+                    $linkedId = (int) (is_array($addon) ? ($addon['linked_booking_service_id'] ?? 0) : 0);
+                    if ($linkedId > 0) {
+                        $ids->push($linkedId);
+                    }
+                }
                 continue;
             }
 

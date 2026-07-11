@@ -346,6 +346,82 @@ export function seedAddonLineTotalOverrides(
   return Object.fromEntries(entries)
 }
 
+export type AddedMainServiceSeedRow = {
+  linked_booking_service_id?: number | null
+  id?: number | null
+  extra_price?: number | string | null
+  price_finalized?: boolean | null
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
+}
+
+export type AddedMainSettlementLineSeedRow = AddedMainServiceSeedRow & {
+  gross_amount?: number | string | null
+  balance_due?: number | string | null
+  is_original?: boolean
+}
+
+export function matchAddedMainSettlementLine(
+  service: AddedMainServiceSeedRow,
+  settlementLines?: AddedMainSettlementLineSeedRow[] | null,
+): AddedMainSettlementLineSeedRow | undefined {
+  const serviceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
+  if (serviceId <= 0) return undefined
+  return (settlementLines ?? []).find((line) => {
+    if (line.is_original) return false
+    return Number(line.linked_booking_service_id ?? line.id ?? 0) === serviceId
+  })
+}
+
+export function resolveAddedMainServiceReferenceUnitPrice(
+  service: AddedMainServiceSeedRow,
+  settlementLine?: AddedMainSettlementLineSeedRow | null,
+): number {
+  const catalog = finiteNumber(service.extra_price)
+  const settlementCatalog = finiteNumber(settlementLine?.extra_price)
+  if (!service.price_finalized && !settlementLine?.price_finalized && catalog != null) return catalog
+  if (settlementCatalog != null && !settlementLine?.price_finalized) return settlementCatalog
+  if (catalog != null) return catalog
+  const min = finiteNumber(service.price_range_min ?? settlementLine?.price_range_min)
+  if (min != null) return min
+  return finiteNumber(settlementLine?.gross_amount ?? settlementLine?.balance_due) ?? 0
+}
+
+export function resolveAddedMainServiceSeedPrice(
+  service: AddedMainServiceSeedRow,
+  settlementLine?: AddedMainSettlementLineSeedRow | null,
+): number {
+  if (settlementLine) {
+    const gross = finiteNumber(settlementLine.gross_amount)
+    const balance = finiteNumber(settlementLine.balance_due)
+    const extra = finiteNumber(settlementLine.extra_price)
+    const fromLine = gross ?? balance ?? extra
+    if (fromLine != null && (fromLine > 0 || settlementLine.price_finalized)) {
+      return fromLine
+    }
+  }
+  return finiteNumber(service.extra_price) ?? 0
+}
+
+export function resolveAddedMainServiceSeedFinalized(
+  service: AddedMainServiceSeedRow,
+  settlementLine: AddedMainSettlementLineSeedRow | null | undefined,
+  resolvedPrice: number,
+): boolean {
+  if (service.price_finalized || settlementLine?.price_finalized) return true
+  const source: PosPriceDisplaySource = {
+    price_mode: service.price_mode ?? settlementLine?.price_mode ?? null,
+    price_range_min: service.price_range_min ?? settlementLine?.price_range_min ?? null,
+    price_range_max: service.price_range_max ?? settlementLine?.price_range_max ?? null,
+    extra_price: resolvedPrice,
+  }
+  if (posPriceDisplayHasRange(source)) {
+    return resolvedPrice > 0
+  }
+  return resolvedPrice > 0
+}
+
 export function resolveSettlementAddonLineGross(
   addon?: (StoredAddonRowLike & { balance_due?: number | null; line_total_after_discount?: number | null }) | null,
 ): number {
@@ -555,7 +631,18 @@ export type SettlementCartItemLike = {
   balance_due?: number | string | null
   amount_due_now?: number | string | null
   deposit_contribution?: number | string | null
+  deposit_previously_collected?: boolean | null
+  deposit_previously_collected_amount?: number | string | null
   package_offset?: number | string | null
+  refund_needed?: number | string | null
+  overpaid_amount?: number | string | null
+  refund_handled_amount?: number | string | null
+  refund_handled?: boolean | null
+  refund_transactions?: Array<{
+    amount?: number | string | null
+    method?: string | null
+    method_label?: string | null
+  }> | null
   package_status?: { status?: string | null } | null
   package_claims?: Array<{ booking_service_id: number }> | null
   main_services?: Array<{
@@ -851,4 +938,238 @@ export function validateSettlementAmountInput(
   }
 
   return { ok: true, amount: amt }
+}
+
+export function resolveSettlementCartDepositForBreakdown(settlement?: SettlementCartItemLike | null): number {
+  if (!settlement) return 0
+  const contribution = Number(settlement.deposit_contribution ?? 0)
+  if (contribution > 0.0001) return contribution
+  if (settlement.deposit_previously_collected) {
+    return Number(settlement.deposit_previously_collected_amount ?? 0)
+  }
+  return 0
+}
+
+export function computeSettlementCartPackageCoveredBounds(settlement: SettlementCartItemLike): PosPriceBounds {
+  const claims = settlement.package_claims ?? []
+  const claimedIds = new Set(claims.map((c) => c.booking_service_id))
+  const hasPerLineClaims = claims.length > 0
+  const packageApplied = settlementPackageApplied(settlement)
+
+  if (!hasPerLineClaims && !packageApplied) {
+    return { min: 0, max: 0, hasRange: false }
+  }
+
+  const coveredItems: Array<{ source?: PosPriceDisplaySource | null }> = []
+
+  ;(settlement.main_service_settlement_items ?? []).forEach((service, idx) => {
+    const serviceBookingServiceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
+    const packageCovers = hasPerLineClaims
+      ? claimedIds.has(serviceBookingServiceId)
+      : packageApplied && Boolean(service.is_original ?? idx === 0)
+    if (!packageCovers) return
+    coveredItems.push({
+      source: buildSettlementCartMainServicePriceSource(settlement, service, idx),
+    })
+  })
+
+  for (const addon of settlement.addon_settlement_items ?? []) {
+    const addonServiceId = Number(addon.linked_booking_service_id ?? addon.id ?? 0)
+    if (!hasPerLineClaims || !claimedIds.has(addonServiceId)) continue
+    coveredItems.push({ source: posPriceDisplayForAddonLine(addon) ?? addon })
+  }
+
+  if (coveredItems.length === 0) {
+    const offset = Number(settlement.package_offset ?? 0)
+    return { min: offset, max: offset, hasRange: false }
+  }
+
+  return accumulatePosPriceBounds(coveredItems)
+}
+
+export function computeSettlementCartAddonValueBounds(settlement: SettlementCartItemLike): PosPriceBounds {
+  return accumulatePosPriceBounds(
+    (settlement.addon_settlement_items ?? []).map((addon) => ({
+      source: posPriceDisplayForAddonLine(addon) ?? addon,
+    })),
+  )
+}
+
+export type SettlementRefundIssuedLine = {
+  amount: number
+  methodLabel: string
+}
+
+export function formatSettlementRefundMethodLabel(method?: string | null): string {
+  const key = String(method ?? '').toLowerCase()
+  if (key === 'customer_credit') return 'Customer Credit'
+  if (key === 'cash') return 'Cash Refund'
+  if (!key) return 'Refund'
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+export function resolveSettlementRefundIssuedLines(
+  settlement: Pick<
+    SettlementCartItemLike,
+    'refund_transactions' | 'refund_handled_amount'
+  >,
+): SettlementRefundIssuedLine[] {
+  const transactions = settlement.refund_transactions ?? []
+  if (transactions.length > 0) {
+    return transactions
+      .map((row) => ({
+        amount: Number(row.amount ?? 0),
+        methodLabel: String(row.method_label ?? '').trim() || formatSettlementRefundMethodLabel(row.method),
+      }))
+      .filter((row) => row.amount > 0.0001)
+  }
+
+  const handledAmount = Number(settlement.refund_handled_amount ?? 0)
+  if (handledAmount > 0.0001) {
+    return [{ amount: handledAmount, methodLabel: 'Refund' }]
+  }
+
+  return []
+}
+
+export function resolveSettlementRefundIssuedTotal(
+  settlement: Pick<
+    SettlementCartItemLike,
+    'refund_transactions' | 'refund_handled_amount'
+  >,
+): number {
+  const lines = resolveSettlementRefundIssuedLines(settlement)
+  if (lines.length > 0) {
+    return lines.reduce((sum, row) => sum + row.amount, 0)
+  }
+  return Math.max(0, Number(settlement.refund_handled_amount ?? 0))
+}
+
+export function resolveSettlementRefundNeededAmount(
+  settlement: Pick<SettlementCartItemLike, 'refund_needed' | 'overpaid_amount' | 'refund_handled'>,
+): number {
+  if (settlement.refund_needed != null) {
+    return Math.max(0, Number(settlement.refund_needed))
+  }
+  if (settlement.refund_handled) return 0
+  return Math.max(0, Number(settlement.overpaid_amount ?? 0))
+}
+
+export function resolveSettlementRefundRequiredAmount(
+  settlement: Pick<
+    SettlementCartItemLike,
+    'overpaid_amount' | 'refund_needed' | 'refund_handled_amount' | 'refund_transactions'
+  >,
+): number {
+  const overpaid = Math.max(0, Number(settlement.overpaid_amount ?? 0))
+  if (overpaid > 0.0001) return overpaid
+
+  const refundedTotal = resolveSettlementRefundIssuedTotal(settlement)
+  const remainingRefund = resolveSettlementRefundNeededAmount(settlement)
+  return Math.max(0, refundedTotal + remainingRefund)
+}
+
+export type SettlementRefundDisplayMode = 'active' | 'history'
+
+export type SettlementRefundSummary = {
+  refundRequired: number
+  refundedTotal: number
+  remainingRefund: number
+  refundIssuedLines: SettlementRefundIssuedLine[]
+  showRefundSection: boolean
+  refundSettled: boolean
+  displayMode: SettlementRefundDisplayMode
+}
+
+export function computeSettlementRefundSummary(
+  settlement: Pick<
+    SettlementCartItemLike,
+    'overpaid_amount' | 'refund_needed' | 'refund_handled' | 'refund_handled_amount' | 'refund_transactions'
+  >,
+  options?: { mode?: SettlementRefundDisplayMode },
+): SettlementRefundSummary {
+  const displayMode = options?.mode ?? 'active'
+  const refundIssuedLines = resolveSettlementRefundIssuedLines(settlement)
+  const refundedTotal = resolveSettlementRefundIssuedTotal(settlement)
+  const remainingRefund = resolveSettlementRefundNeededAmount(settlement)
+  const refundRequired = resolveSettlementRefundRequiredAmount(settlement)
+  const showRefundSection = displayMode === 'history'
+    ? refundedTotal > 0.0001
+    : refundRequired > 0.0001 || refundedTotal > 0.0001
+
+  return {
+    refundRequired,
+    refundedTotal,
+    remainingRefund,
+    refundIssuedLines,
+    showRefundSection,
+    refundSettled: refundRequired > 0.0001 && remainingRefund <= 0.0001 && refundedTotal > 0.0001,
+    displayMode,
+  }
+}
+
+export type SettlementCartPaymentBreakdownView = {
+  serviceValueDisplay: string
+  addonDisplay: string
+  hasAddons: boolean
+  depositTotal: number
+  packageCoveredDisplay: string | null
+  showPackageCovered: boolean
+  amountToPayDisplay: string
+  refundSummary: SettlementRefundSummary
+  refundNeeded: number
+  refundIssuedLines: SettlementRefundIssuedLine[]
+  refundIssuedTotal: number
+  refundSettled: boolean
+  mainCoveredAddonDueNote: boolean
+}
+
+export function computeSettlementCartPaymentBreakdown(
+  settlement: SettlementCartItemLike,
+): SettlementCartPaymentBreakdownView {
+  const depositTotal = resolveSettlementCartDepositForBreakdown(settlement)
+  const serviceValueBounds = computeSettlementCartItemServiceValueBounds(settlement)
+  const addonBounds = computeSettlementCartAddonValueBounds(settlement)
+  const packageCoveredBounds = computeSettlementCartPackageCoveredBounds(settlement)
+  const amountDueBounds = computeSettlementCartItemDueBounds(settlement)
+
+  const pkgOffset = Number(settlement.package_offset ?? 0)
+  const packageClaimed = settlementPackageApplied(settlement)
+  const mainCoveredByPkg = packageClaimed && (pkgOffset > 0.0001 || (settlement.package_claims?.length ?? 0) > 0)
+  const addonDueSum = (settlement.addon_settlement_items ?? []).reduce(
+    (sum, addon) => sum + resolveSettlementAddonLineDue(addon),
+    0,
+  )
+
+  let packageCoveredDisplay: string | null = null
+  let showPackageCovered = false
+  if (packageClaimed) {
+    showPackageCovered = true
+    if (packageCoveredBounds.hasRange && Math.abs(packageCoveredBounds.min - packageCoveredBounds.max) > 0.0001) {
+      packageCoveredDisplay = `− RM ${packageCoveredBounds.min.toFixed(2)} - RM ${packageCoveredBounds.max.toFixed(2)}`
+    } else {
+      const amount = packageCoveredBounds.min > 0.0001 ? packageCoveredBounds.min : pkgOffset
+      packageCoveredDisplay = amount > 0.0001 ? `− RM ${amount.toFixed(2)}` : '− RM 0.00'
+    }
+  }
+
+  const refundSummary = computeSettlementRefundSummary(settlement)
+
+  return {
+    serviceValueDisplay: formatPosAccumulatedPriceDisplay(serviceValueBounds),
+    addonDisplay: addonBounds.min > 0.0001 || addonBounds.hasRange
+      ? formatPosAccumulatedPriceDisplay(addonBounds)
+      : 'RM 0.00',
+    hasAddons: (settlement.addon_settlement_items?.length ?? 0) > 0,
+    depositTotal,
+    packageCoveredDisplay,
+    showPackageCovered,
+    amountToPayDisplay: formatPosAccumulatedPriceDisplay(amountDueBounds),
+    refundSummary,
+    refundNeeded: refundSummary.remainingRefund,
+    refundIssuedLines: refundSummary.refundIssuedLines,
+    refundIssuedTotal: refundSummary.refundedTotal,
+    refundSettled: refundSummary.refundSettled,
+    mainCoveredAddonDueNote: mainCoveredByPkg && addonDueSum > 0.0001,
+  }
 }

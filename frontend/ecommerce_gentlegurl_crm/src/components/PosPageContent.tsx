@@ -9,10 +9,11 @@ import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/com
 import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components/pos/PosCatalogInCartIndicator'
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
 import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRefundCreditSection'
-import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
+import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import type { PosDepositTransaction, PosRefundTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
+import SettlementCartPaymentBreakdown from '@/components/pos/SettlementCartPaymentBreakdown'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import BookingAddonOptionRow, { PosAddonLineName, PosAddonSelectionDurationLabel, PosAddonSelectionPriceLabel, PosAddonSettlementPriceLabel } from '@/components/pos/BookingAddonOptionRow'
@@ -51,6 +52,10 @@ import {
   seedFinalizedAddonPriceOverrides,
   buildAddonSettlementSaveOverrides,
   buildSettlementCartMainServicePriceSource,
+  matchAddedMainSettlementLine,
+  resolveAddedMainServiceReferenceUnitPrice,
+  resolveAddedMainServiceSeedFinalized,
+  resolveAddedMainServiceSeedPrice,
   resolveEditSettlementAddonUnitDisplay,
   seedAddonLineTotalOverrides,
   computeSettlementCartItemDueBounds,
@@ -70,7 +75,8 @@ import {
   type PosPriceDisplaySource,
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
-import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
+import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, parsePosAvailabilityVerifyMode, posAvailabilityShouldHardBlock, posAvailabilityStaffIsUnavailable, POS_SCHEDULE_OVERRIDE_REASONS, type PosAvailabilityVerifyMode } from '@/components/pos/posAvailabilityMessages'
+import { confirmAndVerifyEditSettlementPrimaryStaffChange } from '@/components/pos/posStaffSplitUtils'
 import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
@@ -676,6 +682,7 @@ type PriceEditTarget =
   | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null }
   | { kind: 'cartEditSettlementAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
   | { kind: 'cartEditSettlementBlockAddon'; tmpId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
+  | { kind: 'cartEditSettlementAddedService'; tmpId: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
   | { kind: 'bookingMainAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
   | { kind: 'bookingBlockAddon'; blockId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
 
@@ -1772,6 +1779,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const packageRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
   const [packageSubmitting, setPackageSubmitting] = useState(false)
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
+  const [posAvailabilityVerifyMode, setPosAvailabilityVerifyMode] = useState<PosAvailabilityVerifyMode>('holiday_only')
   const [bookingSubmitting, setBookingSubmitting] = useState(false)
   const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
   const [bookingAssignedStaffId, setBookingAssignedStaffId] = useState<number | null>(null)
@@ -1834,6 +1842,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     service_name: string
     service_cn_name?: string | null
     price: number
+    reference_unit_price?: number
     price_mode?: string | null
     price_range_min?: number | null
     price_range_max?: number | null
@@ -1848,6 +1857,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }>>([])
   const [cartEditSettledAmount, setCartEditSettledAmount] = useState('')
   const [cartEditStaffSplits, setCartEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
+  const [cartEditSettlementOriginalPrimaryStaffId, setCartEditSettlementOriginalPrimaryStaffId] = useState<number | null>(null)
   const [cartEditStaffSplitAutoBalance, setCartEditStaffSplitAutoBalance] = useState(true)
   const [cartEditAddonOptionsLoading, setCartEditAddonOptionsLoading] = useState(false)
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
@@ -3835,14 +3845,15 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const bookingStaffPickerOptions = useMemo(() => {
     if (!bookingDate || !bookingSlotValue) return []
     const unavailableReasons = bookingSelectedSlot?.unavailable_staff_reasons ?? {}
-    return bookingAllowedStaffs.filter((staff) => !POS_HARD_AVAILABILITY_REASONS.has(unavailableReasons[String(staff.id)] ?? ''))
-  }, [bookingAllowedStaffs, bookingDate, bookingSelectedSlot, bookingSlotValue])
+    return bookingAllowedStaffs.filter((staff) => !posAvailabilityStaffIsUnavailable(unavailableReasons[String(staff.id)] ?? '', posAvailabilityVerifyMode))
+  }, [bookingAllowedStaffs, bookingDate, bookingSelectedSlot, bookingSlotValue, posAvailabilityVerifyMode])
 
   const bookingSelectedSlotScheduleIds = useMemo(() => {
     return Array.isArray(bookingSelectedSlot?.scheduled_staff_ids) ? bookingSelectedSlot.scheduled_staff_ids : []
   }, [bookingSelectedSlot])
 
   const bookingStaffScheduleWarning = useMemo(() => {
+    if (posAvailabilityVerifyMode === 'holiday_only') return null
     if (!bookingAssignedStaffId || !bookingSlotValue || bookingSlotsLoading) {
       return null
     }
@@ -3866,6 +3877,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     bookingSelectedSlotScheduleIds,
     bookingSlotValue,
     bookingSlotsLoading,
+    posAvailabilityVerifyMode,
   ])
 
   const bookingStaffScheduleWarningMessage = useMemo(() => {
@@ -3981,8 +3993,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       }
     }
     const bookingUnavailableReason = bookingSelectedSlot?.unavailable_staff_reasons?.[String(bookingAssignedStaffId)] ?? ''
-    if (POS_HARD_AVAILABILITY_REASONS.has(bookingUnavailableReason)) {
-      reportBookingModalError(bookingUnavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (bookingUnavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+    if (posAvailabilityShouldHardBlock(bookingUnavailableReason, posAvailabilityVerifyMode)) {
+      reportBookingModalError(formatPosAvailabilityErrorMessage({
+        reasonCode: bookingUnavailableReason,
+        staffName: activeStaffs.find((staff) => staff.id === bookingAssignedStaffId)?.name,
+        startAt: bookingSlotValue,
+        endAt: bookingSelectedSlot?.end_at,
+      }))
       return
     }
 
@@ -3992,8 +4009,18 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
         const availabilityJson = await availabilityRes.json().catch(() => null)
         const reason = String(availabilityJson?.data?.reason_code ?? '')
-        if (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason)) {
-          reportBookingModalError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+        if (availabilityJson?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(availabilityJson.data.verify_mode))
+        }
+        if (availabilityJson?.data?.is_hard_block || posAvailabilityShouldHardBlock(reason, parsePosAvailabilityVerifyMode(availabilityJson?.data?.verify_mode) || posAvailabilityVerifyMode)) {
+          reportBookingModalError(formatPosAvailabilityErrorMessage({
+            reasonCode: reason,
+            staffName: activeStaffs.find((staff) => staff.id === bookingAssignedStaffId)?.name,
+            startAt: bookingSlotValue,
+            endAt: bookingSelectedSlot.end_at,
+            conflictDebug: availabilityJson?.data?.conflict_debug ?? null,
+            backendMessage: availabilityJson?.data?.message ?? availabilityJson?.message ?? null,
+          }))
           setBookingSubmitting(false)
           return
         }
@@ -4161,6 +4188,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         })
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
+        if (json?.data?.verify_mode != null) {
+          setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(json.data.verify_mode))
+        }
         const rows: unknown[] = Array.isArray(json?.data?.visible_slots) ? json.data.visible_slots : (Array.isArray(json?.data?.slots) ? json.data.slots : [])
         const slots = rows
           .map((row: unknown) => {
@@ -4433,9 +4463,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const submitPriceEditModal = async () => {
     if (!priceEditTarget || priceEditSaving) return
     const quantity = resolvePriceEditQuantity(priceEditTarget.quantity)
-    const parsedInput = parseSettlementAmountInput(priceEditMode === 'line' ? priceEditLineTotalDraft : priceEditValueDraft)
+    const usesSimpleServicePrice = priceEditTargetUsesSimpleServicePriceLayout(priceEditTarget.kind)
+    const parsedInput = parseSettlementAmountInput(usesSimpleServicePrice || priceEditMode === 'unit' ? priceEditValueDraft : priceEditLineTotalDraft)
     if (parsedInput == null) {
-      showMsg(priceEditMode === 'line' ? 'Please enter a valid line total.' : 'Please enter a valid price.', 'error')
+      showMsg(usesSimpleServicePrice || priceEditMode === 'unit' ? 'Please enter a valid price.' : 'Please enter a valid line total.', 'error')
       return
     }
     const nextInput = parsedInput
@@ -4454,13 +4485,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               priceEditTarget.optionId,
             ))
             : quantity
-    const next = priceEditMode === 'line' ? nextInput / qty : nextInput
+    const next = usesSimpleServicePrice || priceEditMode === 'unit' ? nextInput : nextInput / qty
     if (!Number.isFinite(next) || next < 0) {
       showMsg(priceEditMode === 'line' ? 'New line total must be 0 or higher.' : 'New price must be 0 or higher.', 'error')
       return
     }
     const roundedNext = Number(next.toFixed(2))
-    const roundedLineTotal = priceEditMode === 'line' ? Number(nextInput.toFixed(2)) : null
+    const roundedLineTotal = !usesSimpleServicePrice && priceEditMode === 'line' ? Number(nextInput.toFixed(2)) : null
 
     if (priceEditTarget.kind === 'cartEditSettlementAddon') {
       setCartEditAddonPriceOverrides((prev) => ({ ...prev, [priceEditTarget.optionId]: roundedNext }))
@@ -4486,6 +4517,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             return nextOverrides
           })(),
         }
+        : block))
+      setPriceEditTarget(null)
+      showMsg('Price updated.', 'success')
+      return
+    }
+    if (priceEditTarget.kind === 'cartEditSettlementAddedService') {
+      setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === priceEditTarget.tmpId
+        ? { ...block, price: roundedNext, price_finalized: true }
         : block))
       setPriceEditTarget(null)
       showMsg('Price updated.', 'success')
@@ -4806,15 +4845,21 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setCartEditAddonQuantities(currentAddonIds)
     const addedMainBlocksSeed = (settlement.main_services ?? [])
       .filter((service) => !service.is_original)
-      .map((service) => ({
+      .map((service) => {
+        const settlementLine = matchAddedMainSettlementLine(service, settlement.main_service_settlement_items)
+        const resolvedPrice = resolveAddedMainServiceSeedPrice(service, settlementLine)
+        const referenceUnitPrice = resolveAddedMainServiceReferenceUnitPrice(service, settlementLine)
+        return {
         tmp_id: `seed-${Number(service.linked_booking_service_id ?? service.id ?? 0)}-${Math.random()}`,
         service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
         service_name: String(service.name ?? 'Service'),
         service_cn_name: typeof service.cn_name === 'string' ? service.cn_name : null,
-        price: Number(service.extra_price ?? 0),
-        price_mode: service.price_mode ?? null,
-        price_range_min: service.price_range_min ?? null,
-        price_range_max: service.price_range_max ?? null,
+        price: resolvedPrice,
+        reference_unit_price: referenceUnitPrice,
+        price_mode: service.price_mode ?? settlementLine?.price_mode ?? null,
+        price_range_min: service.price_range_min ?? settlementLine?.price_range_min ?? null,
+        price_range_max: service.price_range_max ?? settlementLine?.price_range_max ?? null,
+        price_finalized: resolveAddedMainServiceSeedFinalized(service, settlementLine, resolvedPrice),
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as typeof cartEditAddonQuestions,
         selected_addon_ids: selectionFromAddonRows((service.add_ons ?? []).map((addon) => ({ id: addon.id, quantity: addon.quantity ?? 1 }))),
@@ -4825,7 +4870,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           share_percent: String(split.share_percent ?? ''),
         })),
         auto_balance: true,
-      }))
+      }})
       .filter((block) => block.service_id > 0)
     setCartEditAddedMainBlocks(addedMainBlocksSeed)
     setCartEditMainServicePickerQuery('')
@@ -4841,8 +4886,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       .filter((split) => split.staff_id != null)
     if (initialSplits.length > 0) {
       setCartEditStaffSplits(rebalanceSettlementPrimaryShare(initialSplits))
+      setCartEditSettlementOriginalPrimaryStaffId(Number(initialSplits[0].staff_id))
     } else {
-      setCartEditStaffSplits([{ staff_id: settlement.staff_splits?.[0]?.staff_id ?? null, share_percent: '100' }])
+      const fallbackStaffId = settlement.staff_splits?.[0]?.staff_id ?? null
+      setCartEditStaffSplits([{ staff_id: fallbackStaffId, share_percent: '100' }])
+      setCartEditSettlementOriginalPrimaryStaffId(fallbackStaffId ?? null)
     }
 
     const settlementCustomerId = Number(settlement.customer_id ?? 0)
@@ -4988,12 +5036,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     } catch {
       questions = []
     }
+    const catalogPrice = Number(service.service_price ?? service.price ?? 0)
     setCartEditAddedMainBlocks((prev) => [...prev, {
       tmp_id: `added-${service.id}-${Math.random()}`,
       service_id: service.id,
       service_name: service.name,
       service_cn_name: service.cn_name ?? null,
-      price: Number(service.service_price ?? service.price ?? 0),
+      price: catalogPrice,
+      reference_unit_price: catalogPrice,
       price_mode: service.price_mode ?? null,
       price_range_min: service.price_range_min ?? null,
       price_range_max: service.price_range_max ?? null,
@@ -5124,12 +5174,22 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     })
   }
 
-  const editCartAddedMainServicePrice = (tmpId: string, currentPrice: number) => {
-    const raw = window.prompt('New service block price', Number(currentPrice ?? 0).toFixed(2))
-    if (raw == null) return
-    const next = Number(raw)
-    if (!Number.isFinite(next) || next < 0) return
-    setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === tmpId ? { ...block, price: next, price_finalized: true } : block))
+  const editCartAddedMainServicePrice = (block: (typeof cartEditAddedMainBlocks)[number]) => {
+    openPriceEditModal({
+      kind: 'cartEditSettlementAddedService',
+      tmpId: block.tmp_id,
+      name: block.service_name,
+      currentUnitPrice: Number(block.price ?? 0),
+      originalUnitPrice: Number(block.reference_unit_price ?? block.price_range_min ?? block.price ?? 0),
+      quantity: 1,
+      priceSource: {
+        price_mode: block.price_mode ?? null,
+        price_range_min: block.price_range_min ?? null,
+        price_range_max: block.price_range_max ?? null,
+        extra_price: block.price,
+        price_finalized: block.price_finalized,
+      },
+    })
   }
 
   const saveCartEditSettlement = async () => {
@@ -5210,6 +5270,22 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         return
       }
       payload.staff_splits = normalizedSplits
+
+      const primaryStaffCheck = await confirmAndVerifyEditSettlementPrimaryStaffChange({
+        originalStaffId: cartEditSettlementOriginalPrimaryStaffId,
+        nextSplits: normalizedSplits,
+        startAt: cartEditSettlementItem?.appointment_start_at,
+        endAt: cartEditSettlementItem ? getSettlementDisplayEndAt(cartEditSettlementItem) : null,
+        ignoreBookingId: cartEditSettlementBookingId ?? undefined,
+        verifyMode: posAvailabilityVerifyMode,
+        staffNameById: (id) => activeStaffs.find((staff) => staff.id === id)?.name ?? cartEditSettlementItem?.staff_splits?.find((split) => split.staff_id === id)?.staff_name ?? null,
+      })
+      if (!primaryStaffCheck.ok) {
+        if (!primaryStaffCheck.cancelled && primaryStaffCheck.message) {
+          reportCartEditSettlementError(primaryStaffCheck.message)
+        }
+        return
+      }
 
       payload.settlement_note = cartEditSettlementNoteDraft.trim()
 
@@ -8667,7 +8743,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           ) : null}
                         </div>
                         <div className="pos-cart-settlement-actions flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
-                            {Number(settlement.customer_id ?? 0) > 0 && settlement.package_status?.status === 'reserved' ? (
+                            {Number(settlement.customer_id ?? 0) > 0 &&
+                            (settlement.package_status?.status === 'reserved' ||
+                              (settlement.package_claims?.length ?? 0) > 0) ? (
                               <button
                                 type="button"
                                 disabled={settlementUnclaimingIds[settlement.id] || settlementRedeemingIds[settlement.id]}
@@ -8682,8 +8760,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   type="button"
                                   disabled={
                                     settlementRedeemingIds[settlement.id] ||
-                                    settlementUnclaimingIds[settlement.id] ||
-                                    settlement.package_status?.status === 'consumed'
+                                    settlementUnclaimingIds[settlement.id]
                                   }
                                   title={
                                     !settlement.can_apply_package && settlement.package_disabled_reason && settlement.package_disabled_reason !== 'No eligible package available.'
@@ -8693,7 +8770,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   onClick={() => openSettlementPackageModal({ bookingId: settlement.booking_id, customerName: settlement.customer_name ?? undefined })}
                                   className="rounded-lg border border-cyan-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-cyan-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  Apply package
+                                  {(settlement.package_claims?.length ?? 0) > 0 || settlement.package_status?.status === 'reserved'
+                                    ? 'Manage packages'
+                                    : 'Apply package'}
                                 </button>
                               </span>
                             ) : null}
@@ -8896,30 +8975,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               </div>
                             ) : null}
 
-                            {mainCoveredByPkg && addonDueSum > 0.0001 ? (
-                              <p className="text-[10px] leading-snug text-gray-600">
-                                Your package covers the <strong className="font-medium text-gray-900">main service</strong>{' '}
-                                only. Add-ons above are still due at checkout.
-                              </p>
-                            ) : null}
-
-                            {settlementShowsSeparateDepositCredit(settlement) ? (
-                              <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
-                                <span className="text-gray-700">Deposit paid</span>
-                                <span className="font-semibold tabular-nums text-emerald-700">
-                                  − RM {depositCredit.toFixed(2)}
-                                </span>
-                              </div>
-                            ) : null}
-
-                            <div className="mt-2 flex items-baseline justify-between gap-3 pt-2">
-                              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">
-                                Total to pay
-                              </span>
-                              <div className="text-right">
-                                <span className="text-sm font-bold tabular-nums text-orange-700">{totalDueLabel}</span>
-                              </div>
-                            </div>
+                            <SettlementCartPaymentBreakdown
+                              settlement={settlement}
+                              variant="cart"
+                              className="mt-2 border-t border-gray-200 pt-2"
+                            />
                           </div>
                         </div>
                       )
@@ -9881,7 +9941,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
                         <ServiceNameStack name={block.service_name} cnName={block.service_cn_name} />
-                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price, price_finalized: block.price_finalized })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice({ ...block, extra_price: block.price, price_finalized: block.price_finalized }) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice({ ...block, extra_price: block.price, price_finalized: block.price_finalized }) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block)} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button></div>
                       </div>
                       <button
                         type="button"
@@ -10895,8 +10955,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                     className="px-4 py-2 pl-7 text-[10px] leading-snug text-gray-600 sm:px-5 sm:pl-8"
                                     colSpan={5}
                                   >
-                                    Your package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
-                                    only. Add-ons above are still due at checkout.
+                                    Package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
+                                    only. Add-on lines above are still due at checkout.
                                   </td>
                                   <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                 </tr>
@@ -10906,48 +10966,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             </>
                           )}
 
-                          {settlementShowsSeparateDepositCredit(settlement) ? (
-                            <tr className={`${stRowClass} align-top`}>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                              <td className="px-4 py-2 pl-7 text-xs text-gray-700 sm:px-5 sm:pl-8">
-                                Deposit paid
-                              </td>
-                              <td className="min-w-[260px] px-4 py-2" aria-hidden />
-                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
-                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                <p className="text-lg font-bold leading-tight text-emerald-700">− RM {depositCredit.toFixed(2)}</p>
-                              </td>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                            </tr>
-                          ) : null}
-                          {Number(settlement.overpaid_amount ?? settlement.refund_needed ?? 0) > 0.0001 ? (
-                            <tr className={`${stRowClass} align-top`}>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                              <td className="px-4 py-2 pl-7 text-xs font-bold text-rose-800 sm:px-5 sm:pl-8">
-                                Refund / Credit Required
-                              </td>
-                              <td className="min-w-[260px] px-4 py-2 text-[11px] font-semibold text-rose-700">Open Edit Settlement to handle before checkout.</td>
-                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
-                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                <p className="text-lg font-bold leading-tight text-rose-700">RM {Number(settlement.overpaid_amount ?? settlement.refund_needed ?? 0).toFixed(2)}</p>
-                              </td>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                            </tr>
-                          ) : null}
-                          {hasServiceBlocks ? (
-                            <tr className={`${stRowClass} align-top`}>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                              <td className="px-4 py-2 pl-7 text-xs font-bold text-gray-900 sm:px-5 sm:pl-8">
-                                Total to pay
-                              </td>
-                              <td className="min-w-[260px] px-4 py-2" aria-hidden />
-                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
-                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                <p className="text-lg font-bold leading-tight text-orange-700">{settlementTotalDueLabel}</p>
-                              </td>
-                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
-                            </tr>
-                          ) : null}
+                          <tr className={`${stRowClass} align-top`}>
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
+                            <td className="px-4 py-2 pl-7 sm:px-5 sm:pl-8" colSpan={4}>
+                              <SettlementCartPaymentBreakdown settlement={settlement} variant="checkout" />
+                            </td>
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
+                          </tr>
                         </Fragment>
                       )
                     })}
@@ -11664,6 +11689,20 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               lineTotalOverride={'lineTotalOverride' in priceEditTarget ? priceEditTarget.lineTotalOverride : null}
               hasLineTotalOverrideKey={'hasLineTotalOverrideKey' in priceEditTarget ? priceEditTarget.hasLineTotalOverrideKey : false}
             />
+            {priceEditTargetUsesSimpleServicePriceLayout(priceEditTarget.kind) ? (
+              <label className="mt-4 block rounded-lg border border-gray-200 p-3 text-sm font-semibold text-gray-700">New Price
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={priceEditValueDraft}
+                  onChange={(event) => setPriceEditValueDraft(event.target.value)}
+                  onFocus={(event) => event.currentTarget.select()}
+                  placeholder={'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(priceEditTarget.priceSource) ? 'Enter final price' : '0.00'}
+                  className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm tabular-nums"
+                />
+              </label>
+            ) : (
             <div className="mt-4 rounded-lg border border-gray-200 p-3">
               <p className="text-sm font-semibold text-gray-700">Edit by</p>
               <div className="mt-2 flex gap-3 text-sm">
@@ -11700,6 +11739,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 </label>
               )}
             </div>
+            )}
             <label className="mt-3 block text-sm font-semibold text-gray-700">Reason / remark
               <textarea value={priceEditReasonDraft} onChange={(event) => setPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" />
             </label>

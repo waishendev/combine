@@ -611,6 +611,7 @@ class BookingAvailabilityService
         string $conflictScope = self::SCOPE_CRM,
         array $ignoreCartItemIds = [],
         array $ignorePosCartServiceItemIds = [],
+        bool $holidayOnlyVerify = false,
     ): array {
         $staffIds = collect($staffIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
         if ($staffIds === []) {
@@ -655,6 +656,27 @@ class BookingAvailabilityService
             $unavailableStaffReasons = [];
 
             foreach ($staffIds as $staffId) {
+                if ($holidayOnlyVerify) {
+                    $conflictDiagnostics = $this->evaluatePrefetchedStaffConflict($context, $staffId, $startAt, $endAt, $bufferMin);
+                    if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                        $reason = $conflictReasonResolver !== null
+                            ? (string) $conflictReasonResolver($conflictDiagnostics, ['is_available' => true, 'failure_reason' => null])
+                            : 'booking_conflict';
+                        if (in_array($reason, ['staff_off_day', 'staff_leave'], true)) {
+                            $unavailableStaffReasons[(string) $staffId] = $reason;
+                            continue;
+                        }
+                    }
+
+                    $availableStaffIds[] = $staffId;
+                    $scheduleDiagnostics = $this->evaluatePrefetchedStaffSchedule($context, $staffId, $startAt, $endAt);
+                    if ((bool) ($scheduleDiagnostics['is_available'] ?? false)) {
+                        $scheduledStaffIds[] = $staffId;
+                    }
+
+                    continue;
+                }
+
                 $scheduleDiagnostics = $this->evaluatePrefetchedStaffSchedule($context, $staffId, $startAt, $endAt);
                 if ((bool) ($scheduleDiagnostics['is_available'] ?? false)) {
                     $scheduledStaffIds[] = $staffId;

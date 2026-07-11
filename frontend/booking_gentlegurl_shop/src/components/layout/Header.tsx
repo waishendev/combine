@@ -282,13 +282,13 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                     >
                       My Transactions
                     </Link>
-                    {/* <Link
+                    <Link
                       href="/account/packages"
                       className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                       onClick={() => setUserMenuOpen(false)}
                     >
                       My Packages
-                    </Link> */}
+                    </Link>
                     <div className="my-1 border-t border-[var(--muted)]/50" />
                     <button
                       onClick={onLogout}

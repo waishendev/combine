@@ -122,6 +122,45 @@ function buildCheckedFromClaims(
   return map
 }
 
+function getApplicableLineLabels(pkg: EligiblePackage): string[] {
+  const seen = new Set<string>()
+  const labels: string[] = []
+  for (const line of pkg.eligible_lines) {
+    if (!line.can_apply && !line.already_applied) continue
+    const label = line.service_name?.trim()
+    if (!label || seen.has(label)) continue
+    seen.add(label)
+    labels.push(label)
+  }
+  return labels
+}
+
+function partitionPackageItems(pkg: EligiblePackage): {
+  onVisit: Array<{ item: PackageBalanceItem; line: EligibleLineEntry }>
+  offVisit: PackageBalanceItem[]
+} {
+  const onVisit: Array<{ item: PackageBalanceItem; line: EligibleLineEntry }> = []
+  const offVisit: PackageBalanceItem[] = []
+
+  for (const item of pkg.items) {
+    const line = resolveEligibleLineForPackageItem(pkg.eligible_lines, item.booking_service_id)
+    if (line) onVisit.push({ item, line })
+    else offVisit.push(item)
+  }
+
+  return { onVisit, offVisit }
+}
+
+function lineTypeLabel(lineType: PackageLineInfo['line_type']): string {
+  return lineType === 'addon' ? 'Add-on' : 'Main service'
+}
+
+function lineTypeTone(lineType: PackageLineInfo['line_type']): string {
+  return lineType === 'addon'
+    ? 'border-cyan-200 bg-cyan-50 text-cyan-900'
+    : 'border-indigo-200 bg-indigo-50 text-indigo-900'
+}
+
 function mapsEqual(a: Map<string, CheckedEntry>, b: Map<string, CheckedEntry>): boolean {
   if (a.size !== b.size) return false
   for (const [key, val] of a) {
@@ -288,6 +327,152 @@ export default function ApplyPackageModal(props: Props) {
     return { applyCount: apply, releaseCount: release }
   }, [checkedByLineKey, currentClaims, appointmentLines])
 
+  const renderPackageServiceRow = (
+    pkg: EligiblePackage,
+    item: PackageBalanceItem,
+    line: EligibleLineEntry | undefined,
+    options?: { emphasizeVisit?: boolean },
+  ) => {
+    const isExpired = !!(pkg.expires_at && new Date(pkg.expires_at) < new Date())
+    const onVisit = !!line
+    const emphasizeVisit = options?.emphasizeVisit ?? onVisit
+    const key = line ? lineKey(line.line_type, line.line_index, line.booking_service_id) : null
+    const isChecked =
+      key != null && checkedByLineKey.get(key)?.customer_service_package_id === pkg.customer_service_package_id
+    const consumedClaim = currentClaims.some(
+      (c) =>
+        c.customer_service_package_id === pkg.customer_service_package_id &&
+        c.booking_service_id === item.booking_service_id &&
+        c.status === 'consumed',
+    )
+    const checkedElsewhere =
+      key != null &&
+      checkedByLineKey.has(key) &&
+      checkedByLineKey.get(key)!.customer_service_package_id !== pkg.customer_service_package_id
+    const reservedClaimForRow = currentClaims.find(
+      (c) =>
+        c.status === 'reserved' &&
+        c.customer_service_package_id === pkg.customer_service_package_id &&
+        c.booking_service_id === item.booking_service_id,
+    )
+    const canToggle =
+      onVisit &&
+      !isExpired &&
+      !consumedClaim &&
+      (line!.can_apply || line!.already_applied || isChecked || !!reservedClaimForRow) &&
+      !checkedElsewhere
+    const displayAvailableQty = resolveDisplayAvailableQty(
+      item,
+      pkg.customer_service_package_id,
+      key,
+      checkedByLineKey,
+      initialChecked,
+    )
+    const pct = item.total_qty > 0 ? Math.round((displayAvailableQty / item.total_qty) * 100) : 0
+
+    let hint: string | null = null
+    if (!onVisit) hint = 'Not on this visit'
+    else if (consumedClaim) hint = 'Already used'
+    else if (checkedElsewhere) hint = 'Selected in another package'
+    else if (canToggle && !isChecked) hint = 'Tap to apply'
+    else if (line?.reason) hint = line.reason
+
+    const rowContent = (
+      <>
+        {onVisit ? (
+          <span
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 shadow-sm ${
+              isChecked
+                ? 'border-amber-500 bg-amber-500 text-white'
+                : canToggle
+                  ? 'border-amber-300 bg-white'
+                  : 'border-gray-200 bg-gray-100'
+            }`}
+          >
+            {isChecked ? (
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : null}
+          </span>
+        ) : (
+          <span className="h-6 w-6 shrink-0" />
+        )}
+        <div className="min-w-0 flex-1">
+          {onVisit && line ? (
+            <span
+              className={`mb-1.5 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${lineTypeTone(line.line_type)}`}
+            >
+              {lineTypeLabel(line.line_type)}
+            </span>
+          ) : null}
+          <p className={`text-sm font-semibold ${emphasizeVisit ? 'text-gray-900' : 'text-gray-700'}`}>
+            {item.service_name}
+            {line?.cn_name ? <span className="ml-1 font-normal text-gray-400">({line.cn_name})</span> : null}
+          </p>
+          <div className="mt-1.5 h-1.5 max-w-[160px] overflow-hidden rounded-full bg-gray-100">
+            <div
+              className={`h-full rounded-full ${
+                displayAvailableQty <= 0 ? 'bg-red-400' : displayAvailableQty < item.total_qty ? 'bg-amber-400' : 'bg-emerald-500'
+              }`}
+              style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] tabular-nums text-gray-400">
+            {displayAvailableQty} / {item.total_qty} left
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${balanceTone(displayAvailableQty, item.total_qty)}`}>
+            {displayAvailableQty <= 0 ? 'Used up' : `${displayAvailableQty} left`}
+          </span>
+          {hint ? (
+            <p
+              className={`mt-1 text-[10px] font-medium ${
+                hint === 'Tap to apply'
+                  ? 'text-amber-700'
+                  : hint.includes('Not') || hint.includes('No ') || hint.includes('Used') || hint.includes('Selected') || hint.includes('covered')
+                    ? 'text-gray-400'
+                    : 'text-amber-700'
+              }`}
+            >
+              {hint}
+            </p>
+          ) : null}
+        </div>
+      </>
+    )
+
+    const rowClassName = emphasizeVisit
+      ? isChecked
+        ? 'border-l-4 border-l-amber-500 bg-amber-50/90 hover:bg-amber-50'
+        : canToggle
+          ? 'border-l-4 border-l-amber-300 bg-white ring-1 ring-inset ring-amber-100 hover:bg-amber-50/40'
+          : 'border-l-4 border-l-gray-200 bg-white opacity-80'
+      : !onVisit
+        ? 'opacity-75'
+        : 'opacity-60'
+
+    if (canToggle || (onVisit && isChecked && !consumedClaim)) {
+      return (
+        <button
+          key={item.booking_service_id}
+          type="button"
+          onClick={() => togglePackageItem(pkg, item, line)}
+          className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition sm:px-5 ${rowClassName}`}
+        >
+          {rowContent}
+        </button>
+      )
+    }
+
+    return (
+      <div key={item.booking_service_id} className={`flex items-center gap-3 px-4 py-3.5 sm:px-5 ${rowClassName}`}>
+        {rowContent}
+      </div>
+    )
+  }
+
   const handleSubmit = async () => {
     if (!hasChanges) return
     setSubmitting(true)
@@ -435,6 +620,8 @@ export default function ApplyPackageModal(props: Props) {
                   const key = lineKey(line.line_type, line.line_index, line.booking_service_id)
                   return checkedByLineKey.get(key)?.customer_service_package_id === pkg.customer_service_package_id
                 }).length
+                const applicableLabels = getApplicableLineLabels(pkg)
+                const { onVisit: onVisitItems, offVisit: offVisitItems } = partitionPackageItems(pkg)
 
                 return (
                   <article
@@ -473,6 +660,11 @@ export default function ApplyPackageModal(props: Props) {
                             </span>
                           ) : null}
                         </div>
+                        {!isExpanded && applicableLabels.length > 0 ? (
+                          <p className="mt-2 text-xs font-medium text-amber-800">
+                            Can apply to: {applicableLabels.join(' · ')}
+                          </p>
+                        ) : null}
                       </div>
                       <span
                         className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition ${
@@ -487,145 +679,34 @@ export default function ApplyPackageModal(props: Props) {
                     </button>
 
                     {isExpanded ? (
-                    <div className="divide-y divide-gray-100">
-                      {pkg.items.map((item) => {
-                        const line = resolveEligibleLineForPackageItem(pkg.eligible_lines, item.booking_service_id)
-                        const onVisit = !!line
-                        const key = line
-                          ? lineKey(line.line_type, line.line_index, line.booking_service_id)
-                          : null
-                        const isChecked =
-                          key != null &&
-                          checkedByLineKey.get(key)?.customer_service_package_id === pkg.customer_service_package_id
-                        const consumedClaim = currentClaims.some(
-                          (c) =>
-                            c.customer_service_package_id === pkg.customer_service_package_id &&
-                            c.booking_service_id === item.booking_service_id &&
-                            c.status === 'consumed',
-                        )
-                        const checkedElsewhere =
-                          key != null &&
-                          checkedByLineKey.has(key) &&
-                          checkedByLineKey.get(key)!.customer_service_package_id !== pkg.customer_service_package_id
-
-                        const reservedClaimForRow = currentClaims.find(
-                          (c) =>
-                            c.status === 'reserved' &&
-                            c.customer_service_package_id === pkg.customer_service_package_id &&
-                            c.booking_service_id === item.booking_service_id,
-                        )
-
-                        const canToggle =
-                          onVisit &&
-                          !isExpired &&
-                          !consumedClaim &&
-                          (line!.can_apply || line!.already_applied || isChecked || !!reservedClaimForRow) &&
-                          !checkedElsewhere
-
-                        const displayAvailableQty = resolveDisplayAvailableQty(
-                          item,
-                          pkg.customer_service_package_id,
-                          key,
-                          checkedByLineKey,
-                          initialChecked,
-                        )
-                        const pct = item.total_qty > 0 ? Math.round((displayAvailableQty / item.total_qty) * 100) : 0
-
-                        let hint: string | null = null
-                        if (!onVisit) hint = 'Not on this visit'
-                        else if (consumedClaim) hint = 'Already used'
-                        else if (checkedElsewhere) hint = 'Selected in another package'
-                        else if (line?.reason) hint = line.reason
-
-                        const rowContent = (
-                          <>
-                            {onVisit ? (
-                              <span
-                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
-                                  isChecked
-                                    ? 'border-amber-500 bg-amber-500 text-white'
-                                    : canToggle
-                                      ? 'border-gray-300 bg-white'
-                                      : 'border-gray-200 bg-gray-100'
-                                }`}
-                              >
-                                {isChecked ? (
-                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                  </svg>
-                                ) : null}
+                      <div>
+                        {onVisitItems.length > 0 ? (
+                          <div className="border-b border-amber-100 bg-gradient-to-b from-amber-50/70 to-white">
+                            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 sm:px-5">
+                              <p className="text-[11px] font-bold uppercase tracking-wide text-amber-900">On this visit</p>
+                              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                                Tick to apply
                               </span>
-                            ) : (
-                              <span className="h-5 w-5 shrink-0" />
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-gray-900">
-                                {item.service_name}
-                                {line?.cn_name ? (
-                                  <span className="ml-1 font-normal text-gray-400">({line.cn_name})</span>
-                                ) : null}
-                              </p>
-                              <div className="mt-1.5 h-1.5 max-w-[140px] overflow-hidden rounded-full bg-gray-100">
-                                <div
-                                  className={`h-full rounded-full ${
-                                    displayAvailableQty <= 0 ? 'bg-red-400' : displayAvailableQty < item.total_qty ? 'bg-amber-400' : 'bg-emerald-500'
-                                  }`}
-                                  style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
-                                />
-                              </div>
-                              <p className="mt-1 text-[10px] tabular-nums text-gray-400">
-                                {displayAvailableQty} / {item.total_qty} left
-                              </p>
                             </div>
-                            <div className="shrink-0 text-right">
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${balanceTone(displayAvailableQty, item.total_qty)}`}>
-                                {displayAvailableQty <= 0 ? 'Used up' : `${displayAvailableQty} left`}
-                              </span>
-                              {hint ? (
-                                <p
-                                  className={`mt-1 text-[10px] font-medium ${
-                                    hint.includes('Not') || hint.includes('No ') || hint.includes('Used') || hint.includes('Selected') || hint.includes('covered')
-                                      ? 'text-gray-400'
-                                      : 'text-amber-700'
-                                  }`}
-                                >
-                                  {hint}
-                                </p>
-                              ) : null}
+                            <div className="divide-y divide-amber-100/80">
+                              {onVisitItems.map(({ item, line }) => renderPackageServiceRow(pkg, item, line, { emphasizeVisit: true }))}
                             </div>
-                          </>
-                        )
-
-                        if (canToggle || (onVisit && isChecked && !consumedClaim)) {
-                          return (
-                            <button
-                              key={item.booking_service_id}
-                              type="button"
-                              onClick={() => togglePackageItem(pkg, item, line)}
-                              className={`flex w-full items-center gap-3 px-4 py-3 text-left transition sm:px-5 ${
-                                isChecked
-                                  ? 'bg-amber-50/80 hover:bg-amber-50'
-                                  : 'hover:bg-gray-50'
-                              }`}
-                            >
-                              {rowContent}
-                            </button>
-                          )
-                        }
-
-                        return (
-                          <div
-                            key={item.booking_service_id}
-                            className={`flex items-center gap-3 px-4 py-3 sm:px-5 ${!onVisit ? 'opacity-80' : 'opacity-60'}`}
-                          >
-                            {rowContent}
                           </div>
-                        )
-                      })}
-                      {pkg.items.length === 0 ? (
-                        <p className="px-4 py-3 text-xs text-gray-400 sm:px-5">No services in this package.</p>
-                      ) : null}
-                    </div>
+                        ) : null}
+                        {offVisitItems.length > 0 ? (
+                          <div>
+                            <div className="border-b border-gray-100 bg-gray-50/80 px-4 py-2.5 sm:px-5">
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Other package services</p>
+                            </div>
+                            <div className="divide-y divide-gray-100">
+                              {offVisitItems.map((item) => renderPackageServiceRow(pkg, item, undefined))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {pkg.items.length === 0 ? (
+                          <p className="px-4 py-3 text-xs text-gray-400 sm:px-5">No services in this package.</p>
+                        ) : null}
+                      </div>
                     ) : null}
                   </article>
                 )
