@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class CustomerServicePackageBalance extends Model
 {
     protected $fillable = [
-        'customer_service_package_id', 'booking_service_id', 'total_qty', 'used_qty', 'remaining_qty',
+        'customer_service_package_id', 'booking_service_id', 'service_name_snapshot',
+        'total_qty', 'used_qty', 'remaining_qty', 'redemption_value_snapshot',
     ];
 
     protected $casts = [

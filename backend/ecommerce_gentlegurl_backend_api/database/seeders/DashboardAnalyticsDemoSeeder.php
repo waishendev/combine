@@ -2,6 +2,12 @@
 
 namespace Database\Seeders;
 
+use App\Models\Booking\BookingService;
+use App\Models\Booking\CustomerServicePackage;
+use App\Models\Booking\CustomerServicePackageBalance;
+use App\Models\Booking\CustomerServicePackageUsage;
+use App\Models\Booking\ServicePackage;
+use App\Models\Booking\ServicePackageItem;
 use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\Order;
@@ -102,6 +108,8 @@ class DashboardAnalyticsDemoSeeder extends Seeder
             $this->upsertOrder($customer, $createdProducts[self::PREFIX.'-SHAMPOO'], self::PREFIX.'-ORDER-VOIDED', 'voided', 'paid', 'cash', 1, 25, 0, Carbon::today());
             $this->upsertOrder($customer, $createdProducts[self::PREFIX.'-SERUM'], self::PREFIX.'-ORDER-REFUNDED', 'completed', 'refunded', 'qrpay', 1, 50, 50, Carbon::yesterday());
             $this->upsertOrder($customer, $createdProducts[self::PREFIX.'-COLOR'], self::PREFIX.'-ORDER-PARTIAL-REFUND', 'completed', 'partially_refunded', 'manual_bank_transfer', 2, 88, 40, Carbon::now()->startOfMonth()->addDays(6));
+
+            $this->seedPackageDemoData($customer);
         });
     }
 
@@ -110,6 +118,22 @@ class DashboardAnalyticsDemoSeeder extends Seeder
         $this->assertSafeEnvironment();
 
         return DB::transaction(function () {
+            if (Schema::hasTable('customer_service_package_usages')) {
+                CustomerServicePackageUsage::whereHas('customerServicePackage.servicePackage', fn ($q) => $q->where('name', 'like', self::PREFIX.'%'))->delete();
+            }
+            if (Schema::hasTable('customer_service_package_balances')) {
+                CustomerServicePackageBalance::whereHas('customerServicePackage.servicePackage', fn ($q) => $q->where('name', 'like', self::PREFIX.'%'))->delete();
+            }
+            if (Schema::hasTable('customer_service_packages')) {
+                CustomerServicePackage::whereHas('servicePackage', fn ($q) => $q->where('name', 'like', self::PREFIX.'%'))->delete();
+            }
+            if (Schema::hasTable('service_package_items')) {
+                ServicePackageItem::whereHas('package', fn ($q) => $q->where('name', 'like', self::PREFIX.'%'))->delete();
+            }
+            if (Schema::hasTable('service_packages')) {
+                ServicePackage::where('name', 'like', self::PREFIX.'%')->delete();
+            }
+
             $orderIds = Order::where('order_number', 'like', self::PREFIX.'%')->pluck('id');
             $deletedItems = OrderItem::whereIn('order_id', $orderIds)->delete();
             $deletedOrders = Order::whereIn('id', $orderIds)->delete();
@@ -132,9 +156,55 @@ class DashboardAnalyticsDemoSeeder extends Seeder
             'products_to_create_or_update' => 6,
             'variants_to_create_or_update' => 3,
             'orders_to_create_or_update' => 9,
+            'package_templates_to_create_or_update' => 3,
+            'customer_packages_to_create_or_update' => 5,
             'customer' => 'analytics-demo-customer@example.test',
             'prefix' => self::PREFIX,
         ];
+    }
+
+
+    private function seedPackageDemoData(Customer $customer): void
+    {
+        if (! Schema::hasTable('service_packages') || ! Schema::hasTable('booking_services')) {
+            return;
+        }
+
+        $color = BookingService::updateOrCreate(['name' => self::PREFIX.' Coloring'], ['service_type' => 'standard', 'service_price' => 120, 'price' => 120, 'duration_min' => 60, 'deposit_amount' => 0, 'buffer_min' => 15, 'is_active' => true, 'is_package_eligible' => true]);
+        $cut = BookingService::updateOrCreate(['name' => self::PREFIX.' Haircut'], ['service_type' => 'standard', 'service_price' => 80, 'price' => 80, 'duration_min' => 45, 'deposit_amount' => 0, 'buffer_min' => 15, 'is_active' => true, 'is_package_eligible' => true]);
+
+        $premium = ServicePackage::updateOrCreate(['name' => self::PREFIX.' Premium Care Combo'], ['description' => 'Package analytics demo package.', 'selling_price' => 899, 'valid_days' => 120, 'is_active' => true]);
+        $missing = ServicePackage::updateOrCreate(['name' => self::PREFIX.' Missing Value Combo'], ['description' => 'Package analytics missing redemption value demo.', 'selling_price' => 399, 'valid_days' => 30, 'is_active' => true]);
+        ServicePackage::updateOrCreate(['name' => self::PREFIX.' Inactive Combo'], ['description' => 'Inactive package analytics demo.', 'selling_price' => 199, 'valid_days' => 30, 'is_active' => false]);
+
+        ServicePackageItem::updateOrCreate(['service_package_id' => $premium->id, 'booking_service_id' => $color->id], ['quantity' => 10, 'redemption_value' => 50]);
+        ServicePackageItem::updateOrCreate(['service_package_id' => $premium->id, 'booking_service_id' => $cut->id], ['quantity' => 5, 'redemption_value' => 30]);
+        ServicePackageItem::updateOrCreate(['service_package_id' => $missing->id, 'booking_service_id' => $cut->id], ['quantity' => 5, 'redemption_value' => null]);
+
+        $cases = [
+            ['status' => 'active', 'suffix' => 'UNUSED', 'remaining' => [10, 5], 'used' => [0, 0], 'expires' => now()->addDays(90)],
+            ['status' => 'active', 'suffix' => 'PARTIAL', 'remaining' => [6, 3], 'used' => [4, 2], 'expires' => now()->addDays(7)],
+            ['status' => 'exhausted', 'suffix' => 'EXHAUSTED', 'remaining' => [0, 0], 'used' => [10, 5], 'expires' => now()->addDays(30)],
+            ['status' => 'expired', 'suffix' => 'EXPIRED', 'remaining' => [2, 1], 'used' => [8, 4], 'expires' => now()->subDays(1)],
+            ['status' => 'cancelled', 'suffix' => 'CANCELLED', 'remaining' => [5, 2], 'used' => [5, 3], 'expires' => now()->addDays(30)],
+        ];
+
+        foreach ($cases as $case) {
+            $csp = CustomerServicePackage::updateOrCreate(['purchase_reference_snapshot' => self::PREFIX.'-PKG-'.$case['suffix']], ['customer_id' => $customer->id, 'service_package_id' => $premium->id, 'package_name_snapshot' => $premium->name, 'selling_price_snapshot' => 899, 'purchase_amount_snapshot' => 899, 'refunded_amount_snapshot' => $case['suffix'] === 'CANCELLED' ? 100 : 0, 'purchased_from' => 'POS', 'started_at' => now()->subDays(20), 'expires_at' => $case['expires'], 'status' => $case['status']]);
+            foreach ([[$color, 10, 50, 0], [$cut, 5, 30, 1]] as [$service, $total, $value, $idx]) {
+                CustomerServicePackageBalance::updateOrCreate(['customer_service_package_id' => $csp->id, 'booking_service_id' => $service->id], ['service_name_snapshot' => $service->name, 'total_qty' => $total, 'used_qty' => $case['used'][$idx], 'remaining_qty' => $case['remaining'][$idx], 'redemption_value_snapshot' => $value]);
+            }
+        }
+
+        $partial = CustomerServicePackage::where('purchase_reference_snapshot', self::PREFIX.'-PKG-PARTIAL')->first();
+        if ($partial) {
+            CustomerServicePackageUsage::updateOrCreate(['customer_service_package_id' => $partial->id, 'booking_service_id' => $color->id, 'used_ref_id' => 9001], ['customer_id' => $customer->id, 'service_name_snapshot' => $color->name, 'used_qty' => 1, 'redemption_value_snapshot' => 50, 'used_from' => 'BOOKING', 'status' => 'completed', 'consumed_at' => now()->subDays(3)]);
+            CustomerServicePackageUsage::updateOrCreate(['customer_service_package_id' => $partial->id, 'booking_service_id' => $cut->id, 'used_ref_id' => 9001], ['customer_id' => $customer->id, 'service_name_snapshot' => $cut->name, 'used_qty' => 3, 'redemption_value_snapshot' => 30, 'used_from' => 'BOOKING', 'status' => 'completed', 'consumed_at' => now()->subDays(3)]);
+            CustomerServicePackageUsage::updateOrCreate(['customer_service_package_id' => $partial->id, 'booking_service_id' => $cut->id, 'used_ref_id' => 9002], ['customer_id' => $customer->id, 'service_name_snapshot' => $cut->name, 'used_qty' => 1, 'redemption_value_snapshot' => 30, 'used_from' => 'BOOKING', 'status' => 'reserved', 'reserved_at' => now()]);
+        }
+
+        $missingCsp = CustomerServicePackage::updateOrCreate(['purchase_reference_snapshot' => self::PREFIX.'-PKG-MISSING'], ['customer_id' => $customer->id, 'service_package_id' => $missing->id, 'package_name_snapshot' => $missing->name, 'selling_price_snapshot' => 399, 'purchase_amount_snapshot' => 399, 'refunded_amount_snapshot' => 0, 'purchased_from' => 'ADMIN', 'started_at' => now(), 'expires_at' => now()->addDays(20), 'status' => 'active']);
+        CustomerServicePackageBalance::updateOrCreate(['customer_service_package_id' => $missingCsp->id, 'booking_service_id' => $cut->id], ['service_name_snapshot' => $cut->name, 'total_qty' => 5, 'used_qty' => 0, 'remaining_qty' => 5, 'redemption_value_snapshot' => null]);
     }
 
     private function upsertOrder(Customer $customer, Product $product, string $number, string $status, string $paymentStatus, string $method, int $quantity, float $unitPrice, float $refundTotal, Carbon $date): void

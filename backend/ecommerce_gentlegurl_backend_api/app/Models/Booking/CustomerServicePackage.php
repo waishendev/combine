@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Model;
 class CustomerServicePackage extends Model
 {
     protected $fillable = [
-        'customer_id', 'service_package_id', 'purchased_from', 'purchased_ref_id',
-        'started_at', 'expires_at', 'status',
+        'customer_id', 'service_package_id', 'package_name_snapshot', 'selling_price_snapshot',
+        'purchase_amount_snapshot', 'refunded_amount_snapshot', 'purchase_reference_snapshot',
+        'purchased_from', 'purchased_ref_id', 'started_at', 'expires_at', 'status',
     ];
 
     protected $casts = [

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
 import EcommerceAnalyticsDashboard from '@/components/dashboard/EcommerceAnalyticsDashboard'
+import PackageAnalyticsDashboard from '@/components/dashboard/PackageAnalyticsDashboard'
 import { getCurrentUser } from '@/lib/auth'
 import { getTranslator } from '@/lib/i18n-server'
 import type { LangCode } from '@/lib/i18n'
@@ -36,6 +37,10 @@ export default async function DashboardPage() {
   const canViewEcommerceAnalytics = user.permissions.some((permission) =>
     ['dashboard.ecommerce_analytics.view', 'dashboard.analytics.view'].includes(permission),
   )
+  const canViewPackageAnalytics = user.permissions.some((permission) =>
+    ['dashboard.package_analytics.view', 'dashboard.analytics.view'].includes(permission),
+  )
+  const canViewAnyAnalytics = canViewEcommerceAnalytics || canViewPackageAnalytics
 
   return (
     <div className="crm-page-shell py-6 px-4 sm:px-6 lg:px-10">
@@ -47,14 +52,17 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {canViewEcommerceAnalytics ? (
+      {canViewAnyAnalytics ? (
         <div className="space-y-6">
           <WelcomeCard
             title={t('dashboard.welcomeTitle')}
             greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
             hint="Welcome content is retained above your permission-aware analytics workspace."
           />
-          <EcommerceAnalyticsDashboard />
+          <div className="space-y-8">
+            {canViewEcommerceAnalytics ? <EcommerceAnalyticsDashboard /> : null}
+            {canViewPackageAnalytics ? <PackageAnalyticsDashboard /> : null}
+          </div>
         </div>
       ) : (
         <WelcomeCard

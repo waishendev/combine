@@ -20,6 +20,7 @@ use App\Http\Controllers\Ecommerce\HomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicAnnouncementController;
 use App\Http\Controllers\Ecommerce\DashboardController;
 use App\Http\Controllers\Ecommerce\DashboardAnalyticsController;
+use App\Http\Controllers\Ecommerce\PackageDashboardAnalyticsController;
 use App\Http\Controllers\Ecommerce\BrandingController;
 use App\Http\Controllers\Ecommerce\BillplzPaymentGatewayOptionController;
 use App\Http\Controllers\Ecommerce\PublicBankAccountController;
@@ -267,6 +268,15 @@ $protectedRoutes = function () {
 
     Route::get('/admin/dashboard/analytics/ecommerce', [DashboardAnalyticsController::class, 'ecommerce'])
         ->middleware('permission:dashboard.ecommerce_analytics.view|dashboard.analytics.view');
+    Route::prefix('/admin/dashboard/analytics/packages')
+        ->middleware('permission:dashboard.package_analytics.view|dashboard.analytics.view')
+        ->group(function () {
+            Route::get('/summary', [PackageDashboardAnalyticsController::class, 'summary']);
+            Route::get('/customer-packages', [PackageDashboardAnalyticsController::class, 'customerPackages']);
+            Route::get('/sales', [PackageDashboardAnalyticsController::class, 'sales']);
+            Route::get('/redemptions', [PackageDashboardAnalyticsController::class, 'redemptions']);
+            Route::get('/customer-packages/{id}', [PackageDashboardAnalyticsController::class, 'customerPackageDetail']);
+        });
 
     // Activity Logs
     Route::get('/activity-logs', [ActivityLogController::class, 'index'])
