@@ -22,6 +22,7 @@ class Category extends Model
         'meta_keywords',
         'meta_og_image',
         'is_active',
+        'show_in_pos_filter',
         'sort_order',
     ];
 
@@ -29,6 +30,7 @@ class Category extends Model
     {
         return [
             'is_active' => 'boolean',
+            'show_in_pos_filter' => 'boolean',
         ];
     }
 

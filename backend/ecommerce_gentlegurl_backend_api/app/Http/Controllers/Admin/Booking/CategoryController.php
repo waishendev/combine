@@ -52,6 +52,7 @@ class CategoryController extends Controller
             'slug' => ['nullable', 'string', 'max:150', 'unique:booking_service_categories,slug'],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
+            'show_in_pos_filter' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
         ]);
 
@@ -88,6 +89,7 @@ class CategoryController extends Controller
             'slug' => ['nullable', 'string', 'max:150', 'unique:booking_service_categories,slug,' . $category->id],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
+            'show_in_pos_filter' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
         ]);
 
@@ -146,6 +148,7 @@ class CategoryController extends Controller
             'cn_name' => ['nullable', 'string', 'max:150'],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
+            'show_in_pos_filter' => ['nullable', 'boolean'],
         ]);
 
         $categories = BookingServiceCategory::query()->whereIn('id', $validated['ids'])->get();
@@ -229,7 +232,7 @@ class CategoryController extends Controller
             return response()->json(['message' => 'Unable to build booking categories CSV export.'], 500);
         }
 
-        $headers = ['id', 'name', 'cn_name', 'slug', 'description', 'is_active', 'sort_order'];
+        $headers = ['id', 'name', 'cn_name', 'slug', 'description', 'is_active', 'show_in_pos_filter', 'sort_order'];
         fputcsv($stream, $headers);
 
         foreach ($categories as $category) {
@@ -240,6 +243,7 @@ class CategoryController extends Controller
                 $category->slug,
                 $category->description,
                 $category->is_active ? 'true' : 'false',
+                ($category->show_in_pos_filter ?? true) ? 'true' : 'false',
                 $category->sort_order,
             ]);
         }
@@ -273,7 +277,7 @@ class CategoryController extends Controller
         }
 
         $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
-        $allowedHeaders = ['id', 'name', 'cn_name', 'slug', 'description', 'is_active', 'sort_order'];
+        $allowedHeaders = ['id', 'name', 'cn_name', 'slug', 'description', 'is_active', 'show_in_pos_filter', 'sort_order'];
         $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
 
         if (! empty($unknownHeaders)) {
@@ -313,12 +317,19 @@ class CategoryController extends Controller
                 'description' => $payload['description'] ?? null,
                 'sort_order' => $payload['sort_order'] ?? null,
                 'is_active' => $payload['is_active'] ?? null,
+                'show_in_pos_filter' => $payload['show_in_pos_filter'] ?? null,
             ];
 
             if ($raw['is_active'] !== null && $raw['is_active'] !== '') {
                 $raw['is_active'] = filter_var($raw['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             } else {
                 $raw['is_active'] = true;
+            }
+
+            if ($raw['show_in_pos_filter'] !== null && $raw['show_in_pos_filter'] !== '') {
+                $raw['show_in_pos_filter'] = filter_var($raw['show_in_pos_filter'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            } else {
+                $raw['show_in_pos_filter'] = true;
             }
 
             if ($raw['sort_order'] === '') {
@@ -331,6 +342,7 @@ class CategoryController extends Controller
                 'slug' => ['nullable', 'string', 'max:150'],
                 'description' => ['nullable', 'string'],
                 'is_active' => ['required', 'boolean'],
+                'show_in_pos_filter' => ['required', 'boolean'],
                 'sort_order' => ['nullable', 'integer', 'min:0'],
             ]);
 
@@ -367,6 +379,7 @@ class CategoryController extends Controller
                     ($category->slug === ($incoming['slug'] ?? $category->slug)) &&
                     (($category->description ?? null) === ($incoming['description'] ?? null)) &&
                     ((bool) $category->is_active === (bool) ($incoming['is_active'] ?? $category->is_active)) &&
+                    ((bool) ($category->show_in_pos_filter ?? true) === (bool) ($incoming['show_in_pos_filter'] ?? true)) &&
                     ((int) $category->sort_order === (int) ($incoming['sort_order'] ?? $category->sort_order));
                 if ($isUnchanged) {
                     $summary['skipped']++;
@@ -411,6 +424,7 @@ class CategoryController extends Controller
             'image_path' => $category->image_path,
             'image_url' => $category->image_url,
             'is_active' => (bool) $category->is_active,
+            'show_in_pos_filter' => (bool) ($category->show_in_pos_filter ?? true),
             'sort_order' => (int) $category->sort_order,
             'linked_booking_product_category_id' => $category->linked_booking_product_category_id
                 ? (int) $category->linked_booking_product_category_id

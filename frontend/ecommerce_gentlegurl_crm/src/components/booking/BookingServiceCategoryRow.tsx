@@ -98,6 +98,12 @@ export default function BookingServiceCategoryRow({
       </td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
+          status={category.showInPosFilter ? 'active' : 'inactive'}
+          label={category.showInPosFilter ? 'Yes' : 'No'}
+        />
+      </td>
+      <td className="px-4 py-2 border border-gray-200">
+        <StatusBadge
           status={category.isActive ? 'active' : 'inactive'}
           label={category.isActive ? t('common.active') : t('common.inactive')}
         />

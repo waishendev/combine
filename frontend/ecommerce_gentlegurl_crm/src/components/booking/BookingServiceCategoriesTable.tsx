@@ -603,6 +603,7 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
                   { key: 'name', label: 'Name' },
                   { key: 'slug', label: 'Slug' },
                   { key: 'sortOrder', label: 'Sort Order' },
+                  { key: 'showInPosFilter', label: 'POS Filter' },
                   { key: 'isActive', label: t('common.status') },
                 ] as const
               ).map(({ key, label }) => (

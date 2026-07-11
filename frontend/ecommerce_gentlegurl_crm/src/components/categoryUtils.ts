@@ -20,6 +20,7 @@ export type CategoryApiItem = {
   /** Public URL for uploaded OG image (Laravel storage URL). */
   meta_og_image_url?: string | null
   is_active?: boolean | number | string | null
+  show_in_pos_filter?: boolean | number | string | null
   sort_order?: number | string | null
   menu_ids?: (number | string)[] | null
   menus?: CategoryApiMenu[] | null
@@ -42,6 +43,15 @@ export const mapCategoryApiItemToRow = (item: CategoryApiItem): CategoryRowData 
     isActiveValue === '1' ||
     isActiveValue === 1
 
+  const showInPosFilterValue = item.show_in_pos_filter
+  const showInPosFilter =
+    showInPosFilterValue === undefined ||
+    showInPosFilterValue === null ||
+    showInPosFilterValue === true ||
+    showInPosFilterValue === 'true' ||
+    showInPosFilterValue === '1' ||
+    showInPosFilterValue === 1
+
   const menuNames = Array.isArray(item.menus)
     ? item.menus.map((menu) => menu?.name).filter(Boolean).join(', ')
     : '-'
@@ -63,6 +73,7 @@ export const mapCategoryApiItemToRow = (item: CategoryApiItem): CategoryRowData 
         ? String(item.meta_og_image_url).trim()
         : undefined,
     isActive,
+    showInPosFilter,
     sortOrder: typeof item.sort_order === 'number' ? item.sort_order : (item.sort_order ? Number(item.sort_order) : 0),
     menuIds: Array.isArray(item.menu_ids) ? item.menu_ids.map(id => typeof id === 'number' ? id : Number(id)).filter(id => Number.isFinite(id)) : [],
     menuNames,

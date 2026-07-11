@@ -20,6 +20,7 @@ export default function BookingProductCategoryCreateModal({ onClose, onSuccess }
   const [name, setName] = useState('')
   const [cnName, setCnName] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [showInPosFilter, setShowInPosFilter] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,6 +38,7 @@ export default function BookingProductCategoryCreateModal({ onClose, onSuccess }
         name: trimmed,
         cn_name: cnName.trim() || null,
         is_active: isActive,
+        show_in_pos_filter: showInPosFilter,
       }
 
       const res = await fetch('/api/proxy/admin/booking/product-categories', {
@@ -131,6 +133,21 @@ export default function BookingProductCategoryCreateModal({ onClose, onSuccess }
             >
               <option value="active">{t('common.active')}</option>
               <option value="inactive">{t('common.inactive')}</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="pc-create-pos-filter" className="mb-1 block text-sm font-medium text-gray-700">
+              Show in POS filter
+            </label>
+            <select
+              id="pc-create-pos-filter"
+              value={showInPosFilter ? 'enabled' : 'disabled'}
+              onChange={(e) => setShowInPosFilter(e.target.value === 'enabled')}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              disabled={submitting}
+            >
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
             </select>
           </div>
 

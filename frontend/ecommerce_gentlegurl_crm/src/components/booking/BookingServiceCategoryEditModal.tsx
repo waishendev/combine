@@ -39,6 +39,7 @@ export default function BookingServiceCategoryEditModal({
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [showInPosFilter, setShowInPosFilter] = useState(true)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
@@ -89,6 +90,14 @@ export default function BookingServiceCategoryEditModal({
         setSlug(String(raw.slug ?? ''))
         setDescription(String(raw.description ?? ''))
         setIsActive(Boolean(raw.is_active))
+        setShowInPosFilter(
+          raw.show_in_pos_filter === undefined ||
+            raw.show_in_pos_filter === null ||
+            raw.show_in_pos_filter === true ||
+            raw.show_in_pos_filter === 1 ||
+            raw.show_in_pos_filter === '1' ||
+            raw.show_in_pos_filter === 'true',
+        )
         const existingUrl = typeof raw.image_url === 'string' ? raw.image_url : null
         setInitialImageUrl(existingUrl)
         setImagePreview(existingUrl)
@@ -156,6 +165,7 @@ export default function BookingServiceCategoryEditModal({
       if (slug.trim()) fd.append('slug', slug.trim())
       fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
+      fd.append('show_in_pos_filter', showInPosFilter ? '1' : '0')
       if (imageFile) fd.append('image', imageFile)
       appendCategoryProductLinkFormData(fd, productCategoryLink, true)
 
@@ -367,6 +377,21 @@ export default function BookingServiceCategoryEditModal({
                   >
                     <option value="active">{t('common.active')}</option>
                     <option value="inactive">{t('common.inactive')}</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="edit-category-pos-filter" className="mb-1 block text-sm font-medium text-gray-700">
+                    Show in POS filter
+                  </label>
+                  <select
+                    id="edit-category-pos-filter"
+                    value={showInPosFilter ? 'enabled' : 'disabled'}
+                    onChange={(e) => setShowInPosFilter(e.target.value === 'enabled')}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    disabled={disableForm}
+                  >
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
                   </select>
                 </div>
               </div>

@@ -14,6 +14,7 @@ import {
 import CategoryCreateModal from './CategoryCreateModal'
 import CategoryEditModal from './CategoryEditModal'
 import CategoryDeleteModal from './CategoryDeleteModal'
+import CategoryBulkUpdateModal from './CategoryBulkUpdateModal'
 import {
   type CategoryApiItem,
   mapCategoryApiItemToRow,
@@ -76,6 +77,10 @@ export default function CategoryTable({
   const canUpdate = permissions.includes('ecommerce.categories.update')
   const canDelete = permissions.includes('ecommerce.categories.delete')
   const showActions = canUpdate || canDelete
+  const showSelection = canUpdate
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false)
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -277,6 +282,16 @@ export default function CategoryTable({
     return () => controller.abort()
   }, [fetchCategories])
 
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set<number>()
+      rows.forEach((row) => {
+        if (prev.has(row.id)) next.add(row.id)
+      })
+      return next
+    })
+  }, [rows])
+
   const handleSort = (column: keyof CategoryRowData) => {
     if (sortColumn === column) {
       if (sortDirection === 'asc') {
@@ -323,6 +338,34 @@ export default function CategoryTable({
     return sortDirection === 'asc' ? sorted : sorted.reverse()
   }, [rows, sortColumn, sortDirection])
 
+  const visibleRowIds = useMemo(() => sortedRows.map((r) => r.id), [sortedRows])
+  const allVisibleSelected =
+    visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedIds.has(id))
+  const hasSelection = selectedIds.size > 0
+
+  const selectedCategories = useMemo(() => {
+    const selected = new Set(selectedIds)
+    return rows.filter((r) => selected.has(r.id))
+  }, [rows, selectedIds])
+
+  const handleToggleSelectAll = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) visibleRowIds.forEach((id) => next.add(id))
+      else visibleRowIds.forEach((id) => next.delete(id))
+      return next
+    })
+  }
+
+  const handleToggleSelect = (id: number, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
   const handleFilterChange = (values: CategoryFilterValues) => {
     setInputs(values)
   }
@@ -356,7 +399,7 @@ export default function CategoryTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 8 : 7
+  const colCount = (showActions ? 8 : 7) + (showSelection ? 1 : 0)
 
   const totalPages = meta.last_page || 1
 
@@ -436,6 +479,19 @@ export default function CategoryTable({
 
   return (
     <div>
+      {isBulkUpdateOpen && (
+        <CategoryBulkUpdateModal
+          show={isBulkUpdateOpen}
+          selectedCategories={selectedCategories}
+          onClose={() => setIsBulkUpdateOpen(false)}
+          onSuccess={async () => {
+            const controller = new AbortController()
+            await fetchCategories(controller.signal)
+            setSelectedIds(new Set())
+          }}
+        />
+      )}
+
       {isFilterModalOpen && (
         <CategoryFiltersWrapper
           inputs={inputs}
@@ -467,6 +523,18 @@ export default function CategoryTable({
             >
               <i className="fa-solid fa-plus" />
               {t('common.create')}
+            </button>
+          )}
+
+          {showSelection && (
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded bg-emerald-500 px-4 py-2 text-sm text-white hover:bg-emerald-600 disabled:opacity-50"
+              onClick={() => setIsBulkUpdateOpen(true)}
+              disabled={!hasSelection || loading}
+            >
+              <i className="fa-solid fa-pen-to-square" />
+              Bulk Update
             </button>
           )}
 
@@ -576,12 +644,24 @@ export default function CategoryTable({
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              {showSelection && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                    checked={allVisibleSelected}
+                    onChange={(e) => handleToggleSelectAll(e.target.checked)}
+                    aria-label="Select all categories on this page"
+                  />
+                </th>
+              )}
               {(
                 [
                   { key: 'name', label: 'Name' },
                   { key: 'slug', label: 'Slug' },
                   { key: 'description', label: 'Description' },
                   { key: 'menuNames', label: 'Menus' },
+                  { key: 'showInPosFilter', label: 'POS Filter' },
                   { key: 'isActive', label: t('common.status') },
                 ] as const
               ).map(({ key, label }) => (
@@ -618,8 +698,11 @@ export default function CategoryTable({
                   key={category.id}
                   category={category}
                   showActions={showActions}
+                  showSelection={showSelection}
+                  selected={selectedIds.has(category.id)}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  onSelectChange={(_, checked) => handleToggleSelect(category.id, checked)}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingCategoryId(category.id)

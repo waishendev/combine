@@ -9,11 +9,12 @@ class BookingProductCategory extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'cn_name', 'sort_order', 'is_active'];
+    protected $fillable = ['name', 'cn_name', 'sort_order', 'is_active', 'show_in_pos_filter'];
 
     protected $casts = [
         'sort_order' => 'integer',
         'is_active' => 'boolean',
+        'show_in_pos_filter' => 'boolean',
     ];
 
     public function products()

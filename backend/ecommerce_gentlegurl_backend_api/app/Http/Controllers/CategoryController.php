@@ -44,6 +44,7 @@ class CategoryController extends Controller
             'meta_og_image' => ['nullable', 'string', 'max:255'],
             'meta_og_image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
             'is_active' => ['sometimes', 'boolean'],
+            'show_in_pos_filter' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer'],
             'menu_ids' => ['array', 'nullable'],
             'menu_ids.*' => ['integer', 'exists:shop_menu_items,id'],
@@ -52,7 +53,10 @@ class CategoryController extends Controller
         $menuIds = $validated['menu_ids'] ?? [];
         unset($validated['menu_ids'], $validated['meta_og_image_file']);
 
-        $category = Category::create($validated + ['is_active' => $validated['is_active'] ?? true]);
+        $category = Category::create($validated + [
+            'is_active' => $validated['is_active'] ?? true,
+            'show_in_pos_filter' => $validated['show_in_pos_filter'] ?? true,
+        ]);
         $category->shopMenus()->sync($menuIds);
 
         $this->handleCategoryMetaOgImageUpload($category, $request);
@@ -90,7 +94,7 @@ class CategoryController extends Controller
         if (empty($headers)) {
             $headers = [
                 'id', 'parent_id', 'name', 'slug', 'description', 'meta_title', 'meta_description',
-                'meta_keywords', 'meta_og_image', 'is_active', 'sort_order', 'menu_ids', 'menus',
+                'meta_keywords', 'meta_og_image', 'is_active', 'show_in_pos_filter', 'sort_order', 'menu_ids', 'menus',
                 'children', 'created_at', 'updated_at',
             ];
         }
@@ -156,7 +160,7 @@ class CategoryController extends Controller
 
         $allowedFields = [
             'parent_id', 'name', 'cn_name', 'slug', 'description', 'meta_title', 'meta_description',
-            'meta_keywords', 'meta_og_image', 'is_active', 'sort_order', 'menu_ids',
+            'meta_keywords', 'meta_og_image', 'is_active', 'show_in_pos_filter', 'sort_order', 'menu_ids',
         ];
 
         $existingSlugs = Category::query()
@@ -257,7 +261,7 @@ class CategoryController extends Controller
                     continue;
                 }
 
-                if ($key === 'is_active') {
+                if ($key === 'is_active' || $key === 'show_in_pos_filter') {
                     $payload[$key] = filter_var($value, FILTER_VALIDATE_BOOLEAN);
                     continue;
                 }
@@ -363,6 +367,7 @@ class CategoryController extends Controller
                     'meta_keywords' => ['nullable', 'string'],
                     'meta_og_image' => ['nullable', 'string', 'max:255'],
                     'is_active' => ['sometimes', 'boolean'],
+                    'show_in_pos_filter' => ['sometimes', 'boolean'],
                     'sort_order' => ['sometimes', 'integer'],
                     'menu_ids' => ['array', 'nullable'],
                     'menu_ids.*' => ['integer', 'exists:shop_menu_items,id'],
@@ -386,6 +391,7 @@ class CategoryController extends Controller
 
                         $category = Category::create($clean + [
                             'is_active' => $clean['is_active'] ?? true,
+                            'show_in_pos_filter' => $clean['show_in_pos_filter'] ?? true,
                         ]);
 
                         if (is_array($menuIds)) {
@@ -448,6 +454,7 @@ class CategoryController extends Controller
             'meta_og_image' => ['nullable', 'string', 'max:255'],
             'meta_og_image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
             'is_active' => ['sometimes', 'boolean'],
+            'show_in_pos_filter' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer'],
             'menu_ids' => ['array', 'nullable'],
             'menu_ids.*' => ['integer', 'exists:shop_menu_items,id'],
@@ -475,6 +482,34 @@ class CategoryController extends Controller
         return $this->respond(null, __('Category deleted successfully.'));
     }
 
+    public function bulkUpdate(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:categories,id'],
+            'description' => ['nullable', 'string'],
+            'is_active' => ['nullable', 'boolean'],
+            'show_in_pos_filter' => ['nullable', 'boolean'],
+        ]);
+
+        $categories = Category::query()->whereIn('id', $validated['ids'])->get();
+        $payload = collect($validated)->except('ids')->toArray();
+
+        foreach ($categories as $category) {
+            if (! empty($payload)) {
+                $category->update($payload);
+            }
+        }
+
+        $fresh = Category::query()
+            ->whereIn('id', $validated['ids'])
+            ->with(['shopMenus'])
+            ->get()
+            ->map(fn (Category $category) => $this->formatCategory($category));
+
+        return $this->respond($fresh, __('Categories updated successfully.'));
+    }
+
     protected function formatCategory(Category $category): array
     {
         return [
@@ -492,6 +527,7 @@ class CategoryController extends Controller
                 ? Storage::disk('public')->url($category->meta_og_image)
                 : null,
             'is_active' => $category->is_active,
+            'show_in_pos_filter' => (bool) ($category->show_in_pos_filter ?? true),
             'sort_order' => $category->sort_order,
             'menu_ids' => $category->shopMenus->pluck('id')->all(),
             'menus' => $category->shopMenus->map(function (ShopMenuItem $menu) {

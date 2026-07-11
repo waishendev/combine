@@ -782,7 +782,7 @@ function PosCartDiscountAmount({
   return <span className={className}>RM {final.toFixed(2)}</span>
 }
 
-type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null }
+type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null; show_in_pos_filter?: boolean }
 
 type BookingServiceOption = {
   id: number
@@ -977,7 +977,7 @@ const BookingProductOptionsModal = memo(function BookingProductOptionsModal({ dr
     </div>
   )
 })
-type BookingProductCategoryOption = { id: number; name: string; cn_name?: string | null; sort_order?: number; is_active?: boolean }
+type BookingProductCategoryOption = { id: number; name: string; cn_name?: string | null; sort_order?: number; is_active?: boolean; show_in_pos_filter?: boolean }
 
 type ProductOption = {
   id: number
@@ -1014,6 +1014,11 @@ type CategoryOption = {
   id: number
   name: string
   cn_name: string | null
+  show_in_pos_filter?: boolean
+}
+
+function categoryShowsInPosFilter(category: { show_in_pos_filter?: boolean }): boolean {
+  return category.show_in_pos_filter !== false
 }
 
 type FetchProductOptions = {
@@ -3495,7 +3500,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         const id = Number(row.id)
         const name = String(row.name ?? '').trim()
         if (!Number.isFinite(id) || id <= 0 || !name) return null
-        return { id, name, cn_name: typeof row.cn_name === 'string' ? row.cn_name.trim() || null : null }
+        return { id, name, cn_name: typeof row.cn_name === 'string' ? row.cn_name.trim() || null : null, show_in_pos_filter: row.show_in_pos_filter !== false }
       }).filter((item): item is BookingServiceCategoryOption => Boolean(item)))
     } catch {
       setBookingServiceCategories([])
@@ -5435,6 +5440,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               id,
               name: item.name.trim(),
               cn_name: typeof item?.cn_name === 'string' ? item.cn_name.trim() || null : null,
+              show_in_pos_filter:
+                item?.show_in_pos_filter === undefined ||
+                item?.show_in_pos_filter === null ||
+                item?.show_in_pos_filter === true ||
+                item?.show_in_pos_filter === 1 ||
+                item?.show_in_pos_filter === 'true',
             }
           })
           .filter((item): item is CategoryOption => Boolean(item))
@@ -5467,6 +5478,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             cn_name: typeof row?.cn_name === 'string' ? row.cn_name.trim() || null : null,
             sort_order: Number(row?.sort_order ?? 0),
             is_active: Boolean(row?.is_active ?? true),
+            show_in_pos_filter: row?.show_in_pos_filter !== false,
           }))
           .filter((row) => row.id > 0 && row.name && row.is_active)
           .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
@@ -5499,15 +5511,54 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     return bookingProducts.filter((item) => item.name.toLowerCase().includes(keyword))
   }, [bookingProducts, debouncedBookingProductQuery])
 
-  const showProductCategoryCnLine = useMemo(
-    () => categories.some((category) => Boolean(category.cn_name?.trim())),
+  const posProductFilterCategories = useMemo(
+    () => categories.filter(categoryShowsInPosFilter),
     [categories],
   )
 
-  const showBookingProductCategoryCnLine = useMemo(
-    () => bookingProductCategories.some((category) => Boolean(category.cn_name?.trim())),
+  const posBookingServiceFilterCategories = useMemo(
+    () => bookingServiceCategories.filter(categoryShowsInPosFilter),
+    [bookingServiceCategories],
+  )
+
+  const posBookingProductFilterCategories = useMemo(
+    () => bookingProductCategories.filter(categoryShowsInPosFilter),
     [bookingProductCategories],
   )
+
+  const showProductCategoryCnLine = useMemo(
+    () => posProductFilterCategories.some((category) => Boolean(category.cn_name?.trim())),
+    [posProductFilterCategories],
+  )
+
+  const showBookingProductCategoryCnLine = useMemo(
+    () => posBookingProductFilterCategories.some((category) => Boolean(category.cn_name?.trim())),
+    [posBookingProductFilterCategories],
+  )
+
+  useEffect(() => {
+    if (selectedCategoryId !== null && !posProductFilterCategories.some((category) => category.id === selectedCategoryId)) {
+      setSelectedCategoryId(null)
+    }
+  }, [posProductFilterCategories, selectedCategoryId])
+
+  useEffect(() => {
+    if (
+      selectedBookingProductCategoryId !== null &&
+      !posBookingProductFilterCategories.some((category) => category.id === selectedBookingProductCategoryId)
+    ) {
+      setSelectedBookingProductCategoryId(null)
+    }
+  }, [posBookingProductFilterCategories, selectedBookingProductCategoryId])
+
+  useEffect(() => {
+    if (
+      selectedBookingServiceCategoryId !== null &&
+      !posBookingServiceFilterCategories.some((category) => category.id === selectedBookingServiceCategoryId)
+    ) {
+      setSelectedBookingServiceCategoryId(null)
+    }
+  }, [posBookingServiceFilterCategories, selectedBookingServiceCategoryId])
 
   useEffect(() => {
     const onPageShow = () => { void loadCart() }
@@ -7859,7 +7910,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       secondaryClassName={`mt-0.5 text-left text-[10px] leading-tight ${selectedCategoryId === null ? 'text-white/80' : 'text-gray-500'}`}
                     />
                   </button>
-                  {categories.map((category) => {
+                  {posProductFilterCategories.map((category) => {
                     const isActive = selectedCategoryId === category.id
 
                     return (
@@ -8031,7 +8082,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           secondaryClassName={`mt-0.5 text-left text-[10px] leading-tight ${selectedBookingProductCategoryId === null ? 'text-white/80' : 'text-gray-500'}`}
                         />
                       </button>
-                      {bookingProductCategories.map((category) => {
+                      {posBookingProductFilterCategories.map((category) => {
                         const isSelected = selectedBookingProductCategoryId === category.id
                         return (
                         <button
@@ -8088,7 +8139,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             ) : catalogTab === 'book-service' ? (
               <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                 <BookingServicePicker
-                  categories={bookingServiceCategories}
+                  categories={posBookingServiceFilterCategories}
                   services={filteredServices}
                   selectedCategoryId={selectedBookingServiceCategoryId}
                   onCategoryChange={setSelectedBookingServiceCategoryId}
@@ -12218,7 +12269,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
                       return (
                         <BookingServicePicker
-                          categories={bookingServiceCategories}
+                          categories={posBookingServiceFilterCategories}
                           services={services}
                           selectedCategoryId={bookingExtraServiceCategoryIds[block.id] ?? null}
                           onCategoryChange={(next) => {

@@ -515,9 +515,9 @@ $protectedRoutes = function () {
         Route::post('/appointments/{id}/cancel-hold', [PosController::class, 'cancelHoldAppointment']);
         Route::post('/appointments/{id}/reject-hold-payment-proof', [PosController::class, 'rejectHoldPaymentProof']);
         Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment'])
-            ->middleware('permission:pos.checkout');
+            ->middleware('permission:pos.checkout|pos.appointments.checkout');
         Route::post('/appointments/{id}/finalize-zero-settlement', [PosController::class, 'finalizeAppointmentZeroSettlement'])
-            ->middleware('permission:pos.checkout');
+            ->middleware('permission:pos.checkout|pos.appointments.checkout');
         Route::post('/appointments/{id}/edit-settlement', [PosController::class, 'editAppointmentSettlement'])
             ->middleware('permission:pos.checkout|pos.appointments.manage');
         Route::post('/appointments/{id}/deposits', [PosController::class, 'addAppointmentDeposit'])
@@ -540,15 +540,15 @@ $protectedRoutes = function () {
         Route::post('/appointments/{id}/payment-links/{linkId}/reject-proof', [PosAppointmentPaymentLinkController::class, 'rejectProof']);
         Route::get('/services/{serviceId}/addon-options', [PosController::class, 'getServiceAddonOptions']);
         Route::post('/appointments/{id}/apply-package', [PosController::class, 'applyPackageToAppointment'])
-            ->middleware('permission:pos.checkout');
+            ->middleware('permission:pos.checkout|pos.appointments.checkout');
         Route::post('/appointments/{id}/release-package', [PosController::class, 'releasePackageForAppointment'])
-            ->middleware('permission:pos.checkout');
+            ->middleware('permission:pos.checkout|pos.appointments.checkout');
         Route::get('/appointments/{id}/eligible-packages', [PosController::class, 'eligiblePackagesForAppointment'])
-            ->middleware('permission:pos.checkout|pos.appointments.manage');
+            ->middleware('permission:pos.checkout|pos.appointments.checkout|pos.appointments.manage');
         Route::post('/appointments/{id}/batch-apply-packages', [PosController::class, 'batchApplyPackagesToAppointment'])
-            ->middleware('permission:pos.checkout|pos.appointments.manage');
+            ->middleware('permission:pos.checkout|pos.appointments.checkout');
         Route::post('/appointments/{id}/batch-release-packages', [PosController::class, 'batchReleasePackagesForAppointment'])
-            ->middleware('permission:pos.checkout|pos.appointments.manage');
+            ->middleware('permission:pos.checkout|pos.appointments.checkout');
         Route::post('/appointments/{id}/mark-completed', [PosController::class, 'markAppointmentCompleted']);
         Route::post('/appointments/{id}/reschedule', [PosController::class, 'rescheduleAppointment']);
         Route::post('/appointments/{id}/send-confirmation-email', [PosController::class, 'sendBookingConfirmationEmail'])
@@ -622,6 +622,9 @@ $protectedRoutes = function () {
 
         Route::get('/categories/{category}', [CategoryController::class, 'show'])
             ->middleware('permission:ecommerce.categories.view');
+
+        Route::put('/categories/bulk', [CategoryController::class, 'bulkUpdate'])
+            ->middleware('permission:ecommerce.categories.update');
 
         Route::put('/categories/{category}', [CategoryController::class, 'update'])
             ->middleware('permission:ecommerce.categories.update');
@@ -1369,6 +1372,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.services.view');
     Route::post('/product-categories/import', [\App\Http\Controllers\Admin\Booking\BookingProductCategoryController::class, 'importCsv'])
         ->middleware('permission:booking.services.create|booking.services.update');
+    Route::put('/product-categories/bulk', [\App\Http\Controllers\Admin\Booking\BookingProductCategoryController::class, 'bulkUpdate'])
+        ->middleware('permission:booking.services.update');
     Route::apiResource('/product-categories', \App\Http\Controllers\Admin\Booking\BookingProductCategoryController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::get('/categories/export', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'exportCsv'])
         ->middleware('permission:booking.services.view');

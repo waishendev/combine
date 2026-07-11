@@ -4,6 +4,7 @@ export interface BookingProductCategoryRowData {
   cnName: string
   sortOrder: number | null
   isActive: boolean
+  showInPosFilter: boolean
 }
 
 export type BookingProductCategoryApiItem = {
@@ -12,6 +13,7 @@ export type BookingProductCategoryApiItem = {
   cn_name?: string | null
   sort_order?: number | null
   is_active?: boolean | number | string | null
+  show_in_pos_filter?: boolean | number | string | null
 }
 
 export function mapBookingProductCategoryApiItemToRow(
@@ -28,5 +30,12 @@ export function mapBookingProductCategoryApiItemToRow(
       item.is_active === 1 ||
       item.is_active === '1' ||
       item.is_active === 'true',
+    showInPosFilter:
+      item.show_in_pos_filter === undefined ||
+      item.show_in_pos_filter === null ||
+      item.show_in_pos_filter === true ||
+      item.show_in_pos_filter === 1 ||
+      item.show_in_pos_filter === '1' ||
+      item.show_in_pos_filter === 'true',
   }
 }

@@ -5,6 +5,7 @@ export interface BookingServiceCategoryRowData {
   slug: string
   sortOrder: number | null
   isActive: boolean
+  showInPosFilter: boolean
   imagePath?: string
   imageUrl?: string
 }
@@ -16,6 +17,7 @@ export type BookingServiceCategoryApiItem = {
   slug?: string | null
   sort_order?: number | null
   is_active?: boolean | number | string | null
+  show_in_pos_filter?: boolean | number | string | null
   image_path?: string | null
   image_url?: string | null
 }
@@ -35,6 +37,13 @@ export function mapBookingServiceCategoryApiItemToRow(
       item.is_active === 1 ||
       item.is_active === '1' ||
       item.is_active === 'true',
+    showInPosFilter:
+      item.show_in_pos_filter === undefined ||
+      item.show_in_pos_filter === null ||
+      item.show_in_pos_filter === true ||
+      item.show_in_pos_filter === 1 ||
+      item.show_in_pos_filter === '1' ||
+      item.show_in_pos_filter === 'true',
     imagePath: typeof item.image_path === 'string' && item.image_path ? item.image_path : undefined,
     imageUrl: typeof item.image_url === 'string' && item.image_url ? item.image_url : undefined,
   }

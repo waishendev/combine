@@ -38,6 +38,7 @@ interface FormState {
   metaKeywords: string
   metaOgImage: string
   isActive: 'true' | 'false'
+  showInPosFilter: 'true' | 'false'
   menuIds: number[]
 }
 
@@ -51,6 +52,7 @@ const initialFormState: FormState = {
   metaKeywords: '',
   metaOgImage: '',
   isActive: 'true',
+  showInPosFilter: 'true',
   menuIds: [],
 }
 
@@ -138,6 +140,14 @@ export default function CategoryEditModal({
           metaOgImage: typeof category.meta_og_image === 'string' ? category.meta_og_image : '',
           isActive:
             category.is_active === true || category.is_active === 'true' || category.is_active === 1
+              ? 'true'
+              : 'false',
+          showInPosFilter:
+            category.show_in_pos_filter === undefined ||
+            category.show_in_pos_filter === null ||
+            category.show_in_pos_filter === true ||
+            category.show_in_pos_filter === 'true' ||
+            category.show_in_pos_filter === 1
               ? 'true'
               : 'false',
           menuIds: mappedCategory.menuIds,
@@ -292,6 +302,7 @@ export default function CategoryEditModal({
       if (form.metaDescription.trim()) fd.append('meta_description', form.metaDescription.trim())
       if (form.metaKeywords.trim()) fd.append('meta_keywords', form.metaKeywords.trim())
       fd.append('is_active', form.isActive === 'true' ? '1' : '0')
+      fd.append('show_in_pos_filter', form.showInPosFilter === 'true' ? '1' : '0')
       form.menuIds.forEach((id) => fd.append('menu_ids[]', String(id)))
 
       if (ogFile) {
@@ -645,6 +656,29 @@ export default function CategoryEditModal({
                     <option value="true">{t('common.active')}</option>
                     <option value="false">{t('common.inactive')}</option>
                   </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-showInPosFilter"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Show in POS filter
+                  </label>
+                  <select
+                    id="edit-showInPosFilter"
+                    name="showInPosFilter"
+                    value={form.showInPosFilter}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    disabled={disableForm}
+                  >
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Disabled categories stay in POS All, but won&apos;t appear as a filter tab.
+                  </p>
                 </div>
 
                 <MenuSelector

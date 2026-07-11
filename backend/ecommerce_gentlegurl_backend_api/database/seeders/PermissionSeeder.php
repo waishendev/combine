@@ -93,7 +93,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.payment-gateways' => ['view', 'create', 'update', 'delete'],
             'ecommerce.announcements' => ['view', 'create', 'update', 'delete'],
             'ecommerce.orders' => ['view', 'create', 'update', 'confirm-payment'],
-            'pos' => ['checkout', 'orders.view', 'appointments.manage', 'staff_consumables.access', 'staff_consumables.checkout', 'staff_consumables.view_logs'],
+            'pos' => ['checkout', 'orders.view', 'appointments.manage', 'appointments.checkout', 'staff_consumables.access', 'staff_consumables.checkout', 'staff_consumables.view_logs'],
             'ecommerce.returns' => ['view', 'update'],
             'ecommerce.loyalty' => ['settings', 'tiers'],
             'ecommerce.loyalty.settings' => ['view', 'create', 'update', 'delete', 'settings', 'tiers'],

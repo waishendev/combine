@@ -8,11 +8,12 @@ use Illuminate\Support\Facades\Storage;
 class BookingServiceCategory extends Model
 {
     protected $fillable = [
-        'linked_booking_product_category_id', 'name', 'cn_name', 'slug', 'description', 'image_path', 'is_active', 'sort_order',
+        'linked_booking_product_category_id', 'name', 'cn_name', 'slug', 'description', 'image_path', 'is_active', 'show_in_pos_filter', 'sort_order',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'show_in_pos_filter' => 'boolean',
         'sort_order' => 'integer',
     ];
 

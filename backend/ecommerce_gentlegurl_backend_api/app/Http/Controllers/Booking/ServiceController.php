@@ -28,6 +28,7 @@ class ServiceController extends Controller
             'image_path' => $category->image_path,
             'image_url' => $category->image_url,
             'is_active' => (bool) $category->is_active,
+            'show_in_pos_filter' => (bool) ($category->show_in_pos_filter ?? true),
             'sort_order' => (int) $category->sort_order,
         ])->values());
     }

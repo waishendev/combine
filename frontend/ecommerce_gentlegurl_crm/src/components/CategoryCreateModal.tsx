@@ -28,6 +28,7 @@ interface FormState {
   metaDescription: string
   metaKeywords: string
   isActive: 'true' | 'false'
+  showInPosFilter: 'true' | 'false'
   menuIds: number[]
 }
 
@@ -40,6 +41,7 @@ const initialFormState: FormState = {
   metaDescription: '',
   metaKeywords: '',
   isActive: 'true',
+  showInPosFilter: 'true',
   menuIds: [],
 }
 
@@ -177,6 +179,7 @@ export default function CategoryCreateModal({
       if (form.metaDescription.trim()) fd.append('meta_description', form.metaDescription.trim())
       if (form.metaKeywords.trim()) fd.append('meta_keywords', form.metaKeywords.trim())
       fd.append('is_active', form.isActive === 'true' ? '1' : '0')
+      fd.append('show_in_pos_filter', form.showInPosFilter === 'true' ? '1' : '0')
       form.menuIds.forEach((id) => fd.append('menu_ids[]', String(id)))
       if (ogFile) {
         fd.append('meta_og_image_file', ogFile)
@@ -483,6 +486,29 @@ export default function CategoryCreateModal({
                   <option value="true">{t('common.active')}</option>
                   <option value="false">{t('common.inactive')}</option>
                 </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="create-showInPosFilter"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Show in POS filter
+                </label>
+                <select
+                  id="create-showInPosFilter"
+                  name="showInPosFilter"
+                  value={form.showInPosFilter}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={submitting}
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Disabled categories stay in POS All, but won&apos;t appear as a filter tab.
+                </p>
               </div>
 
               <MenuSelector

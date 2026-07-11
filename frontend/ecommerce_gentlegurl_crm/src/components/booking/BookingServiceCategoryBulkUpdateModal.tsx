@@ -5,11 +5,12 @@ import { useMemo, useState } from 'react'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import type { BookingServiceCategoryRowData } from './bookingServiceCategoryUtils'
 
-type FieldKey = 'description' | 'is_active'
+type FieldKey = 'description' | 'is_active' | 'show_in_pos_filter'
 
 const FIELD_OPTIONS: Array<{ key: FieldKey; label: string }> = [
   { key: 'description', label: 'Description' },
   { key: 'is_active', label: 'Status' },
+  { key: 'show_in_pos_filter', label: 'Show in POS filter' },
 ]
 
 type Props = {
@@ -28,6 +29,7 @@ export default function BookingServiceCategoryBulkUpdateModal({
   const [selectedFields, setSelectedFields] = useState<FieldKey[]>([])
   const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState<'true' | 'false'>('true')
+  const [showInPosFilter, setShowInPosFilter] = useState<'true' | 'false'>('true')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -58,6 +60,7 @@ export default function BookingServiceCategoryBulkUpdateModal({
 
       if (selectedFields.includes('description')) payload.description = description.trim()
       if (selectedFields.includes('is_active')) payload.is_active = isActive === 'true'
+      if (selectedFields.includes('show_in_pos_filter')) payload.show_in_pos_filter = showInPosFilter === 'true'
 
       const res = await fetch('/api/proxy/admin/booking/categories/bulk', {
         method: 'PUT',
@@ -194,6 +197,21 @@ export default function BookingServiceCategoryBulkUpdateModal({
                 >
                   <option value="true">Active</option>
                   <option value="false">Inactive</option>
+                </select>
+              </div>
+            )}
+
+            {selectedFields.includes('show_in_pos_filter') && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Show in POS filter</label>
+                <select
+                  value={showInPosFilter}
+                  onChange={(e) => setShowInPosFilter(e.target.value as 'true' | 'false')}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  disabled={submitting}
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
                 </select>
               </div>
             )}

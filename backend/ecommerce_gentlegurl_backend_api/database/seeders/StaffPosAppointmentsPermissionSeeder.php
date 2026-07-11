@@ -21,17 +21,27 @@ class StaffPosAppointmentsPermissionSeeder extends Seeder
             ['sort_order' => 999]
         );
 
-        $permission = Permission::updateOrCreate(
+        $managePermission = Permission::updateOrCreate(
             ['slug' => 'pos.appointments.manage'],
             [
                 'name' => 'POS Appointments Manage',
-                'description' => 'Access POS Appointments: refresh, create bookings, requests, edit settlement, service photos, and online deposit links (no POS checkout).',
+                'description' => 'Access POS Appointments: refresh, create bookings, requests, edit settlement, service photos, online deposit links, complete visit, reschedule, cancel, and confirmation email (no checkout).',
+                'group_id' => $posGroup->id,
+            ]
+        );
+
+        $checkoutPermission = Permission::updateOrCreate(
+            ['slug' => 'pos.appointments.checkout'],
+            [
+                'name' => 'POS Appointments Checkout & Package',
+                'description' => 'Checkout and apply/release packages on POS Appointments (can be revoked independently from appointments manage).',
                 'group_id' => $posGroup->id,
             ]
         );
 
         $staffSlugs = [
             'pos.appointments.manage',
+            'pos.appointments.checkout',
             'customers.create',
             'booking.appointments.update_status',
         ];
@@ -52,7 +62,10 @@ class StaffPosAppointmentsPermissionSeeder extends Seeder
         foreach (['admin', 'infra_core_x1'] as $roleName) {
             $role = Role::query()->whereRaw('LOWER(name) = ?', [$roleName])->first();
             if ($role) {
-                $role->permissions()->syncWithoutDetaching([$permission->id]);
+                $role->permissions()->syncWithoutDetaching([
+                    $managePermission->id,
+                    $checkoutPermission->id,
+                ]);
             }
         }
     }

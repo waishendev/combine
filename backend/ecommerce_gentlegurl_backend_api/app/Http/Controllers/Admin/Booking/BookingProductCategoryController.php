@@ -15,7 +15,7 @@ class BookingProductCategoryController extends Controller
     public function index(Request $request)
     {
         $query = BookingProductCategory::query()
-            ->select(['id', 'name', 'cn_name', 'sort_order', 'is_active'])
+            ->select(['id', 'name', 'cn_name', 'sort_order', 'is_active', 'show_in_pos_filter'])
             ->orderBy('sort_order')
             ->orderBy('id');
 
@@ -37,6 +37,7 @@ class BookingProductCategoryController extends Controller
             'cn_name' => ['nullable', 'string', 'max:255'],
             'sort_order' => ['nullable', 'integer'],
             'is_active' => ['nullable', 'boolean'],
+            'show_in_pos_filter' => ['nullable', 'boolean'],
         ]);
 
         if (! isset($data['sort_order']) || $data['sort_order'] === null) {
@@ -54,6 +55,7 @@ class BookingProductCategoryController extends Controller
             'cn_name' => ['nullable', 'string', 'max:255'],
             'sort_order' => ['nullable', 'integer'],
             'is_active' => ['sometimes', 'boolean'],
+            'show_in_pos_filter' => ['sometimes', 'boolean'],
         ]);
         $category->update($data);
 
@@ -68,6 +70,31 @@ class BookingProductCategoryController extends Controller
         return $this->respond(null);
     }
 
+    public function bulkUpdate(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:booking_product_categories,id'],
+            'is_active' => ['nullable', 'boolean'],
+            'show_in_pos_filter' => ['nullable', 'boolean'],
+        ]);
+
+        $categories = BookingProductCategory::query()->whereIn('id', $validated['ids'])->get();
+        $payload = collect($validated)->except('ids')->toArray();
+
+        foreach ($categories as $category) {
+            if (! empty($payload)) {
+                $category->update($payload);
+            }
+        }
+
+        $fresh = BookingProductCategory::query()
+            ->whereIn('id', $validated['ids'])
+            ->get();
+
+        return $this->respond($fresh, __('Booking product categories updated successfully.'));
+    }
+
     public function exportCsv()
     {
         $categories = BookingProductCategory::query()
@@ -80,7 +107,7 @@ class BookingProductCategoryController extends Controller
             return response()->json(['message' => 'Unable to build booking product categories CSV export.'], 500);
         }
 
-        $headers = ['id', 'name', 'cn_name', 'sort_order', 'is_active'];
+        $headers = ['id', 'name', 'cn_name', 'sort_order', 'is_active', 'show_in_pos_filter'];
         fputcsv($stream, $headers);
 
         foreach ($categories as $category) {
@@ -90,6 +117,7 @@ class BookingProductCategoryController extends Controller
                 $category->cn_name,
                 $category->sort_order,
                 $category->is_active ? 'true' : 'false',
+                ($category->show_in_pos_filter ?? true) ? 'true' : 'false',
             ]);
         }
 
@@ -123,7 +151,7 @@ class BookingProductCategoryController extends Controller
         }
 
         $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
-        $allowedHeaders = ['id', 'name', 'cn_name', 'sort_order', 'is_active'];
+        $allowedHeaders = ['id', 'name', 'cn_name', 'sort_order', 'is_active', 'show_in_pos_filter'];
         $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
 
         if (! empty($unknownHeaders)) {
@@ -161,12 +189,19 @@ class BookingProductCategoryController extends Controller
                 'cn_name' => $payload['cn_name'] ?? null,
                 'sort_order' => $payload['sort_order'] ?? null,
                 'is_active' => $payload['is_active'] ?? null,
+                'show_in_pos_filter' => $payload['show_in_pos_filter'] ?? null,
             ];
 
             if ($raw['is_active'] !== null && $raw['is_active'] !== '') {
                 $raw['is_active'] = filter_var($raw['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             } else {
                 $raw['is_active'] = true;
+            }
+
+            if ($raw['show_in_pos_filter'] !== null && $raw['show_in_pos_filter'] !== '') {
+                $raw['show_in_pos_filter'] = filter_var($raw['show_in_pos_filter'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            } else {
+                $raw['show_in_pos_filter'] = true;
             }
 
             if ($raw['sort_order'] === '' || $raw['sort_order'] === null) {
@@ -179,6 +214,7 @@ class BookingProductCategoryController extends Controller
                 'name' => ['required', 'string', 'max:255'],
                 'cn_name' => ['nullable', 'string', 'max:255'],
                 'is_active' => ['required', 'boolean'],
+                'show_in_pos_filter' => ['required', 'boolean'],
                 'sort_order' => ['nullable', 'integer', 'min:0'],
             ]);
 
@@ -217,7 +253,8 @@ class BookingProductCategoryController extends Controller
                     ($category->name === $incoming['name']) &&
                     (($category->cn_name ?? null) === ($incoming['cn_name'] ?? null)) &&
                     ((int) $category->sort_order === (int) ($incoming['sort_order'] ?? $category->sort_order)) &&
-                    ((bool) $category->is_active === (bool) $incoming['is_active']);
+                    ((bool) $category->is_active === (bool) $incoming['is_active']) &&
+                    ((bool) ($category->show_in_pos_filter ?? true) === (bool) ($incoming['show_in_pos_filter'] ?? true));
                 if ($isUnchanged) {
                     $summary['skipped']++;
 

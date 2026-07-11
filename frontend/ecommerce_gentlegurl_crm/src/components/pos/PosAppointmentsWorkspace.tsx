@@ -383,8 +383,11 @@ export default function PosAppointmentsWorkspace({
   const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const canPosCheckout = useMemo(() => permissions.includes('pos.checkout'), [permissions])
   const canManagePosAppointments = useMemo(() => permissions.includes('pos.appointments.manage'), [permissions])
-  /** Checkout staff only — not shown for appointments-only staff portal access. */
-  const canRunAppointmentLifecycleActions = canPosCheckout
+  const canAppointmentCheckoutAndPackage = useMemo(
+    () => canPosCheckout || permissions.includes('pos.appointments.checkout'),
+    [canPosCheckout, permissions],
+  )
+  const canRunAppointmentLifecycleActions = canPosCheckout || canManagePosAppointments
   const canEditAppointmentSettlement = canPosCheckout || canManagePosAppointments
   const appointmentQrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const appointmentQrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
@@ -407,7 +410,7 @@ export default function PosAppointmentsWorkspace({
   const settlementColumnRef = useRef<HTMLDivElement>(null)
   const settlementHostRef = useRef<HTMLDivElement>(null)
   const [bodyModalRoot, setBodyModalRoot] = useState<HTMLDivElement | null>(null)
-  const requiresOpenCashShift = canPosCheckout || canManagePosAppointments
+  const requiresOpenCashShift = canPosCheckout || canManagePosAppointments || canAppointmentCheckoutAndPackage
   const cashShiftActionDisabled = requiresOpenCashShift && (cashShiftLoading || !hasOpenShift)
   const cashShiftActionTitle = cashShiftActionDisabled ? requireOpenShiftMessage : undefined
 
@@ -3904,7 +3907,7 @@ export default function PosAppointmentsWorkspace({
       : 'No amount to collect—tap Checkout to confirm and issue the receipt.'
 
   const showAppointmentCollectPayment =
-    canPosCheckout &&
+    canAppointmentCheckoutAndPackage &&
     !appointmentIsTerminalCancelled &&
     appointmentStatusUpper === 'COMPLETED' &&
     !appointmentCheckoutCompleted &&
@@ -4745,7 +4748,7 @@ export default function PosAppointmentsWorkspace({
                         {appointmentHasUnsettledRangePricing ? (
                           <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
                             <p className="text-xs font-semibold text-amber-900">{UNSETTLED_RANGE_CHECKOUT_MESSAGE}</p>
-                            {canPosCheckout ? (
+                            {canAppointmentCheckoutAndPackage ? (
                               <p className="mt-1 text-[11px] leading-snug text-amber-800">
                                 You can save settlement changes first. Checkout stays disabled until every range-priced service and add-on has a final price.
                               </p>
@@ -5027,14 +5030,14 @@ export default function PosAppointmentsWorkspace({
                       <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Complete visit</p>
                         <p className="text-xs text-slate-500">
-                          {canPosCheckout
+                          {canAppointmentCheckoutAndPackage
                             ? 'Mark as Completed first to enable Checkout / Apply package.'
                             : 'Mark as Completed when the visit is finished.'}
                         </p>
                         <button
                           type="button"
                           disabled={!canMarkAppointmentCompleted || appointmentActionLoading}
-                          title={cashShiftActionDisabled && canPosCheckout ? requireOpenShiftMessage : 'Mark appointment as completed'}
+                          title={cashShiftActionDisabled && requiresOpenCashShift ? requireOpenShiftMessage : 'Mark appointment as completed'}
                           onClick={() => void markAppointmentCompleted()}
                           className="flex min-h-[48px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
                         >
@@ -5045,7 +5048,7 @@ export default function PosAppointmentsWorkspace({
                   </section>
                   ) : null}
 
-                  {/* Booking actions — checkout staff only */}
+                  {/* Booking actions */}
                   {canRunAppointmentLifecycleActions &&
                   appointmentDetail.status === 'CONFIRMED' &&
                   !appointmentCheckoutCompleted ? (
@@ -5072,7 +5075,7 @@ export default function PosAppointmentsWorkspace({
                         <button
                           type="button"
                           disabled={cashShiftActionDisabled || appointmentActionLoading}
-                          title={cashShiftActionDisabled && canPosCheckout ? requireOpenShiftMessage : 'Customer did not attend the scheduled appointment (DNA / no-show).'}
+                          title={cashShiftActionDisabled && requiresOpenCashShift ? requireOpenShiftMessage : 'Customer did not attend the scheduled appointment (DNA / no-show).'}
                           onClick={() => requestAppointmentStatusUpdate('NO_SHOW')}
                           className="min-h-[48px] rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-900 shadow-sm transition hover:bg-rose-50 disabled:opacity-50"
                         >
