@@ -1,10 +1,13 @@
 'use client'
 
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 
 type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid'
 type DayType = 'full_day' | 'half_day_am' | 'half_day_pm'
 type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+type RequestKind = 'new' | 'date_change'
 
 type LeaveBalance = {
   leave_type: LeaveType
@@ -16,11 +19,30 @@ type LeaveBalance = {
 type LeaveRequest = {
   id: number
   leave_type: LeaveType | 'off_day'
+  request_kind?: RequestKind
+  source_leave_request_id?: number | null
+  source_leave_request?: {
+    id: number
+    start_date: string
+    end_date: string
+    leave_type: LeaveRequest['leave_type']
+    status: LeaveStatus
+    reason?: string | null
+  } | null
+  pending_date_change_request?: {
+    id: number
+    start_date: string
+    end_date: string
+    status: LeaveStatus
+    change_reason?: string | null
+  } | null
+  date_change_pending?: boolean
   start_date: string
   end_date: string
   day_type: DayType
   days: number
   reason: string | null
+  change_reason?: string | null
   status: LeaveStatus
   admin_remark: string | null
   created_at: string
@@ -131,6 +153,161 @@ function formatIsoDate(ymd: string): string {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+const toDateKey = (value: string) => value.slice(0, 10)
+
+const todayDateKey = () => {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const isSingleDayRange = (startDate: string, endDate: string) => toDateKey(startDate) === toDateKey(endDate)
+
+function formatWeekdayLabel(value: string) {
+  const d = new Date(`${toDateKey(value)}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'long' }).format(d)
+}
+
+function ModalSectionLabel({ children }: { children: ReactNode }) {
+  return <p className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-500">{children}</p>
+}
+
+function ModalInfoCallout({
+  tone = 'slate',
+  title,
+  children,
+}: {
+  tone?: 'slate' | 'violet' | 'amber' | 'emerald'
+  title?: string
+  children: ReactNode
+}) {
+  const toneClass = {
+    slate: 'border-slate-200 bg-slate-50 text-slate-700',
+    violet: 'border-violet-200 bg-violet-50 text-violet-900',
+    amber: 'border-amber-200 bg-amber-50 text-amber-900',
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+  }[tone]
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 text-sm ${toneClass}`}>
+      {title ? <p className="font-semibold">{title}</p> : null}
+      <div className={title ? 'mt-1.5 text-xs leading-relaxed' : 'text-xs leading-relaxed'}>{children}</div>
+    </div>
+  )
+}
+
+function LeaveSummaryHeader({ row, badge }: { row: LeaveRequest; badge?: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-base font-semibold text-slate-900">{LEAVE_LABEL[row.leave_type]}</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {DAY_TYPE_LABEL[row.day_type]} · {row.days.toFixed(2)} day(s)
+          </p>
+        </div>
+        {badge ?? (
+          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${STATUS_CLASS[row.status]}`}>
+            {row.status}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ScheduleDateBlock({
+  label,
+  startDate,
+  endDate,
+  dayType,
+  tone = 'slate',
+}: {
+  label: string
+  startDate: string
+  endDate: string
+  dayType?: DayType
+  tone?: 'slate' | 'violet'
+}) {
+  const shellClass =
+    tone === 'violet'
+      ? 'border-violet-200 bg-violet-50 text-violet-900'
+      : 'border-slate-200 bg-slate-50 text-slate-900'
+
+  return (
+    <div className={`rounded-xl border p-4 ${shellClass}`}>
+      <ModalSectionLabel>{label}</ModalSectionLabel>
+      <p className="mt-2 text-base font-semibold">
+        {formatIsoDate(startDate)}
+        {!isSingleDayRange(startDate, endDate) ? ` — ${formatIsoDate(endDate)}` : ''}
+      </p>
+      {isSingleDayRange(startDate, endDate) ? (
+        <p className="mt-1 text-xs opacity-80">{formatWeekdayLabel(startDate)}</p>
+      ) : null}
+      {dayType ? <p className="mt-2 text-xs opacity-80">{DAY_TYPE_LABEL[dayType]}</p> : null}
+    </div>
+  )
+}
+
+function ScheduleCompare({
+  currentStart,
+  currentEnd,
+  currentDayType,
+  requestedStart,
+  requestedEnd,
+  requestedDayType,
+}: {
+  currentStart: string
+  currentEnd: string
+  currentDayType: DayType
+  requestedStart: string
+  requestedEnd: string
+  requestedDayType: DayType
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
+        <ScheduleDateBlock
+          label="Current schedule"
+          startDate={currentStart}
+          endDate={currentEnd}
+          dayType={currentDayType}
+          tone="slate"
+        />
+        <div className="hidden text-center text-slate-400 md:block" aria-hidden>
+          <i className="fa-solid fa-arrow-right-long text-lg" />
+        </div>
+        <div className="text-center text-xs font-medium text-violet-600 md:hidden" aria-hidden>
+          Requested change
+        </div>
+        <ScheduleDateBlock
+          label="Requested schedule"
+          startDate={requestedStart}
+          endDate={requestedEnd}
+          dayType={requestedDayType}
+          tone="violet"
+        />
+      </div>
+    </div>
+  )
+}
+
+function canRequestDateChange(row: LeaveRequest, allRequests: LeaveRequest[]) {
+  if (row.status !== 'approved') return false
+  if (row.request_kind === 'date_change') return false
+  if (row.date_change_pending) return false
+  if (toDateKey(row.end_date) < todayDateKey()) return false
+  return !allRequests.some(
+    (item) =>
+      item.request_kind === 'date_change' &&
+      item.status === 'pending' &&
+      item.source_leave_request_id === row.id,
+  )
+}
+
 export default function BookingMyLeavePage() {
   const [balances, setBalances] = useState<LeaveBalance[]>([])
   const [requests, setRequests] = useState<LeaveRequest[]>([])
@@ -150,6 +327,23 @@ export default function BookingMyLeavePage() {
 
   const [balanceLoading, setBalanceLoading] = useState(true)
   const [historyLoading, setHistoryLoading] = useState(true)
+
+  const [dateChangeTarget, setDateChangeTarget] = useState<LeaveRequest | null>(null)
+  const [viewChangeTarget, setViewChangeTarget] = useState<LeaveRequest | null>(null)
+  const [dateChangeForm, setDateChangeForm] = useState({ start_date: '', end_date: '', change_reason: '' })
+  const [dateChangeSaving, setDateChangeSaving] = useState(false)
+
+  type ConfirmTarget =
+    | { kind: 'cancel_leave'; row: LeaveRequest }
+    | { kind: 'cancel_change'; row: LeaveRequest }
+
+  const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null)
+  const [confirmSaving, setConfirmSaving] = useState(false)
+
+  const displayRequests = useMemo(
+    () => requests.filter((row) => (row.request_kind ?? 'new') !== 'date_change'),
+    [requests],
+  )
 
   const isEmergency = form.leave_type === 'emergency'
 
@@ -292,15 +486,229 @@ export default function BookingMyLeavePage() {
   }
 
   const cancelRequest = async (id: number) => {
-    const confirmed = window.confirm('Cancel this leave request?')
-    if (!confirmed) return
-
     const res = await fetch(`/api/proxy/booking/my-leave/requests/${id}/cancel`, { method: 'PATCH' })
     if (!res.ok) {
       setError('Failed to cancel leave request.')
+      return false
+    }
+    return true
+  }
+
+  const cancelChangeRequest = async (row: LeaveRequest) => {
+    const res = await fetch(`/api/proxy/booking/my-leave/requests/${row.id}/cancel-date-change`, { method: 'PATCH' })
+    if (!res.ok) {
+      setError('Failed to cancel day change request.')
+      return false
+    }
+    return true
+  }
+
+  const openCancelLeaveConfirm = (row: LeaveRequest) => {
+    setError(null)
+    setConfirmTarget({ kind: 'cancel_leave', row })
+  }
+
+  const openCancelChangeConfirm = (row: LeaveRequest) => {
+    setError(null)
+    setConfirmTarget({ kind: 'cancel_change', row })
+  }
+
+  const closeConfirmModal = () => {
+    if (confirmSaving) return
+    setConfirmTarget(null)
+  }
+
+  const executeConfirm = async () => {
+    if (!confirmTarget) return
+    setConfirmSaving(true)
+    setError(null)
+    try {
+      const ok =
+        confirmTarget.kind === 'cancel_leave'
+          ? await cancelRequest(confirmTarget.row.id)
+          : await cancelChangeRequest(confirmTarget.row)
+      if (!ok) return
+      setConfirmTarget(null)
+      await loadAll()
+    } finally {
+      setConfirmSaving(false)
+    }
+  }
+
+  const actionButtonClass = (tone: 'neutral' | 'violet' | 'amber', compact: boolean) => {
+    const base = compact
+      ? 'inline-flex items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition'
+      : 'inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition'
+
+    if (tone === 'violet') {
+      return `${base} border border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100`
+    }
+    if (tone === 'amber') {
+      return `${base} border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100`
+    }
+    return `${base} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`
+  }
+
+  const openDateChangeModal = (row: LeaveRequest) => {
+    setError(null)
+    setDateChangeTarget(row)
+    setDateChangeForm({
+      start_date: '',
+      end_date: '',
+      change_reason: '',
+    })
+  }
+
+  const openViewChangeModal = (row: LeaveRequest) => {
+    setError(null)
+    setViewChangeTarget(row)
+  }
+
+  const closeViewChangeModal = () => {
+    setViewChangeTarget(null)
+  }
+
+  const closeDateChangeModal = () => {
+    setError(null)
+    setDateChangeTarget(null)
+  }
+
+  const submitDateChange = async () => {
+    if (!dateChangeTarget) return
+    setError(null)
+
+    const startDate = dateChangeForm.start_date
+    const endDate = isSingleDayRange(dateChangeTarget.start_date, dateChangeTarget.end_date)
+      ? startDate
+      : (dateChangeForm.end_date || startDate)
+
+    if (!startDate || !endDate) {
+      setError('Please select the new date(s).')
       return
     }
-    await loadAll()
+
+    if (startDate < todayDateKey()) {
+      setError('You cannot move leave to a past date.')
+      return
+    }
+
+    setDateChangeSaving(true)
+    try {
+      const res = await fetch(`/api/proxy/booking/my-leave/requests/${dateChangeTarget.id}/date-change`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start_date: startDate,
+          end_date: endDate,
+          change_reason: dateChangeForm.change_reason || null,
+        }),
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({})) as { message?: string }
+        setError(payload.message ?? 'Failed to submit day change request.')
+        return
+      }
+
+      closeDateChangeModal()
+      await loadAll()
+    } finally {
+      setDateChangeSaving(false)
+    }
+  }
+
+  const renderStatusCell = (row: LeaveRequest) => (
+    <div className="flex flex-col items-start gap-1">
+      <span className={`rounded-full px-2 py-1 text-xs font-medium capitalize ${STATUS_CLASS[row.status]}`}>
+        {row.status}
+      </span>
+      {row.date_change_pending ? (
+        <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+          Change pending
+        </span>
+      ) : null}
+    </div>
+  )
+
+  const renderDateRangeCell = (row: LeaveRequest) => {
+    const pending = row.pending_date_change_request
+    return (
+      <div>
+        <div>
+          {formatIsoDate(row.start_date)} — {formatIsoDate(row.end_date)}
+        </div>
+        {row.date_change_pending && pending ? (
+          <div className="mt-2 rounded-md border border-violet-100 bg-violet-50/80 px-2 py-1.5 text-xs text-violet-900">
+            <div className="font-semibold">Requested change:</div>
+            <div className="mt-0.5">
+              {formatIsoDate(pending.start_date)} — {formatIsoDate(pending.end_date)}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  const renderRowActions = (row: LeaveRequest, compact = false) => {
+    const wrapClass = compact ? 'inline-flex flex-wrap items-center gap-1' : 'flex w-full flex-col gap-2'
+
+    if (row.status === 'pending') {
+      return (
+        <div className={wrapClass}>
+          <button
+            type="button"
+            onClick={() => openCancelLeaveConfirm(row)}
+            className={actionButtonClass('amber', compact)}
+            aria-label="Cancel leave request"
+          >
+            <i className="fa-solid fa-ban text-[11px]" />
+            {compact ? <span>Cancel</span> : <span>Cancel request</span>}
+          </button>
+        </div>
+      )
+    }
+
+    if (row.date_change_pending && row.pending_date_change_request) {
+      return (
+        <div className={wrapClass}>
+          <button
+            type="button"
+            onClick={() => openViewChangeModal(row)}
+            className={actionButtonClass('neutral', compact)}
+            aria-label="View day change request"
+          >
+            <i className="fa-regular fa-eye text-[11px]" />
+            <span>View</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => openCancelChangeConfirm(row)}
+            className={actionButtonClass('violet', compact)}
+            aria-label="Cancel day change request"
+          >
+            <i className="fa-solid fa-calendar-xmark text-[11px]" />
+            <span>Cancel change</span>
+          </button>
+        </div>
+      )
+    }
+
+    if (canRequestDateChange(row, displayRequests)) {
+      return (
+        <div className={wrapClass}>
+          <button
+            type="button"
+            onClick={() => openDateChangeModal(row)}
+            className={actionButtonClass('violet', compact)}
+            aria-label="Request day change"
+          >
+            <i className="fa-solid fa-calendar-days text-[11px]" />
+            <span>{compact ? 'Change' : 'Request day change'}</span>
+          </button>
+        </div>
+      )
+    }
+
+    return compact ? <span className="text-slate-400">—</span> : null
   }
 
   const closeApplyModal = () => {
@@ -423,6 +831,245 @@ export default function BookingMyLeavePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {dateChangeTarget && (
+        <CrmFormModalShell
+          title="Request Day Change"
+          onClose={closeDateChangeModal}
+          closeDisabled={dateChangeSaving}
+          footer={
+            <>
+              <button
+                type="button"
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                onClick={closeDateChangeModal}
+                disabled={dateChangeSaving}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                onClick={() => void submitDateChange()}
+                disabled={dateChangeSaving}
+              >
+                {dateChangeSaving ? 'Submitting…' : 'Submit for approval'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4 p-5">
+            <LeaveSummaryHeader row={dateChangeTarget} />
+
+            <ScheduleDateBlock
+              label="Current schedule"
+              startDate={dateChangeTarget.start_date}
+              endDate={dateChangeTarget.end_date}
+              dayType={dateChangeTarget.day_type}
+            />
+
+            <ModalInfoCallout tone="slate" title="Before you submit">
+              Your current approved dates stay blocked on the calendar until admin approves this change. Leave balance
+              will not be adjusted. Past dates cannot be selected.
+            </ModalInfoCallout>
+
+            {error && <p className="text-sm text-rose-600">{error}</p>}
+
+            {isSingleDayRange(dateChangeTarget.start_date, dateChangeTarget.end_date) ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">New date</label>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  type="date"
+                  min={todayDateKey()}
+                  value={dateChangeForm.start_date}
+                  onChange={(e) =>
+                    setDateChangeForm((prev) => ({ ...prev, start_date: e.target.value, end_date: e.target.value }))
+                  }
+                />
+                {dateChangeForm.start_date ? (
+                  <p className="mt-1 text-xs text-slate-500">Weekday: {formatWeekdayLabel(dateChangeForm.start_date)}</p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">New start date</label>
+                  <input
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    type="date"
+                    min={todayDateKey()}
+                    value={dateChangeForm.start_date}
+                    onChange={(e) => setDateChangeForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">New end date</label>
+                  <input
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    type="date"
+                    min={dateChangeForm.start_date || todayDateKey()}
+                    value={dateChangeForm.end_date}
+                    onChange={(e) => setDateChangeForm((prev) => ({ ...prev, end_date: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Reason for change (optional)</label>
+              <textarea
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                rows={2}
+                placeholder="e.g. family matter, clinic appointment rescheduled"
+                value={dateChangeForm.change_reason}
+                onChange={(e) => setDateChangeForm((prev) => ({ ...prev, change_reason: e.target.value }))}
+              />
+            </div>
+          </div>
+        </CrmFormModalShell>
+      )}
+
+      {viewChangeTarget?.pending_date_change_request && (
+        <CrmFormModalShell
+          title="Day Change Details"
+          onClose={closeViewChangeModal}
+          footer={
+            <>
+              <button
+                type="button"
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={closeViewChangeModal}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100"
+                onClick={() => {
+                  closeViewChangeModal()
+                  openCancelChangeConfirm(viewChangeTarget)
+                }}
+              >
+                Cancel change
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4 p-5 text-sm">
+            <LeaveSummaryHeader
+              row={viewChangeTarget}
+              badge={
+                <span className="inline-flex rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                  Change pending
+                </span>
+              }
+            />
+
+            <ScheduleCompare
+              currentStart={viewChangeTarget.start_date}
+              currentEnd={viewChangeTarget.end_date}
+              currentDayType={viewChangeTarget.day_type}
+              requestedStart={viewChangeTarget.pending_date_change_request.start_date}
+              requestedEnd={viewChangeTarget.pending_date_change_request.end_date}
+              requestedDayType={viewChangeTarget.day_type}
+            />
+
+
+            {viewChangeTarget.pending_date_change_request.change_reason ? (
+              <div className="rounded-xl border border-slate-200 px-4 py-3">
+                <ModalSectionLabel>Reason for change</ModalSectionLabel>
+                <p className="mt-2 text-slate-800">{viewChangeTarget.pending_date_change_request.change_reason}</p>
+              </div>
+            ) : null}
+
+            {viewChangeTarget.reason ? (
+              <div className="rounded-xl border border-slate-200 px-4 py-3">
+                <ModalSectionLabel>Original leave reason</ModalSectionLabel>
+                <p className="mt-2 text-slate-800">{viewChangeTarget.reason}</p>
+              </div>
+            ) : null}
+          </div>
+        </CrmFormModalShell>
+      )}
+
+      {confirmTarget && (
+        <CrmFormModalShell
+          title={confirmTarget.kind === 'cancel_leave' ? 'Cancel Leave Request' : 'Cancel Day Change'}
+          onClose={closeConfirmModal}
+          closeDisabled={confirmSaving}
+          footer={
+            <>
+              <button
+                type="button"
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                onClick={closeConfirmModal}
+                disabled={confirmSaving}
+              >
+                Go back
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${
+                  confirmTarget.kind === 'cancel_leave'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-violet-600 hover:bg-violet-700'
+                }`}
+                onClick={() => void executeConfirm()}
+                disabled={confirmSaving}
+              >
+                {confirmSaving
+                  ? 'Processing…'
+                  : confirmTarget.kind === 'cancel_leave'
+                    ? 'Cancel request'
+                    : 'Cancel change'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4 p-5 text-sm text-slate-700">
+            {confirmTarget.kind === 'cancel_leave' ? (
+              <>
+                <p className="text-base text-slate-800">
+                  Cancel this pending <span className="font-semibold">{LEAVE_LABEL[confirmTarget.row.leave_type]}</span>{' '}
+                  request?
+                </p>
+
+                <ScheduleDateBlock
+                  label="Requested dates"
+                  startDate={confirmTarget.row.start_date}
+                  endDate={confirmTarget.row.end_date}
+                  dayType={confirmTarget.row.day_type}
+                />
+
+                <ModalInfoCallout tone="amber" title="What happens next">
+                  The request will be marked as cancelled and removed from the approval queue. This does not affect any
+                  leave that is already approved.
+                </ModalInfoCallout>
+              </>
+            ) : (
+              <>
+                <p className="text-base text-slate-800">
+                  Do you comfirm want cancel this day change request?
+                </p>
+
+                {confirmTarget.row.pending_date_change_request ? (
+                  <ScheduleCompare
+                    currentStart={confirmTarget.row.start_date}
+                    currentEnd={confirmTarget.row.end_date}
+                    currentDayType={confirmTarget.row.day_type}
+                    requestedStart={confirmTarget.row.pending_date_change_request.start_date}
+                    requestedEnd={confirmTarget.row.pending_date_change_request.end_date}
+                    requestedDayType={confirmTarget.row.day_type}
+                  />
+                ) : null}
+
+              </>
+            )}
+            {error && <p className="text-sm text-rose-600">{error}</p>}
+          </div>
+        </CrmFormModalShell>
       )}
 
       {isHistoryFilterOpen && (
@@ -684,7 +1331,7 @@ export default function BookingMyLeavePage() {
                 <th className="px-2 py-2">Days</th>
                 <th className="px-2 py-2">Status</th>
                 <th className="px-2 py-2">Admin Remark</th>
-                <th className="px-2 py-2">Action</th>
+                <th className="px-2 py-2 min-w-[9rem]">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -695,7 +1342,7 @@ export default function BookingMyLeavePage() {
                   </td>
                 </tr>
               )}
-              {!historyLoading && requests.length === 0 && (
+              {!historyLoading && displayRequests.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-2 py-6 text-center text-slate-500">
                     No leave requests match the current filters (or none submitted yet). Open{' '}
@@ -704,36 +1351,18 @@ export default function BookingMyLeavePage() {
                 </tr>
               )}
               {!historyLoading &&
-                requests.map((row) => (
+                displayRequests.map((row) => (
                   <tr key={row.id} className="border-b border-slate-100">
                     <td className="px-2 py-2">{new Date(row.created_at).toLocaleDateString()}</td>
-                    <td className="px-2 py-2">{LEAVE_LABEL[row.leave_type]}</td>
+                    <td className="px-2 py-2">
+                      <div>{LEAVE_LABEL[row.leave_type]}</div>
+                    </td>
                     <td className="px-2 py-2">{DAY_TYPE_LABEL[row.day_type]}</td>
-                    <td className="px-2 py-2 whitespace-nowrap">
-                      {formatIsoDate(row.start_date)} — {formatIsoDate(row.end_date)}
-                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap">{renderDateRangeCell(row)}</td>
                     <td className="px-2 py-2">{row.days.toFixed(2)}</td>
-                    <td className="px-2 py-2">
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-medium ${STATUS_CLASS[row.status]}`}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
+                    <td className="px-2 py-2">{renderStatusCell(row)}</td>
                     <td className="px-2 py-2">{row.admin_remark || '-'}</td>
-                    <td className="px-2 py-2">
-                      {row.status === 'pending' ? (
-                        <button
-                          type="button"
-                          onClick={() => cancelRequest(row.id)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
-                        >
-                          <i className="fa fa-times" />
-                        </button>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
+                    <td className="px-2 py-2">{renderRowActions(row, true)}</td>
                   </tr>
                 ))}
             </tbody>
@@ -746,24 +1375,20 @@ export default function BookingMyLeavePage() {
               Loading leave requests…
             </p>
           )}
-          {!historyLoading && requests.length === 0 && (
+          {!historyLoading && displayRequests.length === 0 && (
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-6 text-center text-sm text-slate-600">
               No leave requests match the current filters (or none submitted yet). Open{' '}
               <span className="font-semibold text-slate-800">Filter</span> to try Past or All dates.
             </div>
           )}
           {!historyLoading &&
-            requests.map((row) => (
+            displayRequests.map((row) => (
               <div
                 key={row.id}
                 className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 bg-slate-50/90 px-4 py-3">
-                  <span
-                    className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${STATUS_CLASS[row.status]}`}
-                  >
-                    {row.status}
-                  </span>
+                  {renderStatusCell(row)}
                   <span className="text-right text-xs text-slate-500">
                     Submitted {new Date(row.created_at).toLocaleDateString()}
                   </span>
@@ -780,6 +1405,15 @@ export default function BookingMyLeavePage() {
                       <span className="mx-1.5 font-normal text-slate-400">→</span>
                       {formatIsoDate(row.end_date)}
                     </div>
+                    {row.date_change_pending && row.pending_date_change_request ? (
+                      <div className="mt-2 rounded-md border border-violet-100 bg-violet-50/80 px-2 py-1.5 text-xs text-violet-900">
+                        <div className="font-semibold">Requested change:</div>
+                        <div className="mt-0.5">
+                          {formatIsoDate(row.pending_date_change_request.start_date)} —{' '}
+                          {formatIsoDate(row.pending_date_change_request.end_date)}
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="mt-1 text-xs text-slate-600">
                       {DAY_TYPE_LABEL[row.day_type]} · {row.days.toFixed(2)} day(s)
                     </div>
@@ -790,16 +1424,7 @@ export default function BookingMyLeavePage() {
                       <div className="mt-0.5 text-sm text-slate-700">{row.admin_remark}</div>
                     </div>
                   ) : null}
-                  {row.status === 'pending' ? (
-                    <button
-                      type="button"
-                      onClick={() => cancelRequest(row.id)}
-                      className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 hover:bg-rose-100"
-                    >
-                      <i className="fa-solid fa-xmark" />
-                      Cancel request
-                    </button>
-                  ) : null}
+                  {renderRowActions(row, false)}
                 </div>
               </div>
             ))}

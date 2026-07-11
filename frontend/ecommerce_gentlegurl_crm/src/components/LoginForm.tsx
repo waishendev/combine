@@ -52,14 +52,16 @@ async function completeSessionAndNavigate(
 
   let landing = getWorkspaceLanding(workspace)
 
-  if (workspace === 'booking') {
+  if (portal === 'staff') {
+    landing = '/my-sales'
+  } else if (workspace === 'booking') {
     try {
       const me = await apiFetch<MePayload>('/api/me')
       const staffId = me?.data?.staff_id ?? null
       const permissions = Array.isArray(me?.data?.permissions) ? me.data.permissions : []
 
       if (staffId) {
-        landing = '/booking/my-leave'
+        landing = '/my-sales'
       } else if (permissions.includes('booking.appointments.view')) {
         landing = '/booking/appointment-history'
       } else {

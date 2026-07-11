@@ -363,6 +363,37 @@ class SalesVisualDailyReportService
     }
 
     /**
+     * Staff-scoped sales summary for the logged-in staff member (ecommerce products + booking services).
+     */
+    public function staffSalesSummary(Carbon $start, Carbon $end, int $staffId): array
+    {
+        $lineTotal = $this->lineNetAmountSql('oi');
+        $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
+        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
+
+        $staff = DB::table('staffs')->where('id', $staffId)->first();
+        $staffName = $staff ? (string) $staff->name : 'Staff #'.$staffId;
+
+        $productSales = round((float) ($ecKeyed[$staffId]['product_sales'] ?? $ecKeyed[$staffId]['total'] ?? 0), 2);
+        $serviceAmount = round((float) ($svcKeyed[$staffId]['service_amount'] ?? $svcKeyed[$staffId]['total'] ?? 0), 2);
+        $serviceCount = (int) ($svcKeyed[$staffId]['service_count'] ?? 0);
+
+        return [
+            'range' => [
+                'date_from' => $start->toDateString(),
+                'date_to' => $end->toDateString(),
+            ],
+            'staff' => [
+                'staff_id' => $staffId,
+                'name' => $staffName,
+                'product_sales' => $productSales,
+                'service_amount' => $serviceAmount,
+                'service_count' => $serviceCount,
+            ],
+        ];
+    }
+
+    /**
      * Mixed workspace aggregates for a date range (month, year, or custom).
      */
     public function allPeriod(Carbon $start, Carbon $end): array

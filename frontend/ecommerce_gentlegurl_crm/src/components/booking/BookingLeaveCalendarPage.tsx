@@ -41,9 +41,9 @@ type StaffOption = { staff_id: number; staff_name: string }
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
   annual: 'Annual Leave',
-  mc: 'MC',
-  emergency: 'Emergency',
-  unpaid: 'Unpaid',
+  mc: 'Medical Leave (MC)',
+  emergency: 'Emergency Leave',
+  unpaid: 'Unpaid Leave',
   off_day: 'Off Day',
 }
 
@@ -55,20 +55,20 @@ const LEAVE_CLASS: Record<LeaveType, string> = {
   off_day: 'bg-slate-200 text-slate-700',
 }
 
+const LEAVE_CARD_SHELL: Record<LeaveType, string> = {
+  annual: 'border-blue-200 bg-blue-50 text-blue-900',
+  mc: 'border-orange-200 bg-orange-50 text-orange-900',
+  emergency: 'border-rose-200 bg-rose-50 text-rose-900',
+  unpaid: 'border-violet-200 bg-violet-50 text-violet-900',
+  off_day: 'border-slate-300 bg-slate-100 text-slate-800',
+}
+
 const LEAVE_DOT_CLASS: Record<LeaveType, string> = {
   annual: 'bg-blue-500',
   mc: 'bg-orange-500',
   emergency: 'bg-rose-500',
   unpaid: 'bg-violet-500',
   off_day: 'bg-slate-500',
-}
-
-const LEAVE_LABEL_SHORT: Record<LeaveType, string> = {
-  annual: 'AL',
-  mc: 'MC',
-  emergency: 'Emer',
-  unpaid: 'Unpaid',
-  off_day: 'Off',
 }
 
 const WEEKDAY_HEADERS: Array<{ short: string; full: string }> = [
@@ -81,13 +81,15 @@ const WEEKDAY_HEADERS: Array<{ short: string; full: string }> = [
   { short: 'S', full: 'Sat' },
 ]
 
-const formatCalendarLeaveLabel = (item: LeaveRow, compact = false): string => {
-  const base = compact ? LEAVE_LABEL_SHORT[item.leave_type] : LEAVE_LABEL[item.leave_type]
+const formatCalendarLeaveLabel = (item: LeaveRow): string => {
+  const base = LEAVE_LABEL[item.leave_type]
   if (item.day_type === 'full_day') return base
-  if (compact) {
-    return item.day_type === 'half_day_am' ? `${base} AM` : `${base} PM`
-  }
   return `${base} · ${DAY_TYPE_LABEL[item.day_type]}`
+}
+
+const staffFirstName = (name: string | undefined, staffId: number) => {
+  const full = name?.trim() || `Staff #${staffId}`
+  return full.split(/\s+/)[0] ?? full
 }
 
 const DAY_TYPE_LABEL: Record<DayType, string> = {
@@ -977,73 +979,93 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         </CrmFormModalShell>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
-          <button
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-            onClick={() => { setError(null); setIsOffDayModalOpen(true) }}
-            type="button"
-          >
-            <i className="fa-solid fa-plus" />
-            Create Off Days
-          </button>
+      <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
+            <button
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 py-2.5 text-sm font-medium text-white hover:bg-blue-600 sm:min-h-0"
+              onClick={() => { setError(null); setIsOffDayModalOpen(true) }}
+              type="button"
+            >
+              <i className="fa-solid fa-plus" />
+              Off Days
+            </button>
 
-          <button
-            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-            onClick={openGenerateModal}
-            type="button"
-          >
-            <i className="fa-solid fa-calendar-week" />
-            Generate by Weekday
-          </button>
+            <button
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2.5 text-sm font-medium text-white hover:bg-emerald-600 sm:min-h-0"
+              onClick={openGenerateModal}
+              type="button"
+            >
+              <i className="fa-solid fa-calendar-week" />
+              By Weekday
+            </button>
 
-          <button
-            className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-            onClick={openGenerateYearModal}
-            type="button"
-          >
-            <i className="fa-solid fa-calendar-days" />
-            Generate by Year
-          </button>
-
-          <div>
-            <label className="mb-1 block text-xs text-slate-500">Staff</label>
-            <select className="rounded-md border border-slate-300 px-3 py-2 text-sm" value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)}>
-              <option value="">All Staff</option>
-              {staffOptions.map((s) => <option key={s.staff_id} value={s.staff_id}>{s.staff_name}</option>)}
-            </select>
+            <button
+              className="col-span-2 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-teal-700 sm:col-span-1 sm:min-h-0"
+              onClick={openGenerateYearModal}
+              type="button"
+            >
+              <i className="fa-solid fa-calendar-days" />
+              By Year
+            </button>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs text-slate-500">Leave Type</label>
-            <select className="rounded-md border border-slate-300 px-3 py-2 text-sm" value={leaveTypeFilter} onChange={(e) => setLeaveTypeFilter(e.target.value as LeaveType | '')}>
-              <option value="">All Types</option>
-              {Object.entries(LEAVE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Staff</label>
+              <select className="w-full min-h-[44px] rounded-lg border border-slate-300 px-3 py-2 text-sm sm:min-h-0" value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)}>
+                <option value="">All Staff</option>
+                {staffOptions.map((s) => <option key={s.staff_id} value={s.staff_id}>{s.staff_name}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Leave Type</label>
+              <select className="w-full min-h-[44px] rounded-lg border border-slate-300 px-3 py-2 text-sm sm:min-h-0" value={leaveTypeFilter} onChange={(e) => setLeaveTypeFilter(e.target.value as LeaveType | '')}>
+                <option value="">All Types</option>
+                {Object.entries(LEAVE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
-            <button type="button" className="rounded border px-3 py-2 text-sm" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}>Prev</button>
-            <div className="min-w-40 text-center text-sm font-medium">{month.toLocaleString('en-US', { month: 'long', year: 'numeric' })}</div>
-            <button type="button" className="rounded border px-3 py-2 text-sm" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}>Next</button>
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 sm:ml-auto sm:w-auto sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
+            <button
+              type="button"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+              aria-label="Previous month"
+            >
+              <i className="fa-solid fa-chevron-left text-xs" />
+            </button>
+            <div className="flex-1 text-center text-sm font-semibold text-slate-800 sm:min-w-40">
+              {month.toLocaleString('en-US', { month: 'long', year: 'numeric' })}
+            </div>
+            <button
+              type="button"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+              aria-label="Next month"
+            >
+              <i className="fa-solid fa-chevron-right text-xs" />
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm sm:p-4">
-        <div className="grid grid-cols-7 gap-0.5 text-[10px] font-medium text-slate-500 sm:gap-2 sm:text-xs">
+      <div className="rounded-lg border border-slate-200 bg-white p-1.5 shadow-sm sm:p-4">
+        <div className="grid grid-cols-7 gap-px text-[10px] font-semibold text-slate-500 sm:gap-2 sm:text-xs">
           {WEEKDAY_HEADERS.map((day) => (
-            <div key={day.full} className="px-0.5 py-1.5 text-center sm:px-1 sm:py-2">
+            <div key={day.full} className="py-1.5 text-center sm:px-1 sm:py-2">
               <span className="sm:hidden">{day.short}</span>
               <span className="hidden sm:inline">{day.full}</span>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-0.5 sm:gap-2">
+        <div className="grid grid-cols-7 gap-px sm:gap-2">
           {calendarDays.map((cell, idx) => {
             if (!cell.date) {
-              return <div key={`empty-${idx}`} className="min-h-[4.5rem] rounded border border-transparent sm:min-h-28" />
+              return <div key={`empty-${idx}`} className="min-h-[5.25rem] rounded-sm border border-transparent sm:min-h-28" />
             }
 
             const key = formatDate(cell.date)
@@ -1055,39 +1077,44 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 key={key}
                 type="button"
                 onClick={() => setSelectedDate(key)}
-                className={`min-h-[4.5rem] overflow-hidden rounded border p-0.5 text-left transition sm:min-h-28 sm:p-1 ${
+                className={`min-h-[5.25rem] overflow-hidden rounded-sm border p-0.5 text-left transition active:scale-[0.98] sm:min-h-28 sm:rounded sm:p-1 ${
                   isSelected
-                    ? 'border-blue-400 bg-blue-50/70 ring-2 ring-blue-300'
+                    ? 'border-blue-400 bg-blue-50/80 ring-2 ring-blue-300'
                     : 'border-slate-200 hover:bg-slate-50'
                 }`}
               >
-                <div className={`text-[10px] font-semibold sm:text-xs ${isSelected ? 'text-blue-800' : 'text-slate-700'}`}>
+                <div className={`text-[11px] font-bold sm:text-xs ${isSelected ? 'text-blue-800' : 'text-slate-700'}`}>
                   {cell.date.getDate()}
                 </div>
 
-                {/* Mobile: dots + short summary */}
-                <div className="mt-1 sm:hidden">
-                  {items.length > 0 && (
+                <div className="mt-0.5 space-y-0.5 sm:hidden">
+                  {items.length === 1 ? (
+                    <div
+                      className={`rounded border px-1 py-0.5 ${LEAVE_CARD_SHELL[items[0].leave_type]}`}
+                      title={`${items[0].staff?.name ?? `Staff #${items[0].staff_id}`} · ${formatCalendarLeaveLabel(items[0])}`}
+                    >
+                      <div className="truncate text-[8px] font-bold leading-tight">
+                        {staffFirstName(items[0].staff?.name, items[0].staff_id)}
+                      </div>
+                      <div className="line-clamp-2 text-[7px] font-medium leading-tight opacity-90">
+                        {LEAVE_LABEL[items[0].leave_type]}
+                      </div>
+                    </div>
+                  ) : items.length > 1 ? (
                     <>
-                      <div className="flex flex-wrap items-center gap-0.5">
-                        {items.slice(0, 4).map((item) => (
+                      <span className="inline-flex rounded-full bg-slate-800 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                        {items.length}
+                      </span>
+                      <div className="flex flex-wrap gap-0.5">
+                        {items.slice(0, 3).map((item) => (
                           <span
                             key={`dot-${item.id}-${item.staff_id}`}
                             className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${LEAVE_DOT_CLASS[item.leave_type]}`}
-                            title={`${item.staff?.name ?? `Staff #${item.staff_id}`} · ${LEAVE_LABEL[item.leave_type]}`}
                           />
                         ))}
-                        {items.length > 4 && (
-                          <span className="text-[9px] leading-none text-slate-500">…</span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 truncate text-[9px] leading-tight text-slate-600">
-                        {items.length === 1
-                          ? `${items[0].staff?.name ?? 'Staff'} · ${formatCalendarLeaveLabel(items[0], true)}`
-                          : `${items.length} records`}
                       </div>
                     </>
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Desktop: compact cards with truncation */}
@@ -1118,9 +1145,9 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       </div>
 
       {selectedDate && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <div className="flex items-center justify-between gap-3">
-            <h4 className="font-semibold">Details for {selectedDate}</h4>
+            <h4 className="text-base font-semibold sm:text-lg">Details · {selectedDate}</h4>
           </div>
 
           {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
@@ -1140,10 +1167,10 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                     manageable ? 'border-slate-200 bg-white shadow-sm' : 'border-slate-200 bg-white'
                   }`}
                 >
-                  <div className="p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="p-3 sm:p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-slate-900">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
+                        <div className="text-base font-semibold text-slate-900">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
                         <div className="mt-1 text-xs text-slate-500">
                           {formatDateRange(item.start_date, item.end_date)}
                           {isSingleDayRange(item.start_date, item.end_date) ? ` · ${formatWeekdayLabel(item.start_date)}` : ''}
@@ -1152,7 +1179,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                           <span className="font-medium text-slate-500">Created by</span> {resolveCreatedBy(item)}
                         </div>
                       </div>
-                      <span className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-medium ${LEAVE_CLASS[item.leave_type]}`}>
+                      <span className={`inline-flex w-fit shrink-0 items-center rounded-full px-3 py-1 text-xs font-medium ${LEAVE_CLASS[item.leave_type]}`}>
                         {LEAVE_LABEL[item.leave_type]}
                         {item.day_type !== 'full_day' ? ` · ${DAY_TYPE_LABEL[item.day_type]}` : ''}
                       </span>
@@ -1168,20 +1195,20 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
                   {manageable && (
                     <>
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-2.5">
+                      <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/80 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4 sm:py-2.5">
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 transition hover:text-slate-900"
+                          className="inline-flex min-h-[44px] items-center justify-center gap-1.5 text-xs font-medium text-slate-600 transition hover:text-slate-900 sm:min-h-0 sm:justify-start"
                           onClick={() => void toggleOffDayLogs(item.id)}
                         >
                           <i className={`fa-solid ${showLogs ? 'fa-chevron-up' : 'fa-clock-rotate-left'} text-[11px]`} />
                           {showLogs ? 'Hide activity log' : 'Activity log'}
                         </button>
 
-                        <div className="flex items-center gap-2">
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                           <button
                             type="button"
-                            className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                             onClick={() => openEditOffDay(item)}
                             disabled={isLoading}
                             title="Edit off day"
@@ -1191,7 +1218,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                           </button>
                           <button
                             type="button"
-                            className="inline-flex h-9 items-center gap-2 rounded-lg border border-rose-200 bg-white px-3.5 text-xs font-medium text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-3.5 text-xs font-medium text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                             onClick={() => void cancelOffDay(item)}
                             disabled={isLoading}
                             title="Cancel off day"

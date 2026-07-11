@@ -74,6 +74,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
       ...(staffId
         ? ([
             {
+              key: 'my-sales',
+              label: 'My Sales',
+              icon: 'fa-solid fa-chart-line',
+              href: '/my-sales',
+            },
+            {
               key: 'staff-consumables',
               label: 'Staff Consumables',
               icon: 'fa-solid fa-hand-holding-heart',
@@ -716,6 +722,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
       },
       ...(staffId
         ? ([
+            {
+              key: 'my-sales',
+              label: 'My Sales',
+              icon: 'fa-solid fa-chart-line',
+              href: '/my-sales',
+            },
             {
               key: 'booking-my-leave',
               label: 'My Leave',

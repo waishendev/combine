@@ -87,6 +87,13 @@ class BookingLeaveService
         $existingRows = $query->get();
 
         foreach ($existingRows as $existing) {
+            if (
+                ($existing->request_kind ?? 'new') === 'date_change'
+                && $existing->status === 'pending'
+            ) {
+                continue;
+            }
+
             $existingStart = Carbon::parse((string) $existing->start_date)->startOfDay();
             $existingEnd = Carbon::parse((string) $existing->end_date)->startOfDay();
             $existingDayType = (string) ($existing->day_type ?: 'full_day');
@@ -318,27 +325,50 @@ class BookingLeaveService
             return null;
         }
 
-        if ($this->hasOverlappingRequest((int) $item->staff_id, $startDate, $endDate, 'full_day', (int) $item->id)) {
+        return $this->updateApprovedLeaveDates($item, $startDate, $endDate, $reason, $actorUserId, $remark);
+    }
+
+    public function updateApprovedLeaveDates(
+        BookingLeaveRequest $item,
+        Carbon $startDate,
+        Carbon $endDate,
+        ?string $reason,
+        ?int $actorUserId,
+        ?string $remark = null,
+        ?int $ignoreOverlapRequestId = null,
+    ): ?BookingLeaveRequest {
+        if ($item->status !== 'approved') {
             return null;
         }
 
-        $before = $this->snapshotOffDay($item);
-        $days = $this->calculateRequestedDays($startDate, $endDate, 'full_day');
+        $dayType = (string) ($item->day_type ?: 'full_day');
+        $ignoreId = $ignoreOverlapRequestId ?? (int) $item->id;
 
-        [$startAt, $endAt] = $this->resolveTimeoffWindow((int) $item->staff_id, $startDate, $endDate, 'full_day');
+        if ($this->hasOverlappingRequest((int) $item->staff_id, $startDate, $endDate, $dayType, $ignoreId)) {
+            return null;
+        }
+
+        $before = $this->snapshotLeaveRequest($item);
+        $days = $this->calculateRequestedDays($startDate, $endDate, $dayType);
+        [$startAt, $endAt] = $this->resolveTimeoffWindow((int) $item->staff_id, $startDate, $endDate, $dayType);
+
+        $timeoffReason = match ($item->leave_type) {
+            'off_day' => sprintf('Off day #%d', $item->id),
+            default => sprintf('Leave request #%d (%s %s)', $item->id, $item->leave_type, $dayType),
+        };
 
         if ($item->approvedTimeoff) {
             $item->approvedTimeoff->update([
                 'start_at' => $startAt,
                 'end_at' => $endAt,
-                'reason' => sprintf('Off day #%d', $item->id),
+                'reason' => $timeoffReason,
             ]);
         } else {
             $timeoff = \App\Models\Booking\BookingStaffTimeoff::create([
                 'staff_id' => $item->staff_id,
                 'start_at' => $startAt,
                 'end_at' => $endAt,
-                'reason' => sprintf('Off day #%d', $item->id),
+                'reason' => $timeoffReason,
             ]);
             $item->approved_timeoff_id = $timeoff->id;
         }
@@ -356,12 +386,314 @@ class BookingLeaveService
             (int) $item->id,
             'updated',
             $before,
-            $this->snapshotOffDay($item->fresh()),
-            $remark ?? 'Off day updated by admin.',
+            $this->snapshotLeaveRequest($item->fresh()),
+            $remark ?? 'Leave dates updated.',
             $actorUserId
         );
 
         return $item->fresh(['staff:id,name', 'reviewer:id,name', 'creationLog.creator:id,name']);
+    }
+
+    public function hasPendingDateChangeRequest(int $sourceLeaveRequestId): bool
+    {
+        return BookingLeaveRequest::query()
+            ->where('source_leave_request_id', $sourceLeaveRequestId)
+            ->where('request_kind', 'date_change')
+            ->where('status', 'pending')
+            ->exists();
+    }
+
+    public function canStaffRequestDateChange(BookingLeaveRequest $source): bool
+    {
+        if (($source->request_kind ?? 'new') === 'date_change') {
+            return false;
+        }
+
+        if ($source->status !== 'approved') {
+            return false;
+        }
+
+        if ((bool) ($source->date_change_pending ?? false)) {
+            return false;
+        }
+
+        if (Carbon::parse((string) $source->end_date)->startOfDay()->lt(Carbon::today())) {
+            return false;
+        }
+
+        return ! $this->hasPendingDateChangeRequest((int) $source->id);
+    }
+
+    public function canApplyApprovedDateChange(BookingLeaveRequest $source, BookingLeaveRequest $item): bool
+    {
+        if (($item->request_kind ?? 'new') !== 'date_change' || $item->status !== 'pending') {
+            return false;
+        }
+
+        if ((int) $item->source_leave_request_id !== (int) $source->id) {
+            return false;
+        }
+
+        if ($source->status !== 'approved' || ! ($source->date_change_pending ?? false)) {
+            return false;
+        }
+
+        $newStart = Carbon::parse((string) $item->start_date)->startOfDay();
+        $newEnd = Carbon::parse((string) $item->end_date)->startOfDay();
+
+        if ($newStart->lt(Carbon::today())) {
+            return false;
+        }
+
+        $dayType = (string) ($source->day_type ?: 'full_day');
+
+        return ! $this->hasOverlappingRequest((int) $source->staff_id, $newStart, $newEnd, $dayType, (int) $item->id);
+    }
+
+    public function createDateChangeRequest(
+        BookingLeaveRequest $source,
+        Carbon $newStart,
+        Carbon $newEnd,
+        ?string $changeReason,
+        ?int $actorUserId,
+    ): ?BookingLeaveRequest {
+        if (! $this->canStaffRequestDateChange($source)) {
+            return null;
+        }
+
+        if ($newStart->copy()->startOfDay()->lt(Carbon::today())) {
+            return null;
+        }
+
+        $dayType = (string) ($source->day_type ?: 'full_day');
+
+        if (! $newStart->isSameDay($newEnd) && $dayType !== 'full_day') {
+            return null;
+        }
+
+        $oldStart = Carbon::parse((string) $source->start_date)->startOfDay();
+        $oldEnd = Carbon::parse((string) $source->end_date)->startOfDay();
+        if ($newStart->eq($oldStart) && $newEnd->eq($oldEnd)) {
+            return null;
+        }
+
+        if ($this->hasOverlappingRequest((int) $source->staff_id, $newStart, $newEnd, $dayType, (int) $source->id)) {
+            return null;
+        }
+
+        $days = $this->calculateRequestedDays($newStart, $newEnd, $dayType);
+
+        $created = BookingLeaveRequest::create([
+            'staff_id' => $source->staff_id,
+            'leave_type' => $source->leave_type,
+            'request_kind' => 'date_change',
+            'source_leave_request_id' => $source->id,
+            'day_type' => $dayType,
+            'start_date' => $newStart->toDateString(),
+            'end_date' => $newEnd->toDateString(),
+            'days' => $days,
+            'change_reason' => $changeReason,
+            'status' => 'pending',
+        ]);
+
+        $sourceBefore = $this->snapshotLeaveRequest($source);
+        $source->date_change_pending = true;
+        $source->save();
+
+        $this->logAction(
+            (int) $source->staff_id,
+            (int) $source->id,
+            'updated',
+            $sourceBefore,
+            $this->snapshotLeaveRequest($source->fresh()),
+            sprintf('Day change request #%d submitted; original schedule remains active until approval.', $created->id),
+            $actorUserId
+        );
+
+        $this->logAction(
+            (int) $source->staff_id,
+            (int) $created->id,
+            'created',
+            [
+                'request_kind' => 'date_change',
+                'source_leave_request_id' => $source->id,
+                'original_start_date' => (string) $source->start_date,
+                'original_end_date' => (string) $source->end_date,
+            ],
+            [
+                'status' => $created->status,
+                'request_kind' => $created->request_kind,
+                'source_leave_request_id' => $created->source_leave_request_id,
+                'start_date' => (string) $created->start_date,
+                'end_date' => (string) $created->end_date,
+                'total_days' => (float) $created->days,
+                'change_reason' => $created->change_reason,
+            ],
+            $created->change_reason,
+            $actorUserId
+        );
+
+        return $created->fresh(['sourceLeaveRequest']);
+    }
+
+    public function getPendingDateChangeForSource(int $sourceLeaveRequestId): ?BookingLeaveRequest
+    {
+        return BookingLeaveRequest::query()
+            ->where('source_leave_request_id', $sourceLeaveRequestId)
+            ->where('request_kind', 'date_change')
+            ->where('status', 'pending')
+            ->first();
+    }
+
+    public function finalizeRejectedOrCancelledDateChange(
+        BookingLeaveRequest $item,
+        string $status,
+        ?int $actorUserId,
+        ?string $remark = null,
+    ): bool {
+        if (($item->request_kind ?? 'new') !== 'date_change' || $item->status !== 'pending') {
+            return false;
+        }
+
+        if (! in_array($status, ['rejected', 'cancelled'], true)) {
+            return false;
+        }
+
+        $source = BookingLeaveRequest::query()->find((int) $item->source_leave_request_id);
+        if (! $source) {
+            return false;
+        }
+
+        $before = [
+            'status' => $item->status,
+            'admin_remark' => $item->admin_remark,
+            'reviewed_by_user_id' => $item->reviewed_by_user_id,
+        ];
+
+        $item->status = $status;
+        if ($status === 'rejected') {
+            $item->admin_remark = $remark;
+            $item->reviewed_by_user_id = $actorUserId;
+            $item->reviewed_at = now();
+        }
+        $item->save();
+
+        $this->logAction(
+            (int) $item->staff_id,
+            (int) $item->id,
+            $status === 'rejected' ? 'rejected' : 'cancelled',
+            $before,
+            [
+                'status' => $item->status,
+                'admin_remark' => $item->admin_remark,
+                'reviewed_by_user_id' => $item->reviewed_by_user_id,
+                'source_leave_request_id' => $item->source_leave_request_id,
+            ],
+            $remark,
+            $actorUserId
+        );
+
+        $sourceBefore = $this->snapshotLeaveRequest($source);
+        $source->date_change_pending = false;
+        $source->save();
+
+        $this->logAction(
+            (int) $source->staff_id,
+            (int) $source->id,
+            'updated',
+            $sourceBefore,
+            $this->snapshotLeaveRequest($source->fresh()),
+            $status === 'rejected'
+                ? 'Day change rejected; original leave unchanged.'
+                : 'Day change withdrawn; original leave unchanged.',
+            $actorUserId
+        );
+
+        return true;
+    }
+
+    public function applyApprovedDateChange(
+        BookingLeaveRequest $item,
+        ?int $actorUserId,
+        ?string $adminRemark = null,
+    ): bool {
+        if (($item->request_kind ?? 'new') !== 'date_change' || $item->status !== 'pending') {
+            return false;
+        }
+
+        $source = BookingLeaveRequest::query()->find((int) $item->source_leave_request_id);
+        if (! $source || ! $this->canApplyApprovedDateChange($source, $item)) {
+            return false;
+        }
+
+        $newStart = Carbon::parse((string) $item->start_date)->startOfDay();
+        $newEnd = Carbon::parse((string) $item->end_date)->startOfDay();
+
+        $updated = $this->updateApprovedLeaveDates(
+            $source,
+            $newStart,
+            $newEnd,
+            null,
+            $actorUserId,
+            sprintf('Day change approved (request #%d).', $item->id),
+            (int) $item->id,
+        );
+
+        if (! $updated) {
+            return false;
+        }
+
+        $source->date_change_pending = false;
+        $source->save();
+
+        $before = [
+            'status' => $item->status,
+            'admin_remark' => $item->admin_remark,
+            'reviewed_by_user_id' => $item->reviewed_by_user_id,
+        ];
+
+        $item->status = 'approved';
+        $item->admin_remark = $adminRemark;
+        $item->reviewed_by_user_id = $actorUserId;
+        $item->reviewed_at = now();
+        $item->save();
+
+        $this->logAction(
+            (int) $item->staff_id,
+            (int) $item->id,
+            'approved',
+            $before,
+            [
+                'status' => $item->status,
+                'admin_remark' => $item->admin_remark,
+                'reviewed_by_user_id' => $item->reviewed_by_user_id,
+                'source_leave_request_id' => $item->source_leave_request_id,
+            ],
+            $item->admin_remark,
+            $actorUserId
+        );
+
+        return true;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function snapshotLeaveRequest(BookingLeaveRequest $item): array
+    {
+        return [
+            'leave_type' => (string) $item->leave_type,
+            'request_kind' => (string) ($item->request_kind ?? 'new'),
+            'status' => (string) $item->status,
+            'start_date' => (string) $item->start_date,
+            'end_date' => (string) $item->end_date,
+            'reason' => $item->reason,
+            'change_reason' => $item->change_reason,
+            'date_change_pending' => (bool) ($item->date_change_pending ?? false),
+            'total_days' => (float) $item->days,
+            'approved_timeoff_id' => $item->approved_timeoff_id,
+            'source_leave_request_id' => $item->source_leave_request_id,
+        ];
     }
 
     /**

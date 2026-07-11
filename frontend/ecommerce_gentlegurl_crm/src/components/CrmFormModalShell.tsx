@@ -7,7 +7,7 @@ type CrmFormModalShellProps = {
   onClose: () => void
   closeDisabled?: boolean
   closeLabel?: string
-  size?: 'sm' | 'lg'
+  size?: 'sm' | 'lg' | 'xl'
   children: ReactNode
   footer?: ReactNode
 }
@@ -21,10 +21,11 @@ export default function CrmFormModalShell({
   children,
   footer,
 }: CrmFormModalShellProps) {
-  const sizeClass = size === 'lg' ? 'max-w-4xl' : 'max-w-lg'
+  const sizeClass =
+    size === 'xl' ? 'sm:max-w-6xl' : size === 'lg' ? 'sm:max-w-4xl' : 'sm:max-w-lg'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:overflow-y-auto sm:p-4">
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {
@@ -32,18 +33,18 @@ export default function CrmFormModalShell({
         }}
       />
       <div
-        className={`relative mx-auto flex w-full ${sizeClass} max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-lg bg-white shadow-lg`}
+        className={`relative flex max-h-[min(92dvh,100vh)] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:mx-auto sm:max-h-[min(90dvh,calc(100vh-2rem))] sm:rounded-lg sm:shadow-lg ${sizeClass}`}
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-gray-300 px-5 py-4">
-          <h2 className="text-lg font-semibold">{title}</h2>
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-300 px-4 py-3.5 sm:px-5 sm:py-4">
+          <h2 className="pr-3 text-base font-semibold leading-snug sm:text-lg">{title}</h2>
           <button
             onClick={() => {
               if (!closeDisabled) onClose()
             }}
-            className="text-2xl leading-none text-gray-500 hover:text-gray-700"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl text-gray-500 hover:bg-slate-100 hover:text-gray-700"
             aria-label={closeLabel}
             type="button"
           >
@@ -51,10 +52,10 @@ export default function CrmFormModalShell({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
 
         {footer ? (
-          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-gray-300 px-5 py-4">
+          <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-gray-300 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-5 sm:py-4 [&_button]:min-h-[44px] sm:[&_button]:min-h-0">
             {footer}
           </div>
         ) : null}

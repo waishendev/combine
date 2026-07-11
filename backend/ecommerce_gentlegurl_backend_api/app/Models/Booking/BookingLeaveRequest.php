@@ -12,12 +12,16 @@ class BookingLeaveRequest extends Model
     protected $fillable = [
         'staff_id',
         'leave_type',
+        'request_kind',
+        'source_leave_request_id',
         'day_type',
         'start_date',
         'end_date',
         'days',
         'reason',
+        'change_reason',
         'status',
+        'date_change_pending',
         'admin_remark',
         'reviewed_by_user_id',
         'reviewed_at',
@@ -28,6 +32,7 @@ class BookingLeaveRequest extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'days' => 'float',
+        'date_change_pending' => 'boolean',
         'reviewed_at' => 'datetime',
     ];
 
@@ -51,6 +56,18 @@ class BookingLeaveRequest extends Model
     public function approvedTimeoff()
     {
         return $this->belongsTo(BookingStaffTimeoff::class, 'approved_timeoff_id');
+    }
+
+    public function sourceLeaveRequest()
+    {
+        return $this->belongsTo(self::class, 'source_leave_request_id');
+    }
+
+    public function pendingDateChangeRequest()
+    {
+        return $this->hasOne(self::class, 'source_leave_request_id')
+            ->where('request_kind', 'date_change')
+            ->where('status', 'pending');
     }
 
     public function logs()

@@ -22,6 +22,7 @@ class LeaveRequestController extends Controller
             'staff:id,name',
             'reviewer:id,name',
             'creationLog.creator:id,name',
+            'sourceLeaveRequest:id,leave_type,start_date,end_date,status,day_type,days,reason',
         ]);
 
         if ($request->filled('status')) {
@@ -271,6 +272,37 @@ class LeaveRequestController extends Controller
 
         if ($item->status !== 'pending') {
             return $this->respondError('Only pending requests can be reviewed.', 422);
+        }
+
+        if (($item->request_kind ?? 'new') === 'date_change') {
+            if ($data['status'] === 'approved') {
+                $applied = DB::transaction(function () use ($item, $data, $request) {
+                    return $this->leaveService->applyApprovedDateChange(
+                        $item,
+                        $request->user()?->id,
+                        $data['admin_remark'] ?? null,
+                    );
+                });
+
+                if (! $applied) {
+                    return $this->respondError('Unable to approve day change. The original leave may have passed or the new date overlaps.', 422);
+                }
+            } else {
+                $restored = DB::transaction(function () use ($item, $data, $request) {
+                    return $this->leaveService->finalizeRejectedOrCancelledDateChange(
+                        $item,
+                        'rejected',
+                        $request->user()?->id,
+                        $data['admin_remark'] ?? null,
+                    );
+                });
+
+                if (! $restored) {
+                    return $this->respondError('Unable to reject day change.', 422);
+                }
+            }
+
+            return $this->respond($item->fresh(['staff:id,name', 'reviewer:id,name', 'creationLog.creator:id,name', 'sourceLeaveRequest']));
         }
 
         DB::transaction(function () use ($item, $data, $request) {

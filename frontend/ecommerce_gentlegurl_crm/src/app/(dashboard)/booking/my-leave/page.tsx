@@ -22,7 +22,10 @@ export default async function Page() {
         <span className="mx-1">/</span>
         <Link href="/booking/my-leave" className="text-blue-600 hover:underline">My Leave</Link>
       </div>
-      <h2 className="text-3xl font-semibold">My Leave</h2>
+      <h2 className="text-3xl font-semibold mb-2">My Leave</h2>
+      <p className="mb-4 text-sm text-slate-600">
+        View balances, apply for leave, and manage day-change requests on your approved leave.
+      </p>
 
       {!hasStaffProfile ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">

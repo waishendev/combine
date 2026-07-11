@@ -56,6 +56,7 @@ use App\Http\Controllers\Ecommerce\SalesReportController;
 use App\Http\Controllers\Ecommerce\Reports\SalesReportExportController;
 use App\Http\Controllers\Ecommerce\Reports\StaffCommissionReportController;
 use App\Http\Controllers\Ecommerce\Reports\MyPosSummaryReportController;
+use App\Http\Controllers\Ecommerce\Reports\MyStaffSalesReportController;
 use App\Http\Controllers\Ecommerce\Reports\PosSummaryReportController;
 use App\Http\Controllers\Ecommerce\Reports\SalesChannelReportController;
 use App\Http\Controllers\Ecommerce\Reports\WishlistReportController;
@@ -1209,6 +1210,8 @@ $protectedRoutes = function () {
             Route::get('/my-pos-summary', [MyPosSummaryReportController::class, 'index'])
                 ->middleware('permission:reports.my-pos-summary.view');
 
+            Route::get('/my-staff-sales', [MyStaffSalesReportController::class, 'index']);
+
             Route::get('/pos-summary', [PosSummaryReportController::class, 'index'])
                 ->middleware('permission:reports.pos-summary.view');
 
@@ -1305,6 +1308,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/booking/my-leav
     Route::get('/balances', [\App\Http\Controllers\Booking\MyLeaveController::class, 'indexBalances']);
     Route::get('/requests', [\App\Http\Controllers\Booking\MyLeaveController::class, 'indexRequests']);
     Route::post('/requests', [\App\Http\Controllers\Booking\MyLeaveController::class, 'store']);
+    Route::post('/requests/{id}/date-change', [\App\Http\Controllers\Booking\MyLeaveController::class, 'requestDateChange']);
+    Route::patch('/requests/{id}/cancel-date-change', [\App\Http\Controllers\Booking\MyLeaveController::class, 'cancelDateChange']);
     Route::patch('/requests/{id}/cancel', [\App\Http\Controllers\Booking\MyLeaveController::class, 'cancel']);
 });
 

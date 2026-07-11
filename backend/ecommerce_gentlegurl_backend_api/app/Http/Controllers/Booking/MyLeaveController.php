@@ -40,7 +40,13 @@ class MyLeaveController extends Controller
         ]);
 
         $query = BookingLeaveRequest::query()
-            ->where('staff_id', $staffId);
+            ->with([
+                'pendingDateChangeRequest:id,source_leave_request_id,start_date,end_date,status,change_reason,created_at',
+            ])
+            ->where('staff_id', $staffId)
+            ->where(function ($builder) {
+                $builder->where('request_kind', 'new')->orWhereNull('request_kind');
+            });
 
         if (! empty($validated['status'])) {
             $query->where('status', $validated['status']);
@@ -162,6 +168,23 @@ class MyLeaveController extends Controller
             return $this->respondError('Only pending or approved leave can be cancelled.', 422);
         }
 
+        if (($item->request_kind ?? 'new') === 'date_change' && $item->status === 'pending') {
+            $finalized = DB::transaction(function () use ($item, $request) {
+                return $this->leaveService->finalizeRejectedOrCancelledDateChange(
+                    $item,
+                    'cancelled',
+                    $request->user()?->id,
+                    'Cancelled by staff.',
+                );
+            });
+
+            if (! $finalized) {
+                return $this->respondError('Unable to cancel day change request.', 422);
+            }
+
+            return $this->respond($item->fresh(['sourceLeaveRequest']));
+        }
+
         DB::transaction(function () use ($item, $request) {
             $before = [
                 'status' => $item->status,
@@ -195,5 +218,94 @@ class MyLeaveController extends Controller
         });
 
         return $this->respond($item->fresh());
+    }
+
+    public function requestDateChange(Request $request, int $id)
+    {
+        $staffId = (int) ($request->user()?->staff_id ?? 0);
+        if ($staffId <= 0) {
+            return $this->respondError('This account is not linked to a staff profile.', 403);
+        }
+
+        $source = BookingLeaveRequest::query()
+            ->where('staff_id', $staffId)
+            ->findOrFail($id);
+
+        $data = $request->validate([
+            'start_date' => ['required', 'date', 'after_or_equal:today'],
+            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'change_reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $newStart = Carbon::parse($data['start_date'])->startOfDay();
+        $newEnd = Carbon::parse($data['end_date'])->startOfDay();
+
+        if (! $newStart->isSameDay($newEnd) && (string) ($source->day_type ?: 'full_day') !== 'full_day') {
+            return $this->respondError('Multi-day changes currently support full day leave only.', 422);
+        }
+
+        if (! $this->leaveService->canStaffRequestDateChange($source)) {
+            return $this->respondError('This leave cannot be changed. Past dates and pending change requests are not allowed.', 422);
+        }
+
+        $created = DB::transaction(function () use ($source, $data, $newStart, $newEnd, $request) {
+            return $this->leaveService->createDateChangeRequest(
+                $source,
+                $newStart,
+                $newEnd,
+                $data['change_reason'] ?? null,
+                $request->user()?->id,
+            );
+        });
+
+        if (! $created) {
+            return $this->respondError('Unable to submit day change request. The new date may overlap with existing leave or match the current dates.', 422);
+        }
+
+        return $this->respond(
+            $source->fresh(['pendingDateChangeRequest']),
+            null,
+            true,
+            201
+        );
+    }
+
+    public function cancelDateChange(Request $request, int $id)
+    {
+        $staffId = (int) ($request->user()?->staff_id ?? 0);
+        if ($staffId <= 0) {
+            return $this->respondError('This account is not linked to a staff profile.', 403);
+        }
+
+        $source = BookingLeaveRequest::query()
+            ->where('staff_id', $staffId)
+            ->where(function ($builder) {
+                $builder->where('request_kind', 'new')->orWhereNull('request_kind');
+            })
+            ->findOrFail($id);
+
+        if (! ($source->date_change_pending ?? false)) {
+            return $this->respondError('No pending day change for this leave.', 422);
+        }
+
+        $child = $this->leaveService->getPendingDateChangeForSource((int) $source->id);
+        if (! $child) {
+            return $this->respondError('No pending day change for this leave.', 422);
+        }
+
+        $finalized = DB::transaction(function () use ($child, $request) {
+            return $this->leaveService->finalizeRejectedOrCancelledDateChange(
+                $child,
+                'cancelled',
+                $request->user()?->id,
+                'Change request withdrawn by staff.',
+            );
+        });
+
+        if (! $finalized) {
+            return $this->respondError('Unable to withdraw day change request.', 422);
+        }
+
+        return $this->respond($source->fresh(['pendingDateChangeRequest']));
     }
 }

@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 
 import EcommerceAnalyticsDashboard from '@/components/dashboard/EcommerceAnalyticsDashboard'
 import PackageAnalyticsDashboard from '@/components/dashboard/PackageAnalyticsDashboard'
+import StaffMySalesDashboard from '@/components/reports/StaffMySalesDashboard'
 import { getCurrentUser } from '@/lib/auth'
 import { getTranslator } from '@/lib/i18n-server'
 import type { LangCode } from '@/lib/i18n'
@@ -41,6 +42,7 @@ export default async function DashboardPage() {
     ['dashboard.package_analytics.view', 'dashboard.analytics.view'].includes(permission),
   )
   const canViewAnyAnalytics = canViewEcommerceAnalytics || canViewPackageAnalytics
+  const isStaffAccount = Boolean(user.staff_id)
 
   return (
     <div className="crm-page-shell py-6 px-4 sm:px-6 lg:px-10">
@@ -63,6 +65,15 @@ export default async function DashboardPage() {
             {canViewEcommerceAnalytics ? <EcommerceAnalyticsDashboard /> : null}
             {canViewPackageAnalytics ? <PackageAnalyticsDashboard /> : null}
           </div>
+        </div>
+      ) : isStaffAccount ? (
+        <div className="space-y-6">
+          <WelcomeCard
+            title={t('dashboard.welcomeTitle')}
+            greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
+            hint="View your personal sales summary below. Use the date filter to check different periods."
+          />
+          <StaffMySalesDashboard />
         </div>
       ) : (
         <WelcomeCard
