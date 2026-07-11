@@ -64,6 +64,7 @@ class RbacSeeder extends Seeder
             'reports.my-pos-summary' => 'My POS Summary Reports',
             'reports.pos-summary' => 'POS Summary Reports',
             'ecommerce.notifications.templates' => 'Ecommerce Notification Templates',
+            'dashboard' => 'Dashboard',
             'ecommerce.dashboard' => 'Ecommerce Dashboard',
             'ecommerce.settings' => 'Ecommerce Settings',
             'ecommerce.orders' => 'Ecommerce Orders',
@@ -109,6 +110,7 @@ class RbacSeeder extends Seeder
             'ecommerce.reports.sales' => ['view', 'export'],
             'reports.my-pos-summary' => ['view'],
             'reports.pos-summary' => ['view'],
+            'dashboard' => ['view', 'analytics.view', 'ecommerce_analytics.view', 'package_analytics.view'],
             'ecommerce.dashboard' => ['view'],
             'ecommerce.settings' => ['view', 'update'],
             'booking' => [

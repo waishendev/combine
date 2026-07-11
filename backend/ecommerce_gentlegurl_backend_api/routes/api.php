@@ -19,6 +19,7 @@ use App\Http\Controllers\Ecommerce\MarqueeController;
 use App\Http\Controllers\Ecommerce\HomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicAnnouncementController;
 use App\Http\Controllers\Ecommerce\DashboardController;
+use App\Http\Controllers\Ecommerce\DashboardAnalyticsController;
 use App\Http\Controllers\Ecommerce\BrandingController;
 use App\Http\Controllers\Ecommerce\BillplzPaymentGatewayOptionController;
 use App\Http\Controllers\Ecommerce\PublicBankAccountController;
@@ -263,6 +264,9 @@ $protectedRoutes = function () {
     Route::get('/profile', [AuthController::class, 'profile']);
 
     Route::get('/me', [AuthController::class, 'me']);
+
+    Route::get('/admin/dashboard/analytics/ecommerce', [DashboardAnalyticsController::class, 'ecommerce'])
+        ->middleware('permission:dashboard.ecommerce_analytics.view|dashboard.analytics.view');
 
     // Activity Logs
     Route::get('/activity-logs', [ActivityLogController::class, 'index'])
