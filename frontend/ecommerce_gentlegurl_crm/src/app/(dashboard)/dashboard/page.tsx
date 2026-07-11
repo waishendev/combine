@@ -53,8 +53,12 @@ export default async function DashboardPage() {
           {t('sidebar.dashboard')}
         </Link>
       </div>
-
-      {canViewAnyAnalytics ? (
+      <WelcomeCard
+          title={t('dashboard.welcomeTitle')}
+          greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
+          hint={t('dashboard.welcomeHint')}
+        />
+      {/* {canViewAnyAnalytics ? (
         <div className="space-y-6">
           <WelcomeCard
             title={t('dashboard.welcomeTitle')}
@@ -81,7 +85,7 @@ export default async function DashboardPage() {
           greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
           hint={t('dashboard.welcomeHint')}
         />
-      )}
+      )} */}
     </div>
   )
 }

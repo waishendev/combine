@@ -14,7 +14,7 @@ Artisan::command('inspire', function () {
 // =========================
 
 Schedule::command('ecommerce:send-low-stock-summary')
-    ->dailyAt('12:00')
+    ->dailyAt('10:00')
     ->onOneServer()
     ->withoutOverlapping();
 
