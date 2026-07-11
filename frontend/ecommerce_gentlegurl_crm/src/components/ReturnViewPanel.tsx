@@ -4,6 +4,13 @@ import { useEffect, useRef, useState, FormEvent } from 'react'
 
 import { IMAGE_PDF_ACCEPT } from './mediaAccept'
 
+type ReturnRefundMethod = 'cash' | 'customer_credit'
+
+const RETURN_REFUND_METHODS: Array<{ method: ReturnRefundMethod; label: string }> = [
+  { method: 'cash', label: 'Cash Refund' },
+  { method: 'customer_credit', label: 'Customer Credit' },
+]
+
 type ReturnItem = {
   product_id?: number
   product_name?: string | null
@@ -55,6 +62,11 @@ type ReturnDetail = {
   refund_proof_path?: string | null
   refund_proof_url?: string | null
   refunded_at?: string | null
+  refund?: {
+    id?: number
+    refund_no?: string | null
+    receipt_public_url?: string | null
+  } | null
   items?: ReturnItem[]
   timeline?: {
     created_at?: string | null
@@ -68,6 +80,146 @@ interface ReturnViewPanelProps {
   returnId: number
   onClose: () => void
   onReturnUpdated?: () => void
+  zIndexClassName?: string
+}
+
+const isAdminNoteRequired = (action: string) => action === 'reject' || action === 'cancel'
+
+function confirmModalTitle(action: string): string {
+  switch (action) {
+    case 'approve':
+      return 'Approve Return Request'
+    case 'reject':
+      return 'Reject Return Request'
+    case 'mark_in_transit':
+      return 'Mark Return In Transit'
+    case 'mark_received':
+      return 'Mark Return Received'
+    default:
+      return 'Confirm Action'
+  }
+}
+
+function confirmModalSubmitLabel(action: string): string {
+  switch (action) {
+    case 'approve':
+      return 'Approve'
+    case 'reject':
+      return 'Reject'
+    case 'mark_in_transit':
+      return 'Mark in transit'
+    case 'mark_received':
+      return 'Mark received'
+    default:
+      return 'Confirm'
+  }
+}
+
+function confirmModalSubmitClass(action: string): string {
+  switch (action) {
+    case 'approve':
+      return 'bg-emerald-600 hover:bg-emerald-700'
+    case 'reject':
+      return 'bg-rose-600 hover:bg-rose-700'
+    case 'mark_in_transit':
+      return 'bg-violet-600 hover:bg-violet-700'
+    case 'mark_received':
+      return 'bg-teal-600 hover:bg-teal-700'
+    default:
+      return 'bg-slate-800 hover:bg-slate-900'
+  }
+}
+
+function ReturnActionConfirmModal({
+  action,
+  orderNo,
+  onClose,
+  onConfirm,
+  zIndexClassName,
+}: {
+  action: string
+  orderNo?: string | null
+  onClose: () => void
+  onConfirm: (adminNote: string) => Promise<void>
+  zIndexClassName: string
+}) {
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const noteRequired = isAdminNoteRequired(action)
+
+  const handleSubmit = async () => {
+    if (noteRequired && !note.trim()) {
+      setError('Admin note is required for this action.')
+      return
+    }
+
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onConfirm(note.trim())
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update status.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center bg-slate-950/50 p-4`}>
+      <div
+        className="absolute inset-0"
+        onClick={() => {
+          if (!submitting) onClose()
+        }}
+      />
+      <div
+        className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3 className="text-lg font-bold text-slate-950">{confirmModalTitle(action)}</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          {orderNo ? `Order ${orderNo}` : 'Return request'}
+        </p>
+
+        <div className="mt-4">
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Admin note {noteRequired ? <span className="text-red-500">*</span> : '(optional)'}
+          </label>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            className="min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            placeholder={noteRequired ? 'Reason for staff audit trail' : 'Note for audit trail or customer communication'}
+            disabled={submitting}
+          />
+          {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void handleSubmit()}
+            className={`rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${confirmModalSubmitClass(action)}`}
+          >
+            {submitting ? 'Processing…' : confirmModalSubmitLabel(action)}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 const badgeStyle = (status: string) => {
@@ -194,14 +346,18 @@ export default function ReturnViewPanel({
   returnId,
   onClose,
   onReturnUpdated,
+  zIndexClassName = 'z-50',
 }: ReturnViewPanelProps) {
+  const nestedModalZIndexClassName = zIndexClassName.includes('pos-body-stack-modal')
+    ? 'pos-body-stack-modal-top'
+    : 'z-[60]'
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [detail, setDetail] = useState<ReturnDetail | null>(null)
-  const [actionNote, setActionNote] = useState('')
-  const [actionError, setActionError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<string | null>(null)
   const [showRefundModal, setShowRefundModal] = useState(false)
+  const [refundReceipt, setRefundReceipt] = useState<{ url: string; refundNo?: string } | null>(null)
   const refundProofUrl = detail
     ? getFileUrl(detail.refund_proof_url ?? detail.refund_proof_path)
     : null
@@ -212,9 +368,10 @@ export default function ReturnViewPanel({
     const fetchDetail = async () => {
       setLoading(true)
       setError(null)
-      setActionNote('')
-      setActionError(null)
+      setDetail(null)
+      setConfirmAction(null)
       setShowRefundModal(false)
+      setRefundReceipt(null)
 
       try {
         const res = await fetch(`/api/proxy/ecommerce/returns/${returnId}`, {
@@ -230,18 +387,18 @@ export default function ReturnViewPanel({
         const json = await res.json().catch(() => null)
         setDetail(json?.data ?? null)
       } catch (err) {
-        if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          setError('Unable to load return details.')
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
         }
+        setError('Unable to load return details.')
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }
 
-    fetchDetail().catch(() => {
-      setLoading(false)
-      setError('Unable to load return details.')
-    })
+    void fetchDetail()
 
     return () => controller.abort()
   }, [returnId])
@@ -265,33 +422,29 @@ export default function ReturnViewPanel({
     }
   }
 
-  const isAdminNoteRequired = (action: string) => action === 'reject' || action === 'cancel'
-
-  const applyAction = async (action: string) => {
+  const applyAction = async (action: string, adminNote: string) => {
     if (!returnId) return
-    setActionError(null)
 
-    if (isAdminNoteRequired(action) && !actionNote.trim()) {
-      setActionError('Admin note is required for this action.')
-      return
+    const res = await fetch(`/api/proxy/ecommerce/returns/${returnId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, admin_note: adminNote || null }),
+    })
+
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      throw new Error(String(json?.message ?? 'Unable to update status.'))
     }
 
+    await handleReturnUpdated()
+  }
+
+  const handleConfirmAction = async (adminNote: string) => {
+    if (!confirmAction) return
     setActionLoading(true)
     try {
-      const res = await fetch(`/api/proxy/ecommerce/returns/${returnId}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, admin_note: actionNote }),
-      })
-
-      const json = await res.json().catch(() => null)
-      if (!res.ok) {
-        setActionError(json?.message ?? 'Unable to update status.')
-        return
-      }
-
-      await handleReturnUpdated()
-      setActionNote('')
+      await applyAction(confirmAction, adminNote)
+      setConfirmAction(null)
     } finally {
       setActionLoading(false)
     }
@@ -305,10 +458,7 @@ export default function ReturnViewPanel({
           { label: 'Reject', action: 'reject' },
         ]
       case 'approved':
-        return [
-          { label: 'Mark In Transit', action: 'mark_in_transit' },
-          { label: 'Mark Received', action: 'mark_received' },
-        ]
+        return [{ label: 'Mark Received', action: 'mark_received' }]
       case 'in_transit':
         return [{ label: 'Mark Received', action: 'mark_received' }]
       case 'received':
@@ -318,77 +468,46 @@ export default function ReturnViewPanel({
     }
   })()
 
-  const showActionNote = detail?.status !== 'received'
-  const actionNoteRequired = availableActions.some((action) => isAdminNoteRequired(action.action))
+  const handleActionClick = (action: string) => {
+    if (action === 'mark_refunded') {
+      setShowRefundModal(true)
+      return
+    }
+    setConfirmAction(action)
+  }
 
-  const actionButtonStyle = (action: string) => {
+  const footerActionButtonClass = (action: string) => {
+    const base = 'rounded px-4 py-2 text-sm text-white disabled:opacity-60'
     switch (action) {
       case 'approve':
-        return 'border-sky-200 bg-sky-100 text-sky-700 hover:bg-sky-200'
+        return `${base} bg-green-600 hover:bg-green-700`
       case 'reject':
-        return 'border-rose-200 bg-rose-100 text-rose-700 hover:bg-rose-200'
+        return `${base} bg-red-600 hover:bg-red-700`
       case 'mark_in_transit':
-        return 'border-violet-200 bg-violet-100 text-violet-700 hover:bg-violet-200'
+        return `${base} bg-blue-600 hover:bg-blue-700`
       case 'mark_received':
-        return 'border-teal-200 bg-teal-100 text-teal-700 hover:bg-teal-200'
+        return `${base} bg-teal-600 hover:bg-teal-700`
       case 'mark_refunded':
-        return 'border-green-200 bg-green-100 text-green-700 hover:bg-green-200'
+        return `${base} bg-orange-600 hover:bg-orange-700`
       default:
-        return 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+        return `${base} bg-slate-600 hover:bg-slate-700`
     }
   }
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] bg-black/40">
-        <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
-        <aside className="ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl">
-          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h3 className="text-sm font-semibold text-slate-900">Return Details</h3>
-            <button
-              type="button"
-              className="text-slate-500 hover:text-slate-700"
-              onClick={onClose}
-              aria-label="Close"
-            >
-              <i className="fa-solid fa-xmark" />
-            </button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
-            <div className="py-8 text-center text-sm text-slate-500">Loading...</div>
-          </div>
-        </aside>
-      </div>
-    )
-  }
-
-  if (error || !detail) {
-    return (
-      <div className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] bg-black/40">
-        <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
-        <aside className="ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl">
-          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h3 className="text-sm font-semibold text-slate-900">Return Details</h3>
-            <button
-              type="button"
-              className="text-slate-500 hover:text-slate-700"
-              onClick={onClose}
-              aria-label="Close"
-            >
-              <i className="fa-solid fa-xmark" />
-            </button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
-            <div className="py-8 text-center text-sm text-red-600">{error || 'Return not found'}</div>
-          </div>
-        </aside>
-      </div>
-    )
-  }
+  const showRefundInfo = Boolean(
+    detail &&
+      (detail.refund_amount ||
+        detail.refund_method ||
+        detail.refund_proof_path ||
+        detail.refund_proof_url ||
+        detail.refunded_at ||
+        detail.admin_note ||
+        detail.refund?.receipt_public_url),
+  )
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className={`fixed inset-0 ${zIndexClassName} flex h-[100dvh] max-h-[100dvh] bg-black/40`} role="dialog" aria-modal="true" onClick={onClose}>
         <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
         <aside
           className="relative ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl"
@@ -396,8 +515,10 @@ export default function ReturnViewPanel({
         >
           <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">Return Details</h3>
-              <p className="text-xs text-slate-500">Order No: {detail.order?.order_number ?? '—'}</p>
+              <h3 className="text-lg font-semibold text-slate-900">Return Details</h3>
+              {detail?.order?.order_number ? (
+                <p className="text-sm text-slate-500">Order No: {detail.order.order_number}</p>
+              ) : null}
             </div>
             <button
               type="button"
@@ -408,8 +529,14 @@ export default function ReturnViewPanel({
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
+
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
-            <div className="space-y-5 text-sm">
+            {loading ? (
+              <div className="py-8 text-center text-sm text-slate-500">Loading return details...</div>
+            ) : error || !detail ? (
+              <div className="py-8 text-center text-sm text-red-600">{error || 'Return not found'}</div>
+            ) : (
+              <div className="space-y-5 text-sm">
               <div className="flex flex-wrap gap-5">
                 <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -598,217 +725,209 @@ export default function ReturnViewPanel({
                 )}
               </div>
 
-              {availableActions.length > 0 ? (
-                <div className="flex flex-wrap gap-5">
-                  <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
-                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-sm font-semibold text-slate-900">Tracking Information</p>
-                    </div>
-                    <div className="px-4 py-3 space-y-3">
-                      <div>
-                        <p className="text-xs text-slate-500">Courier</p>
-                        <p className="font-medium text-slate-900">{detail.return_courier_name ?? '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-500">Tracking Number</p>
-                        <p className="font-medium text-slate-900">{detail.return_tracking_no ?? '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-500">Shipped At</p>
-                        <p className="font-medium text-slate-900">{formatDate(detail.return_shipped_at)}</p>
-                      </div>
-                    </div>
+              <div className="flex flex-wrap gap-5">
+                <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Tracking Information</p>
                   </div>
-
-                  <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
-                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-sm font-semibold text-slate-900">Actions</p>
+                  <div className="px-4 py-3 space-y-3">
+                    <div>
+                      <p className="text-xs text-slate-500">Courier</p>
+                      <p className="font-medium text-slate-900">{detail.return_courier_name ?? '—'}</p>
                     </div>
-                    <div className="px-4 py-3 space-y-3">
-                      {showActionNote && (
-                        <div>
-                          <label className="mb-2 block text-xs font-semibold text-slate-700">
-                            Admin Note {actionNoteRequired && <span className="text-red-500">*</span>}
-                          </label>
-                          <textarea
-                            value={actionNote}
-                            onChange={(event) => setActionNote(event.target.value)}
-                            placeholder="Add admin note (optional)"
-                            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-                            rows={3}
-                          />
-                          {actionError && <p className="mt-1 text-xs text-red-600">{actionError}</p>}
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-2">
-                        {availableActions.map((action) => (
-                          <button
-                            key={action.action}
-                            type="button"
-                            onClick={() => {
-                              if (action.action === 'mark_refunded') {
-                                setShowRefundModal(true)
-                                return
-                              }
-                              applyAction(action.action)
-                            }}
-                            disabled={actionLoading}
-                            className={`rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-wide transition disabled:opacity-60 ${actionButtonStyle(action.action)}`}
-                          >
-                            {action.label}
-                          </button>
-                        ))}
-                      </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Tracking Number</p>
+                      <p className="font-medium text-slate-900">{detail.return_tracking_no ?? '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Shipped At</p>
+                      <p className="font-medium text-slate-900">{formatDate(detail.return_shipped_at)}</p>
                     </div>
                   </div>
                 </div>
-              ) : null}
 
-              {availableActions.length > 0 &&
-                (detail.refund_amount ||
-                  detail.refund_method ||
-                  detail.refund_proof_path ||
-                  detail.refund_proof_url ||
-                  detail.refunded_at ||
-                  detail.admin_note) && (
-                  <div className="rounded border border-slate-200 bg-white">
+                {showRefundInfo ? (
+                  <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
                     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                       <p className="text-sm font-semibold text-slate-900">Refund Information</p>
                     </div>
                     <div className="px-4 py-3 space-y-3">
-                      {detail.admin_note && (
+                      {detail.admin_note ? (
                         <div>
                           <p className="text-xs text-slate-500">Admin Note</p>
                           <p className="text-sm text-slate-900">{detail.admin_note}</p>
                         </div>
-                      )}
-                      {detail.refund_amount && (
+                      ) : null}
+                      {detail.refund_amount ? (
                         <div>
                           <p className="text-xs text-slate-500">Amount</p>
                           <p className="font-medium text-slate-900">RM {formatAmount(detail.refund_amount)}</p>
                         </div>
-                      )}
-                      {detail.refund_method && (
+                      ) : null}
+                      {detail.refund_method ? (
                         <div>
                           <p className="text-xs text-slate-500">Method</p>
                           <p className="font-medium text-slate-900">{detail.refund_method}</p>
                         </div>
-                      )}
-                      {detail.refunded_at && (
+                      ) : null}
+                      {detail.refunded_at ? (
                         <div>
                           <p className="text-xs text-slate-500">Refunded At</p>
                           <p className="font-medium text-slate-900">{formatDate(detail.refunded_at)}</p>
                         </div>
-                      )}
-                      {refundProofUrl && (
+                      ) : null}
+                      {refundProofUrl ? (
                         <div>
                           <p className="text-xs text-slate-500">Proof</p>
                           <a
-                            href={refundProofUrl ?? '#'}
+                            href={refundProofUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-blue-600 hover:underline text-sm"
+                            className="text-sm text-blue-600 hover:underline"
                           >
                             View refund proof
                           </a>
                         </div>
-                      )}
+                      ) : null}
+                      {detail.refund?.receipt_public_url ? (
+                        <div>
+                          <p className="text-xs text-slate-500">Refund Receipt</p>
+                          <button
+                            type="button"
+                            onClick={() => setRefundReceipt({
+                              url: detail.refund!.receipt_public_url!,
+                              refundNo: detail.refund?.refund_no ?? undefined,
+                            })}
+                            className="text-sm font-semibold text-rose-700 hover:text-rose-900"
+                          >
+                            View refund receipt{detail.refund?.refund_no ? ` (${detail.refund.refund_no})` : ''}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                )}
-
-              {availableActions.length === 0 && (
-                <div className="flex flex-wrap gap-5">
-                  <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
-                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-sm font-semibold text-slate-900">Tracking Information</p>
-                    </div>
-                    <div className="px-4 py-3 space-y-3">
-                      <div>
-                        <p className="text-xs text-slate-500">Courier</p>
-                        <p className="font-medium text-slate-900">{detail.return_courier_name ?? '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-500">Tracking Number</p>
-                        <p className="font-medium text-slate-900">{detail.return_tracking_no ?? '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-500">Shipped At</p>
-                        <p className="font-medium text-slate-900">{formatDate(detail.return_shipped_at)}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {(detail.refund_amount ||
-                    detail.refund_method ||
-                    detail.refund_proof_path ||
-                    detail.refund_proof_url ||
-                    detail.refunded_at ||
-                    detail.admin_note) && (
-                    <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">
-                      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                        <p className="text-sm font-semibold text-slate-900">Refund Information</p>
-                      </div>
-                      <div className="px-4 py-3 space-y-3">
-                        {detail.admin_note && (
-                          <div>
-                            <p className="text-xs text-slate-500">Admin Note</p>
-                            <p className="text-sm text-slate-900">{detail.admin_note}</p>
-                          </div>
-                        )}
-                        {detail.refund_amount && (
-                          <div>
-                            <p className="text-xs text-slate-500">Amount</p>
-                            <p className="font-medium text-slate-900">RM {formatAmount(detail.refund_amount)}</p>
-                          </div>
-                        )}
-                        {detail.refund_method && (
-                          <div>
-                            <p className="text-xs text-slate-500">Method</p>
-                            <p className="font-medium text-slate-900">{detail.refund_method}</p>
-                          </div>
-                        )}
-                        {detail.refunded_at && (
-                          <div>
-                            <p className="text-xs text-slate-500">Refunded At</p>
-                            <p className="font-medium text-slate-900">{formatDate(detail.refunded_at)}</p>
-                          </div>
-                        )}
-                        {refundProofUrl && (
-                          <div>
-                            <p className="text-xs text-slate-500">Proof</p>
-                            <a
-                              href={refundProofUrl ?? '#'}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-600 hover:underline text-sm"
-                            >
-                              View refund proof
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-            </div>
+                ) : null}
+              </div>
+              </div>
+            )}
           </div>
+
+          {!loading && detail && availableActions.length > 0 ? (
+            <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 shadow-lg">
+              <div className="flex flex-wrap gap-2">
+                {availableActions.map((action) => (
+                  <button
+                    key={action.action}
+                    type="button"
+                    onClick={() => handleActionClick(action.action)}
+                    disabled={actionLoading}
+                    className={footerActionButtonClass(action.action)}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </aside>
       </div>
+
+      {confirmAction && detail ? (
+        <ReturnActionConfirmModal
+          action={confirmAction}
+          orderNo={detail.order?.order_number}
+          onClose={() => {
+            if (!actionLoading) setConfirmAction(null)
+          }}
+          onConfirm={handleConfirmAction}
+          zIndexClassName={nestedModalZIndexClassName}
+        />
+      ) : null}
 
       {showRefundModal && (
         <ReturnRefundModal
           returnId={returnId}
           onClose={() => setShowRefundModal(false)}
-          onSuccess={async () => {
+          onSuccess={async (payload) => {
             await handleReturnUpdated()
             setShowRefundModal(false)
+            if (payload.receiptPublicUrl) {
+              setRefundReceipt({
+                url: payload.receiptPublicUrl,
+                refundNo: payload.refundNo ?? undefined,
+              })
+            }
           }}
+          zIndexClassName={nestedModalZIndexClassName}
         />
       )}
+
+      {refundReceipt ? (
+        <ReturnRefundReceiptModal
+          receiptPublicUrl={refundReceipt.url}
+          refundNo={refundReceipt.refundNo}
+          onClose={() => setRefundReceipt(null)}
+          zIndexClassName={nestedModalZIndexClassName}
+        />
+      ) : null}
     </>
+  )
+}
+
+function ReturnRefundReceiptModal({
+  receiptPublicUrl,
+  refundNo,
+  onClose,
+  zIndexClassName,
+}: {
+  receiptPublicUrl: string
+  refundNo?: string
+  onClose: () => void
+  zIndexClassName: string
+}) {
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(receiptPublicUrl)}`
+
+  return (
+    <div className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center bg-slate-950/50 p-4`}>
+      <div className="absolute inset-0" onClick={onClose} />
+      <div
+        className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-slate-950">Refund Receipt</h3>
+            {refundNo ? <p className="text-xs text-slate-500">{refundNo}</p> : null}
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
+
+        <p className="text-center text-sm font-semibold text-slate-700">Scan QR code to view receipt</p>
+        <div className="mt-3 flex justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qrUrl} alt="Refund receipt QR code" className="h-40 w-40 rounded-xl border border-slate-200 bg-white p-2" />
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard.writeText(receiptPublicUrl)}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Copy link
+          </button>
+          <button
+            type="button"
+            onClick={() => window.open(receiptPublicUrl, '_blank')}
+            className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-700"
+          >
+            Open receipt
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -816,16 +935,18 @@ function ReturnRefundModal({
   returnId,
   onClose,
   onSuccess,
+  zIndexClassName = 'z-[60]',
 }: {
   returnId: number
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (payload: { receiptPublicUrl: string | null; refundNo?: string | null }) => void | Promise<void>
+  zIndexClassName?: string
 }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [adminNote, setAdminNote] = useState('')
   const [refundAmount, setRefundAmount] = useState('')
-  const [refundMethod, setRefundMethod] = useState('')
+  const [refundMethod, setRefundMethod] = useState<ReturnRefundMethod>('cash')
   const [refundProof, setRefundProof] = useState<File | null>(null)
   const [refundProofPreview, setRefundProofPreview] = useState<string | null>(null)
   const refundProofInputRef = useRef<HTMLInputElement | null>(null)
@@ -887,7 +1008,11 @@ function ReturnRefundModal({
         return
       }
 
-      onSuccess()
+      const refund = json?.data?.refund as { receipt_public_url?: string | null; refund_no?: string | null } | undefined
+      await onSuccess({
+        receiptPublicUrl: refund?.receipt_public_url ?? null,
+        refundNo: refund?.refund_no ?? null,
+      })
     } catch (err) {
       setError('Unable to update refund.')
     } finally {
@@ -896,7 +1021,7 @@ function ReturnRefundModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center p-4`}>
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {
@@ -937,21 +1062,26 @@ function ReturnRefundModal({
           </div>
 
           <div>
-            <label htmlFor="refundMethod" className="block text-sm font-medium text-gray-700 mb-1">
+            <p className="mb-2 block text-sm font-medium text-gray-700">
               Refund Method <span className="text-red-500">*</span>
-            </label>
-            <select
-              id="refundMethod"
-              value={refundMethod}
-              onChange={(event) => setRefundMethod(event.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Select method</option>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="cash">Cash</option>
-              <option value="other">Other</option>
-            </select>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {RETURN_REFUND_METHODS.map(({ method, label }) => (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => setRefundMethod(method)}
+                  className={[
+                    'rounded-lg border px-3 py-1.5 text-xs font-semibold',
+                    refundMethod === method
+                      ? 'border-rose-500 bg-rose-50 text-rose-800'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>

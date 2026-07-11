@@ -43,6 +43,11 @@ type EcommerceRow = {
   discount: number
   net_amount: number
   status: string
+  is_refund?: boolean
+  refund_id?: number
+  related_order_no?: string | null
+  refund_label?: string | null
+  receipt_public_url?: string | null
 }
 
 type BookingRow = {
@@ -710,6 +715,11 @@ export default function SalesChannelReportPage({
   const groupedEcommerceRows = useMemo(() => {
     const groups = new Map<string, EcommerceRow>()
     ecommerceRows.forEach((row) => {
+      if (row.is_refund) {
+        const key = `refund-${row.refund_id ?? row.order_no}`
+        groups.set(key, { ...row })
+        return
+      }
       const key = groupKeyForOrder(row)
       const current = groups.get(key)
       if (!current) {
@@ -935,34 +945,64 @@ export default function SalesChannelReportPage({
                 <TableEmptyState colSpan={ecColSpan} />
               ) : (
                 groupedEcommerceRows.map((row) => (
-                  <tr key={`${row.order_no}-${row.order_datetime}`}>
-                    <td className="px-4 py-2 border border-gray-200">{row.order_no}</td>
+                  <tr key={`${row.is_refund ? 'refund' : 'order'}-${row.order_no}-${row.order_datetime}`}>
+                    <td className="px-4 py-2 border border-gray-200">
+                      {row.is_refund ? (
+                        <div>
+                          <span>{row.order_no}</span>
+                          {row.related_order_no ? (
+                            <p className="mt-0.5 text-[10px] text-slate-500">Order {row.related_order_no}</p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        row.order_no
+                      )}
+                    </td>
                     <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
                     <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
                     <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
                     <td className="px-4 py-2 border border-gray-200"><PaymentMethodCell method={row.payment_method} payments={row.payments} /></td>
-                    <td className="px-4 py-2 border border-gray-200">{row.item_count}</td>
+                    <td className="px-4 py-2 border border-gray-200">{row.is_refund ? '—' : row.item_count}</td>
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.product_amount)}</td>
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.discount)}</td>
-                    <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.net_amount)}</td>
-                    <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
+                    <td className={`px-4 py-2 border border-gray-200 ${row.net_amount < 0 ? 'font-semibold text-rose-700' : ''}`}>
+                      {formatSignedAmount(row.net_amount)}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">{labelize(row.is_refund ? 'refund' : row.status)}</td>
                     <td className="px-4 py-2 border border-gray-200 text-center">
                       <div className="inline-flex items-center justify-center gap-2">
-                        <ReportViewDetailsButton onClick={() => void openOrderDetail(row.order_id)} title={`View details for ${row.order_no}`} />
-                        <OrderReceiptAction orderId={row.order_id} orderNo={row.order_no} />
-                      <OfflineOrderActions
-                        orderId={row.order_id}
-                        channel={row.channel}
-                        billDate={row.order_datetime}
-                        currentPaymentMethod={row.payment_method}
-                        orderAmount={Number(row.order_total ?? row.net_amount ?? 0)}
-                        paymentBreakdown={row.payments}
-                        canEditStaffSplit={canUpdateOrder}
-                        onDone={() => {
-                          setRefreshKey((prev) => prev + 1)
-                          onDataChanged?.()
-                        }}
-                      />
+                        {row.is_refund ? (
+                          row.refund_id ? (
+                            <RefundReportActions
+                              refundId={row.refund_id}
+                              refundNo={row.order_no}
+                              receiptPublicUrl={row.receipt_public_url}
+                              canVoid={false}
+                              onDone={() => {
+                                setRefreshKey((prev) => prev + 1)
+                                onDataChanged?.()
+                              }}
+                            />
+                          ) : null
+                        ) : (
+                          <>
+                            <ReportViewDetailsButton onClick={() => void openOrderDetail(row.order_id)} title={`View details for ${row.order_no}`} />
+                            <OrderReceiptAction orderId={row.order_id} orderNo={row.order_no} />
+                            <OfflineOrderActions
+                              orderId={row.order_id}
+                              channel={row.channel}
+                              billDate={row.order_datetime}
+                              currentPaymentMethod={row.payment_method}
+                              orderAmount={Number(row.order_total ?? row.net_amount ?? 0)}
+                              paymentBreakdown={row.payments}
+                              canEditStaffSplit={canUpdateOrder}
+                              onDone={() => {
+                                setRefreshKey((prev) => prev + 1)
+                                onDataChanged?.()
+                              }}
+                            />
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

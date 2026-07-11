@@ -70,7 +70,7 @@ function isDailyRow(row: MonthlyRow | DailyRow): row is DailyRow {
   return 'date' in row
 }
 
-export default function SalesSummaryWorkspaceClient() {
+export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false }: { canViewStaffReport?: boolean }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -291,7 +291,7 @@ export default function SalesSummaryWorkspaceClient() {
 
       {error ? <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div> : null}
 
-      <SalesVisualPeriodDashboard year={selectedYear} month={selectedMonth} onShiftPeriod={shiftPeriod} />
+      <SalesVisualPeriodDashboard year={selectedYear} month={selectedMonth} onShiftPeriod={shiftPeriod} canViewStaffReport={canViewStaffReport} />
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">

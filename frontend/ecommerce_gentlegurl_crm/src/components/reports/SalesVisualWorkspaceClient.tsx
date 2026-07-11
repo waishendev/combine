@@ -22,10 +22,12 @@ export default function SalesVisualWorkspaceClient({
   canExport,
   canUpdateOrder = false,
   canVoidRefund = false,
+  canViewStaffReport = false,
 }: {
   canExport: boolean
   canUpdateOrder?: boolean
   canVoidRefund?: boolean
+  canViewStaffReport?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -132,7 +134,7 @@ export default function SalesVisualWorkspaceClient({
         </div>
       </div>
 
-      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} />
+      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} canViewStaffReport={canViewStaffReport} />
 
       <h3 className="text-lg font-semibold text-slate-800 mb-4">Transactions</h3>
       {mode === 'all' ? (

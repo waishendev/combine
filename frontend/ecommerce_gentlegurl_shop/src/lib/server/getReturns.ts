@@ -14,6 +14,8 @@ export type ReturnRequestSummary = {
   refund_method?: string | null;
   refund_proof_url?: string | null;
   refunded_at?: string | null;
+  refund_no?: string | null;
+  receipt_public_url?: string | null;
   items?: Array<{
     order_item_id?: number | null;
     product_name?: string | null;

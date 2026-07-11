@@ -393,7 +393,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                     <button
                       type="button"
                       onClick={() => setSlipModal({ orderId: order.id })}
-                      className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                      className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
                     >
                       Reupload Slip
                     </button>

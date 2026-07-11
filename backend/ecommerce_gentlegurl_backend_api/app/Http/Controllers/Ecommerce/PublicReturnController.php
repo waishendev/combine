@@ -14,10 +14,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use App\Services\SettingService;
+use App\Services\Ecommerce\ReturnRefundService;
 
 class PublicReturnController extends Controller
 {
     use ResolvesCurrentCustomer;
+
+    public function __construct(
+        protected ReturnRefundService $returnRefundService,
+    ) {
+    }
 
     public function store(Request $request, ?Order $order = null)
     {
@@ -234,6 +240,7 @@ class PublicReturnController extends Controller
             $refundProofUrl = $request->refund_proof_path
                 ? Storage::disk('public')->url($request->refund_proof_path)
                 : null;
+            $refundMeta = $this->returnRefundService->refundPayloadForReturn((int) $request->id);
 
             return [
                 'id' => $request->id,
@@ -249,6 +256,8 @@ class PublicReturnController extends Controller
                 'refund_method' => $request->refund_method,
                 'refund_proof_url' => $refundProofUrl,
                 'refunded_at' => $request->refunded_at,
+                'refund_no' => $refundMeta['refund_no'] ?? null,
+                'receipt_public_url' => $refundMeta['receipt_public_url'] ?? null,
                 'items' => $request->items->map(function (ReturnRequestItem $item) {
                     $thumbnail = $item->orderItem?->product?->cover_image_url;
                     $productType = $item->orderItem?->product?->type;
@@ -289,6 +298,7 @@ class PublicReturnController extends Controller
         $refundProofUrl = $returnRequest->refund_proof_path
             ? Storage::disk('public')->url($returnRequest->refund_proof_path)
             : null;
+        $refundMeta = $this->returnRefundService->refundPayloadForReturn((int) $returnRequest->id);
 
         $items = $returnRequest->items->map(function (ReturnRequestItem $item) {
             $thumbnail = $item->orderItem?->product?->cover_image_url;
@@ -337,6 +347,8 @@ class PublicReturnController extends Controller
             'refund_method' => $returnRequest->refund_method,
             'refund_proof_url' => $refundProofUrl,
             'refunded_at' => $returnRequest->refunded_at,
+            'refund_no' => $refundMeta['refund_no'] ?? null,
+            'receipt_public_url' => $refundMeta['receipt_public_url'] ?? null,
             'items' => $items,
             'timestamps' => [
                 'created_at' => $returnRequest->created_at,

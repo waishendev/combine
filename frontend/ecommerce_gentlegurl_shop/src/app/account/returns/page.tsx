@@ -94,7 +94,7 @@ export default async function AccountReturnsPage() {
                   </p>
                 </div>
 
-                <div className="sm:col-span-4">
+                <div className="sm:col-span-4 flex flex-wrap items-center gap-2">
                   <Link
                     href={`/account/returns/${returnRequest.id}`}
                     className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--foreground)] transition hover:border-[var(--accent-strong)] hover:bg-[var(--muted)]/60"
@@ -111,6 +111,16 @@ export default async function AccountReturnsPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 6.75 4.5 4.5-4.5 4.5" />
                     </svg>
                   </Link>
+                  {returnRequest.receipt_public_url ? (
+                    <a
+                      href={returnRequest.receipt_public_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold uppercase text-rose-800 transition hover:bg-rose-100"
+                    >
+                      Refund Receipt
+                    </a>
+                  ) : null}
                 </div>
 
                 {Array.isArray(returnRequest.items) && returnRequest.items.length > 0 && (

@@ -877,13 +877,17 @@ class SalesVisualDailyReportService
     }
 
     /**
-     * Allocate order net revenue to a payment row; split payments use op.amount / grand_total ratio.
+     * Allocate order net revenue to a payment row by share of recorded payments.
+     * Uses SUM(order_payments.amount) as the denominator so cash tender (e.g. RM 5000 on a RM 500
+     * order) does not inflate sales; split payments still allocate by their relative shares.
      */
     private function allocatedPaymentNetSql(string $orderNetSql): string
     {
+        $paymentsSumSql = '(SELECT COALESCE(SUM(p2.amount), 0) FROM order_payments p2 WHERE p2.order_id = o.id)';
+
         return "CASE
-            WHEN op.id IS NOT NULL AND COALESCE(o.grand_total, 0) > 0
-            THEN (COALESCE(op.amount, 0) / o.grand_total) * ({$orderNetSql})
+            WHEN op.id IS NOT NULL AND {$paymentsSumSql} > 0
+            THEN (COALESCE(op.amount, 0) / {$paymentsSumSql}) * ({$orderNetSql})
             ELSE ({$orderNetSql})
         END";
     }

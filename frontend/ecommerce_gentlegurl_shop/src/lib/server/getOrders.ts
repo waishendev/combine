@@ -26,6 +26,8 @@ export type OrderItemSummary = {
   reviewed_at?: string | null;
   can_review?: boolean | null;
   package_applied_name?: string | null;
+  refunded_quantity?: number | null;
+  is_refunded?: boolean | null;
 };
 
 export type OrderSummary = {

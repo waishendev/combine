@@ -715,6 +715,9 @@ class SalesChannelReportService
             ];
         })->values();
 
+        $refundRows = $this->ecommerceRefundReportRows($start, $end, $channel, $paymentMethod, $customerId);
+        $rows = $rows->concat($refundRows)->sortByDesc('order_datetime')->values();
+
         $summaryRow = (clone $baseQuery)
             ->selectRaw('COUNT(*) as total_orders')
             ->selectRaw('COALESCE(SUM(net_amount), 0) as total_sales')
@@ -723,11 +726,14 @@ class SalesChannelReportService
             ->first();
 
         $totalsPage = $this->aggregateEcommerceTotals($rows);
+        $totalsPage['orders_count'] = (int) $rows->pluck('order_id')->filter(fn (int $id) => $id > 0)->unique()->count()
+            + (int) $rows->where('is_refund', true)->count();
+        $refundNetTotal = (float) $refundRows->sum('net_amount');
         $grandTotals = [
-            'orders_count' => (int) ($summaryRow->total_orders ?? 0),
+            'orders_count' => (int) ($summaryRow->total_orders ?? 0) + ($refundNetTotal !== 0.0 ? (int) $refundRows->count() : 0),
             'product_amount' => (float) ((clone $baseQuery)->sum('product_amount') ?? 0),
             'discount' => (float) ((clone $baseQuery)->sum('discount') ?? 0),
-            'net_amount' => (float) ($summaryRow->total_sales ?? 0),
+            'net_amount' => (float) ($summaryRow->total_sales ?? 0) + $refundNetTotal,
         ];
 
         return [
@@ -1082,6 +1088,7 @@ class SalesChannelReportService
         $query = DB::table('booking_refunds as br')
             ->join('bookings as b', 'b.id', '=', 'br.booking_id')
             ->leftJoin('customers as c', 'c.id', '=', 'b.customer_id')
+            ->whereNull('br.return_request_id')
             ->where('br.status', 'completed')
             ->whereBetween(DB::raw('COALESCE(br.processed_at, br.created_at)'), [$start, $end]);
 
@@ -1150,6 +1157,87 @@ class SalesChannelReportService
                     'status' => 'completed',
                     'is_refund' => true,
                     'refund_id' => (int) ($row->refund_id ?? 0),
+                    'receipt_public_url' => $this->resolveRefundReceiptPublicUrl((int) ($row->refund_id ?? 0)),
+                ];
+            });
+    }
+
+    private function ecommerceRefundReportRows(
+        Carbon $start,
+        Carbon $end,
+        string $channel,
+        ?string $paymentMethod,
+        ?int $customerId = null,
+    ) {
+        $query = DB::table('booking_refunds as br')
+            ->join('return_requests as rr', 'rr.id', '=', 'br.return_request_id')
+            ->join('orders as o', 'o.id', '=', 'br.order_id')
+            ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
+            ->whereNotNull('br.return_request_id')
+            ->where('br.status', 'completed')
+            ->whereBetween(DB::raw('COALESCE(br.processed_at, br.created_at)'), [$start, $end]);
+
+        if ($channel === self::CHANNEL_ONLINE) {
+            $query->where('br.channel', 'online');
+        }
+        if ($channel === self::CHANNEL_OFFLINE) {
+            $query->where('br.channel', 'offline');
+        }
+        if ($paymentMethod !== null) {
+            $query->where('br.method', $paymentMethod);
+        }
+        if ($customerId !== null) {
+            $query->where('o.customer_id', $customerId);
+        }
+
+        $methodLabels = [
+            'cash' => 'Cash Refund',
+            'customer_credit' => 'Customer Credit',
+        ];
+
+        return $query
+            ->orderByDesc(DB::raw('COALESCE(br.processed_at, br.created_at)'))
+            ->get([
+                'br.id as refund_id',
+                'br.refund_no',
+                'br.amount',
+                'br.method',
+                'br.channel',
+                'br.processed_at',
+                'br.created_at',
+                'o.order_number',
+                'o.shipping_name',
+                'o.billing_name',
+                'c.name as customer_name',
+            ])
+            ->map(function ($row) use ($methodLabels) {
+                $amount = round((float) ($row->amount ?? 0), 2);
+                $method = (string) ($row->method ?? 'cash');
+                $processedAt = (string) ($row->processed_at ?? $row->created_at ?? '');
+
+                return [
+                    'order_id' => 0,
+                    'order_no' => (string) ($row->refund_no ?? ''),
+                    'order_datetime' => $processedAt,
+                    'customer' => $this->formatCustomerDisplayName(
+                        $row->customer_name ?? null,
+                        $row->shipping_name ?? null,
+                        $row->billing_name ?? null,
+                        null,
+                    ),
+                    'channel' => (string) (($row->channel ?? 'online') === 'online' ? 'online' : 'offline'),
+                    'payment_method' => $method,
+                    'payments' => [],
+                    'order_total' => -$amount,
+                    'item_count' => 0,
+                    'product_amount' => $amount,
+                    'discount' => 0.0,
+                    'net_amount' => -$amount,
+                    'status' => 'refunded',
+                    'is_refund' => true,
+                    'refund_id' => (int) ($row->refund_id ?? 0),
+                    'related_order_no' => (string) ($row->order_number ?? ''),
+                    'refund_label' => $methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method)),
                     'receipt_public_url' => $this->resolveRefundReceiptPublicUrl((int) ($row->refund_id ?? 0)),
                 ];
             });

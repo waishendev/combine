@@ -287,7 +287,7 @@ class PublicOrderHistoryController extends Controller
             'items.booking.servicePhotos:id,booking_id,image_path,caption,sort_order,created_at',
             'voucher',
             'uploads',
-            'returns',
+            'returns.items',
             'bankAccount',
             'pickupStore',
             'payments',
@@ -300,9 +300,15 @@ class PublicOrderHistoryController extends Controller
         $reviewsEnabled = (bool) ($reviewSettings['enabled'] ?? false);
         $reviewWindowDays = (int) ($reviewSettings['review_window_days'] ?? 30);
 
+        $refundedQtyByOrderItem = $order->returns
+            ->filter(fn ($returnRequest) => (string) $returnRequest->status === 'refunded')
+            ->flatMap(fn ($returnRequest) => $returnRequest->items)
+            ->groupBy('order_item_id')
+            ->map(fn ($items) => (int) $items->sum('quantity'));
+
         $items = $order->items
             ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
-            ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
+            ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled, $refundedQtyByOrderItem) {
                 $thumbnail = $this->resolveOrderItemThumbnail($item);
                 $productType = $item->product?->type;
                 $review = $item->review;
@@ -339,6 +345,8 @@ class PublicOrderHistoryController extends Controller
                 'review_id' => $review?->id,
                 'reviewed_at' => $reviewedAt,
                 'can_review' => $canReview,
+                'refunded_quantity' => (int) ($refundedQtyByOrderItem->get($item->id) ?? 0),
+                'is_refunded' => (int) ($refundedQtyByOrderItem->get($item->id) ?? 0) > 0,
             ];
         })->values();
 

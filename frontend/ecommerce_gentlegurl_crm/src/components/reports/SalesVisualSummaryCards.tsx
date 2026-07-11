@@ -46,6 +46,7 @@ type SalesVisualSummaryCardsProps = {
   error?: string | null
   data: SalesVisualSummaryData | null
   periodScope?: 'day' | 'month' | 'year'
+  canViewStaffReport?: boolean
 }
 
 export default function SalesVisualSummaryCards({
@@ -54,6 +55,7 @@ export default function SalesVisualSummaryCards({
   error,
   data,
   periodScope = 'day',
+  canViewStaffReport = false,
 }: SalesVisualSummaryCardsProps) {
   const payments: SalesVisualPaymentMethodRow[] = Array.isArray(data?.payment_methods)
     ? data!.payment_methods
@@ -100,7 +102,7 @@ export default function SalesVisualSummaryCards({
 
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</div> : null}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className={`grid gap-4 ${canViewStaffReport ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-800">Payment method</h3>
           <p className="mt-1 text-xs text-slate-500">
@@ -144,6 +146,14 @@ export default function SalesVisualSummaryCards({
               <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50 p-3">
                 <h4 className="text-xs font-bold uppercase tracking-wide text-rose-900">Refunds</h4>
                 <table className="mt-2 w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-rose-200 text-left text-[11px] font-semibold uppercase text-rose-500">
+                      <th className="pb-2 pr-2">Method</th>
+                      <th className="pb-2 pr-2 text-right">Online</th>
+                      <th className="pb-2 pr-2 text-right">Offline</th>
+                      <th className="pb-2 text-right">Total</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {refundRowsDisplay.map((p) => (
                       <tr key={p.key} className="border-b border-rose-100 last:border-b-0">
@@ -204,14 +214,20 @@ export default function SalesVisualSummaryCards({
                 <span className="font-bold text-slate-800">TOTAL</span>
                 <span className="font-bold text-slate-900">{fmtRm(itemTypeTotal)}</span>
               </li>
-              <li className="mt-3 flex justify-between gap-2 border-t border-dashed border-slate-300 pt-3">
-                <span className="text-slate-600">Package Redemption</span>
-                <span className="font-semibold text-slate-900">{fmtRm(Number(itemTypes.package_redemption) || 0)}</span>
-              </li>
             </ul>
           )}
+          {!loading && itemTypes ? (
+            <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-3">
+              <h4 className="text-xs font-bold uppercase tracking-wide text-indigo-900">Package Redemption</h4>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-xs text-indigo-800">Package Redem</span>
+                <span className="text-sm font-bold text-indigo-900">{fmtRm(Number(itemTypes.package_redemption) || 0)}</span>
+              </div>
+            </div>
+          ) : null}
         </div>
 
+        {canViewStaffReport ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-800">Staff</h3>
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -260,6 +276,7 @@ export default function SalesVisualSummaryCards({
             </div>
           ) : null}
         </div>
+        ) : null}
       </div>
     </div>
   )

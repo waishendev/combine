@@ -4,9 +4,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import OrderViewPanel from '@/components/OrderViewPanel'
+import ReturnViewPanel from '@/components/ReturnViewPanel'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import { calculateOrderStatus, detectOrderType, type OrderApiItem } from '@/components/orderUtils'
 import type { PosAppointmentDetail } from '@/components/pos/posAppointmentTypes'
+import {
+  formatReturnStatusLabel,
+  getReturnStatusPosBadgeClasses,
+  isActiveReturnStatus,
+  normalizeReturnStatus,
+} from '@/lib/returns/returnStatus'
 
 export type PosRequestCenterProps = {
   disabled?: boolean
@@ -95,7 +102,11 @@ type PaymentLinkReviewRow = {
 }
 
 type EcommerceRequestRow = {
+  key: string
+  kind: 'order' | 'return'
   id: number
+  returnId?: number
+  orderId?: number
   orderNo: string
   customerName: string
   contact: string
@@ -104,6 +115,19 @@ type EcommerceRequestRow = {
   status: string
   paymentStatus: string
   shippingMethod?: string | null
+  requestLabel?: string
+}
+
+type ReturnRequestApiRow = {
+  id: number
+  status?: string | null
+  reason?: string | null
+  request_type?: string | null
+  refund_amount?: string | number | null
+  created_at?: string | null
+  order?: { id?: number; order_number?: string | null }
+  customer?: { name?: string | null; phone?: string | null; email?: string | null }
+  timeline?: { created_at?: string | null }
 }
 
 type BookingConfirmState =
@@ -127,6 +151,8 @@ const BOOKING_PACKAGE_ORDER_FILTERS = [
 ]
 
 const BOOKING_HOLD_FILTERS = ['HOLD', 'PENDING', 'PENDING_CONFIRMATION']
+
+const RETURN_REQUEST_ACTIVE_STATUSES = ['requested', 'approved', 'in_transit', 'received'] as const
 
 const BTN_ICON = 'inline-flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50'
 
@@ -388,6 +414,34 @@ function shouldShowEcommerceOrder(order: OrderApiItem): boolean {
   return true
 }
 
+function buildReturnRequestRow(row: ReturnRequestApiRow): EcommerceRequestRow {
+  const returnId = Number(row.id)
+  const orderNo = row.order?.order_number ?? (row.order?.id ? `Order #${row.order.id}` : '—')
+  const status = normalizeReturnStatus(row.status)
+
+  return {
+    key: `return-${returnId}`,
+    kind: 'return',
+    id: returnId,
+    returnId,
+    orderId: row.order?.id ? Number(row.order.id) : undefined,
+    orderNo,
+    customerName: row.customer?.name || '—',
+    contact: row.customer?.phone || row.customer?.email || '—',
+    createdAt: row.created_at ?? row.timeline?.created_at ?? '',
+    statusLabel: formatReturnStatusLabel(status),
+    status,
+    paymentStatus: '',
+    shippingMethod: null,
+    requestLabel: 'Return / Refund',
+  }
+}
+
+function ecommerceRowStatusBadgeClass(row: EcommerceRequestRow): string {
+  if (row.kind === 'return') return getReturnStatusPosBadgeClasses(row.status)
+  return ecommerceStatusBadgeClass(row.statusLabel)
+}
+
 function ecommerceStatusBadgeClass(label: string): string {
   if (label === 'Waiting for Verification') return 'bg-amber-100 text-amber-900 ring-amber-200'
   if (label === 'Payment Confirmed' || label === 'Preparing') return 'bg-blue-100 text-blue-900 ring-blue-200'
@@ -543,6 +597,7 @@ export default function PosRequestCenter({
   const [bookingDetailLoading, setBookingDetailLoading] = useState(false)
   const [bookingDetailError, setBookingDetailError] = useState<string | null>(null)
   const [viewingOrderId, setViewingOrderId] = useState<number | null>(null)
+  const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
   const loadGenerationRef = useRef(0)
 
   const totalCount = bookingRows.length + ecommerceRows.length
@@ -575,6 +630,10 @@ export default function PosRequestCenter({
           if (filter.payment_status) qs.set('payment_status', filter.payment_status)
           return fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, { cache: 'no-store' })
         }),
+        ...RETURN_REQUEST_ACTIVE_STATUSES.map((status) => {
+          const qs = new URLSearchParams({ per_page: '25', status })
+          return fetch(`/api/proxy/ecommerce/returns?${qs.toString()}`, { cache: 'no-store' })
+        }),
       ])
 
       const holdResponses = remainingResponses.slice(0, BOOKING_HOLD_FILTERS.length)
@@ -582,7 +641,13 @@ export default function PosRequestCenter({
         BOOKING_HOLD_FILTERS.length,
         BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length,
       )
-      const orderResponses = remainingResponses.slice(BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length)
+      const orderResponses = remainingResponses.slice(
+        BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length,
+        BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length + ECOMMERCE_REQUEST_FILTERS.length,
+      )
+      const returnResponses = remainingResponses.slice(
+        BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length + ECOMMERCE_REQUEST_FILTERS.length,
+      )
 
       const cancellationPayload = await cancellationRes.json().catch(() => null)
       if (!cancellationRes.ok) {
@@ -629,13 +694,17 @@ export default function PosRequestCenter({
       const orderPayloads = await Promise.all(orderResponses.map((res) => res.json().catch(() => null)))
       const orders = orderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
       const uniqueOrders = Array.from(new Map(orders.map((order) => [Number(order.id), order])).values())
-      const nextEcommerceRows = uniqueOrders
+      const ecommerceOrderRows: EcommerceRequestRow[] = uniqueOrders
         .filter(shouldShowEcommerceOrder)
         .map((order) => {
           const orderType = order.order_type ?? detectOrderType(order)
+          const orderId = Number(order.id)
           return {
-            id: Number(order.id),
-            orderNo: order.order_no ?? order.order_number ?? `#${order.id}`,
+            key: `order-${orderId}`,
+            kind: 'order' as const,
+            id: orderId,
+            orderId,
+            orderNo: order.order_no ?? order.order_number ?? `#${orderId}`,
             customerName: order.customer?.name || '-',
             contact: order.customer?.phone || order.customer?.email || '-',
             createdAt: order.created_at ?? '',
@@ -645,6 +714,19 @@ export default function PosRequestCenter({
             shippingMethod: order.shipping_method ?? null,
           }
         })
+
+      const returnPayloads = await Promise.all(returnResponses.map((res) => res.json().catch(() => null)))
+      const returnItems = returnPayloads.flatMap((payload) => extractRows<ReturnRequestApiRow>(payload))
+      const uniqueReturns = Array.from(new Map(returnItems.map((row) => [Number(row.id), row])).values())
+      const returnRows = uniqueReturns
+        .filter((row) => isActiveReturnStatus(row.status))
+        .map(buildReturnRequestRow)
+
+      const nextEcommerceRows = [...ecommerceOrderRows, ...returnRows].sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return bTime - aTime
+      })
 
       if (generation !== loadGenerationRef.current) return
 
@@ -685,6 +767,7 @@ export default function PosRequestCenter({
   const openBookingReview = async (row: BookingRequestRow) => {
     if (row.bookingId <= 0) return
     setViewingOrderId(null)
+    setViewingReturnId(null)
     setViewingBooking(row)
     setBookingDetail(null)
     setBookingDetailError(null)
@@ -709,12 +792,14 @@ export default function PosRequestCenter({
     setViewingBooking(null)
     setBookingDetail(null)
     setBookingDetailError(null)
+    setViewingReturnId(null)
     setViewingOrderId(row.orderId)
   }
 
   const closeBookingDetail = () => {
     setViewingBooking(null)
     setViewingOrderId(null)
+    setViewingReturnId(null)
     setBookingDetail(null)
     setBookingDetailError(null)
   }
@@ -737,7 +822,19 @@ export default function PosRequestCenter({
   }
 
   const renderEcommerceActions = (row: EcommerceRequestRow) =>
-    renderViewAction(() => setViewingOrderId(row.id), `View order ${row.orderNo}`)
+    renderViewAction(
+      () => {
+        if (row.kind === 'return' && row.returnId) {
+          setViewingBooking(null)
+          setViewingOrderId(null)
+          setViewingReturnId(row.returnId)
+          return
+        }
+        setViewingReturnId(null)
+        setViewingOrderId(row.id)
+      },
+      row.kind === 'return' ? `View return ${row.orderNo}` : `View order ${row.orderNo}`,
+    )
 
   const submitBookingReview = async () => {
     if (!bookingConfirm) return
@@ -770,7 +867,7 @@ export default function PosRequestCenter({
     }
   }
 
-  const detailStackOpen = viewingBooking !== null || viewingOrderId !== null
+  const detailStackOpen = viewingBooking !== null || viewingOrderId !== null || viewingReturnId !== null
   const confirmStackOpen = bookingConfirm !== null
 
   return (
@@ -800,7 +897,7 @@ export default function PosRequestCenter({
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300/90">Request Center</p>
                   <h3 className="mt-1 text-xl font-bold sm:text-2xl">Pending Tasks</h3>
-                  <p className="mt-1 text-sm text-slate-300">Booking and ecommerce requests that need staff action.</p>
+                  <p className="mt-1 text-sm text-slate-300">Booking, ecommerce orders, and return/refund requests that need staff action.</p>
                 </div>
                 <button type="button" onClick={() => setOpen(false)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-2xl leading-none text-slate-200 hover:bg-white/10 hover:text-white" aria-label="Close Request Center">×</button>
               </div>
@@ -937,7 +1034,7 @@ export default function PosRequestCenter({
                   </>
                 )
               ) : ecommerceRows.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No pending ecommerce requests.</div>
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No pending ecommerce orders or return/refund requests.</div>
               ) : (
                 <>
                   <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block">
@@ -953,9 +1050,14 @@ export default function PosRequestCenter({
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {ecommerceRows.map((row) => (
-                          <tr key={row.id} className="hover:bg-slate-50/80">
+                          <tr key={row.key} className="hover:bg-slate-50/80">
                             <td className="px-4 py-3 align-top">
                               <p className="truncate font-bold text-slate-950" title={row.orderNo}>{row.orderNo}</p>
+                              {row.kind === 'return' && row.requestLabel ? (
+                                <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-wide text-violet-700" title={row.requestLabel}>
+                                  {row.requestLabel}
+                                </p>
+                              ) : null}
                             </td>
                             <td className="px-4 py-3 align-top">
                               <p className="truncate font-semibold text-slate-900" title={row.customerName}>{row.customerName}</p>
@@ -964,7 +1066,7 @@ export default function PosRequestCenter({
                             <td className="px-4 py-3 align-top text-slate-600">{fmtDateTime(row.createdAt)}</td>
                             <td className="px-4 py-3 align-top">
                               <span
-                                className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${ecommerceStatusBadgeClass(row.statusLabel)}`}
+                                className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${ecommerceRowStatusBadgeClass(row)}`}
                                 title={row.statusLabel}
                               >
                                 {row.statusLabel}
@@ -978,10 +1080,15 @@ export default function PosRequestCenter({
                   </div>
                   <div className="space-y-3 md:hidden">
                     {ecommerceRows.map((row) => (
-                      <article key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <article key={row.key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="min-w-0 flex-1 truncate text-base font-bold text-slate-950" title={row.orderNo}>{row.orderNo}</p>
-                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ${ecommerceStatusBadgeClass(row.statusLabel)}`}>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-base font-bold text-slate-950" title={row.orderNo}>{row.orderNo}</p>
+                            {row.kind === 'return' && row.requestLabel ? (
+                              <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700">{row.requestLabel}</p>
+                            ) : null}
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ${ecommerceRowStatusBadgeClass(row)}`}>
                             {row.statusLabel}
                           </span>
                         </div>
@@ -1223,6 +1330,18 @@ export default function PosRequestCenter({
               setViewingBooking(null)
             }}
             onOrderUpdated={() => void load()}
+            zIndexClassName="pos-body-stack-modal-detail"
+          />
+        ) : null,
+      )}
+
+      {renderPosBodyModalPortal(
+        viewingReturnId !== null ? (
+          <ReturnViewPanel
+            key={viewingReturnId}
+            returnId={viewingReturnId}
+            onClose={() => setViewingReturnId(null)}
+            onReturnUpdated={() => void load()}
             zIndexClassName="pos-body-stack-modal-detail"
           />
         ) : null,

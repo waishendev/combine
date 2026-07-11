@@ -15,9 +15,11 @@ export default async function SalesReportPage() {
     redirect('/dashboard')
   }
 
+  const canViewStaffReport = user.permissions.includes('ecommerce.reports.sales.staff.view')
+
   return (
     <Suspense fallback={<div className="p-10 text-sm text-slate-600">Loading report…</div>}>
-      <SalesSummaryWorkspaceClient />
+      <SalesSummaryWorkspaceClient canViewStaffReport={canViewStaffReport} />
     </Suspense>
   )
 }

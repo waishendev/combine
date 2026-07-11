@@ -75,8 +75,21 @@
     .addr-line{ margin-top:1px; }
 
     .items-table th, .items-table td{ border-bottom:1px solid #e5e7eb; padding:10px 6px; vertical-align:top; }
-    .items-table th{ background:#f9fafb; font-size:10px; text-transform:uppercase; letter-spacing:0.10em; color:#374151; }
+    .items-table th{
+      background:#f9fafb;
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:0.10em;
+      color:#374151;
+    }
     .items-table td:first-child{ width:70%; }
+    .items-table.ecommerce-refund td:first-child{ width:46%; }
+    .items-table.ecommerce-refund th:nth-child(2),
+    .items-table.ecommerce-refund td:nth-child(2){ width:22%; }
+    .items-table.ecommerce-refund th:nth-child(3),
+    .items-table.ecommerce-refund td:nth-child(3){ width:12%; }
+    .items-table.ecommerce-refund th:nth-child(4),
+    .items-table.ecommerce-refund td:nth-child(4){ width:20%; }
     .numeric{ text-align:right; white-space:nowrap; }
     .item-name{ font-weight:700; color:#111827; margin-bottom:2px; }
     .sku{ font-size:10px; color:#6b7280; }
@@ -105,6 +118,8 @@
   $supportPhone = $profile['company_phone'] ?? null;
   $companyWebsite = $profile['company_website'] ?? null;
   $footerNote = $profile['footer_note'] ?? null;
+  $isEcommerceReturn = (bool) ($isEcommerceReturn ?? false);
+  $refundLines = is_array($refundLines ?? null) ? $refundLines : [];
 @endphp
 
   <div class="page">
@@ -153,6 +168,12 @@
                 <td>Channel</td>
                 <td>{{ ucfirst((string) $refund->channel) }}</td>
               </tr>
+              <?php if($isEcommerceReturn && !empty($bookingCode)): ?>
+                <tr>
+                  <td>Order No</td>
+                  <td>{{ $bookingCode }}</td>
+                </tr>
+              <?php endif; ?>
             </table>
           </td>
         </tr>
@@ -181,38 +202,91 @@
 
     <!-- Items -->
     <div class="section">
-      <table class="items-table">
-        <thead>
-          <tr>
-            <th>Description</th>
-            <th class="numeric">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>
-              <div class="item-name">Overpaid deposit refund</div>
-              <div class="sku">{{ $methodLabel }}</div>
-              <?php if($refund->remark): ?>
-                <div class="sku" style="margin-top:2px;">{{ $refund->remark }}</div>
-              <?php endif; ?>
-            </td>
-            <td class="numeric" style="color:#b91c1c;font-weight:700;">- {{ $currency }} {{ number_format($amount, 2) }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <?php if($isEcommerceReturn): ?>
+        <table class="items-table ecommerce-refund">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>SKU</th>
+              <th class="numeric">Qty</th>
+              <th class="numeric">Refund Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if(count($refundLines) > 0): ?>
+              <?php foreach($refundLines as $line): ?>
+                <tr>
+                  <td>
+                    <div class="item-name">{{ $line['name'] }}</div>
+                    <?php if(!empty($line['cn_name'])): ?>
+                      <div class="sku" style="margin-top:1px;">{{ $line['cn_name'] }}</div>
+                    <?php endif; ?>
+                    <?php if(!empty($line['variant_name'])): ?>
+                      <div class="sku" style="margin-top:1px;">Variant: {{ $line['variant_name'] }}</div>
+                    <?php endif; ?>
+                  </td>
+                  <td class="sku">{{ $line['sku'] }}</td>
+                  <td class="numeric">{{ (int) $line['qty'] }}</td>
+                  <td class="numeric" style="color:#b91c1c;font-weight:700;">{{ $currency }} {{ number_format((float) $line['refund_amount'], 2) }}</td>
+                </tr>
+              <?php endforeach; ?>
+            <?php else: ?>
+              <tr>
+                <td>
+                  <div class="item-name">{{ $itemDescription ?? 'Ecommerce return refund' }}</div>
+                  <?php if(!empty($bookingCode)): ?>
+                    <div class="sku" style="margin-top:2px;">Order: {{ $bookingCode }}</div>
+                  <?php endif; ?>
+                </td>
+                <td class="sku">-</td>
+                <td class="numeric">1</td>
+                <td class="numeric" style="color:#b91c1c;font-weight:700;">{{ $currency }} {{ number_format($amount, 2) }}</td>
+              </tr>
+            <?php endif; ?>
+          </tbody>
+        </table>
+        <?php if($refund->remark): ?>
+          <div class="sku" style="margin-top:8px;">Note: {{ $refund->remark }}</div>
+        <?php endif; ?>
+      <?php else: ?>
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th class="numeric">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div class="item-name">{{ $itemDescription ?? 'Refund' }}</div>
+                <div class="sku">{{ $methodLabel }}</div>
+                <?php if(!empty($bookingCode)): ?>
+                  <div class="sku" style="margin-top:2px;">Ref: {{ $bookingCode }}</div>
+                <?php endif; ?>
+                <?php if($refund->remark): ?>
+                  <div class="sku" style="margin-top:2px;">{{ $refund->remark }}</div>
+                <?php endif; ?>
+              </td>
+              <td class="numeric" style="color:#b91c1c;font-weight:700;">- {{ $currency }} {{ number_format($amount, 2) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      <?php endif; ?>
     </div>
 
     <!-- Totals -->
     <div class="section totals-wrap">
       <table class="totals-table">
-        <tr>
-          <td>Refund Subtotal</td>
-          <td style="color:#b91c1c;">- {{ $currency }} {{ number_format($amount, 2) }}</td>
-        </tr>
+        <?php if(! $isEcommerceReturn): ?>
+          <tr>
+            <td>Refund Subtotal</td>
+            <td style="color:#b91c1c;">- {{ $currency }} {{ number_format($amount, 2) }}</td>
+          </tr>
+        <?php endif; ?>
         <tr class="grand">
           <td>Total Refund</td>
-          <td>- {{ $currency }} {{ number_format($amount, 2) }}</td>
+          <td><?php if($isEcommerceReturn): ?>{{ $currency }} {{ number_format($amount, 2) }}<?php else: ?>- {{ $currency }} {{ number_format($amount, 2) }}<?php endif; ?></td>
         </tr>
       </table>
     </div>

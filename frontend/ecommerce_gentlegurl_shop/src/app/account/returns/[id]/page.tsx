@@ -100,6 +100,16 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
             <p className="text-sm text-[var(--foreground)]/70">
               Order No: {returnRequest.order_number ?? returnRequest.order_id}
             </p>
+            {returnRequest.receipt_public_url ? (
+              <a
+                href={returnRequest.receipt_public_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+              >
+                View Refund Receipt
+              </a>
+            ) : null}
           </div>
         </div>
         <span className={getReturnStatusBadgeClasses(returnRequest.status)}>

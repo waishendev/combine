@@ -9,6 +9,7 @@ use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\ReturnRequest;
 use App\Services\SettingService;
 
 class InvoiceService
@@ -865,27 +866,136 @@ class InvoiceService
 
     public function buildRefundPdf(BookingRefund $refund)
     {
-        $refund->loadMissing(['booking.customer', 'processor:id,name']);
+        $refund->loadMissing([
+            'booking.customer',
+            'order.customer',
+            'returnRequest.order.customer',
+            'returnRequest.items.orderItem',
+            'processor:id,name',
+        ]);
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
         $methodLabels = [
             'cash' => 'Cash Refund',
             'customer_credit' => 'Customer Credit',
+            'bank_transfer' => 'Bank Transfer',
+            'other' => 'Other',
         ];
 
+        $returnRequest = $refund->returnRequest;
+        $isEcommerceReturn = $returnRequest !== null;
+        $refundLines = [];
         $booking = $refund->booking;
-        $customerName = (string) ($booking?->customer?->name ?? $booking?->guest_name ?? '');
-        $customerPhone = (string) ($booking?->customer?->phone ?? $booking?->guest_phone ?? '');
-        $customerEmail = (string) ($booking?->customer?->email ?? $booking?->guest_email ?? '');
+        $order = $refund->order ?? $returnRequest?->order;
+
+        if ($isEcommerceReturn) {
+            $customerName = (string) ($order?->customer?->name ?? $order?->shipping_name ?? '');
+            $customerPhone = (string) ($order?->customer?->phone ?? $order?->shipping_phone ?? '');
+            $customerEmail = (string) ($order?->customer?->email ?? $order?->shipping_email ?? '');
+            $itemDescription = 'Ecommerce return refund';
+            $referenceLabel = (string) ($order?->order_number ?? '');
+            $refundLines = $this->buildEcommerceReturnRefundLines($returnRequest, (float) $refund->amount);
+        } elseif ($booking) {
+            $customerName = (string) ($booking->customer?->name ?? $booking->guest_name ?? '');
+            $customerPhone = (string) ($booking->customer?->phone ?? $booking->guest_phone ?? '');
+            $customerEmail = (string) ($booking->customer?->email ?? $booking->guest_email ?? '');
+            $itemDescription = 'Overpaid deposit refund';
+            $referenceLabel = (string) ($booking->booking_code ?? '');
+        } elseif ($order) {
+            $customerName = (string) ($order->customer?->name ?? '');
+            $customerPhone = (string) ($order->customer?->phone ?? '');
+            $customerEmail = (string) ($order->customer?->email ?? '');
+            $itemDescription = 'Ecommerce return refund';
+            $referenceLabel = (string) ($order->order_number ?? '');
+        } else {
+            $customerName = '';
+            $customerPhone = '';
+            $customerEmail = '';
+            $itemDescription = 'Refund';
+            $referenceLabel = '';
+        }
 
         return app('snappy.pdf.wrapper')->loadView('invoices.refund', [
             'refund' => $refund,
             'invoiceProfile' => $invoiceProfile,
-            'bookingCode' => (string) ($booking?->booking_code ?? ''),
+            'bookingCode' => $referenceLabel,
             'customerName' => $customerName !== '' ? $customerName : 'Walk-in / Guest',
             'customerPhone' => $customerPhone,
             'customerEmail' => $customerEmail,
             'methodLabel' => $methodLabels[(string) $refund->method] ?? ucfirst(str_replace('_', ' ', (string) $refund->method)),
+            'itemDescription' => $itemDescription,
+            'isEcommerceReturn' => $isEcommerceReturn,
+            'refundLines' => $refundLines,
         ]);
+    }
+
+    /**
+     * @return array<int, array{name: string, cn_name: ?string, variant_name: ?string, sku: string, qty: int, unit_price: float, refund_amount: float}>
+     */
+    private function buildEcommerceReturnRefundLines(ReturnRequest $returnRequest, float $targetRefundAmount): array
+    {
+        $lines = [];
+
+        foreach ($returnRequest->items as $returnItem) {
+            $orderItem = $returnItem->orderItem;
+            if (! $orderItem) {
+                continue;
+            }
+
+            $returnQty = max(0, (int) $returnItem->quantity);
+            if ($returnQty <= 0) {
+                continue;
+            }
+
+            $orderQty = max(1, (int) $orderItem->quantity);
+            $lineNet = (float) (
+                $orderItem->line_total_after_discount
+                ?? $orderItem->effective_line_total
+                ?? max(0, (float) $orderItem->line_total - (float) ($orderItem->discount_amount ?? 0))
+            );
+            $unitPrice = round($lineNet / $orderQty, 2);
+            $refundAmount = round($unitPrice * $returnQty, 2);
+
+            $name = trim((string) ($orderItem->display_name_snapshot ?: $orderItem->product_name_snapshot ?: 'Product'));
+            $sku = trim((string) ($orderItem->variant_sku_snapshot ?: $orderItem->sku_snapshot ?: ''));
+            $cnName = trim((string) ($orderItem->displayCnName() ?? ''));
+            $variantName = trim((string) ($orderItem->variant_name_snapshot ?: ''));
+
+            $lines[] = [
+                'name' => $name,
+                'cn_name' => $cnName !== '' ? $cnName : null,
+                'variant_name' => $variantName !== '' ? $variantName : null,
+                'sku' => $sku !== '' ? $sku : '-',
+                'qty' => $returnQty,
+                'unit_price' => $unitPrice,
+                'refund_amount' => $refundAmount,
+            ];
+        }
+
+        if ($lines === []) {
+            return [];
+        }
+
+        $computedTotal = round((float) collect($lines)->sum('refund_amount'), 2);
+        $targetTotal = round(max(0, $targetRefundAmount), 2);
+
+        if ($computedTotal > 0 && abs($computedTotal - $targetTotal) > 0.009) {
+            $running = 0.0;
+            $lastIndex = count($lines) - 1;
+
+            foreach ($lines as $index => &$line) {
+                if ($index === $lastIndex) {
+                    $line['refund_amount'] = round(max(0, $targetTotal - $running), 2);
+                    continue;
+                }
+
+                $share = round(($line['refund_amount'] / $computedTotal) * $targetTotal, 2);
+                $line['refund_amount'] = $share;
+                $running += $share;
+            }
+            unset($line);
+        }
+
+        return $lines;
     }
 
     protected function defaultInvoiceProfile(): array

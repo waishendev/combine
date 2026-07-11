@@ -47,17 +47,23 @@ export default function RefundReceiptAction({ refundId, refundNo, receiptPublicU
         type="button"
         onClick={() => void openReceipt()}
         disabled={loading}
-        className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+        title={`View refund receipt for ${refundNo}`}
+        aria-label={`View refund receipt for ${refundNo}`}
+        className="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50"
       >
-        {loading ? 'Loading…' : 'Receipt'}
+        {loading ? (
+          <i className="fa-solid fa-spinner fa-spin text-xs" aria-hidden="true" />
+        ) : (
+          <i className="fa-solid fa-receipt text-xs" aria-hidden="true" />
+        )}
       </button>
       {error ? <p className="mt-1 text-[10px] text-rose-700">{error}</p> : null}
       {open && receiptUrl ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">Refund Receipt</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-blue-600 text-left">Refund Receipt</h3>
                 <p className="text-xs text-gray-500">{refundNo}</p>
               </div>
               <button

@@ -16,10 +16,11 @@ export default async function SalesReportDailyDetailPage() {
   }
 
   const canExport = user.permissions.includes('ecommerce.reports.sales.export')
+  const canViewStaffReport = user.permissions.includes('ecommerce.reports.sales.staff.view')
 
   return (
     <Suspense fallback={<div className="p-10 text-sm text-slate-600">Loading report…</div>}>
-      <SalesReportDailyDetailClient canExport={canExport} />
+      <SalesReportDailyDetailClient canExport={canExport} canViewStaffReport={canViewStaffReport} />
     </Suspense>
   )
 }

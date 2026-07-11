@@ -33,10 +33,12 @@ export default function SalesVisualDailyDashboard({
   mode,
   refreshKey = 0,
   onShiftDay,
+  canViewStaffReport = false,
 }: {
   mode: Mode
   refreshKey?: number
   onShiftDay?: (delta: number) => void
+  canViewStaffReport?: boolean
 }) {
   const searchParams = useSearchParams()
   const date = searchParams.get('date') ?? formatYmd(new Date())
@@ -87,7 +89,7 @@ export default function SalesVisualDailyDashboard({
         ) : null}
       </div>
 
-      <SalesVisualSummaryCards mode={mode} loading={loading} error={error} data={data} periodScope="day" />
+      <SalesVisualSummaryCards mode={mode} loading={loading} error={error} data={data} periodScope="day" canViewStaffReport={canViewStaffReport} />
     </div>
   )
 }

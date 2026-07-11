@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\ReturnRequest;
+use App\Services\Ecommerce\ReturnRefundService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,6 +13,11 @@ use Illuminate\Validation\Rule;
 
 class ReturnRequestController extends Controller
 {
+    public function __construct(
+        protected ReturnRefundService $returnRefundService,
+    ) {
+    }
+
     public function index(Request $request)
     {
         $validated = $request->validate([
@@ -130,6 +136,7 @@ class ReturnRequestController extends Controller
                 'completed_at' => $returnRequest->completed_at,
                 'refunded_at' => $returnRequest->refunded_at,
             ],
+            'refund' => $this->returnRefundService->refundPayloadForReturn((int) $returnRequest->id),
         ]);
     }
 
@@ -225,7 +232,8 @@ class ReturnRequestController extends Controller
                     $returnRequest,
                     $validated,
                     $refundAmount,
-                    $uploadedProofPath
+                    $uploadedProofPath,
+                    $request,
                 ) {
                     $lockedOrder = $returnRequest->order->newQuery()->lockForUpdate()->find($returnRequest->order->id);
                     if (! $lockedOrder) {
@@ -255,10 +263,25 @@ class ReturnRequestController extends Controller
                     }
                     $lockedOrder->refunded_at = Carbon::now();
                     $lockedOrder->save();
+
+                    $this->returnRefundService->createRefundForReturn(
+                        $returnRequest,
+                        $refundAmount,
+                        (string) ($validated['refund_method'] ?? 'cash'),
+                        $validated['admin_note'] ?? $validated['status_note'] ?? null,
+                        $request->user()?->id,
+                    );
                 });
             } catch (\RuntimeException $exception) {
                 return $this->respond(null, __($exception->getMessage()), false, 422);
             }
+
+            $fresh = $returnRequest->fresh(['order', 'customer']);
+
+            return $this->respond([
+                'return_request' => $fresh,
+                'refund' => $this->returnRefundService->refundPayloadForReturn((int) $fresh->id),
+            ], __('Status updated.'));
         }
 
         return $this->respond($returnRequest->fresh(), __('Status updated.'));

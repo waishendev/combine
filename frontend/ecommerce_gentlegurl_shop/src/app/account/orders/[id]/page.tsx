@@ -187,6 +187,11 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                         <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
                       ) : null}
                       <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
+                      {item.is_refunded ? (
+                        <p className="text-xs font-semibold text-rose-600">
+                          Refunded{item.refunded_quantity ? ` × ${item.refunded_quantity}` : ""}
+                        </p>
+                      ) : null}
                       <BookingProductOptionsList options={bookingProductOptions} />
                     </div>
                   </div>

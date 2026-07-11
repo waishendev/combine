@@ -42,7 +42,7 @@ const segmentClass = (active: boolean) =>
     active ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
   }`
 
-export default function SalesReportDailyDetailClient({ canExport }: { canExport: boolean }) {
+export default function SalesReportDailyDetailClient({ canExport, canViewStaffReport = false }: { canExport: boolean; canViewStaffReport?: boolean }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -215,7 +215,7 @@ export default function SalesReportDailyDetailClient({ canExport }: { canExport:
         </button>
       </div>
 
-      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} onShiftDay={shiftDay} />
+      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} onShiftDay={shiftDay} canViewStaffReport={canViewStaffReport} />
 
       <h3 className="mb-4 text-lg font-semibold text-slate-800">Transactions</h3>
       {mode === 'all' ? (

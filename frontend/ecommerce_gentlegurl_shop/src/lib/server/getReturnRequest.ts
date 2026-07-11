@@ -36,6 +36,8 @@ export type ReturnRequestDetail = {
   refund_method?: string | null;
   refund_proof_url?: string | null;
   refunded_at?: string | null;
+  refund_no?: string | null;
+  receipt_public_url?: string | null;
   items?: ReturnRequestItem[];
   timestamps?: {
     created_at?: string | null;

@@ -19,7 +19,7 @@ class PublicRefundReceiptController extends Controller
     {
         $receiptToken = BookingRefundReceiptToken::query()
             ->where('token', $token)
-            ->with(['bookingRefund.booking.customer', 'bookingRefund.processor:id,name'])
+            ->with(['bookingRefund.booking.customer', 'bookingRefund.order.customer', 'bookingRefund.processor:id,name'])
             ->first();
 
         if (! $receiptToken) {
@@ -35,6 +35,9 @@ class PublicRefundReceiptController extends Controller
             return $this->respondError(__('Refund receipt not found.'), 404);
         }
 
+        $booking = $refund->booking;
+        $order = $refund->order;
+
         return $this->respond([
             'refund' => [
                 'id' => (int) $refund->id,
@@ -44,8 +47,9 @@ class PublicRefundReceiptController extends Controller
                 'channel' => (string) $refund->channel,
                 'remark' => $refund->remark,
                 'processed_at' => optional($refund->processed_at)?->toIso8601String(),
-                'booking_code' => (string) ($refund->booking?->booking_code ?? ''),
-                'customer_name' => (string) ($refund->booking?->customer?->name ?? $refund->booking?->guest_name ?? ''),
+                'booking_code' => (string) ($booking?->booking_code ?? ''),
+                'order_number' => (string) ($order?->order_number ?? ''),
+                'customer_name' => (string) ($booking?->customer?->name ?? $booking?->guest_name ?? $order?->customer?->name ?? ''),
             ],
         ]);
     }
@@ -54,7 +58,7 @@ class PublicRefundReceiptController extends Controller
     {
         $receiptToken = BookingRefundReceiptToken::query()
             ->where('token', $token)
-            ->with(['bookingRefund.booking.customer', 'bookingRefund.processor:id,name'])
+            ->with(['bookingRefund.booking.customer', 'bookingRefund.order.customer', 'bookingRefund.processor:id,name'])
             ->first();
 
         if (! $receiptToken) {

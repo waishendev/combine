@@ -8,6 +8,7 @@ type SalesVisualPeriodDashboardProps = {
   year: number
   month: number | null
   onShiftPeriod?: (delta: number) => void
+  canViewStaffReport?: boolean
 }
 
 type PeriodPayload = SalesVisualSummaryData & {
@@ -29,7 +30,7 @@ function formatPeriodLabel(year: number, month: number | null) {
   return String(year)
 }
 
-export default function SalesVisualPeriodDashboard({ year, month, onShiftPeriod }: SalesVisualPeriodDashboardProps) {
+export default function SalesVisualPeriodDashboard({ year, month, onShiftPeriod, canViewStaffReport = false }: SalesVisualPeriodDashboardProps) {
   const [data, setData] = useState<PeriodPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -96,6 +97,7 @@ export default function SalesVisualPeriodDashboard({ year, month, onShiftPeriod 
         error={error}
         data={data}
         periodScope={periodScope}
+        canViewStaffReport={canViewStaffReport}
       />
     </section>
   )
