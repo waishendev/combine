@@ -373,6 +373,7 @@ export default function CategoryEditModal({
             metaKeywords: form.metaKeywords.trim(),
             metaOgImage: form.metaOgImage.trim(),
             isActive: form.isActive === 'true',
+            showInPosFilter: form.showInPosFilter === 'true',
             sortOrder: loadedCategory?.sortOrder ?? 0,
             menuIds: form.menuIds,
             menuNames: menus.filter(m => form.menuIds.includes(m.id)).map(m => m.name).join(', ') || '-',

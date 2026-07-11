@@ -235,6 +235,7 @@ export default function CategoryCreateModal({
             metaKeywords: form.metaKeywords.trim(),
             metaOgImage: '',
             isActive: form.isActive === 'true',
+            showInPosFilter: form.showInPosFilter === 'true',
             sortOrder: 0,
             menuIds: form.menuIds,
             menuNames: menus.filter(m => form.menuIds.includes(m.id)).map(m => m.name).join(', ') || '-',

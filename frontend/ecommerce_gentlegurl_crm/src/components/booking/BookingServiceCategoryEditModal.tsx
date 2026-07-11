@@ -76,6 +76,7 @@ export default function BookingServiceCategoryEditModal({
               slug?: string
               description?: string | null
               is_active?: boolean
+              show_in_pos_filter?: boolean | number | string | null
               image_url?: string | null
               linked_booking_product_category_id?: number | null
               linked_booking_product_category?: LinkedBookingProductCategorySummary | null
@@ -189,6 +190,7 @@ export default function BookingServiceCategoryEditModal({
             slug: slug.trim(),
             sortOrder: null,
             isActive,
+            showInPosFilter,
           }
       onSuccess(row)
     } catch {

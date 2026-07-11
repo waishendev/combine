@@ -107,6 +107,7 @@ export default function BookingServiceCategoryCreateModal({
             slug: slug.trim() || '',
             sortOrder: null,
             isActive,
+            showInPosFilter,
           }
       onSuccess(row)
     } catch {
