@@ -199,7 +199,7 @@ export type PosAppointmentDetail = {
   can_apply_package?: boolean
   package_disabled_reason?: string | null
   eligible_package_count?: number
-  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number }>
+  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number; used_from?: string | null }>
   payment_history?: Array<{ order_id?: number; order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
   receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
   deposit_transactions?: PosDepositTransaction[]

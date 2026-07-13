@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Services\Ecommerce\StaffSplitNormalizer;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Admin\Booking\CancellationRequestController;
 use App\Mail\BookingConfirmationMail;
 use App\Mail\BookingRescheduledMail;
 use App\Mail\BookingSettlementReceiptMail;
@@ -1166,13 +1167,7 @@ class PosController extends Controller
             ];
         })->values()->all();
 
-        $currentClaimsMapped = $currentClaims->map(fn (CustomerServicePackageUsage $usage) => [
-            'usage_id' => (int) $usage->id,
-            'customer_service_package_id' => (int) $usage->customer_service_package_id,
-            'booking_service_id' => (int) $usage->booking_service_id,
-            'status' => (string) $usage->status,
-            'used_qty' => (int) $usage->used_qty,
-        ])->values()->all();
+        $currentClaimsMapped = $currentClaims->map(fn (CustomerServicePackageUsage $usage) => $this->mapPackageUsageClaimRow($usage))->values()->all();
 
         return [
             'packages' => $packages,
@@ -1248,21 +1243,10 @@ class PosController extends Controller
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
         $usageIds = collect($validated['releases'])->pluck('usage_id')->map(fn ($v) => (int) $v)->all();
 
-        $released = CustomerServicePackageUsage::query()
-            ->whereIn('id', $usageIds)
-            ->where('status', 'reserved')
-            ->where(function ($query) use ($booking) {
-                $query->where('booking_id', (int) $booking->id)
-                    ->orWhere(function ($q) use ($booking) {
-                        $q->where('used_from', 'POS')
-                            ->where('used_ref_id', (int) $booking->id);
-                    });
-            })
-            ->update([
-                'status' => 'released',
-                'released_at' => now(),
-                'updated_at' => now(),
-            ]);
+        $released = $this->customerServicePackageService->releaseClaimsForBookingByUsageIds(
+            (int) $booking->id,
+            $usageIds,
+        );
 
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
@@ -1408,14 +1392,27 @@ class PosController extends Controller
 
                 return round($amount, 2);
             };
-            $resolveLineSplits = function (string $lineKey, $lineSplits = [], $fallbackSplits = []) use ($findLineSplitPayload, $normalizeSplits) {
+            $resolveLineSplits = function (string $lineKey, $lineSplits = [], $fallbackSplits = []) use ($findLineSplitPayload, $normalizeSplits, $booking) {
                 $payload = $findLineSplitPayload($lineKey);
                 $splits = $payload ? ($payload['staff_splits'] ?? []) : (! empty($lineSplits) ? $lineSplits : $fallbackSplits);
 
-                return $normalizeSplits($splits);
+                $normalized = $normalizeSplits($splits);
+                if ($normalized->isEmpty() && (int) ($booking->staff_id ?? 0) > 0) {
+                    $normalized = $normalizeSplits([[
+                        'staff_id' => (int) $booking->staff_id,
+                        'share_percent' => 100,
+                    ]]);
+                }
+
+                return $normalized;
             };
             $persistLineSplits = function (OrderItem $orderItem, $splits, string $lineType, string $lineKey, float $amountBasis, array $snapshot = []) use ($staffCommissionRates): void {
-                $normalized = app(StaffSplitNormalizer::class)->normalizeIncoming(is_array($splits) ? $splits : [], $amountBasis);
+                $splitInput = is_array($splits) ? $splits : collect($splits)->values()->all();
+                if ($splitInput === []) {
+                    return;
+                }
+
+                $normalized = app(StaffSplitNormalizer::class)->normalizeIncoming($splitInput, $amountBasis);
                 if ($normalized['error']) {
                     abort(422, $normalized['error']);
                 }
@@ -1913,6 +1910,10 @@ class PosController extends Controller
         }
 
         if ($effectiveService && (int) ($booking->service_id ?? 0) !== (int) $effectiveService->id) {
+            $this->customerServicePackageService->releaseActiveClaimsForBookingService(
+                (int) $booking->id,
+                (int) ($booking->service_id ?? 0),
+            );
             $booking->service_id = (int) $effectiveService->id;
             $booking->setRelation('service', $effectiveService);
         }
@@ -1939,6 +1940,10 @@ class PosController extends Controller
                         'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
                             'staff_id' => (int) ($split['staff_id'] ?? 0),
                             'share_percent' => (int) ($split['share_percent'] ?? 0),
+                            'share_amount' => array_key_exists('share_amount', $split) && $split['share_amount'] !== null
+                                ? round((float) $split['share_amount'], 2)
+                                : null,
+                            'split_mode' => isset($split['split_mode']) ? (string) $split['split_mode'] : null,
                         ])->values()->all(),
                     ];
                 })
@@ -2028,7 +2033,14 @@ class PosController extends Controller
                         'addon_items' => $addonItems,
                         'addon_total_price' => $this->addonQuantityService->sumSnapshotPrice($addonItems),
                         'addon_total_duration_min' => $this->addonQuantityService->sumSnapshotDuration($addonItems),
-                        'staff_splits' => $itemSplits->values()->all(),
+                        'staff_splits' => $itemSplits->map(fn ($split) => [
+                            'staff_id' => (int) ($split['staff_id'] ?? 0),
+                            'share_percent' => (int) ($split['share_percent'] ?? 0),
+                            'share_amount' => array_key_exists('share_amount', $split) && $split['share_amount'] !== null
+                                ? round((float) $split['share_amount'], 2)
+                                : null,
+                            'split_mode' => isset($split['split_mode']) ? (string) $split['split_mode'] : null,
+                        ])->values()->all(),
                     ];
                 })
                 ->filter()
@@ -2113,7 +2125,18 @@ class PosController extends Controller
 
         $booking->end_at = $newEndAt;
 
-        $bookingLineTotal = round(max(0, (float) $this->resolveAppointmentFinancialSummary($booking)['service_total'] ?? 0), 2);
+        $this->customerServicePackageService->releaseOrphanedPackageClaimsForBooking(
+            (int) $booking->id,
+            $this->resolveAppointmentPackageServiceIds($booking)->all(),
+        );
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $originalMainService = collect($summary['main_services'] ?? [])
+            ->first(fn (array $service, int $idx) => ($service['is_original'] ?? false) || $idx === 0);
+        $bookingLineTotal = round(max(0, (float) ($originalMainService['extra_price'] ?? 0)), 2);
+        if ($bookingLineTotal <= 0) {
+            $bookingLineTotal = round(max(0, (float) ($summary['service_total'] ?? 0)), 2);
+        }
         if ($bookingLineTotal <= 0 && $booking->service) {
             $bookingLineTotal = round(max(0, (float) ($booking->service->service_price ?? $booking->service->price ?? 0)), 2);
         }
@@ -4455,7 +4478,8 @@ class PosController extends Controller
             $depositAmount,
             $depositPayments,
             $scheduleOverride,
-            $mainItems
+            $mainItems,
+            $staffCommissionRates,
         ) {
             $booking = Booking::query()->create([
                 'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -9054,14 +9078,7 @@ class PosController extends Controller
                 ->where('used_ref_id', (int) $item->id)
                 ->whereIn('status', ['reserved', 'consumed'])
                 ->get()
-                ->map(fn (CustomerServicePackageUsage $usage) => [
-                    'usage_id' => (int) $usage->id,
-                    'customer_service_package_id' => (int) $usage->customer_service_package_id,
-                    'package_name' => (string) ($usage->customerServicePackage?->servicePackage?->name ?? 'Package'),
-                    'booking_service_id' => (int) $usage->booking_service_id,
-                    'status' => (string) $usage->status,
-                    'used_qty' => (int) $usage->used_qty,
-                ])
+                ->map(fn (CustomerServicePackageUsage $usage) => $this->mapPackageUsageClaimRow($usage))
                 ->values()
                 ->all();
             $depositContribution = $claimedByPackage ? 0.0 : (float) ($depositByServiceItemId[(int) $item->id] ?? 0);
@@ -10791,14 +10808,31 @@ class PosController extends Controller
             return [];
         }
 
-        return $claims->map(fn (CustomerServicePackageUsage $usage) => [
+        $activeServiceIds = $this->resolveAppointmentPackageServiceIds($booking);
+        $claims = $claims->filter(function (CustomerServicePackageUsage $usage) use ($activeServiceIds) {
+            $bookingServiceId = (int) ($usage->booking_service_id ?? 0);
+
+            return $bookingServiceId > 0 && $activeServiceIds->contains($bookingServiceId);
+        });
+
+        if ($claims->isEmpty()) {
+            return [];
+        }
+
+        return $claims->map(fn (CustomerServicePackageUsage $usage) => $this->mapPackageUsageClaimRow($usage))->values()->all();
+    }
+
+    protected function mapPackageUsageClaimRow(CustomerServicePackageUsage $usage): array
+    {
+        return [
             'usage_id' => (int) $usage->id,
             'customer_service_package_id' => (int) $usage->customer_service_package_id,
             'package_name' => (string) ($usage->customerServicePackage?->servicePackage?->name ?? 'Package'),
             'booking_service_id' => (int) $usage->booking_service_id,
             'status' => (string) $usage->status,
             'used_qty' => (int) $usage->used_qty,
-        ])->values()->all();
+            'used_from' => (string) ($usage->used_from ?? 'ADMIN'),
+        ];
     }
 
 
@@ -11408,7 +11442,11 @@ class PosController extends Controller
                 'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
                     'staff_id' => (int) ($split['staff_id'] ?? 0),
                     'share_percent' => (int) ($split['share_percent'] ?? 0),
-                ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values()->all(),
+                    'share_amount' => array_key_exists('share_amount', $split) && $split['share_amount'] !== null
+                        ? round((float) $split['share_amount'], 2)
+                        : null,
+                    'split_mode' => StaffSplitNormalizer::persistedSplitMode(is_array($split) ? $split : []),
+                ])->filter(fn ($split) => $split['staff_id'] > 0 && ($split['share_percent'] > 0 || ($split['share_amount'] ?? 0) > 0))->values()->all(),
             ])
             ->values();
         $mainServices = collect([[
@@ -11929,15 +11967,19 @@ class PosController extends Controller
                 'splits.staff_id',
                 'staffs.name as staff_name',
                 'splits.split_percent',
+                'splits.share_amount',
+                'splits.split_mode',
                 'splits.service_commission_rate_snapshot',
             ])
             ->map(fn ($row) => [
                 'staff_id' => (int) ($row->staff_id ?? 0),
                 'staff_name' => (string) ($row->staff_name ?? '-'),
                 'share_percent' => (int) ($row->split_percent ?? 0),
+                'share_amount' => $row->share_amount !== null ? round((float) $row->share_amount, 2) : null,
+                'split_mode' => $row->split_mode ? (string) $row->split_mode : null,
                 'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
             ])
-            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && ($row['share_percent'] > 0 || ($row['share_amount'] ?? 0) > 0))
             ->values();
 
         if ($rows->isNotEmpty()) {
@@ -11972,12 +12014,15 @@ class PosController extends Controller
         }
 
         $incoming = $rows->map(fn ($row) => StaffSplitNormalizer::mapIncomingRow(is_array($row) ? $row : []))->all();
+        $explicitMode = collect($incoming)->pluck('split_mode')->filter()->first();
         $normalized = app(StaffSplitNormalizer::class)->normalize(
             $incoming,
             round(max(0, $lineTotal), 2),
-            collect($incoming)->contains(fn (array $row) => ($row['share_amount'] ?? 0) > 0)
-                ? StaffSplitNormalizer::MODE_AMOUNT
-                : null,
+            $explicitMode === StaffSplitNormalizer::MODE_AMOUNT || $explicitMode === StaffSplitNormalizer::MODE_PERCENT
+                ? (string) $explicitMode
+                : (collect($incoming)->contains(fn (array $row) => ($row['share_amount'] ?? 0) > 0)
+                    ? StaffSplitNormalizer::MODE_AMOUNT
+                    : null),
         );
         if ($normalized['error']) {
             return ['error' => $normalized['error'], 'splits' => []];
@@ -11992,6 +12037,7 @@ class PosController extends Controller
             'staff_id' => (int) $row['staff_id'],
             'share_percent' => (int) $row['share_percent'],
             'share_amount' => $row['share_amount'] ?? null,
+            'split_mode' => (string) ($row['split_mode'] ?? StaffSplitNormalizer::MODE_PERCENT),
             'service_commission_rate_snapshot' => (float) ($staffRates[(int) $row['staff_id']] ?? 0),
         ])->values();
 
@@ -12058,6 +12104,58 @@ class PosController extends Controller
         $primaryRate = (float) ($splitsPayload[0]['service_commission_rate_snapshot'] ?? 0);
         $commissionAmount = round($listTotal * $primaryRate, 2);
 
+        $staffCommissionRates = DB::table('staffs')
+            ->pluck('service_commission_rate', 'id')
+            ->mapWithKeys(fn ($rate, $id) => [(int) $id => (float) $rate])
+            ->all();
+        $packageRedemptionUnitsByService = $this->resolvePackageRedemptionUnitsForBooking((int) $booking->id);
+        $takePackageRedemptionValue = function (int $bookingServiceId, int $quantity = 1) use (&$packageRedemptionUnitsByService): float {
+            $quantity = max(1, $quantity);
+            if ($bookingServiceId <= 0 || empty($packageRedemptionUnitsByService[$bookingServiceId])) {
+                return 0.0;
+            }
+
+            $amount = 0.0;
+            for ($i = 0; $i < $quantity && ! empty($packageRedemptionUnitsByService[$bookingServiceId]); $i++) {
+                $amount += (float) array_shift($packageRedemptionUnitsByService[$bookingServiceId]);
+            }
+
+            return round($amount, 2);
+        };
+        $bookingSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))->values()->all();
+        $splitNormalizer = app(StaffSplitNormalizer::class);
+        $persistPackageRedemptionSplits = function (
+            OrderItem $orderItem,
+            array $splits,
+            string $lineKey,
+            float $redemptionValue,
+            array $snapshot
+        ) use ($staffCommissionRates, $splitNormalizer): void {
+            if ($redemptionValue <= 0.0001 || $splits === []) {
+                return;
+            }
+
+            $normalized = $splitNormalizer->normalizeIncoming($splits, $redemptionValue);
+            if (! empty($normalized['error']) || empty($normalized['splits'])) {
+                return;
+            }
+
+            foreach ($normalized['splits'] as $split) {
+                OrderItemStaffSplit::query()->create([
+                    'order_item_id' => (int) $orderItem->id,
+                    'line_type' => 'settlement_package_redemption',
+                    'line_ref_id' => $lineKey,
+                    'staff_id' => (int) $split['staff_id'],
+                    'share_percent' => (int) $split['share_percent'],
+                    'share_amount' => StaffSplitNormalizer::persistedShareAmount($split),
+                    'split_mode' => StaffSplitNormalizer::persistedSplitMode($split),
+                    'amount_basis' => round(max(0, $redemptionValue), 2),
+                    'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+                    'snapshot' => $snapshot,
+                ]);
+            }
+        };
+
         OrderServiceItem::create([
             'order_id' => (int) $order->id,
             'booking_id' => (int) $booking->id,
@@ -12088,14 +12186,15 @@ class PosController extends Controller
                 'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
             ]]);
 
-        foreach ($serviceLines as $mainLine) {
+        foreach ($serviceLines as $mainIdx => $mainLine) {
             $gross = max(0.0, (float) ($mainLine['extra_price'] ?? $mainLine['balance_due'] ?? 0));
             if ($gross <= 0.0001) {
                 continue;
             }
 
             $serviceName = (string) ($mainLine['name'] ?? $booking->service?->name ?? 'Service');
-            OrderItem::query()->create([
+            $bookingServiceId = (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id ?? 0);
+            $serviceOrderItem = OrderItem::query()->create([
                 'order_id' => (int) $order->id,
                 'line_type' => 'booking_settlement',
                 'product_name_snapshot' => 'Final Settlement - ' . $serviceName,
@@ -12110,11 +12209,25 @@ class PosController extends Controller
                 'line_total_after_discount' => 0,
                 'locked' => true,
                 'booking_id' => (int) $booking->id,
-                'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id ?? 0),
+                'booking_service_id' => $bookingServiceId,
             ]);
+
+            $redemptionValue = $takePackageRedemptionValue($bookingServiceId, 1);
+            if ($redemptionValue > 0.0001) {
+                $lineKey = $this->appointmentSettlementLineKey('service', (array) $mainLine, (int) $mainIdx);
+                $persistPackageRedemptionSplits($serviceOrderItem, $bookingSplits, $lineKey, $redemptionValue, [
+                    'booking_id' => (int) $booking->id,
+                    'line_key' => $lineKey,
+                    'line_type' => 'settlement_package_redemption',
+                    'service_id' => $bookingServiceId,
+                    'redemption_value' => round($redemptionValue, 2),
+                    'service' => $mainLine,
+                    'staff_split_source' => 'inherited',
+                ]);
+            }
         }
 
-        foreach ($addonSettlementItems as $addon) {
+        foreach ($addonSettlementItems as $addonIdx => $addon) {
             $gross = max(0.0, (float) ($addon['line_gross_amount'] ?? $addon['extra_price'] ?? $addon['balance_due'] ?? 0));
             if ($gross <= 0.0001) {
                 continue;
@@ -12122,7 +12235,7 @@ class PosController extends Controller
             $addonQty = max(1, (int) ($addon['quantity'] ?? 1));
             $addonUnitGross = $addonQty > 0 ? round($gross / $addonQty, 2) : $gross;
 
-            OrderItem::query()->create([
+            $addonOrderItem = OrderItem::query()->create([
                 'order_id' => (int) $order->id,
                 'line_type' => 'booking_addon',
                 'product_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
@@ -12138,7 +12251,23 @@ class PosController extends Controller
                 'line_total_after_discount' => 0,
                 'locked' => true,
                 'booking_id' => (int) $booking->id,
+                'booking_service_id' => (int) ($addon['linked_booking_service_id'] ?? 0) ?: null,
             ]);
+
+            $addonBookingServiceId = (int) ($addon['linked_booking_service_id'] ?? 0);
+            $redemptionValue = $takePackageRedemptionValue($addonBookingServiceId, $addonQty);
+            if ($redemptionValue > 0.0001) {
+                $lineKey = $this->appointmentSettlementLineKey('addon', (array) $addon, (int) $addonIdx);
+                $persistPackageRedemptionSplits($addonOrderItem, $bookingSplits, $lineKey, $redemptionValue, [
+                    'booking_id' => (int) $booking->id,
+                    'line_key' => $lineKey,
+                    'line_type' => 'settlement_package_redemption',
+                    'service_id' => $addonBookingServiceId,
+                    'redemption_value' => round($redemptionValue, 2),
+                    'addon' => $addon,
+                    'staff_split_source' => 'inherited',
+                ]);
+            }
         }
 
         $booking->payment_status = 'PAID';

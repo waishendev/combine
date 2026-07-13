@@ -48,6 +48,69 @@ export function getStaffSplitDraftValidation(
   )
 }
 
+const SPLIT_MODE_BUTTON_BASE = 'rounded-lg border px-3 py-1.5 text-xs font-semibold'
+const SPLIT_MODE_BUTTON_ACTIVE = 'border-indigo-500 bg-indigo-50 text-indigo-700'
+const SPLIT_MODE_BUTTON_IDLE = 'border-gray-300 bg-white text-gray-700'
+const SPLIT_MODE_BUTTON_DISABLED = 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+
+type StaffSplitModeToggleProps = {
+  mode: StaffSplitMode
+  allowAmountMode: boolean
+  /** Show Fixed amount tab (enabled or greyed out). Hide when line has no RM reference. */
+  showAmountOption?: boolean
+  amountBlockedTitle?: string
+  className?: string
+  onModeChange: (mode: StaffSplitMode) => void
+  onSelectAmount?: () => void
+}
+
+/** Percent vs Fixed amount tabs. Package-covered lines show Fixed amount disabled; unclaimed add-ons stay clickable. */
+export function StaffSplitModeToggle({
+  mode,
+  allowAmountMode,
+  showAmountOption = true,
+  amountBlockedTitle = 'Package-covered line — use percent split (redemption value).',
+  className = 'flex flex-wrap gap-2',
+  onModeChange,
+  onSelectAmount,
+}: StaffSplitModeToggleProps) {
+  return (
+    <div className={className}>
+      <button
+        type="button"
+        onClick={() => onModeChange('percent')}
+        className={`${SPLIT_MODE_BUTTON_BASE} ${mode === 'percent' ? SPLIT_MODE_BUTTON_ACTIVE : SPLIT_MODE_BUTTON_IDLE}`}
+      >
+        Percent (%)
+      </button>
+      {showAmountOption ? (
+        <button
+          type="button"
+          disabled={!allowAmountMode}
+          title={!allowAmountMode ? amountBlockedTitle : undefined}
+          onClick={() => {
+            if (!allowAmountMode) return
+            if (onSelectAmount) {
+              onSelectAmount()
+            } else {
+              onModeChange('amount')
+            }
+          }}
+          className={`${SPLIT_MODE_BUTTON_BASE} ${
+            !allowAmountMode
+              ? SPLIT_MODE_BUTTON_DISABLED
+              : mode === 'amount'
+                ? SPLIT_MODE_BUTTON_ACTIVE
+                : SPLIT_MODE_BUTTON_IDLE
+          }`}
+        >
+          Fixed amount (RM)
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export default function PosStaffSplitEditorPanel({
   rows,
   mode,
@@ -64,7 +127,8 @@ export default function PosStaffSplitEditorPanel({
   getStaffLabel,
   formatMoney = (value) => value.toFixed(2),
 }: Props) {
-  const canUseAmountMode = allowAmountMode && lineTotal != null && lineTotal > 0
+  const showAmountOption = lineTotal != null && lineTotal > 0
+  const canUseAmountMode = allowAmountMode && showAmountOption
   const validation = getStaffSplitDraftValidation(rows, mode, lineTotal)
   const percentTotal = rows.reduce((sum, row) => sum + row.share_percent, 0)
   const amountTotal = rows.reduce((sum, row) => sum + parseMoneyInput(row.share_amount), 0)
@@ -114,32 +178,12 @@ export default function PosStaffSplitEditorPanel({
 
   return (
     <div className="space-y-3">
-      {canUseAmountMode ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onModeChange('percent')}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-              mode === 'percent'
-                ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                : 'border-gray-300 bg-white text-gray-700'
-            }`}
-          >
-            Percent (%)
-          </button>
-          <button
-            type="button"
-            onClick={() => onModeChange('amount')}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-              mode === 'amount'
-                ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                : 'border-gray-300 bg-white text-gray-700'
-            }`}
-          >
-            Fixed amount (RM)
-          </button>
-        </div>
-      ) : null}
+      <StaffSplitModeToggle
+        mode={mode}
+        allowAmountMode={canUseAmountMode}
+        showAmountOption={showAmountOption}
+        onModeChange={onModeChange}
+      />
 
       {canUseAmountMode && mode === 'amount' && lineTotal != null ? (
         <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">

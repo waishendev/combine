@@ -14,7 +14,9 @@ class StaffSplitNormalizer
      */
     public function normalize(array $splits, float $lineTotal, ?string $splitMode = null): array
     {
-        $rows = collect($splits)->values();
+        $rows = collect($splits)
+            ->map(fn ($split) => self::mapIncomingRow(is_array($split) ? $split : []))
+            ->values();
         if ($rows->isEmpty()) {
             return ['error' => __('At least one staff split is required.'), 'splits' => []];
         }
@@ -55,7 +57,9 @@ class StaffSplitNormalizer
         }
 
         $hasAmount = collect($rows)->contains(function (array $row) {
-            return $row['share_amount'] !== null && $row['share_amount'] !== '';
+            return array_key_exists('share_amount', $row)
+                && $row['share_amount'] !== null
+                && $row['share_amount'] !== '';
         });
 
         return $hasAmount ? self::MODE_AMOUNT : self::MODE_PERCENT;

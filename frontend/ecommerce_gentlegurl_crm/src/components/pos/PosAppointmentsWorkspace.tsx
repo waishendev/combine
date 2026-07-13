@@ -30,15 +30,19 @@ import {
   resolveAddedMainServiceSeedFinalized,
   resolveAddedMainServiceSeedPrice,
   resolveEditSettlementAddonLineAmount,
+  resolveEditSettlementAddonSplitLineTotal,
+  resolveEditSettlementAddedMainBlockLineTotal,
   resolveEditSettlementAddonUnitDisplay,
   resolveSettlementRefundNeededAmount,
   computeSettlementRefundSummary,
   seedAddonLineTotalOverrides,
   seedFinalizedAddonPriceOverrides,
+  bookingServiceIdCoveredByPackage,
   settlementNeedsSettledAmount,
   validateSettlementAmountInput,
   UNSETTLED_RANGE_CHECKOUT_MESSAGE,
   type PosPriceDisplaySource,
+  type SettlementCartItemLike,
 } from '@/components/pos/settlementAmountUtils'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
@@ -63,7 +67,13 @@ import type { CustomerRowData } from '@/components/CustomerRow'
 import OrderViewPanel from '@/components/OrderViewPanel'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, parsePosAvailabilityVerifyMode, posAvailabilityShouldHardBlock, posAvailabilityStaffIsUnavailable, POS_SCHEDULE_OVERRIDE_REASONS, type PosAvailabilityVerifyMode } from '@/components/pos/posAvailabilityMessages'
-import { confirmAndVerifyEditSettlementPrimaryStaffChange, resolvePrimaryStaffIdFromSplits } from '@/components/pos/posStaffSplitUtils'
+import PosPrimaryStaffChangeConfirmModal, { type PrimaryStaffChangePrompt } from '@/components/pos/PosPrimaryStaffChangeConfirmModal'
+import {
+  buildEditSettlementPrimaryStaffChangePrompt,
+  createStaffNameResolver,
+  resolvePrimaryStaffIdFromSplits,
+  verifyEditSettlementPrimaryStaffAvailability,
+} from '@/components/pos/posStaffSplitUtils'
 import {
   mapStaffSplitDraftToPayload,
   mapSettlementInlineStaffRowsForApi,
@@ -71,7 +81,9 @@ import {
   percentsToAmounts,
   rebalancePrimaryPercentShare,
   rebalanceSettlementInlineStaffRows,
+  resolveSavedSettlementStaffSplitMode,
   roundMoney,
+  seedSettlementInlineStaffRows,
   serializeStaffSplitForApi,
   settlementInlineRowsToInheritedSplits,
   validateStaffSplitDraft,
@@ -83,12 +95,21 @@ import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
+import { StaffSplitModeToggle } from '@/components/pos/PosStaffSplitEditorPanel'
 import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRefundCreditSection'
 import { SettlementRefundBreakdownRows } from '@/components/pos/SettlementCartPaymentBreakdown'
 import PosAppointmentPaymentLinksSection from '@/components/pos/PosAppointmentPaymentLinksSection'
 import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
+import {
+  batchReleaseAppointmentPackageClaims,
+  collectActivePackageClaimUsageIds,
+  findPackageClaimForService,
+  formatPackageClaimLineText,
+  pruneReleasedPackageClaims,
+  releaseAppointmentPackageClaimsForService,
+} from '@/components/pos/packageClaimDisplay'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
@@ -612,6 +633,7 @@ export default function PosAppointmentsWorkspace({
     addon_price_overrides: Record<number, number>
     addon_line_total_overrides: Record<number, number>
     staff_splits: SettlementInlineStaffSplitRow[]
+    split_mode: StaffSplitMode
     auto_balance: boolean
   }>>([])
   const [editOriginalService, setEditOriginalService] = useState<BookingServiceOption | null>(null)
@@ -646,6 +668,8 @@ export default function PosAppointmentsWorkspace({
   const [editStaffSplits, setEditStaffSplits] = useState<SettlementInlineStaffSplitRow[]>([])
   const [editStaffSplitMode, setEditStaffSplitMode] = useState<StaffSplitMode>('percent')
   const [editSettlementOriginalPrimaryStaffId, setEditSettlementOriginalPrimaryStaffId] = useState<number | null>(null)
+  const [primaryStaffChangePrompt, setPrimaryStaffChangePrompt] = useState<PrimaryStaffChangePrompt | null>(null)
+  const [pendingEditSettlementPayload, setPendingEditSettlementPayload] = useState<Record<string, unknown> | null>(null)
   const [editStaffSplitAutoBalance, setEditStaffSplitAutoBalance] = useState(true)
   const [editAddonOptionsLoading, setEditAddonOptionsLoading] = useState(false)
 
@@ -674,6 +698,30 @@ export default function PosAppointmentsWorkspace({
     editOriginalSettlementSource,
     editSettledAmount,
   ])
+
+  const editOriginalServiceCoveredByPackage = useMemo(() => {
+    if (!appointmentDetail) return false
+    const bookingServiceId = Number(
+      editOriginalService?.linked_booking_service_id
+      ?? editOriginalService?.id
+      ?? appointmentDetail.service_id
+      ?? 0,
+    )
+    return bookingServiceIdCoveredByPackage(appointmentDetail as SettlementCartItemLike, bookingServiceId, {
+      treatAsOriginalMain: true,
+    })
+  }, [appointmentDetail, editOriginalService])
+
+  const editSettlementStaffSplitAllowAmountMode = useMemo(
+    () => !editOriginalServiceCoveredByPackage && editOriginalLineTotal != null && editOriginalLineTotal > 0,
+    [editOriginalServiceCoveredByPackage, editOriginalLineTotal],
+  )
+
+  useEffect(() => {
+    if (editOriginalServiceCoveredByPackage && editStaffSplitMode === 'amount') {
+      setEditStaffSplitMode('percent')
+    }
+  }, [editOriginalServiceCoveredByPackage, editStaffSplitMode])
 
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
   const [appointmentRescheduleStaffId, setAppointmentRescheduleStaffId] = useState<number | null>(null)
@@ -918,6 +966,82 @@ export default function PosAppointmentsWorkspace({
     settlementInlineRowsToInheritedSplits(rows)
   ), [])
 
+  const resolveAppointmentEditLinePackageCovered = useCallback((lineKey: string): boolean => {
+    if (!appointmentDetail?.id) return false
+    const settlement = appointmentDetail as SettlementCartItemLike
+    const originalServiceReference = Number(
+      editOriginalService?.service_price
+      ?? editOriginalService?.price
+      ?? appointmentDetail.service_total
+      ?? 0,
+    )
+
+    const addonMatch = lineKey.match(/^appointment-settlement:(\d+):addon:(\d+)$/)
+    if (addonMatch && appointmentDetail.id === Number(addonMatch[1])) {
+      const addonId = Number(addonMatch[2])
+      const option = editAddonQuestions.flatMap((q) => q.options ?? []).find((opt) => Number(opt.id) === addonId)
+      if (!option) return false
+      const bookingServiceId = Number(option.linked_booking_service_id ?? option.id ?? 0)
+      const qty = getAddonQuantity(editAddonQuantities, addonId)
+      const gross = Number(option.extra_price ?? 0) * Math.max(1, qty)
+      const amount = resolveEditSettlementAddonLineAmount(
+        addonId,
+        Number(option.extra_price ?? 0),
+        editAddonQuantities,
+        editAddonPriceOverrides,
+        editAddonLineTotalOverrides,
+      )
+      return bookingServiceIdCoveredByPackage(settlement, bookingServiceId, {
+        addon: {
+          linked_booking_service_id: bookingServiceId,
+          extra_price: option.extra_price,
+          balance_due: amount ?? 0,
+          gross_amount: gross,
+          quantity: qty,
+        },
+        originalServiceReference,
+      })
+    }
+
+    const blockAddonMatch = lineKey.match(/^appointment-settlement:(\d+):block:([^:]+):addon:(\d+)$/)
+    if (blockAddonMatch && appointmentDetail.id === Number(blockAddonMatch[1])) {
+      const block = editAddedMainBlocks.find((row) => row.tmp_id === blockAddonMatch[2])
+      const addonId = Number(blockAddonMatch[3])
+      const option = block?.addon_questions?.flatMap((q) => q.options ?? []).find((opt) => Number(opt.id) === addonId)
+      if (!option) return false
+      const bookingServiceId = Number(option.linked_booking_service_id ?? option.id ?? 0)
+      const qty = getAddonQuantity(block?.selected_addon_ids ?? {}, addonId)
+      const gross = Number(option.extra_price ?? 0) * Math.max(1, qty)
+      const amount = resolveEditSettlementAddonLineAmount(
+        addonId,
+        Number(option.extra_price ?? 0),
+        block?.selected_addon_ids ?? {},
+        block?.addon_price_overrides ?? {},
+        block?.addon_line_total_overrides ?? {},
+      )
+      return bookingServiceIdCoveredByPackage(settlement, bookingServiceId, {
+        addon: {
+          linked_booking_service_id: bookingServiceId,
+          extra_price: option.extra_price,
+          balance_due: amount ?? 0,
+          gross_amount: gross,
+          quantity: qty,
+        },
+        originalServiceReference,
+      })
+    }
+
+    return false
+  }, [
+    appointmentDetail,
+    editAddedMainBlocks,
+    editAddonLineTotalOverrides,
+    editAddonPriceOverrides,
+    editAddonQuantities,
+    editAddonQuestions,
+    editOriginalService,
+  ])
+
   const openAppointmentLineSplitEditor = useCallback(async (lineKey: string, title: string, inheritedSplits: AppointmentLineStaffSplit[] = [], lineTotal: number | null = null) => {
     let nextStaffs = activeStaffs
     if (!nextStaffs.length) {
@@ -926,6 +1050,7 @@ export default function PosAppointmentsWorkspace({
     }
     const existingSplits = appointmentLineStaffSplits[lineKey] ?? inheritedSplits
     const resolvedTotal = lineTotal != null && lineTotal > 0 ? lineTotal : null
+    const allowAmountMode = resolvedTotal != null && !resolveAppointmentEditLinePackageCovered(lineKey)
     setAppointmentLineSplitTarget({ type: 'line', lineKey, title, inheritedSplits, lineTotal: resolvedTotal })
     setAppointmentLineSplitDraftRows(
       existingSplits.length
@@ -941,12 +1066,14 @@ export default function PosAppointmentsWorkspace({
           }))
         : [{ staff_id: null, share_percent: '100', share_amount: resolvedTotal != null ? resolvedTotal.toFixed(2) : '0.00' }],
     )
-    setAppointmentLineSplitMode(existingSplits[0]?.split_mode ?? 'percent')
+    setAppointmentLineSplitMode(
+      existingSplits[0]?.split_mode === 'amount' && allowAmountMode ? 'amount' : 'percent',
+    )
     setAppointmentLineSplitLineTotal(resolvedTotal)
     setAppointmentLineSplitAutoBalance(true)
     setAppointmentLineSplitOverwrite(false)
     reportAppointmentLineSplitError(null)
-  }, [activeStaffs, appointmentLineStaffSplits, fetchStaffOptions])
+  }, [activeStaffs, appointmentLineStaffSplits, fetchStaffOptions, resolveAppointmentEditLinePackageCovered, reportAppointmentLineSplitError])
 
   const resolveAppointmentEditLineTotal = useCallback((lineKey: string): number | null => {
     if (!appointmentDetail?.id) return null
@@ -957,12 +1084,14 @@ export default function PosAppointmentsWorkspace({
       const addonId = Number(addonMatch[2])
       const option = editAddonQuestions.flatMap((q) => q.options ?? []).find((opt) => Number(opt.id) === addonId)
       if (option) {
-        const amount = resolveEditSettlementAddonLineAmount(
-          addonId,
-          Number(option.extra_price ?? 0),
+        const storedAddon = (appointmentDetail.addon_settlement_items ?? appointmentDetail.add_ons ?? [])
+          .find((row) => Number(row.id ?? 0) === addonId)
+        const amount = resolveEditSettlementAddonSplitLineTotal(
+          option,
           editAddonQuantities,
           editAddonPriceOverrides,
           editAddonLineTotalOverrides,
+          storedAddon,
         )
         return amount != null ? positive(amount) : null
       }
@@ -974,12 +1103,15 @@ export default function PosAppointmentsWorkspace({
       const addonId = Number(blockAddonMatch[3])
       const option = block?.addon_questions?.flatMap((q) => q.options ?? []).find((opt) => Number(opt.id) === addonId)
       if (option) {
-        const amount = resolveEditSettlementAddonLineAmount(
-          addonId,
-          Number(option.extra_price ?? 0),
+        const storedAddon = (appointmentDetail.main_services ?? [])
+          .find((service) => Number(service.linked_booking_service_id ?? service.id ?? 0) === block?.service_id)
+          ?.add_ons?.find((row) => Number(row.id ?? 0) === addonId)
+        const amount = resolveEditSettlementAddonSplitLineTotal(
+          option,
           block?.selected_addon_ids ?? {},
           block?.addon_price_overrides ?? {},
           block?.addon_line_total_overrides ?? {},
+          storedAddon,
         )
         return amount != null ? positive(amount) : null
       }
@@ -987,13 +1119,22 @@ export default function PosAppointmentsWorkspace({
 
     return null
   }, [
+    appointmentDetail?.addon_settlement_items,
+    appointmentDetail?.add_ons,
     appointmentDetail?.id,
+    appointmentDetail?.main_services,
     editAddedMainBlocks,
     editAddonLineTotalOverrides,
     editAddonPriceOverrides,
     editAddonQuantities,
     editAddonQuestions,
   ])
+
+  const appointmentLineSplitAllowAmountMode = useMemo(() => {
+    if (!appointmentLineSplitTarget || appointmentLineSplitTarget.type !== 'line') return false
+    if (appointmentLineSplitLineTotal == null || appointmentLineSplitLineTotal <= 0) return false
+    return !resolveAppointmentEditLinePackageCovered(appointmentLineSplitTarget.lineKey)
+  }, [appointmentLineSplitTarget, appointmentLineSplitLineTotal, resolveAppointmentEditLinePackageCovered])
 
   const openAppointmentBulkLineSplitEditor = useCallback(async (
     title: string,
@@ -1021,12 +1162,15 @@ export default function PosAppointmentsWorkspace({
       share_percent: String(split.share_percent),
       share_amount: split.share_amount != null ? Number(split.share_amount).toFixed(2) : '0.00',
     })) : [{ staff_id: null, share_percent: '100', share_amount: '0.00' }])
-    setAppointmentLineSplitMode(inheritedSplits[0]?.split_mode ?? 'percent')
+    const inheritedMode = inheritedSplits[0]?.split_mode ?? 'percent'
+    setAppointmentLineSplitMode(
+      applyEditSettlementMainServices && editOriginalServiceCoveredByPackage ? 'percent' : inheritedMode,
+    )
     setAppointmentLineSplitLineTotal(null)
     setAppointmentLineSplitAutoBalance(true)
     setAppointmentLineSplitOverwrite(applyEditSettlementMainServices)
     reportAppointmentLineSplitError(null)
-  }, [activeStaffs, fetchStaffOptions])
+  }, [activeStaffs, editOriginalServiceCoveredByPackage, fetchStaffOptions, reportAppointmentLineSplitError])
 
   const saveAppointmentLineSplitEditor = useCallback(() => {
     if (!appointmentLineSplitTarget) return
@@ -1062,6 +1206,7 @@ export default function PosAppointmentsWorkspace({
         setEditStaffSplits(draftRows)
         setEditAddedMainBlocks((prev) => prev.map((block) => ({
           ...block,
+          split_mode: appointmentLineSplitMode,
           staff_splits: draftRows.map((row) => ({ ...row })),
         })))
       }
@@ -2205,7 +2350,20 @@ export default function PosAppointmentsWorkspace({
     reportAppointmentCheckoutError(null)
     setAppointmentActionLoading(true)
     try {
-      const appointmentMainSplits = (appointmentDetail.staff_splits ?? []).map(serializeStaffSplitForApi)
+      const resolveAppointmentCheckoutStaffSplits = () => {
+        const fromDetail = (appointmentDetail.staff_splits ?? [])
+          .filter((split) =>
+            Number(split.staff_id) > 0
+            && (Number(split.share_percent) > 0 || Number(split.share_amount) > 0),
+          )
+          .map(serializeStaffSplitForApi)
+        if (fromDetail.length > 0) return fromDetail
+        const staffId = Number(appointmentDetail.staff?.id ?? 0)
+        if (staffId > 0) return [{ staff_id: staffId, share_percent: 100 }]
+        return []
+      }
+
+      const appointmentMainSplits = resolveAppointmentCheckoutStaffSplits()
       const mainSettlementLines = appointmentDetail.main_service_settlement_items ?? []
       const splitKeyForServiceLine = (line: { is_original?: boolean; name?: string | null; line_key?: string | null; linked_booking_service_id?: number | null; id?: number | null }, idx: number) => (line.is_original ? 'original' : String(line.name ?? line.line_key ?? line.linked_booking_service_id ?? line.id ?? idx))
       const mainSplitsByServiceRef = new Map(mainSettlementLines.map((line, idx) => [splitKeyForServiceLine(line, idx), (line.staff_splits?.length ? line.staff_splits : appointmentMainSplits).map(serializeStaffSplitForApi)]))
@@ -2315,6 +2473,26 @@ export default function PosAppointmentsWorkspace({
   const rebalanceEditSettlementPrimaryShare = useCallback((rows: SettlementInlineStaffSplitRow[]) =>
     rebalanceSettlementInlineStaffRows(rows, editStaffSplitMode, editOriginalLineTotal, true),
   [editStaffSplitMode, editOriginalLineTotal])
+
+  const resolveEditAddedMainBlockLineTotal = useCallback((block: (typeof editAddedMainBlocks)[number]): number | null => {
+    const lineTotal = resolveEditSettlementAddedMainBlockLineTotal(block)
+    return lineTotal != null ? roundMoney(lineTotal) : null
+  }, [])
+
+  const isEditAddedMainBlockPackageCovered = useCallback((block: (typeof editAddedMainBlocks)[number]): boolean => {
+    if (!appointmentDetail) return false
+    return bookingServiceIdCoveredByPackage(appointmentDetail as SettlementCartItemLike, block.service_id)
+  }, [appointmentDetail])
+
+  const rebalanceEditAddedMainBlockSplits = useCallback((
+    rows: SettlementInlineStaffSplitRow[],
+    block: (typeof editAddedMainBlocks)[number],
+  ) => rebalanceSettlementInlineStaffRows(
+    rows,
+    block.split_mode,
+    resolveEditAddedMainBlockLineTotal(block),
+    block.auto_balance,
+  ), [resolveEditAddedMainBlockLineTotal])
 
   const appointmentDisplayMainServices = useMemo(() => {
     const originalServiceId = Number(appointmentDetail?.service?.id ?? 0)
@@ -2438,6 +2616,19 @@ export default function PosAppointmentsWorkspace({
           share_percent: String(split.share_percent ?? ''),
           share_amount: 'share_amount' in split && split.share_amount != null ? Number(split.share_amount).toFixed(2) : '0.00',
         })),
+        split_mode: (() => {
+          const blockBase = {
+            price: resolvedPrice,
+            price_mode: service.price_mode ?? settlementLine?.price_mode ?? null,
+            price_range_min: service.price_range_min ?? settlementLine?.price_range_min ?? null,
+            price_range_max: service.price_range_max ?? settlementLine?.price_range_max ?? null,
+            price_finalized: resolveAddedMainServiceSeedFinalized(service, settlementLine, resolvedPrice),
+          }
+          const blockLineTotal = resolveEditSettlementAddedMainBlockLineTotal(blockBase)
+          return resolveSavedSettlementStaffSplitMode(service.staff_splits, {
+            allowAmount: blockLineTotal != null && blockLineTotal > 0,
+          })
+        })(),
         auto_balance: true,
       }})
       .filter((block) => block.service_id > 0)
@@ -2486,19 +2677,26 @@ export default function PosAppointmentsWorkspace({
     const settled = appointmentDetail.settled_service_amount
     setEditSettledAmount(settled != null ? String(settled) : '')
     setEditStaffSplitAutoBalance(true)
-    const initialSplits = (appointmentDetail.staff_splits ?? [])
-      .map((split) => {
-        const extended = split as { staff_id: number; share_percent: number; share_amount?: number | null; split_mode?: StaffSplitMode }
-        return {
-          staff_id: Number(extended.staff_id) > 0 ? Number(extended.staff_id) : null,
-          share_percent: String(extended.share_percent ?? ''),
-          share_amount: extended.share_amount != null ? Number(extended.share_amount).toFixed(2) : '0.00',
-        }
-      })
-      .filter((split) => split.staff_id != null)
-    setEditStaffSplitMode((appointmentDetail.staff_splits?.[0] as { split_mode?: StaffSplitMode } | undefined)?.split_mode ?? 'percent')
+    const seededLineTotal = hasFinalOriginalServicePrice
+      ? Number(
+          appointmentDetail.settled_service_amount
+          ?? originalMainService?.extra_price
+          ?? appointmentDetail.service_total
+          ?? 0,
+        )
+      : null
+    const seededOriginalCoveredByPackage = bookingServiceIdCoveredByPackage(
+      appointmentDetail as SettlementCartItemLike,
+      Number(appointmentDetail.service.id ?? 0),
+      { treatAsOriginalMain: true },
+    )
+    const seededSplitMode = resolveSavedSettlementStaffSplitMode(appointmentDetail.staff_splits, {
+      allowAmount: !seededOriginalCoveredByPackage && seededLineTotal != null && seededLineTotal > 0,
+    })
+    const initialSplits = seedSettlementInlineStaffRows(appointmentDetail.staff_splits ?? [], seededSplitMode, seededLineTotal)
+    setEditStaffSplitMode(seededSplitMode)
     if (initialSplits.length > 0) {
-      setEditStaffSplits(rebalancePrimaryPercentShare(initialSplits))
+      setEditStaffSplits(initialSplits)
       setEditSettlementOriginalPrimaryStaffId(Number(initialSplits[0].staff_id))
     } else {
       const fallbackStaffId = appointmentDetail.staff?.id ?? null
@@ -2559,9 +2757,9 @@ export default function PosAppointmentsWorkspace({
             const addonRes2 = await fetch(`/api/proxy/pos/services/${block.service_id}/addon-options`)
             const addonJson2 = await addonRes2.json().catch(() => null)
             const questions = (addonJson2?.data?.questions ?? []) as ServiceAddonQuestion[]
-            return { ...block, addon_questions: questions, staff_splits: block.staff_splits.length > 0 ? rebalanceEditSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100', share_amount: '0.00' }] }
+            return { ...block, addon_questions: questions, staff_splits: block.staff_splits.length > 0 ? rebalanceEditAddedMainBlockSplits(block.staff_splits, block) : [{ staff_id: null, share_percent: '100', share_amount: '0.00' }] }
           } catch {
-            return { ...block, addon_questions: [], staff_splits: block.staff_splits.length > 0 ? rebalanceEditSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100', share_amount: '0.00' }] }
+            return { ...block, addon_questions: [], staff_splits: block.staff_splits.length > 0 ? rebalanceEditAddedMainBlockSplits(block.staff_splits, block) : [{ staff_id: null, share_percent: '100', share_amount: '0.00' }] }
           }
         }))
         setEditAddedMainBlocks(hydrated)
@@ -2574,19 +2772,225 @@ export default function PosAppointmentsWorkspace({
       setEditAddonOptionsLoading(false)
       setEditMainServiceCatalogLoading(false)
     }
-  }, [appointmentDetail, appointmentDisplayMainServices, rebalanceEditSettlementPrimaryShare])
+  }, [appointmentDetail, appointmentDisplayMainServices, rebalanceEditAddedMainBlockSplits])
 
   const toggleEditAddon = useCallback((option: ServiceAddonOption, questionType: string, questionOptionIds: number[]) => {
-    setEditAddonQuantities((prev) => toggleAddonSelection(prev, option, questionType, questionOptionIds))
-  }, [])
+    setEditAddonQuantities((prev) => {
+      const wasSelected = (prev[option.id] ?? 0) > 0
+      const next = toggleAddonSelection(prev, option, questionType, questionOptionIds)
+      const nextQty = next[option.id] ?? 0
+      if (wasSelected && nextQty <= 0 && appointmentDetail?.id) {
+        const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+        if (addonServiceId > 0) {
+          void releaseAppointmentPackageClaimsForService(
+            appointmentDetail.id,
+            appointmentDetail.package_claims,
+            addonServiceId,
+          ).then((result) => {
+            if (!result.ok) {
+              reportEditSettlementError(result.message ?? 'Unable to release package claims.')
+              return
+            }
+            if (result.releasedUsageIds.length > 0) {
+              setAppointmentDetail((detail) => {
+                if (!detail) return detail
+                const remainingClaims = pruneReleasedPackageClaims(detail.package_claims, result.releasedUsageIds)
+                const hasActiveClaims = remainingClaims.some((claim) =>
+                  ['reserved', 'consumed'].includes(String(claim.status ?? '').toLowerCase()),
+                )
+                return {
+                  ...detail,
+                  package_claims: remainingClaims,
+                  package_status: hasActiveClaims ? detail.package_status : null,
+                }
+              })
+            }
+          })
+        }
+      }
+      return next
+    })
+  }, [appointmentDetail?.id, appointmentDetail?.package_claims, reportEditSettlementError])
 
   const setEditAddonQuantity = useCallback((option: ServiceAddonOption, qty: number) => {
-    setEditAddonQuantities((prev) => setAddonQuantity(prev, option, qty))
-  }, [])
+    setEditAddonQuantities((prev) => {
+      const wasSelected = (prev[option.id] ?? 0) > 0
+      const next = setAddonQuantity(prev, option, qty)
+      const nextQty = next[option.id] ?? 0
+      if (wasSelected && nextQty <= 0 && appointmentDetail?.id) {
+        const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+        if (addonServiceId > 0) {
+          void releaseAppointmentPackageClaimsForService(
+            appointmentDetail.id,
+            appointmentDetail.package_claims,
+            addonServiceId,
+          ).then((result) => {
+            if (!result.ok) {
+              reportEditSettlementError(result.message ?? 'Unable to release package claims.')
+              return
+            }
+            if (result.releasedUsageIds.length > 0) {
+              setAppointmentDetail((detail) => {
+                if (!detail) return detail
+                const remainingClaims = pruneReleasedPackageClaims(detail.package_claims, result.releasedUsageIds)
+                const hasActiveClaims = remainingClaims.some((claim) =>
+                  ['reserved', 'consumed'].includes(String(claim.status ?? '').toLowerCase()),
+                )
+                return {
+                  ...detail,
+                  package_claims: remainingClaims,
+                  package_status: hasActiveClaims ? detail.package_status : null,
+                }
+              })
+            }
+          })
+        }
+      }
+      return next
+    })
+  }, [appointmentDetail?.id, appointmentDetail?.package_claims, reportEditSettlementError])
+
+  const releaseEditSettlementPackageForService = useCallback(async (bookingServiceId: number): Promise<boolean> => {
+    if (!appointmentDetail?.id || bookingServiceId <= 0) return true
+    const result = await releaseAppointmentPackageClaimsForService(
+      appointmentDetail.id,
+      appointmentDetail.package_claims,
+      bookingServiceId,
+    )
+    if (!result.ok) {
+      reportEditSettlementError(result.message ?? 'Unable to release package claims.')
+      return false
+    }
+    if (result.releasedUsageIds.length > 0) {
+      setAppointmentDetail((detail) => {
+        if (!detail) return detail
+        const remainingClaims = pruneReleasedPackageClaims(detail.package_claims, result.releasedUsageIds)
+        const hasActiveClaims = remainingClaims.some((claim) =>
+          ['reserved', 'consumed'].includes(String(claim.status ?? '').toLowerCase()),
+        )
+        return {
+          ...detail,
+          package_claims: remainingClaims,
+          package_status: hasActiveClaims ? detail.package_status : null,
+        }
+      })
+    }
+    return true
+  }, [appointmentDetail?.id, appointmentDetail?.package_claims, reportEditSettlementError])
+
+  const removeEditAddedMainBlock = useCallback(async (tmpId: string) => {
+    const block = editAddedMainBlocks.find((item) => item.tmp_id === tmpId)
+    if (!block) return
+    if (block.service_id > 0) {
+      const released = await releaseEditSettlementPackageForService(block.service_id)
+      if (!released) return
+    }
+    for (const question of block.addon_questions) {
+      for (const option of question.options ?? []) {
+        const qty = getAddonQuantity(block.selected_addon_ids, option.id)
+        if (qty <= 0) continue
+        const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+        if (addonServiceId > 0) {
+          const released = await releaseEditSettlementPackageForService(addonServiceId)
+          if (!released) return
+        }
+      }
+    }
+    setEditAddedMainBlocks((prev) => prev.filter((item) => item.tmp_id !== tmpId))
+  }, [editAddedMainBlocks, releaseEditSettlementPackageForService])
+
+  const toggleEditAddedMainBlockAddon = useCallback(async (
+    blockTmpId: string,
+    option: ServiceAddonOption,
+    questionType: string,
+    questionOptionIds: number[],
+  ) => {
+    const block = editAddedMainBlocks.find((item) => item.tmp_id === blockTmpId)
+    if (!block) return
+    const wasSelected = isAddonSelected(block.selected_addon_ids, option.id)
+    setEditAddedMainBlocks((prev) => prev.map((item) => {
+      if (item.tmp_id !== blockTmpId) return item
+      return {
+        ...item,
+        selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, option, questionType, questionOptionIds),
+      }
+    }))
+    if (wasSelected) {
+      const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+      if (addonServiceId > 0) {
+        await releaseEditSettlementPackageForService(addonServiceId)
+      }
+    }
+  }, [editAddedMainBlocks, releaseEditSettlementPackageForService])
+
+  const setEditAddedMainBlockAddonQuantity = useCallback(async (
+    blockTmpId: string,
+    option: ServiceAddonOption,
+    qty: number,
+  ) => {
+    const block = editAddedMainBlocks.find((item) => item.tmp_id === blockTmpId)
+    if (!block) return
+    const wasSelected = getAddonQuantity(block.selected_addon_ids, option.id) > 0
+    setEditAddedMainBlocks((prev) => prev.map((item) => {
+      if (item.tmp_id !== blockTmpId) return item
+      return {
+        ...item,
+        selected_addon_ids: setAddonQuantity(item.selected_addon_ids, option, qty),
+      }
+    }))
+    if (wasSelected && qty <= 0) {
+      const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+      if (addonServiceId > 0) {
+        await releaseEditSettlementPackageForService(addonServiceId)
+      }
+    }
+  }, [editAddedMainBlocks, releaseEditSettlementPackageForService])
 
   const selectEditOriginalService = useCallback(async (service: BookingServiceOption) => {
     if (!service?.id) return
     reportEditSettlementError(null)
+
+    const previousServiceId = Number(editOriginalService?.id ?? appointmentDetail?.service?.id ?? 0)
+    const nextServiceId = Number(service.id)
+    if (
+      appointmentDetail?.id
+      && previousServiceId > 0
+      && nextServiceId > 0
+      && nextServiceId !== previousServiceId
+    ) {
+      const usageIds = collectActivePackageClaimUsageIds(appointmentDetail.package_claims, previousServiceId)
+      if (usageIds.length > 0) {
+        setAppointmentActionLoading(true)
+        try {
+          const releaseResult = await batchReleaseAppointmentPackageClaims(appointmentDetail.id, usageIds)
+          if (!releaseResult.ok) {
+            reportEditSettlementError(releaseResult.message ?? 'Unable to release package claims.')
+            return
+          }
+          const releasedIdSet = new Set(usageIds)
+          setAppointmentDetail((prev) => {
+            if (!prev) return prev
+            const remainingClaims = (prev.package_claims ?? []).filter(
+              (claim) => !releasedIdSet.has(Number(claim.usage_id)),
+            )
+            const hasActiveClaims = remainingClaims.some((claim) =>
+              ['reserved', 'consumed'].includes(String(claim.status ?? '').toLowerCase()),
+            )
+            return {
+              ...prev,
+              package_claims: remainingClaims,
+              package_status: hasActiveClaims ? prev.package_status : null,
+            }
+          })
+          showMsg('Package released because the service was changed.', 'success')
+          await fetchAppointments({ silent: true })
+          await refreshOpenedAppointmentDetail()
+        } finally {
+          setAppointmentActionLoading(false)
+        }
+      }
+    }
+
     setEditOriginalService(service)
     setEditOriginalServicePriceOverride(Number(service.service_price ?? service.price ?? 0))
     setEditAddonPriceOverrides({})
@@ -2611,7 +3015,15 @@ export default function PosAppointmentsWorkspace({
     setEditMainServicePickerOpen(false)
     setEditMainServicePickerTargetId(null)
     setEditMainServiceQuery('')
-  }, [])
+  }, [
+    appointmentDetail?.id,
+    appointmentDetail?.package_claims,
+    appointmentDetail?.service?.id,
+    editOriginalService?.id,
+    fetchAppointments,
+    refreshOpenedAppointmentDetail,
+    showMsg,
+  ])
 
   const openEditOriginalServicePicker = useCallback(() => {
     setEditMainServiceQuery('')
@@ -2632,22 +3044,30 @@ export default function PosAppointmentsWorkspace({
       questions = []
     }
     const catalogPrice = Number(service.service_price ?? service.price ?? 0)
+    const isRange = posPriceDisplayHasRange({
+      price_mode: service.price_mode ?? null,
+      price_range_min: service.price_range_min ?? null,
+      price_range_max: service.price_range_max ?? null,
+    })
+    const rangeMin = Number(service.price_range_min ?? catalogPrice)
     setEditAddedMainBlocks((prev) => [...prev, {
       tmp_id: `added-${service.id}-${Math.random()}`,
       service_id: service.id,
       service_name: service.name,
       service_cn_name: service.cn_name ?? null,
-      price: catalogPrice,
-      reference_unit_price: catalogPrice,
+      price: isRange ? 0 : catalogPrice,
+      reference_unit_price: isRange ? rangeMin : catalogPrice,
       price_mode: service.price_mode ?? null,
       price_range_min: service.price_range_min ?? null,
       price_range_max: service.price_range_max ?? null,
+      price_finalized: isRange ? false : (catalogPrice > 0.0001 ? true : null),
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
       selected_addon_ids: {},
       addon_price_overrides: {},
       addon_line_total_overrides: {},
       staff_splits: [{ staff_id: null, share_percent: '100', share_amount: '0.00' }],
+      split_mode: 'percent' as StaffSplitMode,
       auto_balance: true,
     }])
   }, [editOriginalService?.id, editAddedMainBlocks])
@@ -2662,27 +3082,58 @@ export default function PosAppointmentsWorkspace({
     setEditAddedMainBlocks((prev) => prev.map((block) => {
       if (block.tmp_id !== tmpId) return block
       const next = block.staff_splits.map((row, rowIdx) => (rowIdx === index ? { ...row, staff_id: staffId } : row))
-      const rebalanced = block.auto_balance ? rebalanceEditSettlementPrimaryShare(next) : next
+      const rebalanced = block.auto_balance ? rebalanceEditAddedMainBlockSplits(next, block) : next
       return { ...block, staff_splits: rebalanced }
     }))
-  }, [rebalanceEditSettlementPrimaryShare])
+  }, [rebalanceEditAddedMainBlockSplits])
 
   const updateEditAddedMainSplitShare = useCallback((tmpId: string, index: number, value: string) => {
     setEditAddedMainBlocks((prev) => prev.map((block) => {
       if (block.tmp_id !== tmpId) return block
       const next = block.staff_splits.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
       if (!block.auto_balance || index === 0) return { ...block, staff_splits: next }
-      return { ...block, staff_splits: rebalanceEditSettlementPrimaryShare(next) }
+      return { ...block, staff_splits: rebalanceEditAddedMainBlockSplits(next, block) }
     }))
-  }, [rebalanceEditSettlementPrimaryShare])
+  }, [rebalanceEditAddedMainBlockSplits])
+
+  const updateEditAddedMainSplitAmount = useCallback((tmpId: string, index: number, value: string) => {
+    setEditAddedMainBlocks((prev) => prev.map((block) => {
+      if (block.tmp_id !== tmpId) return block
+      const next = block.staff_splits.map((row, rowIdx) => (rowIdx === index ? { ...row, share_amount: value } : row))
+      if (!block.auto_balance || index === 0) return { ...block, staff_splits: next }
+      return { ...block, staff_splits: rebalanceSettlementInlineStaffRows(next, 'amount', resolveEditAddedMainBlockLineTotal(block), true) }
+    }))
+  }, [resolveEditAddedMainBlockLineTotal])
+
+  const updateEditAddedMainSplitMode = useCallback((tmpId: string, mode: StaffSplitMode) => {
+    setEditAddedMainBlocks((prev) => prev.map((block) => {
+      if (block.tmp_id !== tmpId) return block
+      const lineTotal = resolveEditAddedMainBlockLineTotal(block)
+      const nextMode = mode === 'amount' && lineTotal == null ? 'percent' : mode
+      const nextSplits = nextMode === 'amount' && lineTotal != null
+        ? block.staff_splits.map((row, index) => ({
+            ...row,
+            share_amount: percentsToAmounts(
+              block.staff_splits.map((item) => Number.parseInt(item.share_percent || '0', 10)),
+              lineTotal,
+            )[index]?.toFixed(2) ?? row.share_amount,
+          }))
+        : block.staff_splits
+      return {
+        ...block,
+        split_mode: nextMode,
+        staff_splits: block.auto_balance ? rebalanceEditAddedMainBlockSplits(nextSplits, { ...block, split_mode: nextMode }) : nextSplits,
+      }
+    }))
+  }, [rebalanceEditAddedMainBlockSplits, resolveEditAddedMainBlockLineTotal])
 
   const toggleEditAddedMainAutoBalance = useCallback((tmpId: string, enabled: boolean) => {
     setEditAddedMainBlocks((prev) => prev.map((block) => {
       if (block.tmp_id !== tmpId) return block
-      const nextSplits = enabled ? rebalanceEditSettlementPrimaryShare(block.staff_splits) : block.staff_splits
+      const nextSplits = enabled ? rebalanceEditAddedMainBlockSplits(block.staff_splits, block) : block.staff_splits
       return { ...block, auto_balance: enabled, staff_splits: nextSplits }
     }))
-  }, [rebalanceEditSettlementPrimaryShare])
+  }, [rebalanceEditAddedMainBlockSplits])
 
   const selectEditMainServiceForBlock = useCallback(async (tmpId: string, service: BookingServiceOption) => {
     if (!service?.id) return
@@ -2727,6 +3178,45 @@ export default function PosAppointmentsWorkspace({
     })
   }, [editOriginalLineTotal, editStaffSplitAutoBalance, reportEditSettlementError])
 
+  const submitEditSettlementPayload = useCallback(async (payload: Record<string, unknown>) => {
+    if (!appointmentDetail?.id) return
+
+    const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/edit-settlement`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      reportEditSettlementError(json?.message ?? 'Failed to update settlement.')
+      return
+    }
+    const updatedAppointment = (json?.data?.appointment ?? null) as Partial<PosAppointmentDetail> | null
+    if (updatedAppointment) {
+      setAppointmentDetail((current) => current ? {
+        ...current,
+        ...updatedAppointment,
+        service_total: Number(json?.data?.service_total ?? updatedAppointment.service_total ?? current.service_total ?? 0),
+        settled_service_amount: json?.data?.settled_service_amount ?? updatedAppointment.settled_service_amount ?? current.settled_service_amount,
+        requires_settled_amount: Boolean(json?.data?.requires_settled_amount ?? updatedAppointment.requires_settled_amount ?? current.requires_settled_amount ?? false),
+        main_services: (json?.data?.main_services ?? updatedAppointment.main_services ?? current.main_services) as PosAppointmentDetail['main_services'],
+        add_ons: (json?.data?.add_ons ?? updatedAppointment.add_ons ?? current.add_ons) as PosAppointmentDetail['add_ons'],
+        balance_due: Number(json?.data?.balance_due ?? updatedAppointment.balance_due ?? current.balance_due ?? 0),
+        amount_due_now: Number(json?.data?.amount_due_now ?? updatedAppointment.amount_due_now ?? current.amount_due_now ?? 0),
+      } : current)
+    }
+    const warnings = Array.isArray(json?.data?.policy_warnings)
+      ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+      : []
+    showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
+    setEditSettlementNoteDraft('')
+    setEditSettlementOpen(false)
+    setPrimaryStaffChangePrompt(null)
+    setPendingEditSettlementPayload(null)
+    await refreshOpenedAppointmentDetail()
+    await fetchAppointments({ silent: true })
+  }, [appointmentDetail?.id, fetchAppointments, refreshOpenedAppointmentDetail, reportEditSettlementError, showMsg])
+
   const saveEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.id) return
     reportEditSettlementError(null)
@@ -2763,7 +3253,7 @@ export default function PosAppointmentsWorkspace({
       const blockStaffSplitsByTmpId = new Map<string, ReturnType<typeof serializeStaffSplitForApi>[]>()
       for (const block of editAddedMainBlocks) {
         const blockLineTotal = Number(block.price ?? 0) > 0.0001 ? roundMoney(Number(block.price)) : null
-        const blockResult = mapSettlementInlineStaffRowsForApi(block.staff_splits, editStaffSplitMode, blockLineTotal)
+        const blockResult = mapSettlementInlineStaffRowsForApi(block.staff_splits, block.split_mode, blockLineTotal)
         if (!blockResult.valid) {
           reportEditSettlementError(blockResult.error ?? `Staff split for ${block.service_name} must be valid.`)
           return
@@ -2820,19 +3310,51 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
-      const primaryStaffCheck = await confirmAndVerifyEditSettlementPrimaryStaffChange({
-        originalStaffId: editSettlementOriginalPrimaryStaffId,
+      const staffNameById = createStaffNameResolver(activeStaffs, { fallbackStaff: appointmentDetail.staff })
+      const availabilityCheck = await verifyEditSettlementPrimaryStaffAvailability({
         nextSplits: normalizedSplits,
         startAt: appointmentDetail.appointment_start_at,
         endAt: appointmentDetail.appointment_end_at,
         ignoreBookingId: appointmentDetail.id,
         verifyMode: posAvailabilityVerifyMode,
-        staffNameById: (id) => activeStaffs.find((staff) => staff.id === id)?.name ?? appointmentDetail.staff?.id === id ? appointmentDetail.staff?.name : null,
+        staffNameById,
       })
-      if (!primaryStaffCheck.ok) {
-        if (!primaryStaffCheck.cancelled && primaryStaffCheck.message) {
-          reportEditSettlementError(primaryStaffCheck.message)
+      if (!availabilityCheck.ok) {
+        reportEditSettlementError(availabilityCheck.message)
+        return
+      }
+
+      const staffChangePrompt = buildEditSettlementPrimaryStaffChangePrompt({
+        originalStaffId: editSettlementOriginalPrimaryStaffId,
+        nextSplits: normalizedSplits,
+        staffNameById,
+      })
+      if (staffChangePrompt) {
+        payload.settlement_note = editSettlementNoteDraft.trim()
+
+        const phonePattern = /^\+?[0-9]{8,15}$/
+        if (editSettlementIdentityMode === 'member') {
+          if (!editSettlementCustomerId) {
+            reportEditSettlementError('Please assign a member.')
+            return
+          }
+          payload.customer_id = editSettlementCustomerId
+        } else {
+          const guestName = editSettlementGuestName.trim()
+          const guestPhone = normalizeInternationalPhone(editSettlementGuestPhone)
+          const guestEmail = editSettlementGuestEmail.trim()
+          if (guestPhone && !phonePattern.test(guestPhone)) {
+            reportEditSettlementError('Please enter a valid guest phone number (8-15 digits, optional + prefix).')
+            return
+          }
+          payload.customer_id = null
+          payload.guest_name = guestName || 'UNKNOWN'
+          payload.guest_phone = guestPhone || null
+          payload.guest_email = guestEmail || null
         }
+
+        setPrimaryStaffChangePrompt(staffChangePrompt)
+        setPendingEditSettlementPayload(payload)
         return
       }
 
@@ -2859,42 +3381,21 @@ export default function PosAppointmentsWorkspace({
         payload.guest_email = guestEmail || null
       }
 
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/edit-settlement`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const json = await res.json().catch(() => null)
-      if (!res.ok) {
-        reportEditSettlementError(json?.message ?? 'Failed to update settlement.')
-        return
-      }
-      const updatedAppointment = (json?.data?.appointment ?? null) as Partial<PosAppointmentDetail> | null
-      if (updatedAppointment) {
-        setAppointmentDetail((current) => current ? {
-          ...current,
-          ...updatedAppointment,
-          service_total: Number(json?.data?.service_total ?? updatedAppointment.service_total ?? current.service_total ?? 0),
-          settled_service_amount: json?.data?.settled_service_amount ?? updatedAppointment.settled_service_amount ?? current.settled_service_amount,
-          requires_settled_amount: Boolean(json?.data?.requires_settled_amount ?? updatedAppointment.requires_settled_amount ?? current.requires_settled_amount ?? false),
-          main_services: (json?.data?.main_services ?? updatedAppointment.main_services ?? current.main_services) as PosAppointmentDetail['main_services'],
-          add_ons: (json?.data?.add_ons ?? updatedAppointment.add_ons ?? current.add_ons) as PosAppointmentDetail['add_ons'],
-          balance_due: Number(json?.data?.balance_due ?? updatedAppointment.balance_due ?? current.balance_due ?? 0),
-          amount_due_now: Number(json?.data?.amount_due_now ?? updatedAppointment.amount_due_now ?? current.amount_due_now ?? 0),
-        } : current)
-      }
-      const warnings = Array.isArray(json?.data?.policy_warnings)
-        ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
-        : []
-      showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
-      setEditSettlementNoteDraft('')
-      setEditSettlementOpen(false)
-      await refreshOpenedAppointmentDetail()
-      await fetchAppointments({ silent: true })
+      await submitEditSettlementPayload(payload)
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editAddonQuantities, editSettledAmount, editStaffSplits, editStaffSplitMode, editOriginalLineTotal, editSettlementOriginalPrimaryStaffId, editAddonPriceOverrides, editAddonLineTotalOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, posAvailabilityVerifyMode, activeStaffs, fetchAppointments, refreshOpenedAppointmentDetail, showMsg, reportEditSettlementError])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editAddonQuantities, editSettledAmount, editStaffSplits, editStaffSplitMode, editOriginalLineTotal, editSettlementOriginalPrimaryStaffId, editAddonPriceOverrides, editAddonLineTotalOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, posAvailabilityVerifyMode, activeStaffs, fetchAppointments, reportEditSettlementError, submitEditSettlementPayload])
+
+  const confirmPrimaryStaffChangeForEditSettlement = useCallback(async () => {
+    if (!pendingEditSettlementPayload) return
+    setEditSettlementLoading(true)
+    try {
+      await submitEditSettlementPayload(pendingEditSettlementPayload)
+    } finally {
+      setEditSettlementLoading(false)
+    }
+  }, [pendingEditSettlementPayload, submitEditSettlementPayload])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -4722,7 +5223,9 @@ export default function PosAppointmentsWorkspace({
                                       />
                                       {packageCoversMainService ? (
                                         <p className="mt-0.5 text-[11px] font-medium leading-snug text-emerald-700">
-                                          [PKG] {hasPerLineClaims ? (claims.find((c) => c.booking_service_id === serviceBookingServiceId)?.package_name ?? 'Package') : 'Included in your package'}
+                                          {hasPerLineClaims
+                                            ? formatPackageClaimLineText(claims.find((c) => c.booking_service_id === serviceBookingServiceId))
+                                            : 'Included in your package'}
                                         </p>
                                       ) : null}
                                     </div>
@@ -4815,7 +5318,9 @@ export default function PosAppointmentsWorkspace({
                                               quantityClassName="mt-0.5 text-[11px] font-semibold tabular-nums text-slate-500"
                                               trailing={packageCoversAddon ? (
                                                 <span className="mt-1 block text-[11px] font-medium leading-snug text-emerald-700">
-                                                  [PKG] {hasPerLineClaims ? (claims.find((c) => c.booking_service_id === Number(addon.linked_booking_service_id ?? addon.id ?? 0))?.package_name ?? 'Package') : 'Included in your package'}
+                                                  {hasPerLineClaims
+                                                    ? formatPackageClaimLineText(claims.find((c) => c.booking_service_id === Number(addon.linked_booking_service_id ?? addon.id ?? 0)))
+                                                    : 'Included in your package'}
                                                 </span>
                                               ) : null}
                                             />
@@ -6869,20 +7374,24 @@ export default function PosAppointmentsWorkspace({
                     + Add Staff
                   </button>
                 </div>
-                {editOriginalLineTotal != null && editOriginalLineTotal > 0 ? (
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => setEditStaffSplitMode('percent')} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${editStaffSplitMode === 'percent' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 bg-white text-gray-700'}`}>Percent (%)</button>
-                    <button type="button" onClick={() => {
-                      setEditStaffSplitMode('amount')
-                      if (editOriginalLineTotal != null) {
-                        setEditStaffSplits((prev) => prev.map((row, index) => ({
-                          ...row,
-                          share_amount: percentsToAmounts(prev.map((item) => Number.parseInt(item.share_percent || '0', 10)), editOriginalLineTotal)[index]?.toFixed(2) ?? row.share_amount,
-                        })))
-                      }
-                    }} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${editStaffSplitMode === 'amount' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 bg-white text-gray-700'}`}>Fixed amount (RM)</button>
-                  </div>
-                ) : null}
+                <StaffSplitModeToggle
+                  mode={editStaffSplitMode}
+                  allowAmountMode={editSettlementStaffSplitAllowAmountMode}
+                  showAmountOption={editOriginalLineTotal != null && editOriginalLineTotal > 0}
+                  className="mb-2 flex flex-wrap gap-2"
+                  onModeChange={setEditStaffSplitMode}
+                  onSelectAmount={() => {
+                    if (editOriginalLineTotal == null) return
+                    setEditStaffSplitMode('amount')
+                    setEditStaffSplits((prev) => prev.map((row, index) => ({
+                      ...row,
+                      share_amount: percentsToAmounts(
+                        prev.map((item) => Number.parseInt(item.share_percent || '0', 10)),
+                        editOriginalLineTotal,
+                      )[index]?.toFixed(2) ?? row.share_amount,
+                    })))
+                  }}
+                />
                 {editStaffSplitMode === 'amount' && editOriginalLineTotal != null ? (
                   <p className="mb-2 text-xs text-gray-600">
                     Line total: <span className="font-bold">{editOriginalLineTotal.toFixed(2)}</span>
@@ -7287,7 +7796,7 @@ export default function PosAppointmentsWorkspace({
                       </div>
                       <button
                         type="button"
-                        onClick={() => setEditAddedMainBlocks((prev) => prev.filter((item) => item.tmp_id !== block.tmp_id))}
+                        onClick={() => void removeEditAddedMainBlock(block.tmp_id)}
                         className="rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
                       >
                         Remove
@@ -7299,6 +7808,18 @@ export default function PosAppointmentsWorkspace({
                     {block.service_id > 0 ? (
                       <>
                     <div className="space-y-2">
+                      <StaffSplitModeToggle
+                        mode={block.split_mode === 'amount' && resolveEditAddedMainBlockLineTotal(block) == null ? 'percent' : block.split_mode}
+                        allowAmountMode={resolveEditAddedMainBlockLineTotal(block) != null && !isEditAddedMainBlockPackageCovered(block)}
+                        showAmountOption={resolveEditAddedMainBlockLineTotal(block) != null}
+                        onModeChange={(mode) => updateEditAddedMainSplitMode(block.tmp_id, mode)}
+                        onSelectAmount={() => updateEditAddedMainSplitMode(block.tmp_id, 'amount')}
+                      />
+                      {block.split_mode === 'amount' && resolveEditAddedMainBlockLineTotal(block) != null ? (
+                        <p className="text-xs text-gray-600">
+                          Line total: <span className="font-bold">{resolveEditAddedMainBlockLineTotal(block)!.toFixed(2)}</span>
+                        </p>
+                      ) : null}
                       <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                         <input
                           type="checkbox"
@@ -7306,7 +7827,7 @@ export default function PosAppointmentsWorkspace({
                           onChange={(e) => toggleEditAddedMainAutoBalance(block.tmp_id, e.target.checked)}
                           className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                         />
-                        Auto Balance (lock first row, auto adjust to 100%)
+                        Auto Balance (lock first row{block.split_mode === 'amount' ? ', auto adjust to line total' : ', auto adjust to 100%'})
                       </label>
                       {block.staff_splits.map((split, idx) => (
                         <div key={`added-split-${block.tmp_id}-${idx}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px_auto]">
@@ -7336,21 +7857,32 @@ export default function PosAppointmentsWorkspace({
                               emptyListMessage="No staff available."
                             />
                           </div>
-                          <input
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={split.share_percent}
-                            disabled={block.auto_balance && idx === 0}
-                            onChange={(e) => {
-                              const value = e.target.value
-                              updateEditAddedMainSplitShare(block.tmp_id, idx, value)
-                            }}
-                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          />
+                          {block.split_mode === 'amount' ? (
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">RM</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={split.share_amount}
+                                disabled={block.auto_balance && idx === 0}
+                                onChange={(e) => updateEditAddedMainSplitAmount(block.tmp_id, idx, e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-2 text-sm"
+                              />
+                            </div>
+                          ) : (
+                            <input
+                              type="number"
+                              min={1}
+                              max={100}
+                              value={split.share_percent}
+                              disabled={block.auto_balance && idx === 0}
+                              onChange={(e) => updateEditAddedMainSplitShare(block.tmp_id, idx, e.target.value)}
+                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            />
+                          )}
                           <button
                             type="button"
-                            onClick={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                            onClick={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
                               ? { ...item, staff_splits: item.staff_splits.length <= 1 ? item.staff_splits : item.staff_splits.filter((_, rowIdx) => rowIdx !== idx) }
                               : item))}
                             className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600"
@@ -7361,7 +7893,7 @@ export default function PosAppointmentsWorkspace({
                       ))}
                       <button
                         type="button"
-                        onClick={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id ? { ...item, staff_splits: [...item.staff_splits, { staff_id: null, share_percent: '', share_amount: '0.00' }] } : item))}
+                        onClick={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id ? { ...item, staff_splits: [...item.staff_splits, { staff_id: null, share_percent: '', share_amount: '0.00' }] } : item))}
                         className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700"
                       >
                         + Add Staff
@@ -7381,15 +7913,8 @@ export default function PosAppointmentsWorkspace({
                               variant="settlement"
                               option={opt}
                               selection={block.selected_addon_ids}
-                              onToggle={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
-                                ? { ...item, selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, opt, question.question_type, question.options.map((row) => row.id)) }
-                                : item))}
-                              onQuantityChange={(qty) => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
-                                ? {
-                                  ...item,
-                                  selected_addon_ids: setAddonQuantity(item.selected_addon_ids, opt, qty),
-                                }
-                                : item))}
+                              onToggle={() => void toggleEditAddedMainBlockAddon(block.tmp_id, opt, question.question_type, question.options.map((row) => row.id))}
+                              onQuantityChange={(qty) => void setEditAddedMainBlockAddonQuantity(block.tmp_id, opt, qty)}
                               durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={block.selected_addon_ids} />}
                               priceLabel={
                                 <PosAddonSettlementPriceLabel
@@ -7561,6 +8086,21 @@ export default function PosAppointmentsWorkspace({
       )}
 
       {renderPosBodyModalPortal(
+        primaryStaffChangePrompt ? (
+          <PosPrimaryStaffChangeConfirmModal
+            prompt={primaryStaffChangePrompt}
+            loading={editSettlementLoading}
+            onCancel={() => {
+              setPrimaryStaffChangePrompt(null)
+              setPendingEditSettlementPayload(null)
+            }}
+            onConfirm={() => void confirmPrimaryStaffChangeForEditSettlement()}
+          />
+        ) : null,
+        bodyModalRoot,
+      )}
+
+      {renderPosBodyModalPortal(
         appointmentLineSplitTarget ? (
         <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 p-4">
           <div className="relative mx-auto flex w-full max-w-xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
@@ -7577,11 +8117,27 @@ export default function PosAppointmentsWorkspace({
                   Overwrite existing explicit staff splits
                 </label>
               ) : null}
-              {appointmentLineSplitTarget.type !== 'bulk' && appointmentLineSplitLineTotal != null && appointmentLineSplitLineTotal > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => setAppointmentLineSplitMode('percent')} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${appointmentLineSplitMode === 'percent' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 bg-white text-gray-700'}`}>Percent (%)</button>
-                  <button type="button" onClick={() => setAppointmentLineSplitMode('amount')} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${appointmentLineSplitMode === 'amount' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 bg-white text-gray-700'}`}>Fixed amount (RM)</button>
-                </div>
+              {appointmentLineSplitTarget.type === 'line' ? (
+                <StaffSplitModeToggle
+                  mode={appointmentLineSplitMode}
+                  allowAmountMode={appointmentLineSplitAllowAmountMode}
+                  showAmountOption={appointmentLineSplitLineTotal != null && appointmentLineSplitLineTotal > 0}
+                  onModeChange={setAppointmentLineSplitMode}
+                  onSelectAmount={() => {
+                    setAppointmentLineSplitMode('amount')
+                    if (appointmentLineSplitLineTotal != null) {
+                      setAppointmentLineSplitDraftRows((prev) =>
+                        prev.map((row, index) => ({
+                          ...row,
+                          share_amount: percentsToAmounts(
+                            prev.map((item) => Number.parseInt(item.share_percent || '0', 10)),
+                            appointmentLineSplitLineTotal,
+                          )[index]?.toFixed(2) ?? row.share_amount,
+                        })),
+                      )
+                    }
+                  }}
+                />
               ) : null}
               {appointmentLineSplitMode === 'amount' && appointmentLineSplitLineTotal != null ? (
                 <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">

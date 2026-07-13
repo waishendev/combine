@@ -17,6 +17,9 @@ class SalesVisualDailyReportService
 {
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
 
+    /** Booking lines attributed to staff sales once a booking is settled (includes prior deposits). */
+    private const BOOKING_STAFF_SALES_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon'];
+
     private function orderBillAtSql(string $alias = 'o'): string
     {
         return "COALESCE({$alias}.placed_at, {$alias}.created_at)";
@@ -513,6 +516,26 @@ class SalesVisualDailyReportService
         return "(CASE WHEN $orderItemAlias.line_type IN ('booking_settlement','booking_addon') AND $orderItemAlias.booking_id IS NOT NULL AND $orderItemAlias.booking_service_id IS NOT NULL AND $netExpr <= 0.0001 AND $grossExpr > 0.0001 THEN COALESCE((SELECT COALESCE(spi.redemption_value, 0)::numeric * GREATEST(1, COALESCE($orderItemAlias.quantity, 1))::numeric FROM customer_service_package_usages u JOIN customer_service_packages csp ON csp.id = u.customer_service_package_id JOIN service_package_items spi ON spi.service_package_id = csp.service_package_id AND spi.booking_service_id = u.booking_service_id WHERE u.booking_service_id = $orderItemAlias.booking_service_id AND u.status IN ('reserved','consumed') AND (u.booking_id = $orderItemAlias.booking_id OR (u.used_from = 'POS' AND u.used_ref_id = $orderItemAlias.booking_id)) ORDER BY u.id LIMIT 1), 0) ELSE 0 END)::numeric";
     }
 
+    /**
+     * A deposit is returned when the service is ultimately paid by a package claim.
+     * Exclude that old deposit from staff sales; the package redemption value is the
+     * commissionable service value for the completed booking.
+     */
+    private function excludePackageRefundedBookingDeposits(Builder $query, string $orderItemAlias = 'order_items'): Builder
+    {
+        $packageValue = $this->packageRedemptionLineValueExpr('package_claim_item');
+
+        return $query->where(function (Builder $scope) use ($orderItemAlias, $packageValue) {
+            $scope->where("{$orderItemAlias}.line_type", '!=', 'booking_deposit')
+                ->orWhereNotExists(function (Builder $packageClaim) use ($orderItemAlias, $packageValue) {
+                    $packageClaim->selectRaw('1')
+                        ->from('order_items as package_claim_item')
+                        ->whereColumn('package_claim_item.booking_id', "{$orderItemAlias}.booking_id")
+                        ->whereRaw("($packageValue) > 0.0001");
+                });
+        });
+    }
+
     /** @return list<array{staff_id: int, name: string}> */
     private function allStaffRoster(): array
     {
@@ -688,15 +711,17 @@ class SalesVisualDailyReportService
                 'order_item_staff_splits',
                 $this->effectiveBookingLineTotalExpr(),
             );
-            $splitRows = $this->applyOrderScope(
+            $splitRowsQuery = $this->applyOrderScope(
                 DB::table('order_item_staff_splits')
                     ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
                     ->join('orders', 'orders.id', '=', 'order_items.order_id')
                     ->join('staffs', 'staffs.id', '=', 'order_item_staff_splits.staff_id')
                     ->whereIn('order_items.booking_id', $settledBookingIds)
-                    ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon']),
+                    ->whereIn('order_items.line_type', self::BOOKING_STAFF_SALES_LINE_TYPES),
                 'orders'
-            )
+            );
+            $this->excludePackageRefundedBookingDeposits($splitRowsQuery);
+            $splitRows = $splitRowsQuery
                 ->selectRaw('staffs.id as staff_id')
                 ->selectRaw('staffs.name as staff_name')
                 ->selectRaw('order_items.booking_id as booking_id')
@@ -735,18 +760,20 @@ class SalesVisualDailyReportService
             $lineTotal = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
             $fallbackLineTotal = "GREATEST($lineTotal, " . $this->packageRedemptionLineValueExpr('order_items') . ")";
 
-            $fallbackItems = $this->applyOrderScope(
+            $fallbackItemsQuery = $this->applyOrderScope(
                 DB::table('order_items')
                     ->join('orders', 'orders.id', '=', 'order_items.order_id')
                     ->whereIn('order_items.booking_id', $settledBookingIds)
-                    ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
+                    ->whereIn('order_items.line_type', self::BOOKING_STAFF_SALES_LINE_TYPES)
                     ->whereNotExists(function ($sub) {
                         $sub->selectRaw('1')
                             ->from('order_item_staff_splits')
                             ->whereColumn('order_item_staff_splits.order_item_id', 'order_items.id');
                     }),
                 'orders'
-            )
+            );
+            $this->excludePackageRefundedBookingDeposits($fallbackItemsQuery);
+            $fallbackItems = $fallbackItemsQuery
                 ->selectRaw('order_items.id as order_item_id')
                 ->selectRaw('order_items.booking_id as booking_id')
                 ->selectRaw("$fallbackLineTotal as line_amount")

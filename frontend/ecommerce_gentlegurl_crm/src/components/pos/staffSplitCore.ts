@@ -123,6 +123,32 @@ export function validateStaffSplitDraft(
   return { valid: true, error: null }
 }
 
+export function mapBulkStaffSplitDraftToPayload(
+  rows: Array<{ staff_id: number | null; share_percent: number; share_amount: string }>,
+  mode: StaffSplitMode,
+  referenceTotal: number | null,
+  lineTotal: number | null,
+): StaffSplitPayload[] {
+  const resolvedLineTotal = lineTotal != null && lineTotal > 0 ? roundMoney(lineTotal) : null
+  const resolvedReferenceTotal = referenceTotal != null && referenceTotal > 0 ? roundMoney(referenceTotal) : null
+
+  if (mode === 'amount' && resolvedReferenceTotal != null && resolvedLineTotal != null) {
+    const template = mapStaffSplitDraftToPayload(rows, 'amount', resolvedReferenceTotal)
+    const percents = template.map((row) => row.share_percent)
+    const amounts = percentsToAmounts(percents, resolvedLineTotal)
+    const linePercents = amountsToIntegerPercents(amounts, resolvedLineTotal)
+
+    return template.map((row, index) => ({
+      staff_id: row.staff_id,
+      share_percent: linePercents[index] ?? row.share_percent,
+      share_amount: amounts[index] ?? 0,
+      split_mode: 'amount' as const,
+    }))
+  }
+
+  return mapStaffSplitDraftToPayload(rows, mode, resolvedLineTotal ?? resolvedReferenceTotal)
+}
+
 export function mapStaffSplitDraftToPayload(
   rows: Array<{ staff_id: number | null; share_percent: number; share_amount: string }>,
   mode: StaffSplitMode,
@@ -268,6 +294,42 @@ export function mapSettlementInlineStaffRowsForApi(
     error: null,
     splits: mapStaffSplitDraftToPayload(draftRows, mode, lineTotal).map(serializeStaffSplitForApi),
   }
+}
+
+export function resolveSavedSettlementStaffSplitMode(
+  splits: Array<{ split_mode?: StaffSplitMode | string | null; share_amount?: number | string | null }> | null | undefined,
+  options?: { allowAmount?: boolean },
+): StaffSplitMode {
+  const allowAmount = options?.allowAmount !== false
+  const savedMode = splits?.[0]?.split_mode
+  if (savedMode === 'amount' && allowAmount) return 'amount'
+  if (savedMode === 'percent') return 'percent'
+  if (
+    allowAmount
+    && (splits ?? []).some((split) => split.share_amount != null && Number(split.share_amount) > 0)
+  ) {
+    return 'amount'
+  }
+  return 'percent'
+}
+
+export function seedSettlementInlineStaffRows(
+  splits: Array<{ staff_id?: number | null; share_percent?: number | string | null; share_amount?: number | string | null }>,
+  mode: StaffSplitMode,
+  lineTotal: number | null,
+): SettlementInlineStaffSplitRow[] {
+  const rows = splits
+    .map((split) => ({
+      staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+      share_percent: String(split.share_percent ?? ''),
+      share_amount: split.share_amount != null ? Number(split.share_amount).toFixed(2) : '0.00',
+    }))
+    .filter((split) => split.staff_id != null)
+  if (rows.length === 0) return rows
+  if (mode === 'amount' && lineTotal != null && lineTotal > 0) {
+    return rebalanceSettlementInlineStaffRows(rows, 'amount', lineTotal, true)
+  }
+  return rebalancePrimaryPercentShare(rows)
 }
 
 export function settlementInlineRowsToInheritedSplits(rows: SettlementInlineStaffSplitRow[]): StaffSplitPayload[] {

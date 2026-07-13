@@ -72,6 +72,21 @@ class StaffSplitNormalizerTest extends TestCase
         $this->assertSame('service:12:addon:9', $addonMatched['line_key']);
     }
 
+    public function test_normalize_percent_splits_without_share_amount_key(): void
+    {
+        $normalizer = new StaffSplitNormalizer();
+        $result = $normalizer->normalize([
+            ['staff_id' => 1, 'share_percent' => 60],
+            ['staff_id' => 2, 'share_percent' => 40],
+        ], 100);
+
+        $this->assertNull($result['error']);
+        $this->assertCount(2, $result['splits']);
+        $this->assertSame('percent', $result['splits'][0]['split_mode']);
+        $this->assertSame(60.0, $result['splits'][0]['share_amount']);
+        $this->assertSame(40.0, $result['splits'][1]['share_amount']);
+    }
+
     public function test_to_report_split_shows_amount_only_in_amount_mode(): void
     {
         $percentSplit = StaffSplitNormalizer::toReportSplit([

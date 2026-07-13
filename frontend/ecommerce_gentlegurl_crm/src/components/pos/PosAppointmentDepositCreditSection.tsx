@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
+import PosDepositOrderStaffSplitModal from '@/components/pos/PosDepositOrderStaffSplitModal'
+
 import type { PosDepositTransaction } from './posAppointmentTypes'
 
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
@@ -100,6 +102,7 @@ export default function PosAppointmentDepositCreditSection({
   }, [onError])
   const [saving, setSaving] = useState(false)
   const [formMode, setFormMode] = useState<DepositFormMode>({ type: 'idle' })
+  const [staffSplitOrder, setStaffSplitOrder] = useState<{ orderId: number; orderNumber?: string | null } | null>(null)
   const [remarkDraft, setRemarkDraft] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<SplitPaymentMethod>('qrpay')
   const [splitPayments, setSplitPayments] = useState<Record<SplitPaymentMethod, string>>(EMPTY_SPLIT_PAYMENTS)
@@ -413,14 +416,29 @@ export default function PosAppointmentDepositCreditSection({
                     </a>
                   ) : null}
                   {formMode.type === 'idle' ? (
-                    <button
-                      type="button"
-                      disabled={disabled || saving}
-                      onClick={() => openEditForm(transaction)}
-                      className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
-                    >
-                      Edit
-                    </button>
+                    <>
+                      {transaction.order_id && transaction.channel !== 'online' ? (
+                        <button
+                          type="button"
+                          disabled={disabled || saving}
+                          onClick={() => setStaffSplitOrder({
+                            orderId: Number(transaction.order_id),
+                            orderNumber: transaction.order_number,
+                          })}
+                          className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          Edit Sales Person
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={disabled || saving}
+                        onClick={() => openEditForm(transaction)}
+                        className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                      >
+                        Edit
+                      </button>
+                    </>
                   ) : null}
                 </div>
               </div>
@@ -528,6 +546,18 @@ export default function PosAppointmentDepositCreditSection({
             </button>
           </div>
         </div>
+      ) : null}
+
+      {staffSplitOrder ? (
+        <PosDepositOrderStaffSplitModal
+          orderId={staffSplitOrder.orderId}
+          orderNumber={staffSplitOrder.orderNumber}
+          onClose={() => setStaffSplitOrder(null)}
+          showMsg={showMsg}
+          onSaved={() => {
+            void refreshDeposits({ silent: true })
+          }}
+        />
       ) : null}
     </div>
   )

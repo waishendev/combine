@@ -417,9 +417,45 @@ export function resolveAddedMainServiceSeedFinalized(
     extra_price: resolvedPrice,
   }
   if (posPriceDisplayHasRange(source)) {
-    return resolvedPrice > 0
+    if (settlementLine) {
+      const gross = finiteNumber(settlementLine.gross_amount)
+      const balance = finiteNumber(settlementLine.balance_due)
+      if ((gross != null && gross > 0.0001) || (balance != null && balance > 0.0001)) return true
+    }
+    return false
   }
   return resolvedPrice > 0
+}
+
+export type EditSettlementAddedMainBlockLike = PosPriceDisplaySource & {
+  price?: number
+  price_finalized?: boolean | null
+}
+
+export function editSettlementAddedMainBlockPriceSource(
+  block: EditSettlementAddedMainBlockLike,
+): PosPriceDisplaySource {
+  return {
+    ...block,
+    extra_price: block.price ?? block.extra_price,
+    price_finalized: block.price_finalized,
+  }
+}
+
+export function editSettlementAddedMainBlockHasUnsettledRange(
+  block: EditSettlementAddedMainBlockLike,
+): boolean {
+  return posLineHasUnsettledRangePricing(editSettlementAddedMainBlockPriceSource(block))
+}
+
+/** Cash line total for added main-service staff split; null when range price is not finalized. */
+export function resolveEditSettlementAddedMainBlockLineTotal(
+  block: EditSettlementAddedMainBlockLike,
+): number | null {
+  if (editSettlementAddedMainBlockHasUnsettledRange(block)) return null
+  const price = finiteNumber(block.price ?? block.extra_price)
+  if (price == null || price <= 0.0001) return null
+  return price
 }
 
 export function resolveSettlementAddonLineGross(
@@ -461,6 +497,65 @@ export function resolveEditSettlementAddonLineAmount(
     ? Number(unitOverrides[optionId] ?? 0)
     : catalogUnitPrice
   return unit * qty
+}
+
+/** Cash line total for add-on staff split (overrides, then stored settlement row, then catalog). */
+export function resolveEditSettlementAddonSplitLineTotal(
+  option: (PosPriceDisplaySource & StoredAddonRowLike & { id?: number }) | null | undefined,
+  selection: AddonSelectionMap,
+  unitOverrides: Record<number, number>,
+  lineTotalOverrides: Record<number, number>,
+  storedRow?: (PosPriceDisplaySource & StoredAddonRowLike & { id?: number }) | null,
+): number | null {
+  if (!option) return null
+  const optionId = Number(option.id ?? 0)
+  if (optionId <= 0 || !isAddonSelected(selection, optionId)) return null
+
+  const fromOverrides = resolveEditSettlementAddonLineAmount(
+    optionId,
+    Number(option.extra_price ?? 0),
+    selection,
+    unitOverrides,
+    lineTotalOverrides,
+  )
+  if (fromOverrides != null && fromOverrides > 0.0001) {
+    return fromOverrides
+  }
+
+  const qty = getAddonQuantity(selection, optionId)
+  const hasUnitOverride = Object.prototype.hasOwnProperty.call(unitOverrides, optionId)
+  const hasLineOverride = Object.prototype.hasOwnProperty.call(lineTotalOverrides, optionId)
+  const merged: PosPriceDisplaySource & StoredAddonRowLike = {
+    ...option,
+    ...(storedRow ?? {}),
+    quantity: qty,
+  }
+
+  const display = posAddonDisplayWithSelection(
+    merged,
+    selection,
+    hasUnitOverride ? unitOverrides[optionId] : undefined,
+    hasUnitOverride,
+    hasLineOverride ? lineTotalOverrides[optionId] : undefined,
+    hasLineOverride,
+  )
+
+  const pricedRow = display ?? merged
+  const line = storedAddonLinePrice({
+    ...pricedRow,
+    quantity: qty,
+    line_total_override: hasLineOverride ? lineTotalOverrides[optionId] : pricedRow.line_total_override,
+    line_gross_amount: hasLineOverride
+      ? lineTotalOverrides[optionId]
+      : (pricedRow.line_gross_amount ?? merged.line_gross_amount ?? merged.gross_amount ?? null),
+    gross_amount: hasLineOverride
+      ? lineTotalOverrides[optionId]
+      : (pricedRow.gross_amount ?? merged.gross_amount ?? null),
+  })
+  if (line > 0.0001) return line
+
+  const settlementGross = resolveSettlementAddonLineGross(merged)
+  return settlementGross > 0.0001 ? settlementGross : null
 }
 
 export function resolveEditSettlementAddonUnitDisplay(
@@ -731,8 +826,15 @@ export function computeSettlementCartItemServiceValueBounds(
 
 export function settlementPackageApplied(settlement?: SettlementCartItemLike | null): boolean {
   if (!settlement) return false
+  const claims = settlement.package_claims ?? []
+  if (claims.length > 0) {
+    return claims.some((claim) => isActivePackageClaim(claim))
+  }
   return ['reserved', 'consumed'].includes(String(settlement.package_status?.status ?? '').toLowerCase())
-    || (settlement.package_claims?.length ?? 0) > 0
+}
+
+export function isActivePackageClaim(claim: { status?: string | null }): boolean {
+  return ['reserved', 'consumed'].includes(String(claim.status ?? '').toLowerCase())
 }
 
 export function settlementMainLineCoveredByPackage(
@@ -743,7 +845,9 @@ export function settlementMainLineCoveredByPackage(
   const claims = settlement.package_claims ?? []
   const lineBookingServiceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
   if (claims.length > 0) {
-    return claims.some((claim) => claim.booking_service_id === lineBookingServiceId)
+    return claims.some((claim) =>
+      Number(claim.booking_service_id ?? 0) === lineBookingServiceId && isActivePackageClaim(claim),
+    )
   }
 
   const pkgOffset = Number(settlement.package_offset ?? 0)
@@ -769,7 +873,9 @@ export function settlementAddonLineCoveredByPackage(
   const claims = settlement.package_claims ?? []
   const lineBookingServiceId = Number(addon.linked_booking_service_id ?? addon.id ?? 0)
   if (claims.length > 0) {
-    return claims.some((claim) => claim.booking_service_id === lineBookingServiceId)
+    return claims.some((claim) =>
+      Number(claim.booking_service_id ?? 0) === lineBookingServiceId && isActivePackageClaim(claim),
+    )
   }
 
   const pkgOffset = Number(settlement.package_offset ?? 0)
@@ -777,6 +883,36 @@ export function settlementAddonLineCoveredByPackage(
   const gross = resolveSettlementAddonLineGross(addon)
   const addonReference = gross > 0.0001 ? gross : Number(addon.extra_price ?? 0) * storedAddonQuantity(addon)
   return pkgOffset > originalServiceReference + 0.0001 && net <= 0.0001 && addonReference > 0.0001
+}
+
+/** Whether a booking service line is paid via package redemption rather than cash settlement. */
+export function bookingServiceIdCoveredByPackage(
+  settlement: SettlementCartItemLike | null | undefined,
+  bookingServiceId: number,
+  options?: {
+    treatAsOriginalMain?: boolean
+    addon?: Parameters<typeof settlementAddonLineCoveredByPackage>[1]
+    originalServiceReference?: number
+  },
+): boolean {
+  if (!settlement) return false
+
+  const claims = settlement.package_claims ?? []
+  const activeClaims = claims.filter((claim) => isActivePackageClaim(claim))
+  if (claims.length > 0) {
+    if (bookingServiceId <= 0 || activeClaims.length === 0) return false
+    return activeClaims.some((claim) => Number(claim.booking_service_id ?? 0) === bookingServiceId)
+  }
+
+  if (options?.treatAsOriginalMain && settlementPackageApplied(settlement)) {
+    return true
+  }
+
+  if (options?.addon && options.originalServiceReference != null) {
+    return settlementAddonLineCoveredByPackage(settlement, options.addon, options.originalServiceReference)
+  }
+
+  return false
 }
 
 export function computeSettlementCartItemDueBounds(

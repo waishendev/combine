@@ -673,18 +673,12 @@ class OfflineOrderManagementService
                     ->whereIn('id', $bookingIds)
                     ->get();
 
-                foreach ($bookings as $booking) {
-                    if ($booking->staff_id && $booking->completed_at) {
-                        $completedAt = $booking->completed_at instanceof Carbon
-                            ? $booking->completed_at
-                            : Carbon::parse((string) $booking->completed_at);
-                        $bookingRecalculateTargets[] = [
-                            'staff_id' => (int) $booking->staff_id,
-                            'year' => (int) $completedAt->format('Y'),
-                            'month' => (int) $completedAt->format('m'),
-                        ];
-                    }
+                $bookingRecalculateTargets = array_merge(
+                    $bookingRecalculateTargets,
+                    $this->resolveBookingRecalculateTargetsForVoidedOrders($voidedOrderIds, $bookings),
+                );
 
+                foreach ($bookings as $booking) {
                     if ($voidAppointment) {
                         $beforeBooking = [
                             'status' => $booking->status,
@@ -895,6 +889,139 @@ class OfflineOrderManagementService
             return (string) $row->line_type === 'booking_addon'
                 && strcasecmp((string) ($row->variant_name_snapshot ?? ''), 'Booking Add-on Deposit') === 0;
         });
+    }
+
+    private const BOOKING_COMMISSION_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'];
+
+    /**
+     * Collect every staff who had split lines on the voided orders so commission
+     * is recalculated for main service and add-on workers, not only bookings.staff_id.
+     *
+     * @param  array<int>  $voidedOrderIds
+     * @param  \Illuminate\Support\Collection<int, Booking>  $bookings
+     * @return array<int, array{staff_id: int, year: int, month: int}>
+     */
+    private function resolveBookingRecalculateTargetsForVoidedOrders(array $voidedOrderIds, $bookings): array
+    {
+        if ($voidedOrderIds === [] || $bookings->isEmpty()) {
+            return [];
+        }
+
+        $bookingIds = $bookings->pluck('id')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values()->all();
+        if ($bookingIds === []) {
+            return [];
+        }
+
+        $bookingsById = $bookings->keyBy('id');
+        $staffByBooking = [];
+
+        $splitRows = DB::table('order_item_staff_splits')
+            ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
+            ->whereIn('order_items.order_id', $voidedOrderIds)
+            ->whereIn('order_items.line_type', self::BOOKING_COMMISSION_LINE_TYPES)
+            ->whereIn('order_items.booking_id', $bookingIds)
+            ->select(['order_item_staff_splits.staff_id', 'order_items.booking_id'])
+            ->get();
+
+        foreach ($splitRows as $row) {
+            $staffId = (int) ($row->staff_id ?? 0);
+            $bookingId = (int) ($row->booking_id ?? 0);
+            if ($staffId <= 0 || $bookingId <= 0) {
+                continue;
+            }
+
+            $staffByBooking[$bookingId][$staffId] = true;
+        }
+
+        $fallbackBookingIds = DB::table('order_items')
+            ->whereIn('order_id', $voidedOrderIds)
+            ->whereIn('booking_id', $bookingIds)
+            ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->whereNotExists(function ($sub) {
+                $sub->selectRaw('1')
+                    ->from('order_item_staff_splits')
+                    ->whereColumn('order_item_staff_splits.order_item_id', 'order_items.id');
+            })
+            ->pluck('booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($fallbackBookingIds !== []) {
+            $bookingSplitRows = DB::table('booking_service_staff_splits')
+                ->whereIn('booking_id', $fallbackBookingIds)
+                ->select(['staff_id', 'booking_id'])
+                ->get();
+
+            foreach ($bookingSplitRows as $row) {
+                $staffId = (int) ($row->staff_id ?? 0);
+                $bookingId = (int) ($row->booking_id ?? 0);
+                if ($staffId <= 0 || $bookingId <= 0) {
+                    continue;
+                }
+
+                $staffByBooking[$bookingId][$staffId] = true;
+            }
+
+            foreach ($bookingsById as $bookingId => $booking) {
+                if (! in_array((int) $bookingId, $fallbackBookingIds, true)) {
+                    continue;
+                }
+
+                $staffId = (int) ($booking->staff_id ?? 0);
+                if ($staffId > 0) {
+                    $staffByBooking[(int) $bookingId][$staffId] = true;
+                }
+            }
+        }
+
+        $targets = [];
+        foreach ($staffByBooking as $bookingId => $staffIds) {
+            $booking = $bookingsById->get((int) $bookingId);
+            if (! $booking) {
+                continue;
+            }
+
+            $recalculateAt = $this->resolveBookingCommissionRecalculateAt($booking, $voidedOrderIds);
+            if (! $recalculateAt) {
+                continue;
+            }
+
+            foreach (array_keys($staffIds) as $staffId) {
+                $targets[] = [
+                    'staff_id' => (int) $staffId,
+                    'year' => (int) $recalculateAt->format('Y'),
+                    'month' => (int) $recalculateAt->format('m'),
+                ];
+            }
+        }
+
+        return $targets;
+    }
+
+    private function resolveBookingCommissionRecalculateAt(Booking $booking, array $voidedOrderIds): ?Carbon
+    {
+        if ($booking->completed_at) {
+            return $booking->completed_at instanceof Carbon
+                ? $booking->completed_at
+                : Carbon::parse((string) $booking->completed_at);
+        }
+
+        $billAt = DB::table('orders')
+            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+            ->whereIn('orders.id', $voidedOrderIds)
+            ->where('order_items.booking_id', (int) $booking->id)
+            ->selectRaw('MAX('.$this->orderBillAtSql('orders').') as bill_at')
+            ->value('bill_at');
+
+        return $billAt ? Carbon::parse((string) $billAt) : null;
+    }
+
+    private function orderBillAtSql(string $alias = 'orders'): string
+    {
+        return "COALESCE({$alias}.placed_at, {$alias}.created_at)";
     }
 
     private function recalculateBookingCommissionsForTargets(
