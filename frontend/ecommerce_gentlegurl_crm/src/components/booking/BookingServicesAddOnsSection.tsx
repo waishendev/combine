@@ -3,8 +3,15 @@
 import { formatPosCurrentOrRangeDisplay } from '@/components/pos/settlementAmountUtils'
 import { storedAddonLinePrice, storedAddonQuantity } from '@/components/pos/bookingAddonQuantity'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { formatReportStaffSplitLabel } from '@/components/pos/staffSplitCore'
 
-export type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
+export type StaffSplit = {
+  staff_id: number
+  staff_name?: string | null
+  name?: string | null
+  share_percent: number
+  share_amount?: number | null
+}
 
 export type BookingServiceAddOn = {
   id?: number | null
@@ -134,7 +141,7 @@ function StaffSplitList({ splits, inherited }: { splits?: StaffSplit[]; inherite
       <ul className="space-y-1 text-sm text-slate-700">
         {splits.map((split, index) => (
           <li key={`${split.staff_id}-${index}`}>
-            <span>{split.staff_name ?? split.name ?? `Staff #${split.staff_id}`} — {Number(split.share_percent ?? 0)}%</span>
+            <span>{formatReportStaffSplitLabel(split)}</span>
             {inherited && index === 0 ? <span className="ml-2 text-xs text-slate-500">Inherited from main service</span> : null}
           </li>
         ))}

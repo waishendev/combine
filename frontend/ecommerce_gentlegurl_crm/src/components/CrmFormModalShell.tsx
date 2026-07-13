@@ -8,6 +8,7 @@ type CrmFormModalShellProps = {
   closeDisabled?: boolean
   closeLabel?: string
   size?: 'sm' | 'lg' | 'xl'
+  rootClassName?: string
   children: ReactNode
   footer?: ReactNode
 }
@@ -18,6 +19,7 @@ export default function CrmFormModalShell({
   closeDisabled = false,
   closeLabel = 'Close',
   size = 'sm',
+  rootClassName,
   children,
   footer,
 }: CrmFormModalShellProps) {
@@ -25,7 +27,7 @@ export default function CrmFormModalShell({
     size === 'xl' ? 'sm:max-w-6xl' : size === 'lg' ? 'sm:max-w-4xl' : 'sm:max-w-lg'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:overflow-y-auto sm:p-4">
+    <div className={rootClassName ?? 'fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:overflow-y-auto sm:p-4'}>
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {

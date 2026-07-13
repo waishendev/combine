@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ecommerce\Reports;
 
 use App\Http\Controllers\Controller;
+use App\Services\Ecommerce\StaffSplitNormalizer;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,14 +21,15 @@ class StaffCommissionReportController extends Controller
         $effectiveLineTotalExpr = $this->effectiveLineTotalExpr();
         $snapshotLineTotalExpr = $this->snapshotLineTotalExpr();
         $commissionRateExpr = $this->commissionRateExpr();
+        $splitSalesExpr = StaffSplitNormalizer::splitSalesSql('order_item_staff_splits', $effectiveLineTotalExpr);
 
         $productRows = $this->baseCommissionQuery($validated)
             ->selectRaw('order_item_staff_splits.staff_id')
             ->selectRaw('MAX(staffs.name) AS staff_name')
             ->selectRaw('MAX(staffs.commission_rate) AS commission_rate')
             ->selectRaw('MAX(staffs.service_commission_rate) AS service_commission_rate')
-            ->selectRaw("SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100)) AS total_sales")
-            ->selectRaw("SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)) AS total_commission")
+            ->selectRaw("SUM({$splitSalesExpr}) AS total_sales")
+            ->selectRaw("SUM({$splitSalesExpr} * ({$commissionRateExpr})) AS total_commission")
             ->selectRaw('COUNT(DISTINCT orders.id) AS orders_count')
             ->selectRaw('COUNT(DISTINCT order_items.id) AS items_count')
             ->selectRaw('SUM(CASE WHEN COALESCE(order_items.is_staff_free_applied, false) THEN 1 ELSE 0 END) AS free_items_count')
@@ -154,6 +156,7 @@ class StaffCommissionReportController extends Controller
         $effectiveLineTotalExpr = $this->effectiveLineTotalExpr();
         $snapshotLineTotalExpr = $this->snapshotLineTotalExpr();
         $commissionRateExpr = $this->commissionRateExpr();
+        $splitSalesExpr = StaffSplitNormalizer::splitSalesSql('order_item_staff_splits', $effectiveLineTotalExpr);
 
         $productDetailQuery = $this->baseCommissionQuery($validated)
             ->where('order_item_staff_splits.staff_id', $validated['staff_id'])
@@ -167,9 +170,11 @@ class StaffCommissionReportController extends Controller
             ->selectRaw("($snapshotLineTotalExpr) AS item_snapshot_amount")
             ->selectRaw('COALESCE(order_items.is_staff_free_applied, false) AS is_staff_free_applied')
             ->selectRaw('order_item_staff_splits.share_percent')
-            ->selectRaw("($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) AS staff_item_sales")
+            ->selectRaw('order_item_staff_splits.share_amount')
+            ->selectRaw('order_item_staff_splits.split_mode')
+            ->selectRaw("({$splitSalesExpr}) AS staff_item_sales")
             ->selectRaw('order_item_staff_splits.commission_rate_snapshot AS commission_rate')
-            ->selectRaw("($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr) AS staff_item_commission");
+            ->selectRaw("({$splitSalesExpr}) * ({$commissionRateExpr}) AS staff_item_commission");
 
         $packageDetailQuery = $this->basePackageCommissionQuery($validated)
             ->where('service_package_staff_splits.staff_id', $validated['staff_id'])
@@ -183,6 +188,8 @@ class StaffCommissionReportController extends Controller
             ->selectRaw('service_package_staff_splits.split_sales_amount AS item_snapshot_amount')
             ->selectRaw('false AS is_staff_free_applied')
             ->selectRaw('service_package_staff_splits.share_percent')
+            ->selectRaw('service_package_staff_splits.split_mode')
+            ->selectRaw('service_package_staff_splits.split_sales_amount AS share_amount')
             ->selectRaw('service_package_staff_splits.split_sales_amount AS staff_item_sales')
             ->selectRaw('service_package_staff_splits.service_commission_rate_snapshot AS commission_rate')
             ->selectRaw('service_package_staff_splits.commission_amount_snapshot AS staff_item_commission');
@@ -202,6 +209,11 @@ class StaffCommissionReportController extends Controller
                 'item_snapshot_amount' => round((float) ($row->item_snapshot_amount ?? 0), 2),
                 'is_staff_free_applied' => (bool) $row->is_staff_free_applied,
                 'share_percent' => (int) $row->share_percent,
+                'share_amount' => $row->share_amount !== null ? round((float) $row->share_amount, 2) : null,
+                'split_mode' => StaffSplitNormalizer::persistedSplitMode([
+                    'split_mode' => $row->split_mode ?? null,
+                    'share_amount' => $row->share_amount ?? null,
+                ]),
                 'staff_item_sales' => round((float) $row->staff_item_sales, 2),
                 'commission_rate' => (float) ($row->commission_rate ?? 0),
                 'staff_item_commission' => round((float) $row->staff_item_commission, 2),

@@ -15,6 +15,8 @@ return new class extends Migration
             $table->string('line_ref_id')->nullable();
             $table->foreignId('staff_id')->nullable()->constrained('staffs')->nullOnDelete();
             $table->unsignedTinyInteger('share_percent');
+            $table->decimal('share_amount', 12, 2)->nullable();
+            $table->string('split_mode', 16)->nullable();
             $table->decimal('amount_basis', 12, 2)->nullable();
             $table->decimal('commission_rate_snapshot', 10, 4)->nullable();
             $table->json('snapshot')->nullable();

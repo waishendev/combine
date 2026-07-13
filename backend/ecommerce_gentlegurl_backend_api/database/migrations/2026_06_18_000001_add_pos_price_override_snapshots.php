@@ -8,6 +8,9 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Note: pos_cart_service_items is created in 2026_12_20_000004 (after this file).
+        // If the table does not exist yet, this migration skips it and is still marked Ran.
+        // 2026_12_31_000301_ensure_pos_price_override_columns_on_late_tables backfills the column.
         foreach (['pos_cart_service_items', 'pos_cart_appointment_settlement_items'] as $tableName) {
             if (! Schema::hasTable($tableName)) {
                 continue;

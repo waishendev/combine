@@ -28,6 +28,8 @@ type PosAppointmentRefundCreditSectionProps = {
     refund_needed?: number
     refund_handled?: boolean
     refund_handled_amount?: number
+    balance_due?: number
+    amount_due_now?: number
     appointment?: Record<string, unknown>
   }) => void
   onError?: (message: string | null) => void
@@ -103,6 +105,8 @@ export default function PosAppointmentRefundCreditSection({
       refund_needed: Number(data.refund_needed ?? 0),
       refund_handled: Boolean(data.refund_handled ?? false),
       refund_handled_amount: Number(data.refund_handled_amount ?? 0),
+      balance_due: Number(data.balance_due ?? 0),
+      amount_due_now: Number(data.amount_due_now ?? 0),
       appointment: (data.appointment ?? undefined) as Record<string, unknown> | undefined,
     })
   }, [])

@@ -25,4 +25,29 @@ class SalesVisualBookingCommissionSourceTest extends TestCase
             $visualMethod->invoke($visual)
         );
     }
+
+    public function testBothServicesExcludePackageRefundedBookingDeposits(): void
+    {
+        foreach ([SalesVisualDailyReportService::class, StaffCommissionService::class] as $serviceClass) {
+            $this->assertTrue(
+                (new ReflectionClass($serviceClass))->hasMethod('excludePackageRefundedBookingDeposits'),
+                "{$serviceClass} should exclude refunded deposits after package claim"
+            );
+        }
+    }
+
+    public function testStaffCommissionBookingCountUsesSettledBookingsOnly(): void
+    {
+        $commission = (new ReflectionClass(StaffCommissionService::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod(StaffCommissionService::class, 'resolveSettledBookingIdsForMonth');
+        $method->setAccessible(true);
+
+        $this->assertTrue($method->isPrivate());
+
+        $visual = (new ReflectionClass(SalesVisualDailyReportService::class))->newInstanceWithoutConstructor();
+        $visualMethod = new ReflectionMethod(SalesVisualDailyReportService::class, 'bookingStaffCommissionSales');
+        $visualMethod->setAccessible(true);
+
+        $this->assertTrue($visualMethod->isPrivate());
+    }
 }

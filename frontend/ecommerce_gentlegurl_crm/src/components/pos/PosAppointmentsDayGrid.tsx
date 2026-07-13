@@ -11,6 +11,7 @@ import {
   posAppointmentDayBlockClass,
   posAppointmentDayBlockSubtextClass,
   posAppointmentVisualToneFromRow,
+  resolvePosAppointmentDayGridEndMinutes,
   resolvePosAppointmentEndIso,
 } from './posAppointmentHelpers'
 import {
@@ -75,7 +76,7 @@ function buildDayGridInterval(
 
   const effectiveEndIso = resolvePosAppointmentEndIso(startIso, getPosAppointmentEndAt(row))
   const rawStartMin = minutesFromPosAppointmentSchedule(startIso)
-  const rawEndMin = minutesFromPosAppointmentSchedule(effectiveEndIso)
+  const rawEndMin = resolvePosAppointmentDayGridEndMinutes(startIso, effectiveEndIso)
   if (rawStartMin == null || rawEndMin == null) return null
 
   if (rawEndMin <= DAY_START_MIN || rawStartMin >= DAY_END_MIN) return null
@@ -267,9 +268,10 @@ export default function PosAppointmentsDayGrid({
             >
               {Array.from({ length: totalSlots }, (_, i) => {
                 const slotStart = DAY_START_MIN + i * SLOT_MINUTES
-                const showLabel = slotStart % 60 === 0
+                const slotEnd = slotStart + SLOT_MINUTES
+                const showLabel = slotStart % 60 === 0 || slotEnd === DAY_END_MIN
                 const label = showLabel
-                  ? new Date(2000, 0, 1, Math.floor(slotStart / 60), slotStart % 60, 0).toLocaleTimeString('en-GB', {
+                  ? new Date(2000, 0, 1, Math.floor((slotEnd === DAY_END_MIN ? DAY_END_MIN : slotStart) / 60) % 24, (slotEnd === DAY_END_MIN ? 0 : slotStart) % 60, 0).toLocaleTimeString('en-GB', {
                       hour: 'numeric',
                       minute: '2-digit',
                       hour12: true,

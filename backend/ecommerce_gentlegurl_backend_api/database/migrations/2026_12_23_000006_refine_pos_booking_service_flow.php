@@ -30,6 +30,8 @@ return new class extends Migration
             $table->foreignId('booking_id')->constrained('bookings')->cascadeOnDelete();
             $table->foreignId('staff_id')->constrained('staffs')->cascadeOnDelete();
             $table->unsignedTinyInteger('split_percent');
+            $table->decimal('share_amount', 12, 2)->nullable();
+            $table->string('split_mode', 16)->nullable();
             $table->decimal('service_commission_rate_snapshot', 6, 4)->default(0);
             $table->timestamps();
         });

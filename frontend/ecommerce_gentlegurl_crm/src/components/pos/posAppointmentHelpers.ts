@@ -99,6 +99,32 @@ export function minutesFromPosAppointmentSchedule(iso?: string | null): number |
   return hour * 60 + minute
 }
 
+/**
+ * End minute for the day grid. Midnight (00:00) on the next day — or 24:00 — must map to
+ * end-of-day (1440), not 0, so late-night appointments like 11:15 pm – 12:00 am still render.
+ */
+export function resolvePosAppointmentDayGridEndMinutes(startIso: string, endIso: string): number | null {
+  const startMin = minutesFromPosAppointmentSchedule(startIso)
+  const endMin = minutesFromPosAppointmentSchedule(endIso)
+  if (startMin == null || endMin == null) return null
+
+  if (endMin >= POS_APPOINTMENT_DAY_END_MIN) {
+    return POS_APPOINTMENT_DAY_END_MIN
+  }
+
+  const startYmd = parsePosAppointmentScheduleYmd(startIso)
+  const endYmd = parsePosAppointmentScheduleYmd(endIso)
+  if (startYmd && endYmd && endYmd > startYmd) {
+    return POS_APPOINTMENT_DAY_END_MIN
+  }
+
+  if (endMin <= startMin && startMin >= 12 * 60) {
+    return POS_APPOINTMENT_DAY_END_MIN
+  }
+
+  return endMin
+}
+
 /** Normalize list rows from API (supports legacy `start_at` / `end_at` keys). */
 export function normalizePosAppointmentListItem(row: PosAppointmentListItem): PosAppointmentListItem {
   const legacy = row as PosAppointmentListItem & { start_at?: string | null; end_at?: string | null }

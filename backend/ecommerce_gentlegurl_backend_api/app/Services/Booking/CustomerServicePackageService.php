@@ -318,6 +318,145 @@ class CustomerServicePackageService
             ]);
     }
 
+    public function releaseActiveClaimsForBookingService(int $bookingId, int $bookingServiceId): int
+    {
+        if ($bookingId <= 0 || $bookingServiceId <= 0) {
+            return 0;
+        }
+
+        $posCartItemIds = $this->resolvePosCartServiceItemIdsForBooking($bookingId);
+
+        $usageIds = CustomerServicePackageUsage::query()
+            ->where('booking_service_id', $bookingServiceId)
+            ->where(function ($query) use ($bookingId, $posCartItemIds) {
+                $query->where('booking_id', $bookingId)
+                    ->orWhere(function ($q) use ($bookingId) {
+                        $q->where('used_from', 'POS')
+                            ->where('used_ref_id', $bookingId);
+                    });
+
+                if ($posCartItemIds !== []) {
+                    $query->orWhere(function ($q) use ($posCartItemIds) {
+                        $q->where('used_from', 'POS')
+                            ->whereIn('used_ref_id', $posCartItemIds);
+                    })->orWhereIn('booking_id', $posCartItemIds);
+                }
+            })
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->pluck('id')
+            ->all();
+
+        return $this->releaseClaimsForBookingByUsageIds($bookingId, $usageIds);
+    }
+
+    public function releaseOrphanedPackageClaimsForBooking(int $bookingId, array $activeBookingServiceIds): int
+    {
+        if ($bookingId <= 0) {
+            return 0;
+        }
+
+        $activeServiceIds = collect($activeBookingServiceIds)
+            ->map(fn ($value) => (int) $value)
+            ->filter(fn (int $value) => $value > 0)
+            ->unique()
+            ->values();
+
+        $posCartItemIds = $this->resolvePosCartServiceItemIdsForBooking($bookingId);
+
+        $usageIds = CustomerServicePackageUsage::query()
+            ->where(function ($query) use ($bookingId, $posCartItemIds) {
+                $query->where('booking_id', $bookingId)
+                    ->orWhere(function ($q) use ($bookingId) {
+                        $q->where('used_from', 'POS')
+                            ->where('used_ref_id', $bookingId);
+                    });
+
+                if ($posCartItemIds !== []) {
+                    $query->orWhere(function ($q) use ($posCartItemIds) {
+                        $q->where('used_from', 'POS')
+                            ->whereIn('used_ref_id', $posCartItemIds);
+                    })->orWhereIn('booking_id', $posCartItemIds);
+                }
+            })
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->get()
+            ->filter(function (CustomerServicePackageUsage $claim) use ($activeServiceIds) {
+                $bookingServiceId = (int) ($claim->booking_service_id ?? 0);
+
+                return $bookingServiceId <= 0 || ! $activeServiceIds->contains($bookingServiceId);
+            })
+            ->pluck('id')
+            ->all();
+
+        return $this->releaseClaimsForBookingByUsageIds($bookingId, $usageIds);
+    }
+
+    public function releaseClaimsForBookingByUsageIds(int $bookingId, array $usageIds): int
+    {
+        $usageIds = collect($usageIds)
+            ->map(fn ($value) => (int) $value)
+            ->filter(fn (int $value) => $value > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($usageIds === []) {
+            return 0;
+        }
+
+        return DB::transaction(function () use ($bookingId, $usageIds) {
+            $posCartItemIds = $this->resolvePosCartServiceItemIdsForBooking($bookingId);
+
+            $claims = CustomerServicePackageUsage::query()
+                ->whereIn('id', $usageIds)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->where(function ($query) use ($bookingId, $posCartItemIds) {
+                    $query->where('booking_id', $bookingId)
+                        ->orWhere(function ($q) use ($bookingId) {
+                            $q->where('used_from', 'POS')
+                                ->where('used_ref_id', $bookingId);
+                        });
+
+                    if ($posCartItemIds !== []) {
+                        $query->orWhere(function ($q) use ($posCartItemIds) {
+                            $q->where('used_from', 'POS')
+                                ->whereIn('used_ref_id', $posCartItemIds);
+                        })->orWhereIn('booking_id', $posCartItemIds);
+                    }
+                })
+                ->lockForUpdate()
+                ->get();
+
+            $released = 0;
+            foreach ($claims as $claim) {
+                if ($claim->status === 'consumed') {
+                    $qty = max(1, (int) ($claim->used_qty ?? 1));
+                    $balance = CustomerServicePackageBalance::query()
+                        ->where('customer_service_package_id', $claim->customer_service_package_id)
+                        ->where('booking_service_id', $claim->booking_service_id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($balance) {
+                        $balance->used_qty = max(0, (int) $balance->used_qty - $qty);
+                        $balance->remaining_qty = (int) $balance->remaining_qty + $qty;
+                        $balance->save();
+                        $this->syncPackageStatus((int) $balance->customer_service_package_id);
+                    }
+                }
+
+                $claim->status = 'released';
+                $claim->released_at = now();
+                $claim->consumed_at = null;
+                $claim->updated_at = now();
+                $claim->save();
+                $released++;
+            }
+
+            return $released;
+        });
+    }
+
     public function releaseReservedClaimsBySource(string $source, int $sourceRefId): int
     {
         return (int) CustomerServicePackageUsage::query()

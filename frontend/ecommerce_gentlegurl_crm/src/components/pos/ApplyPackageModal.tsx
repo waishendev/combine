@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { renderPosBodyModalPortal } from './posBodyModalPortal'
+import { isCustomerAppliedPackageClaim, packageClaimSourceLabel } from '@/components/pos/packageClaimDisplay'
 
 export type PackageLineInfo = {
   line_type: 'main_service' | 'addon'
@@ -46,6 +47,7 @@ export type CurrentClaim = {
   booking_service_id: number
   status: string
   used_qty: number
+  used_from?: string | null
 }
 
 type CheckedEntry = {
@@ -104,10 +106,11 @@ function resolveDisplayAvailableQty(
 function buildCheckedFromClaims(
   claims: CurrentClaim[],
   appointmentLines: PackageLineInfo[],
+  options?: { includeConsumed?: boolean },
 ): Map<string, CheckedEntry> {
   const map = new Map<string, CheckedEntry>()
   for (const claim of claims) {
-    if (claim.status !== 'reserved') continue
+    if (claim.status !== 'reserved' && !(options?.includeConsumed && claim.status === 'consumed')) continue
     const matches = appointmentLines.filter((l) => l.booking_service_id === claim.booking_service_id)
     const line = matches.find((l) => l.line_type === 'addon') ?? matches.find((l) => l.line_type === 'main_service') ?? matches[0]
     if (!line) continue
@@ -120,6 +123,19 @@ function buildCheckedFromClaims(
     })
   }
   return map
+}
+
+function findActivePackageClaim(
+  claims: CurrentClaim[],
+  packageId: number,
+  bookingServiceId: number,
+  includeConsumed: boolean,
+): CurrentClaim | undefined {
+  return claims.find((claim) =>
+    claim.customer_service_package_id === packageId
+    && claim.booking_service_id === bookingServiceId
+    && (claim.status === 'reserved' || (includeConsumed && claim.status === 'consumed')),
+  )
 }
 
 function getApplicableLineLabels(pkg: EligiblePackage): string[] {
@@ -208,7 +224,7 @@ export default function ApplyPackageModal(props: Props) {
     setCurrentClaims(claims)
     setAppointmentLines(lines)
     setExpandedPackageIds(new Set(pkgs.map((pkg) => pkg.customer_service_package_id)))
-    const initial = buildCheckedFromClaims(claims, lines)
+    const initial = buildCheckedFromClaims(claims, lines, { includeConsumed: mode === 'appointment' })
     setCheckedByLineKey(new Map(initial))
     setInitialChecked(new Map(initial))
   }
@@ -262,19 +278,31 @@ export default function ApplyPackageModal(props: Props) {
       if (!line) return
       const key = lineKey(line.line_type, line.line_index, line.booking_service_id)
       const isCheckedHere = checkedByLineKey.get(key)?.customer_service_package_id === pkg.customer_service_package_id
-
-      const consumedClaim = currentClaims.find(
-        (c) =>
-          c.customer_service_package_id === pkg.customer_service_package_id &&
-          c.booking_service_id === item.booking_service_id &&
-          c.status === 'consumed',
+      const activeClaim = findActivePackageClaim(
+        currentClaims,
+        pkg.customer_service_package_id,
+        item.booking_service_id,
+        mode === 'appointment',
       )
-      if (consumedClaim) return
 
       if (isCheckedHere) {
         setCheckedByLineKey((prev) => {
           const next = new Map(prev)
           next.delete(key)
+          return next
+        })
+        return
+      }
+
+      if (activeClaim) {
+        setCheckedByLineKey((prev) => {
+          const next = new Map(prev)
+          next.set(key, {
+            customer_service_package_id: pkg.customer_service_package_id,
+            booking_service_id: line.booking_service_id,
+            line_type: line.line_type,
+            line_index: line.line_index,
+          })
           return next
         })
         return
@@ -293,7 +321,7 @@ export default function ApplyPackageModal(props: Props) {
         return next
       })
     },
-    [checkedByLineKey, currentClaims],
+    [checkedByLineKey, currentClaims, mode],
   )
 
   const { applyCount, releaseCount } = useMemo(() => {
@@ -301,7 +329,7 @@ export default function ApplyPackageModal(props: Props) {
     let release = 0
 
     for (const claim of currentClaims) {
-      if (claim.status !== 'reserved') continue
+      if (claim.status !== 'reserved' && !(mode === 'appointment' && claim.status === 'consumed')) continue
       const line = appointmentLines.find((l) => l.booking_service_id === claim.booking_service_id)
       if (!line) continue
       const key = lineKey(line.line_type, line.line_index, claim.booking_service_id)
@@ -312,8 +340,8 @@ export default function ApplyPackageModal(props: Props) {
     }
 
     for (const [key, entry] of checkedByLineKey) {
-      const wasReserved = [...currentClaims].some((c) => {
-        if (c.status !== 'reserved') return false
+      const wasActive = [...currentClaims].some((c) => {
+        if (c.status !== 'reserved' && !(mode === 'appointment' && c.status === 'consumed')) return false
         const line = appointmentLines.find((l) => l.booking_service_id === c.booking_service_id)
         if (!line) return false
         return (
@@ -321,11 +349,11 @@ export default function ApplyPackageModal(props: Props) {
           c.customer_service_package_id === entry.customer_service_package_id
         )
       })
-      if (!wasReserved) apply += 1
+      if (!wasActive) apply += 1
     }
 
     return { applyCount: apply, releaseCount: release }
-  }, [checkedByLineKey, currentClaims, appointmentLines])
+  }, [checkedByLineKey, currentClaims, appointmentLines, mode])
 
   const renderPackageServiceRow = (
     pkg: EligiblePackage,
@@ -339,28 +367,30 @@ export default function ApplyPackageModal(props: Props) {
     const key = line ? lineKey(line.line_type, line.line_index, line.booking_service_id) : null
     const isChecked =
       key != null && checkedByLineKey.get(key)?.customer_service_package_id === pkg.customer_service_package_id
-    const consumedClaim = currentClaims.some(
-      (c) =>
-        c.customer_service_package_id === pkg.customer_service_package_id &&
-        c.booking_service_id === item.booking_service_id &&
-        c.status === 'consumed',
+    const activeClaim = findActivePackageClaim(
+      currentClaims,
+      pkg.customer_service_package_id,
+      item.booking_service_id,
+      mode === 'appointment',
     )
+    const consumedClaim = activeClaim?.status === 'consumed'
     const checkedElsewhere =
       key != null &&
       checkedByLineKey.has(key) &&
       checkedByLineKey.get(key)!.customer_service_package_id !== pkg.customer_service_package_id
-    const reservedClaimForRow = currentClaims.find(
-      (c) =>
-        c.status === 'reserved' &&
-        c.customer_service_package_id === pkg.customer_service_package_id &&
-        c.booking_service_id === item.booking_service_id,
-    )
+    const reservedClaimForRow = activeClaim?.status === 'reserved' ? activeClaim : undefined
+    const customerAppliedReserved =
+      reservedClaimForRow != null && isCustomerAppliedPackageClaim(reservedClaimForRow.used_from)
+    const customerAppliedConsumed = consumedClaim && isCustomerAppliedPackageClaim(activeClaim?.used_from)
+    const releasedActiveLocally = !!activeClaim
+      && !isChecked
+      && key != null
+      && initialChecked.get(key)?.customer_service_package_id === pkg.customer_service_package_id
     const canToggle =
       onVisit &&
       !isExpired &&
-      !consumedClaim &&
-      (line!.can_apply || line!.already_applied || isChecked || !!reservedClaimForRow) &&
-      !checkedElsewhere
+      !checkedElsewhere &&
+      (line!.can_apply || line!.already_applied || isChecked || !!activeClaim)
     const displayAvailableQty = resolveDisplayAvailableQty(
       item,
       pkg.customer_service_package_id,
@@ -372,8 +402,15 @@ export default function ApplyPackageModal(props: Props) {
 
     let hint: string | null = null
     if (!onVisit) hint = 'Not on this visit'
-    else if (consumedClaim) hint = 'Already used'
-    else if (checkedElsewhere) hint = 'Selected in another package'
+    else if (consumedClaim && isChecked) {
+      hint = customerAppliedConsumed ? 'Customer applied · untick to release' : 'Untick to release'
+    } else if (releasedActiveLocally) {
+      hint = customerAppliedConsumed || customerAppliedReserved ? 'Tap to re-apply' : 'Tap to re-apply'
+    } else if (consumedClaim) {
+      hint = customerAppliedConsumed ? 'Customer applied · already used' : 'Already used'
+    } else if (checkedElsewhere) hint = 'Selected in another package'
+    else if (customerAppliedReserved && isChecked) hint = 'Customer applied · untick to release'
+    else if (customerAppliedReserved && canToggle && !isChecked) hint = 'Customer applied'
     else if (canToggle && !isChecked) hint = 'Tap to apply'
     else if (line?.reason) hint = line.reason
 
@@ -410,6 +447,15 @@ export default function ApplyPackageModal(props: Props) {
             {item.service_name}
             {line?.cn_name ? <span className="ml-1 font-normal text-gray-400">({line.cn_name})</span> : null}
           </p>
+          {(customerAppliedReserved || customerAppliedConsumed) && onVisit ? (
+            <span className="mt-1 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-800">
+              Customer applied
+            </span>
+          ) : reservedClaimForRow && packageClaimSourceLabel(reservedClaimForRow.used_from) === 'POS applied' ? (
+            <span className="mt-1 inline-flex rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-800">
+              POS applied
+            </span>
+          ) : null}
           <div className="mt-1.5 h-1.5 max-w-[160px] overflow-hidden rounded-full bg-gray-100">
             <div
               className={`h-full rounded-full ${
@@ -453,7 +499,7 @@ export default function ApplyPackageModal(props: Props) {
         ? 'opacity-75'
         : 'opacity-60'
 
-    if (canToggle || (onVisit && isChecked && !consumedClaim)) {
+    if (canToggle) {
       return (
         <button
           key={item.booking_service_id}
@@ -485,7 +531,7 @@ export default function ApplyPackageModal(props: Props) {
 
       const releases: number[] = []
       for (const claim of currentClaims) {
-        if (claim.status !== 'reserved') continue
+        if (claim.status !== 'reserved' && !(mode === 'appointment' && claim.status === 'consumed')) continue
         const line = appointmentLines.find((l) => l.booking_service_id === claim.booking_service_id)
         if (!line) continue
         const key = lineKey(line.line_type, line.line_index, claim.booking_service_id)
@@ -497,8 +543,8 @@ export default function ApplyPackageModal(props: Props) {
 
       const applications: CheckedEntry[] = []
       for (const [key, entry] of checkedByLineKey) {
-        const wasReserved = currentClaims.some((c) => {
-          if (c.status !== 'reserved') return false
+        const wasActive = currentClaims.some((c) => {
+          if (c.status !== 'reserved' && !(mode === 'appointment' && c.status === 'consumed')) return false
           const line = appointmentLines.find((l) => l.booking_service_id === c.booking_service_id)
           if (!line) return false
           return (
@@ -506,7 +552,7 @@ export default function ApplyPackageModal(props: Props) {
             c.customer_service_package_id === entry.customer_service_package_id
           )
         })
-        if (!wasReserved) applications.push(entry)
+        if (!wasActive) applications.push(entry)
       }
 
       if (releases.length > 0) {
@@ -552,7 +598,11 @@ export default function ApplyPackageModal(props: Props) {
 
   if (!open) return null
 
-  const modalTitle = 'Apply Package'
+  const hasActiveClaims = currentClaims.some((claim) => ['reserved', 'consumed'].includes(String(claim.status)))
+  const customerReservedClaims = currentClaims.filter(
+    (claim) => claim.status === 'reserved' && isCustomerAppliedPackageClaim(claim.used_from),
+  )
+  const modalTitle = hasActiveClaims ? 'Manage Packages' : 'Apply Package'
 
   const modal = (
     <div className="pos-body-stack-modal fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-black/55 p-2 backdrop-blur-sm sm:items-center sm:p-4">
@@ -572,7 +622,10 @@ export default function ApplyPackageModal(props: Props) {
                   {customerName ? <p className="truncate text-sm text-gray-600">{customerName}</p> : null}
                 </div>
               </div>
-              <p className="mt-2 text-xs text-gray-500">Tick to apply · untick to remove · then Confirm</p>
+              <p className="mt-2 text-xs text-gray-500">
+                Tick to apply · untick to remove · then Confirm
+                {customerReservedClaims.length > 0 ? ' · Customer-applied packages can be released by unticking.' : ''}
+              </p>
             </div>
             <button
               type="button"
@@ -605,6 +658,18 @@ export default function ApplyPackageModal(props: Props) {
           {!loading && error ? (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800" role="alert">
               {error}
+            </div>
+          ) : null}
+
+          {!loading && customerReservedClaims.length > 0 ? (
+            <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
+              <p className="font-semibold">Customer applied online</p>
+              <p className="mt-1 text-sky-800">
+                {customerReservedClaims.length === 1
+                  ? 'One service on this visit was covered by the customer in the booking shop.'
+                  : `${customerReservedClaims.length} services on this visit were covered by the customer in the booking shop.`}
+                {' '}Untick and confirm to release the package if needed.
+              </p>
             </div>
           ) : null}
 

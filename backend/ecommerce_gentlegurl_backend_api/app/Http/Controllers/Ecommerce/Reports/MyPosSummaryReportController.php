@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ecommerce\Reports;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\OrderItem;
 use App\Services\Ecommerce\InvoiceService;
+use App\Services\Ecommerce\StaffSplitNormalizer;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,6 +51,10 @@ class MyPosSummaryReportController extends Controller
         $effectiveLineTotalExpr = $this->effectiveLineTotalExpr();
         $snapshotLineTotalExpr = $this->snapshotLineTotalExpr();
         $commissionRateExpr = $this->commissionRateExpr();
+        $splitSalesExpr = StaffSplitNormalizer::splitSalesSql(
+            'order_item_staff_splits',
+            $this->orderItemStaffSplitAmountExpr($effectiveLineTotalExpr),
+        );
 
         $ordersCount = (clone $this->baseOrdersScopeQuery($validated, $ownerUserId))
             ->where(function (Builder $query) {
@@ -96,7 +101,7 @@ class MyPosSummaryReportController extends Controller
         $totalStaffCommission = (float) ((clone $baseQuery())
             ->leftJoin('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->when($staffId, fn (Builder $query) => $query->where('order_item_staff_splits.staff_id', $staffId))
-            ->selectRaw("COALESCE(SUM(({$this->orderItemStaffSplitAmountExpr($effectiveLineTotalExpr)}) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS total_staff_commission")
+            ->selectRaw("COALESCE(SUM({$splitSalesExpr} * ($commissionRateExpr)), 0) AS total_staff_commission")
             ->value('total_staff_commission') ?? 0);
         $totalStaffCommission += (float) ((clone $basePackageQuery())
             ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
@@ -109,7 +114,7 @@ class MyPosSummaryReportController extends Controller
             $myCommission = (float) ((clone $baseQuery())
                 ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
                 ->where('order_item_staff_splits.staff_id', (int) $user->staff_id)
-                ->selectRaw("COALESCE(SUM(({$this->orderItemStaffSplitAmountExpr($effectiveLineTotalExpr)}) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS my_commission")
+                ->selectRaw("COALESCE(SUM({$splitSalesExpr} * ($commissionRateExpr)), 0) AS my_commission")
                 ->value('my_commission') ?? 0);
             $myCommission += (float) ((clone $basePackageQuery())
                 ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
@@ -252,24 +257,32 @@ class MyPosSummaryReportController extends Controller
                 ->selectRaw('order_item_staff_splits.staff_id')
                 ->selectRaw('staffs.name AS staff_name')
                 ->selectRaw('order_item_staff_splits.share_percent')
+                ->selectRaw('order_item_staff_splits.share_amount')
+                ->selectRaw('order_item_staff_splits.split_mode')
                 ->selectRaw('order_item_staff_splits.amount_basis')
                 ->selectRaw('order_item_staff_splits.commission_rate_snapshot')
-                ->selectRaw("({$this->orderItemStaffSplitAmountExpr($effectiveLineTotalExpr)}) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr) AS staff_commission_amount")
+                ->selectRaw("({$splitSalesExpr}) * ($commissionRateExpr) AS staff_commission_amount")
                 ->orderBy('order_item_staff_splits.id')
                 ->get()
-                ->map(fn ($row) => [
-                    'split_key' => (string) ($row->order_line_type ?? '') === 'booking_product' && (string) ($row->split_line_type ?? '') === 'booking_product_base'
-                        ? sprintf('booking_product_base:%d', (int) $row->order_item_id)
-                        : ((string) ($row->order_line_type ?? '') === 'booking_product' && (string) ($row->split_line_type ?? '') === 'booking_product_option'
-                            ? sprintf('booking_product_option:%d:%s', (int) $row->order_item_id, (string) ($row->split_line_ref_id ?? ''))
-                            : sprintf('%s:%d', (string) ($row->item_type ?? 'product'), (int) $row->order_item_id)),
-                    'staff_id' => $row->staff_id ? (int) $row->staff_id : null,
-                    'staff_name' => $row->staff_name,
-                    'share_percent' => (int) $row->share_percent,
-                    'amount_basis' => $row->amount_basis !== null ? round((float) $row->amount_basis, 2) : null,
-                    'commission_rate_snapshot' => (float) ($row->commission_rate_snapshot ?? 0),
-                    'staff_commission_amount' => round((float) $row->staff_commission_amount, 2),
-                ])
+                ->map(function ($row) {
+                    $reportSplit = StaffSplitNormalizer::toReportSplit([
+                        'staff_id' => $row->staff_id,
+                        'share_percent' => (int) $row->share_percent,
+                        'share_amount' => $row->share_amount,
+                        'split_mode' => $row->split_mode ?? null,
+                        'commission_rate_snapshot' => (float) ($row->commission_rate_snapshot ?? 0),
+                    ], (string) ($row->staff_name ?? ''));
+
+                    return array_merge($reportSplit, [
+                        'split_key' => (string) ($row->order_line_type ?? '') === 'booking_product' && (string) ($row->split_line_type ?? '') === 'booking_product_base'
+                            ? sprintf('booking_product_base:%d', (int) $row->order_item_id)
+                            : ((string) ($row->order_line_type ?? '') === 'booking_product' && (string) ($row->split_line_type ?? '') === 'booking_product_option'
+                                ? sprintf('booking_product_option:%d:%s', (int) $row->order_item_id, (string) ($row->split_line_ref_id ?? ''))
+                                : sprintf('%s:%d', (string) ($row->item_type ?? 'product'), (int) $row->order_item_id)),
+                        'amount_basis' => $row->amount_basis !== null ? round((float) $row->amount_basis, 2) : null,
+                        'staff_commission_amount' => round((float) $row->staff_commission_amount, 2),
+                    ]);
+                })
                 ->groupBy('split_key');
 
             $splitsGrouped = $splitsGrouped->merge($orderItemSplitsGrouped);
@@ -285,18 +298,26 @@ class MyPosSummaryReportController extends Controller
                 ->selectRaw('booking_service_staff_splits.staff_id')
                 ->selectRaw('staffs.name AS staff_name')
                 ->selectRaw('booking_service_staff_splits.split_percent AS share_percent')
+                ->selectRaw('booking_service_staff_splits.share_amount')
+                ->selectRaw('booking_service_staff_splits.split_mode')
                 ->selectRaw('0 AS commission_rate_snapshot')
                 ->selectRaw('0 AS staff_commission_amount')
                 ->orderBy('booking_service_staff_splits.id')
                 ->get()
-                ->map(fn ($row) => [
-                    'split_key' => sprintf('%s:%d', (string) ($row->item_type ?? 'booking_settlement'), (int) $row->order_item_id),
-                    'staff_id' => $row->staff_id ? (int) $row->staff_id : null,
-                    'staff_name' => $row->staff_name,
-                    'share_percent' => (int) $row->share_percent,
-                    'commission_rate_snapshot' => 0.0,
-                    'staff_commission_amount' => 0.0,
-                ])
+                ->map(function ($row) {
+                    $reportSplit = StaffSplitNormalizer::toReportSplit([
+                        'staff_id' => $row->staff_id,
+                        'share_percent' => (int) $row->share_percent,
+                        'share_amount' => $row->share_amount,
+                        'split_mode' => $row->split_mode ?? null,
+                        'commission_rate_snapshot' => 0.0,
+                    ], (string) ($row->staff_name ?? ''));
+
+                    return array_merge($reportSplit, [
+                        'split_key' => sprintf('%s:%d', (string) ($row->item_type ?? 'booking_settlement'), (int) $row->order_item_id),
+                        'staff_commission_amount' => 0.0,
+                    ]);
+                })
                 ->groupBy('split_key');
 
             $bookingSplitsGrouped->each(function ($splits, $splitKey) use (&$splitsGrouped) {
@@ -314,18 +335,26 @@ class MyPosSummaryReportController extends Controller
                 ->selectRaw('service_package_staff_splits.staff_id')
                 ->selectRaw('staffs.name AS staff_name')
                 ->selectRaw('service_package_staff_splits.share_percent')
+                ->selectRaw('service_package_staff_splits.split_mode')
+                ->selectRaw('service_package_staff_splits.split_sales_amount')
                 ->selectRaw('service_package_staff_splits.service_commission_rate_snapshot AS commission_rate_snapshot')
                 ->selectRaw('service_package_staff_splits.commission_amount_snapshot AS staff_commission_amount')
                 ->orderBy('service_package_staff_splits.id')
                 ->get()
-                ->map(fn ($row) => [
-                    'split_key' => sprintf('service_package:%d', (int) $row->order_item_id),
-                    'staff_id' => $row->staff_id ? (int) $row->staff_id : null,
-                    'staff_name' => $row->staff_name,
-                    'share_percent' => (int) $row->share_percent,
-                    'commission_rate_snapshot' => (float) ($row->commission_rate_snapshot ?? 0),
-                    'staff_commission_amount' => round((float) $row->staff_commission_amount, 2),
-                ])
+                ->map(function ($row) {
+                    $reportSplit = StaffSplitNormalizer::toReportSplit([
+                        'staff_id' => $row->staff_id,
+                        'share_percent' => (int) $row->share_percent,
+                        'split_mode' => $row->split_mode ?? null,
+                        'split_sales_amount' => $row->split_sales_amount,
+                        'commission_rate_snapshot' => (float) ($row->commission_rate_snapshot ?? 0),
+                    ], (string) ($row->staff_name ?? ''));
+
+                    return array_merge($reportSplit, [
+                        'split_key' => sprintf('service_package:%d', (int) $row->order_item_id),
+                        'staff_commission_amount' => round((float) $row->staff_commission_amount, 2),
+                    ]);
+                })
                 ->groupBy('split_key');
 
             $splitsGrouped = $splitsGrouped->merge($packageSplitsGrouped);
@@ -398,11 +427,17 @@ class MyPosSummaryReportController extends Controller
                     $optionStaffSplits = $optionSplits->map(function ($split) use ($optionEffective) {
                         $rate = (float) ($split['commission_rate_snapshot'] ?? 0);
                         $rateFactor = $rate > 1 ? $rate / 100 : $rate;
+                        $shareAmount = ($split['split_mode'] ?? 'percent') === 'amount'
+                            && isset($split['share_amount'])
+                            && (float) $split['share_amount'] > 0
+                            ? (float) $split['share_amount']
+                            : null;
+                        $splitSales = $shareAmount ?? ($optionEffective * ((int) ($split['share_percent'] ?? 0) / 100));
 
                         return collect($split)
                             ->except('split_key', 'amount_basis')
                             ->merge([
-                                'staff_commission_amount' => round($optionEffective * ((int) ($split['share_percent'] ?? 0) / 100) * $rateFactor, 2),
+                                'staff_commission_amount' => round($splitSales * $rateFactor, 2),
                             ])
                             ->all();
                     })->values();
@@ -432,11 +467,17 @@ class MyPosSummaryReportController extends Controller
                 $baseStaffSplits = $baseSplits->map(function ($split) use ($bookingProductBaseAmount) {
                     $rate = (float) ($split['commission_rate_snapshot'] ?? 0);
                     $rateFactor = $rate > 1 ? $rate / 100 : $rate;
+                    $shareAmount = ($split['split_mode'] ?? 'percent') === 'amount'
+                        && isset($split['share_amount'])
+                        && (float) $split['share_amount'] > 0
+                        ? (float) $split['share_amount']
+                        : null;
+                    $splitSales = $shareAmount ?? ($bookingProductBaseAmount * ((int) ($split['share_percent'] ?? 0) / 100));
 
                     return collect($split)
                         ->except('split_key', 'amount_basis')
                         ->merge([
-                            'staff_commission_amount' => round($bookingProductBaseAmount * ((int) ($split['share_percent'] ?? 0) / 100) * $rateFactor, 2),
+                            'staff_commission_amount' => round($splitSales * $rateFactor, 2),
                         ])
                         ->all();
                 })->values();

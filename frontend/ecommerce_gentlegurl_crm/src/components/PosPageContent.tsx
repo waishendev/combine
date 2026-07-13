@@ -13,6 +13,14 @@ import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, r
 import type { PosDepositTransaction, PosRefundTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
+import {
+  batchReleaseAppointmentPackageClaims,
+  collectActivePackageClaimUsageIds,
+  findPackageClaimForService,
+  formatPackageClaimLineText,
+  pruneReleasedPackageClaims,
+  releaseAppointmentPackageClaimsForService,
+} from '@/components/pos/packageClaimDisplay'
 import SettlementCartPaymentBreakdown from '@/components/pos/SettlementCartPaymentBreakdown'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
@@ -52,10 +60,14 @@ import {
   seedFinalizedAddonPriceOverrides,
   buildAddonSettlementSaveOverrides,
   buildSettlementCartMainServicePriceSource,
+  bookingServiceIdCoveredByPackage,
   matchAddedMainSettlementLine,
   resolveAddedMainServiceReferenceUnitPrice,
   resolveAddedMainServiceSeedFinalized,
   resolveAddedMainServiceSeedPrice,
+  resolveEditSettlementAddonLineAmount,
+  resolveEditSettlementAddonSplitLineTotal,
+  resolveEditSettlementAddedMainBlockLineTotal,
   resolveEditSettlementAddonUnitDisplay,
   seedAddonLineTotalOverrides,
   computeSettlementCartItemDueBounds,
@@ -76,7 +88,33 @@ import {
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, parsePosAvailabilityVerifyMode, posAvailabilityShouldHardBlock, posAvailabilityStaffIsUnavailable, POS_SCHEDULE_OVERRIDE_REASONS, type PosAvailabilityVerifyMode } from '@/components/pos/posAvailabilityMessages'
-import { confirmAndVerifyEditSettlementPrimaryStaffChange } from '@/components/pos/posStaffSplitUtils'
+import PosPrimaryStaffChangeConfirmModal, { type PrimaryStaffChangePrompt } from '@/components/pos/PosPrimaryStaffChangeConfirmModal'
+import {
+  buildEditSettlementPrimaryStaffChangePrompt,
+  createStaffNameResolver,
+  verifyEditSettlementPrimaryStaffAvailability,
+} from '@/components/pos/posStaffSplitUtils'
+import PosStaffSplitEditorPanel, { getStaffSplitDraftValidation, StaffSplitModeToggle } from '@/components/pos/PosStaffSplitEditorPanel'
+import {
+  createStaffSplitDraftRow,
+  mapBulkStaffSplitDraftToPayload,
+  mapStaffSplitDraftToPayload,
+  mapSettlementInlineStaffRowsForApi,
+  parseMoneyInput,
+  percentsToAmounts,
+  rebalancePrimaryAmountShare,
+  rebalancePrimaryPercentShare,
+  rebalanceSettlementInlineStaffRows,
+  resolveSavedSettlementStaffSplitMode,
+  roundMoney,
+  seedSettlementInlineStaffRows,
+  serializeStaffSplitForApi,
+  settlementInlineRowsToInheritedSplits,
+  validateStaffSplitDraft,
+  type SettlementInlineStaffSplitRow,
+  type StaffSplitMode,
+  type StaffSplitPayload,
+} from '@/components/pos/staffSplitCore'
 import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
@@ -352,7 +390,7 @@ type AppointmentSettlementCartItem = {
   can_apply_package?: boolean
   package_disabled_reason?: string | null
   eligible_package_count?: number
-  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number }>
+  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number; used_from?: string | null }>
 }
 
 
@@ -394,7 +432,7 @@ type ServiceCartItem = {
   package_claim_name?: string | null
   package_claim_names?: string[]
   package_claim_count?: number
-  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number }>
+  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number; used_from?: string | null }>
   package_claim_usage_id?: number | null
   package_claim_package_id?: number | null
   claimed_by_package?: boolean
@@ -462,15 +500,9 @@ function getPosServiceMainBlocks(item: ServiceCartItem): NonNullable<ServiceCart
         quantity: storedAddonQuantity(addon),
         line_gross_amount: storedAddonLinePrice(addon),
         linked_deposit_amount: Number(addon.linked_deposit_amount ?? 0),
-        staff_splits: (addon.staff_splits ?? []).map((split) => ({
-          staff_id: Number(split.staff_id),
-          share_percent: Number(split.share_percent),
-        })),
+        staff_splits: (addon.staff_splits ?? []).map(serializeStaffSplitForApi),
       })),
-    staff_splits: item.staff_splits?.map((split) => ({
-      staff_id: Number(split.staff_id),
-      share_percent: Number(split.share_percent),
-    })),
+    staff_splits: (item.staff_splits ?? []).map(serializeStaffSplitForApi),
   }]
 }
 
@@ -810,6 +842,7 @@ type BookingServiceQuestionOption = {
   cn_name?: string | null
   cn_label?: string | null
   linked_cn_name?: string | null
+  linked_booking_service_id?: number | null
   extra_duration_min: number
   extra_price: number
   price_mode?: string | null
@@ -1316,12 +1349,15 @@ type CheckoutItemAssignment = {
 type CheckoutItemStaffSplit = {
   staff_id: number
   share_percent: number
+  share_amount?: number | null
+  split_mode?: StaffSplitMode
 }
 
 type CheckoutItemSplitDraft = {
   id: string
   staff_id: number | null
   share_percent: number
+  share_amount: string
   search: string
   options: StaffOption[]
   loading: boolean
@@ -1833,7 +1869,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [cartEditSettlementServiceId, setCartEditSettlementServiceId] = useState<number | null>(null)
   const [cartEditSettlementLoading, setCartEditSettlementLoading] = useState(false)
   const [cartEditSettlementError, setCartEditSettlementError] = useState<string | null>(null)
-  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>>([])
+  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; linked_booking_service_id?: number | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>>([])
   const [cartEditAddonQuantities, setCartEditAddonQuantities] = useState<AddonSelectionMap>({})
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
@@ -1853,16 +1889,20 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     price_range_max?: number | null
     price_finalized?: boolean | null
     duration_min: number
-    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>
+    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; linked_booking_service_id?: number | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>
     selected_addon_ids: AddonSelectionMap
     addon_price_overrides: Record<number, number>
     addon_line_total_overrides: Record<number, number>
-    staff_splits: Array<{ staff_id: number | null; share_percent: string }>
+    staff_splits: SettlementInlineStaffSplitRow[]
+    split_mode: StaffSplitMode
     auto_balance: boolean
   }>>([])
   const [cartEditSettledAmount, setCartEditSettledAmount] = useState('')
-  const [cartEditStaffSplits, setCartEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
+  const [cartEditStaffSplits, setCartEditStaffSplits] = useState<SettlementInlineStaffSplitRow[]>([])
+  const [cartEditStaffSplitMode, setCartEditStaffSplitMode] = useState<StaffSplitMode>('percent')
   const [cartEditSettlementOriginalPrimaryStaffId, setCartEditSettlementOriginalPrimaryStaffId] = useState<number | null>(null)
+  const [cartPrimaryStaffChangePrompt, setCartPrimaryStaffChangePrompt] = useState<PrimaryStaffChangePrompt | null>(null)
+  const [pendingCartEditSettlementPayload, setPendingCartEditSettlementPayload] = useState<Record<string, unknown> | null>(null)
   const [cartEditStaffSplitAutoBalance, setCartEditStaffSplitAutoBalance] = useState(true)
   const [cartEditAddonOptionsLoading, setCartEditAddonOptionsLoading] = useState(false)
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
@@ -1877,6 +1917,55 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [cartEditSettlementGuestEmail, setCartEditSettlementGuestEmail] = useState('')
   const [cartEditSettlementDepositTotal, setCartEditSettlementDepositTotal] = useState(0)
   const [cartEditSettlementNoteDraft, setCartEditSettlementNoteDraft] = useState('')
+
+  const cartEditOriginalSettlementSource = useMemo(
+    () => bookingServiceSettlementSource(cartEditOriginalService),
+    [cartEditOriginalService],
+  )
+
+  const cartEditOriginalLineTotal = useMemo((): number | null => {
+    if (settlementNeedsSettledAmount(cartEditOriginalSettlementSource)) {
+      const validation = validateSettlementAmountInput(cartEditSettledAmount, cartEditOriginalSettlementSource)
+      return validation.ok ? roundMoney(validation.amount) : null
+    }
+    const price = Number(
+      cartEditOriginalServicePrice
+      ?? cartEditOriginalService?.service_price
+      ?? cartEditOriginalService?.price
+      ?? cartEditSettlementItem?.service_total
+      ?? 0,
+    )
+    return price > 0.0001 ? roundMoney(price) : null
+  }, [
+    cartEditOriginalService,
+    cartEditOriginalServicePrice,
+    cartEditOriginalSettlementSource,
+    cartEditSettledAmount,
+    cartEditSettlementItem?.service_total,
+  ])
+
+  const cartEditOriginalServiceCoveredByPackage = useMemo(() => {
+    if (!cartEditSettlementItem) return false
+    return settlementMainLineCoveredByPackage(
+      cartEditSettlementItem,
+      {
+        linked_booking_service_id: cartEditOriginalService?.id ?? cartEditSettlementItem.booking_service_id,
+        is_original: true,
+      },
+      0,
+    )
+  }, [cartEditSettlementItem, cartEditOriginalService])
+
+  const cartEditSettlementStaffSplitAllowAmountMode = useMemo(
+    () => !cartEditOriginalServiceCoveredByPackage && cartEditOriginalLineTotal != null && cartEditOriginalLineTotal > 0,
+    [cartEditOriginalServiceCoveredByPackage, cartEditOriginalLineTotal],
+  )
+
+  useEffect(() => {
+    if (cartEditOriginalServiceCoveredByPackage && cartEditStaffSplitMode === 'amount') {
+      setCartEditStaffSplitMode('percent')
+    }
+  }, [cartEditOriginalServiceCoveredByPackage, cartEditStaffSplitMode])
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -1935,8 +2024,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [checkoutLineSplits, setCheckoutLineSplits] = useState<Record<string, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
-  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package' | 'settlement' | 'line' | 'bulk'; id: number; lineKey?: string; lineKeys?: string[]; productCartItemIds?: number[]; packageItemIds?: number[]; title?: string; applyCartEditSettlementMainServices?: boolean } | null>(null)
+  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package' | 'settlement' | 'line' | 'bulk'; id: number; lineKey?: string; lineKeys?: string[]; productCartItemIds?: number[]; packageItemIds?: number[]; title?: string; applyCartEditSettlementMainServices?: boolean; lineTotal?: number | null } | null>(null)
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
+  const [itemSplitMode, setItemSplitMode] = useState<StaffSplitMode>('percent')
+  const [itemSplitLineTotal, setItemSplitLineTotal] = useState<number | null>(null)
   const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
   const [bulkSplitOverwrite, setBulkSplitOverwrite] = useState(false)
   const [globalBulkSelectedOnly, setGlobalBulkSelectedOnly] = useState(false)
@@ -3711,6 +3802,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
                   cn_name: typeof option.cn_label === 'string' ? option.cn_label : (typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
+                  linked_booking_service_id: option.linked_booking_service_id == null ? null : Number(option.linked_booking_service_id),
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                   price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
@@ -3759,6 +3851,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
                   cn_name: typeof option.cn_label === 'string' ? option.cn_label : (typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
+                  linked_booking_service_id: option.linked_booking_service_id == null ? null : Number(option.linked_booking_service_id),
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                   price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
@@ -4741,19 +4834,48 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     void fetchUnpaidCompletedAppointments(settlementQuery)
   }
 
-  const rebalanceSettlementPrimaryShare = (rows: Array<{ staff_id: number | null; share_percent: string }>) => {
-    if (rows.length === 0) return rows
-    const otherTotal = rows.slice(1).reduce((sum, row) => sum + Math.max(0, Number.parseInt(row.share_percent || '0', 10) || 0), 0)
-    const primaryShare = Math.max(0, 100 - otherTotal)
-    return rows.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(primaryShare) } : row))
-  }
+  const rebalanceSettlementPrimaryShare = (rows: SettlementInlineStaffSplitRow[]) =>
+    rebalanceSettlementInlineStaffRows(rows, cartEditStaffSplitMode, cartEditOriginalLineTotal, true)
+
+  const resolveCartEditAddedMainBlockLineTotal = useCallback((block: (typeof cartEditAddedMainBlocks)[number]): number | null => {
+    const lineTotal = resolveEditSettlementAddedMainBlockLineTotal(block)
+    return lineTotal != null ? roundMoney(lineTotal) : null
+  }, [])
+
+  const isCartEditAddedMainBlockPackageCovered = useCallback((block: (typeof cartEditAddedMainBlocks)[number]): boolean => {
+    if (!cartEditSettlementItem) return false
+    return settlementMainLineCoveredByPackage(
+      cartEditSettlementItem,
+      { linked_booking_service_id: block.service_id, is_original: false },
+      0,
+    )
+  }, [cartEditSettlementItem])
+
+  const rebalanceCartEditAddedMainBlockSplits = useCallback((
+    rows: SettlementInlineStaffSplitRow[],
+    block: (typeof cartEditAddedMainBlocks)[number],
+  ) => rebalanceSettlementInlineStaffRows(
+    rows,
+    block.split_mode,
+    resolveCartEditAddedMainBlockLineTotal(block),
+    block.auto_balance,
+  ), [resolveCartEditAddedMainBlockLineTotal])
 
   const updateCartEditSplitShare = (index: number, value: string) => {
     reportCartEditSettlementError(null)
     setCartEditStaffSplits((prev) => {
       const next = prev.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
       if (!cartEditStaffSplitAutoBalance || index === 0) return next
-      return rebalanceSettlementPrimaryShare(next)
+      return rebalanceSettlementInlineStaffRows(next, cartEditStaffSplitMode, cartEditOriginalLineTotal, true)
+    })
+  }
+
+  const updateCartEditSplitAmount = (index: number, value: string) => {
+    reportCartEditSettlementError(null)
+    setCartEditStaffSplits((prev) => {
+      const next = prev.map((row, rowIdx) => (rowIdx === index ? { ...row, share_amount: value } : row))
+      if (!cartEditStaffSplitAutoBalance || index === 0) return next
+      return rebalanceSettlementInlineStaffRows(next, 'amount', cartEditOriginalLineTotal, true)
     })
   }
 
@@ -4870,10 +4992,27 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         selected_addon_ids: selectionFromAddonRows((service.add_ons ?? []).map((addon) => ({ id: addon.id, quantity: addon.quantity ?? 1 }))),
         addon_price_overrides: seedFinalizedAddonPriceOverrides(service.add_ons ?? []),
         addon_line_total_overrides: seedAddonLineTotalOverrides(service.add_ons ?? []),
-        staff_splits: (service.staff_splits ?? []).map((split) => ({
-          staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
-          share_percent: String(split.share_percent ?? ''),
-        })),
+        staff_splits: (service.staff_splits ?? []).map((split) => {
+          const extended = split as CheckoutItemStaffSplit
+          return {
+            staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+            share_percent: String(split.share_percent ?? ''),
+            share_amount: extended.share_amount != null ? Number(extended.share_amount).toFixed(2) : '0.00',
+          }
+        }),
+        split_mode: (() => {
+          const blockBase = {
+            price: resolvedPrice,
+            price_mode: service.price_mode ?? settlementLine?.price_mode ?? null,
+            price_range_min: service.price_range_min ?? settlementLine?.price_range_min ?? null,
+            price_range_max: service.price_range_max ?? settlementLine?.price_range_max ?? null,
+            price_finalized: resolveAddedMainServiceSeedFinalized(service, settlementLine, resolvedPrice),
+          }
+          const blockLineTotal = resolveEditSettlementAddedMainBlockLineTotal(blockBase)
+          return resolveSavedSettlementStaffSplitMode(service.staff_splits, {
+            allowAmount: blockLineTotal != null && blockLineTotal > 0,
+          })
+        })(),
         auto_balance: true,
       }})
       .filter((block) => block.service_id > 0)
@@ -4883,18 +5022,35 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setCartEditMainServicePickerOpen(false)
     setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
     setCartEditStaffSplitAutoBalance(true)
-    const initialSplits = (settlement.staff_splits ?? [])
-      .map((split) => ({
-        staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
-        share_percent: String(split.share_percent ?? ''),
-      }))
-      .filter((split) => split.staff_id != null)
+    const seededLineTotal = hasFinalCartOriginalServicePrice
+      ? Number(
+          settlement.settled_service_amount
+          ?? originalSettlementLine?.gross_amount
+          ?? originalSettlementLine?.balance_due
+          ?? originalMainService?.extra_price
+          ?? settlement.service_total
+          ?? 0,
+        )
+      : null
+    const seededOriginalCoveredByPackage = settlementMainLineCoveredByPackage(
+      settlement,
+      {
+        linked_booking_service_id: settlement.booking_service_id ?? originalMainService?.linked_booking_service_id,
+        is_original: true,
+      },
+      0,
+    )
+    const seededSplitMode = resolveSavedSettlementStaffSplitMode(settlement.staff_splits, {
+      allowAmount: !seededOriginalCoveredByPackage && seededLineTotal != null && seededLineTotal > 0,
+    })
+    const initialSplits = seedSettlementInlineStaffRows(settlement.staff_splits ?? [], seededSplitMode, seededLineTotal)
+    setCartEditStaffSplitMode(seededSplitMode)
     if (initialSplits.length > 0) {
-      setCartEditStaffSplits(rebalanceSettlementPrimaryShare(initialSplits))
+      setCartEditStaffSplits(initialSplits)
       setCartEditSettlementOriginalPrimaryStaffId(Number(initialSplits[0].staff_id))
     } else {
       const fallbackStaffId = settlement.staff_splits?.[0]?.staff_id ?? null
-      setCartEditStaffSplits([{ staff_id: fallbackStaffId, share_percent: '100' }])
+      setCartEditStaffSplits([{ staff_id: fallbackStaffId, share_percent: '100', share_amount: '0.00' }])
       setCartEditSettlementOriginalPrimaryStaffId(fallbackStaffId ?? null)
     }
 
@@ -4956,13 +5112,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               return {
                 ...block,
                 addon_questions: (addonJson2?.data?.questions ?? []) as typeof cartEditAddonQuestions,
-                staff_splits: block.staff_splits.length > 0 ? rebalanceSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100' }],
+                staff_splits: block.staff_splits.length > 0 ? rebalanceCartEditAddedMainBlockSplits(block.staff_splits, block) : [{ staff_id: null, share_percent: '100', share_amount: '0.00' }],
               }
             } catch {
               return {
                 ...block,
                 addon_questions: [],
-                staff_splits: block.staff_splits.length > 0 ? rebalanceSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100' }],
+                staff_splits: block.staff_splits.length > 0 ? rebalanceCartEditAddedMainBlockSplits(block.staff_splits, block) : [{ staff_id: null, share_percent: '100', share_amount: '0.00' }],
               }
             }
           }))
@@ -4983,12 +5139,133 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
   }
 
+  const patchCartEditSettlementPackageClaims = (releasedUsageIds: number[]) => {
+    if (releasedUsageIds.length === 0) return
+    setCartEditSettlementItem((prev) => {
+      if (!prev) return prev
+      const remainingClaims = pruneReleasedPackageClaims(prev.package_claims, releasedUsageIds)
+      const hasActiveClaims = remainingClaims.some((claim) =>
+        ['reserved', 'consumed'].includes(String(claim.status ?? '').toLowerCase()),
+      )
+      return {
+        ...prev,
+        package_claims: remainingClaims,
+        package_status: hasActiveClaims ? prev.package_status : null,
+      }
+    })
+  }
+
+  const releaseCartEditSettlementPackageForService = async (bookingServiceId: number): Promise<boolean> => {
+    if (!cartEditSettlementBookingId || bookingServiceId <= 0) return true
+    const result = await releaseAppointmentPackageClaimsForService(
+      cartEditSettlementBookingId,
+      cartEditSettlementItem?.package_claims,
+      bookingServiceId,
+    )
+    if (!result.ok) {
+      reportCartEditSettlementError(result.message ?? 'Unable to release package claims.')
+      return false
+    }
+    patchCartEditSettlementPackageClaims(result.releasedUsageIds)
+    return true
+  }
+
   const toggleCartEditAddon = (optionId: number, option: BookingServiceQuestionOption, questionType: string, questionOptionIds: number[]) => {
-    setCartEditAddonQuantities((prev) => toggleAddonSelection(prev, option, questionType, questionOptionIds))
+    setCartEditAddonQuantities((prev) => {
+      const wasSelected = (prev[option.id] ?? 0) > 0
+      const next = toggleAddonSelection(prev, option, questionType, questionOptionIds)
+      const nextQty = next[option.id] ?? 0
+      if (wasSelected && nextQty <= 0) {
+        const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+        if (addonServiceId > 0) {
+          void releaseCartEditSettlementPackageForService(addonServiceId)
+        }
+      }
+      return next
+    })
   }
 
   const setCartEditAddonQuantity = (option: BookingServiceQuestionOption, qty: number) => {
-    setCartEditAddonQuantities((prev) => setAddonQuantity(prev, option, qty))
+    setCartEditAddonQuantities((prev) => {
+      const wasSelected = (prev[option.id] ?? 0) > 0
+      const next = setAddonQuantity(prev, option, qty)
+      const nextQty = next[option.id] ?? 0
+      if (wasSelected && nextQty <= 0) {
+        const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+        if (addonServiceId > 0) {
+          void releaseCartEditSettlementPackageForService(addonServiceId)
+        }
+      }
+      return next
+    })
+  }
+
+  const removeCartEditAddedMainBlock = async (tmpId: string) => {
+    const block = cartEditAddedMainBlocks.find((item) => item.tmp_id === tmpId)
+    if (!block) return
+    if (block.service_id > 0) {
+      const released = await releaseCartEditSettlementPackageForService(block.service_id)
+      if (!released) return
+    }
+    for (const question of block.addon_questions) {
+      for (const option of question.options ?? []) {
+        const qty = getAddonQuantity(block.selected_addon_ids, option.id)
+        if (qty <= 0) continue
+        const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+        if (addonServiceId > 0) {
+          const released = await releaseCartEditSettlementPackageForService(addonServiceId)
+          if (!released) return
+        }
+      }
+    }
+    setCartEditAddedMainBlocks((prev) => prev.filter((item) => item.tmp_id !== tmpId))
+  }
+
+  const toggleCartEditAddedMainBlockAddon = async (
+    blockTmpId: string,
+    option: BookingServiceQuestionOption,
+    questionType: string,
+    questionOptionIds: number[],
+  ) => {
+    const block = cartEditAddedMainBlocks.find((item) => item.tmp_id === blockTmpId)
+    if (!block) return
+    const wasSelected = isAddonSelected(block.selected_addon_ids, option.id)
+    setCartEditAddedMainBlocks((prev) => prev.map((item) => {
+      if (item.tmp_id !== blockTmpId) return item
+      return {
+        ...item,
+        selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, option, questionType, questionOptionIds),
+      }
+    }))
+    if (wasSelected) {
+      const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+      if (addonServiceId > 0) {
+        await releaseCartEditSettlementPackageForService(addonServiceId)
+      }
+    }
+  }
+
+  const setCartEditAddedMainBlockAddonQuantity = async (
+    blockTmpId: string,
+    option: BookingServiceQuestionOption,
+    qty: number,
+  ) => {
+    const block = cartEditAddedMainBlocks.find((item) => item.tmp_id === blockTmpId)
+    if (!block) return
+    const wasSelected = getAddonQuantity(block.selected_addon_ids, option.id) > 0
+    setCartEditAddedMainBlocks((prev) => prev.map((item) => {
+      if (item.tmp_id !== blockTmpId) return item
+      return {
+        ...item,
+        selected_addon_ids: setAddonQuantity(item.selected_addon_ids, option, qty),
+      }
+    }))
+    if (wasSelected && qty <= 0) {
+      const addonServiceId = Number(option.linked_booking_service_id ?? 0)
+      if (addonServiceId > 0) {
+        await releaseCartEditSettlementPackageForService(addonServiceId)
+      }
+    }
   }
 
   const openCartEditMainServicePicker = () => {
@@ -5006,6 +5283,47 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const selectCartEditOriginalService = async (service: BookingServiceOption) => {
     if (!service?.id) return
     reportCartEditSettlementError(null)
+
+    const previousServiceId = Number(cartEditOriginalService?.id ?? cartEditSettlementItem?.booking_service_id ?? 0)
+    const nextServiceId = Number(service.id)
+    if (
+      cartEditSettlementBookingId
+      && previousServiceId > 0
+      && nextServiceId > 0
+      && nextServiceId !== previousServiceId
+    ) {
+      const usageIds = collectActivePackageClaimUsageIds(cartEditSettlementItem?.package_claims, previousServiceId)
+      if (usageIds.length > 0) {
+        setCartEditSettlementLoading(true)
+        try {
+          const releaseResult = await batchReleaseAppointmentPackageClaims(cartEditSettlementBookingId, usageIds)
+          if (!releaseResult.ok) {
+            reportCartEditSettlementError(releaseResult.message ?? 'Unable to release package claims.')
+            return
+          }
+          const releasedIdSet = new Set(usageIds)
+          setCartEditSettlementItem((prev) => {
+            if (!prev) return prev
+            const remainingClaims = (prev.package_claims ?? []).filter(
+              (claim) => !releasedIdSet.has(Number(claim.usage_id)),
+            )
+            const hasActiveClaims = remainingClaims.some((claim) =>
+              ['reserved', 'consumed'].includes(String(claim.status ?? '').toLowerCase()),
+            )
+            return {
+              ...prev,
+              package_claims: remainingClaims,
+              package_status: hasActiveClaims ? prev.package_status : null,
+            }
+          })
+          showMsg('Package released because the service was changed.', 'success')
+          await loadCart()
+        } finally {
+          setCartEditSettlementLoading(false)
+        }
+      }
+    }
+
     setCartEditOriginalService(service)
     setCartEditSettlementServiceId(service.id)
     setCartEditAddonQuantities({})
@@ -5042,22 +5360,30 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       questions = []
     }
     const catalogPrice = Number(service.service_price ?? service.price ?? 0)
+    const isRange = posPriceDisplayHasRange({
+      price_mode: service.price_mode ?? null,
+      price_range_min: service.price_range_min ?? null,
+      price_range_max: service.price_range_max ?? null,
+    })
+    const rangeMin = Number(service.price_range_min ?? catalogPrice)
     setCartEditAddedMainBlocks((prev) => [...prev, {
       tmp_id: `added-${service.id}-${Math.random()}`,
       service_id: service.id,
       service_name: service.name,
       service_cn_name: service.cn_name ?? null,
-      price: catalogPrice,
-      reference_unit_price: catalogPrice,
+      price: isRange ? 0 : catalogPrice,
+      reference_unit_price: isRange ? rangeMin : catalogPrice,
       price_mode: service.price_mode ?? null,
       price_range_min: service.price_range_min ?? null,
       price_range_max: service.price_range_max ?? null,
+      price_finalized: isRange ? false : (catalogPrice > 0.0001 ? true : null),
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
       selected_addon_ids: {},
       addon_price_overrides: {},
       addon_line_total_overrides: {},
-      staff_splits: [{ staff_id: null, share_percent: '100' }],
+      staff_splits: [{ staff_id: null, share_percent: '100', share_amount: '0.00' }],
+      split_mode: 'percent' as StaffSplitMode,
       auto_balance: true,
     }])
   }
@@ -5066,7 +5392,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setCartEditAddedMainBlocks((prev) => prev.map((block) => {
       if (block.tmp_id !== tmpId) return block
       const next = block.staff_splits.map((row, rowIdx) => (rowIdx === index ? { ...row, staff_id: staffId } : row))
-      const rebalanced = block.auto_balance ? rebalanceSettlementPrimaryShare(next) : next
+      const rebalanced = block.auto_balance ? rebalanceCartEditAddedMainBlockSplits(next, block) : next
       return { ...block, staff_splits: rebalanced }
     }))
   }
@@ -5076,23 +5402,48 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       if (block.tmp_id !== tmpId) return block
       const next = block.staff_splits.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
       if (!block.auto_balance || index === 0) return { ...block, staff_splits: next }
-      return { ...block, staff_splits: rebalanceSettlementPrimaryShare(next) }
+      return { ...block, staff_splits: rebalanceCartEditAddedMainBlockSplits(next, block) }
+    }))
+  }
+
+  const updateCartEditAddedMainSplitAmount = (tmpId: string, index: number, value: string) => {
+    setCartEditAddedMainBlocks((prev) => prev.map((block) => {
+      if (block.tmp_id !== tmpId) return block
+      const next = block.staff_splits.map((row, rowIdx) => (rowIdx === index ? { ...row, share_amount: value } : row))
+      if (!block.auto_balance || index === 0) return { ...block, staff_splits: next }
+      return { ...block, staff_splits: rebalanceSettlementInlineStaffRows(next, 'amount', resolveCartEditAddedMainBlockLineTotal(block), true) }
+    }))
+  }
+
+  const updateCartEditAddedMainSplitMode = (tmpId: string, mode: StaffSplitMode) => {
+    setCartEditAddedMainBlocks((prev) => prev.map((block) => {
+      if (block.tmp_id !== tmpId) return block
+      const lineTotal = resolveCartEditAddedMainBlockLineTotal(block)
+      const nextMode = mode === 'amount' && lineTotal == null ? 'percent' : mode
+      const nextSplits = nextMode === 'amount' && lineTotal != null
+        ? block.staff_splits.map((row, index) => ({
+            ...row,
+            share_amount: percentsToAmounts(
+              block.staff_splits.map((item) => Number.parseInt(item.share_percent || '0', 10)),
+              lineTotal,
+            )[index]?.toFixed(2) ?? row.share_amount,
+          }))
+        : block.staff_splits
+      return {
+        ...block,
+        split_mode: nextMode,
+        staff_splits: block.auto_balance ? rebalanceCartEditAddedMainBlockSplits(nextSplits, { ...block, split_mode: nextMode }) : nextSplits,
+      }
     }))
   }
 
   const toggleCartEditAddedMainAutoBalance = (tmpId: string, enabled: boolean) => {
     setCartEditAddedMainBlocks((prev) => prev.map((block) => {
       if (block.tmp_id !== tmpId) return block
-      const nextSplits = enabled ? rebalanceSettlementPrimaryShare(block.staff_splits) : block.staff_splits
+      const nextSplits = enabled ? rebalanceCartEditAddedMainBlockSplits(block.staff_splits, block) : block.staff_splits
       return { ...block, auto_balance: enabled, staff_splits: nextSplits }
     }))
   }
-
-  const cartEditOriginalSettlementSource = useMemo(
-    () => bookingServiceSettlementSource(cartEditOriginalService),
-    [cartEditOriginalService],
-  )
-
 
   const editCartSettlementOriginalServicePrice = () => {
     if (!cartEditSettlementItem) return
@@ -5197,12 +5548,92 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     })
   }
 
+  const submitCartEditSettlementPayload = async (payload: Record<string, unknown>) => {
+    if (!cartEditSettlementBookingId) return
+
+    const res = await fetch(`/api/proxy/pos/appointments/${cartEditSettlementBookingId}/edit-settlement`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      reportCartEditSettlementError(json?.message ?? 'Failed to update settlement.')
+      return
+    }
+    const warnings = Array.isArray(json?.data?.policy_warnings)
+      ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+      : []
+
+    if (cartEditSettlementItem?.id) {
+      const settlementId = cartEditSettlementItem.id
+      const normalizedSplits = Array.isArray(payload.staff_splits) ? payload.staff_splits as StaffSplitPayload[] : []
+      setCheckoutLineSplits((prev) => {
+        const next = { ...prev }
+        Object.keys(next).forEach((key) => {
+          if (key.startsWith(`settlement:${settlementId}:`) || key.startsWith(`settlement-edit:${settlementId}:`)) {
+            delete next[key]
+          }
+        })
+
+        const originalLineKey = (cartEditSettlementItem.main_service_settlement_items ?? [])
+          .find((line, idx) => line.is_original ?? idx === 0)?.line_key ?? 'service:original'
+        next[`settlement:${settlementId}:${originalLineKey}`] = normalizedSplits
+
+        getSelectedAddonIds(cartEditAddonQuantities).forEach((addonId) => {
+          const editKey = `settlement-edit:${settlementId}:addon:${addonId}`
+          const addonLineKey = (cartEditSettlementItem.addon_settlement_items ?? [])
+            .find((addon) => Number(addon.id ?? 0) === Number(addonId))?.line_key ?? `addon:${addonId}`
+          const addonSplits = prev[editKey] ?? normalizedSplits
+          if (addonSplits.length > 0) {
+            next[`settlement:${settlementId}:${addonLineKey}`] = addonSplits
+          }
+        })
+
+        return next
+      })
+    }
+    showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
+    setCartEditSettlementNoteDraft('')
+    setCartEditSettlementOpen(false)
+    setCartPrimaryStaffChangePrompt(null)
+    setPendingCartEditSettlementPayload(null)
+    await loadCart()
+    void fetchUnpaidCompletedAppointments(settlementQuery)
+  }
+
   const saveCartEditSettlement = async () => {
     if (!cartEditSettlementBookingId) return
     reportCartEditSettlementError(null)
     setCartEditSettlementLoading(true)
     try {
       const needsSettledAmount = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
+      let settledServiceAmount: number | undefined
+      if (needsSettledAmount) {
+        const settledValidation = validateSettlementAmountInput(cartEditSettledAmount, cartEditOriginalSettlementSource)
+        if (!settledValidation.ok) {
+          reportCartEditSettlementError(settledValidation.message)
+          return
+        }
+        settledServiceAmount = settledValidation.amount
+      }
+      const normalizedResult = mapSettlementInlineStaffRowsForApi(cartEditStaffSplits, cartEditStaffSplitMode, cartEditOriginalLineTotal)
+      if (!normalizedResult.valid) {
+        reportCartEditSettlementError(normalizedResult.error ?? 'Invalid staff split.')
+        return
+      }
+      const normalizedSplits = normalizedResult.splits
+      const blockStaffSplitsByTmpId = new Map<string, StaffSplitPayload[]>()
+      for (const block of cartEditAddedMainBlocks) {
+        const blockLineTotal = Number(block.price ?? 0) > 0.0001 ? roundMoney(Number(block.price)) : null
+        const blockResult = mapSettlementInlineStaffRowsForApi(block.staff_splits, block.split_mode, blockLineTotal)
+        if (!blockResult.valid) {
+          reportCartEditSettlementError(blockResult.error ?? `Staff split for ${block.service_name} must be valid.`)
+          return
+        }
+        blockStaffSplitsByTmpId.set(block.tmp_id, blockResult.splits)
+      }
+
       const originalAddonIds = getSelectedAddonIds(cartEditAddonQuantities)
       const originalAddonOverrides = buildAddonSettlementSaveOverrides(
         originalAddonIds,
@@ -5237,10 +5668,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             addon_price_overrides: blockAddonOverrides.addon_price_overrides,
             addon_line_total_overrides: blockAddonOverrides.addon_line_total_overrides,
             addon_staff_splits: Object.fromEntries(blockAddonIds.map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),
-            staff_splits: block.staff_splits.map((row) => ({
-              staff_id: Number(row.staff_id ?? 0),
-              share_percent: Number.parseInt(row.share_percent || '0', 10),
-            })),
+            staff_splits: blockStaffSplitsByTmpId.get(block.tmp_id) ?? [],
           }
         }),
       }
@@ -5248,49 +5676,32 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       if (originalServiceId > 0 && originalServiceId !== Number(cartEditSettlementItem?.booking_service_id ?? 0)) {
         payload.booking_service_id = originalServiceId
       }
-      if (needsSettledAmount) {
-        const validation = validateSettlementAmountInput(cartEditSettledAmount, cartEditOriginalSettlementSource)
-        if (!validation.ok) {
-          reportCartEditSettlementError(validation.message)
-          return
-        }
-        payload.settled_service_amount = validation.amount
-      }
-      const normalizedSplits = cartEditStaffSplits.map((row) => ({
-        staff_id: Number(row.staff_id ?? 0),
-        share_percent: Number.parseInt(row.share_percent || '0', 10),
-      }))
-      if (normalizedSplits.length < 1 || normalizedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
-        reportCartEditSettlementError('Please select at least one staff and enter valid split percentages.')
-        return
-      }
-      const uniqueIds = new Set(normalizedSplits.map((row) => row.staff_id))
-      if (uniqueIds.size !== normalizedSplits.length) {
-        reportCartEditSettlementError('Duplicate staff is not allowed in split.')
-        return
-      }
-      const splitSum = normalizedSplits.reduce((sum, row) => sum + row.share_percent, 0)
-      if (splitSum !== 100) {
-        reportCartEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
-        return
+      if (needsSettledAmount && settledServiceAmount != null) {
+        payload.settled_service_amount = settledServiceAmount
       }
       payload.staff_splits = normalizedSplits
 
-      const primaryStaffCheck = await confirmAndVerifyEditSettlementPrimaryStaffChange({
-        originalStaffId: cartEditSettlementOriginalPrimaryStaffId,
+      const staffNameById = createStaffNameResolver(activeStaffs, {
+        extraSplits: cartEditSettlementItem?.staff_splits,
+      })
+      const availabilityCheck = await verifyEditSettlementPrimaryStaffAvailability({
         nextSplits: normalizedSplits,
         startAt: cartEditSettlementItem?.appointment_start_at,
         endAt: cartEditSettlementItem ? getSettlementDisplayEndAt(cartEditSettlementItem) : null,
         ignoreBookingId: cartEditSettlementBookingId ?? undefined,
         verifyMode: posAvailabilityVerifyMode,
-        staffNameById: (id) => activeStaffs.find((staff) => staff.id === id)?.name ?? cartEditSettlementItem?.staff_splits?.find((split) => split.staff_id === id)?.staff_name ?? null,
+        staffNameById,
       })
-      if (!primaryStaffCheck.ok) {
-        if (!primaryStaffCheck.cancelled && primaryStaffCheck.message) {
-          reportCartEditSettlementError(primaryStaffCheck.message)
-        }
+      if (!availabilityCheck.ok) {
+        reportCartEditSettlementError(availabilityCheck.message)
         return
       }
+
+      const staffChangePrompt = buildEditSettlementPrimaryStaffChangePrompt({
+        originalStaffId: cartEditSettlementOriginalPrimaryStaffId,
+        nextSplits: normalizedSplits,
+        staffNameById,
+      })
 
       payload.settlement_note = cartEditSettlementNoteDraft.trim()
 
@@ -5315,69 +5726,23 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         payload.guest_email = guestEmail || null
       }
 
-      for (const block of cartEditAddedMainBlocks) {
-        const blockSplits = block.staff_splits.map((row) => ({
-          staff_id: Number(row.staff_id ?? 0),
-          share_percent: Number.parseInt(row.share_percent || '0', 10),
-        }))
-        if (blockSplits.length < 1 || blockSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
-          reportCartEditSettlementError(`Please complete staff split for ${block.service_name}.`)
-          return
-        }
-        const blockUnique = new Set(blockSplits.map((row) => row.staff_id))
-        const blockSum = blockSplits.reduce((sum, row) => sum + row.share_percent, 0)
-        if (blockUnique.size !== blockSplits.length || blockSum !== 100) {
-          reportCartEditSettlementError(`Staff split for ${block.service_name} must be valid and total 100%.`)
-          return
-        }
-      }
-
-      const res = await fetch(`/api/proxy/pos/appointments/${cartEditSettlementBookingId}/edit-settlement`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const json = await res.json().catch(() => null)
-      if (!res.ok) {
-        reportCartEditSettlementError(json?.message ?? 'Failed to update settlement.')
+      if (staffChangePrompt) {
+        setCartPrimaryStaffChangePrompt(staffChangePrompt)
+        setPendingCartEditSettlementPayload(payload)
         return
       }
-      const warnings = Array.isArray(json?.data?.policy_warnings)
-        ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
-        : []
 
-      if (cartEditSettlementItem?.id) {
-        const settlementId = cartEditSettlementItem.id
-        setCheckoutLineSplits((prev) => {
-          const next = { ...prev }
-          Object.keys(next).forEach((key) => {
-            if (key.startsWith(`settlement:${settlementId}:`) || key.startsWith(`settlement-edit:${settlementId}:`)) {
-              delete next[key]
-            }
-          })
+      await submitCartEditSettlementPayload(payload)
+    } finally {
+      setCartEditSettlementLoading(false)
+    }
+  }
 
-          const originalLineKey = (cartEditSettlementItem.main_service_settlement_items ?? [])
-            .find((line, idx) => line.is_original ?? idx === 0)?.line_key ?? 'service:original'
-          next[`settlement:${settlementId}:${originalLineKey}`] = normalizedSplits
-
-          getSelectedAddonIds(cartEditAddonQuantities).forEach((addonId) => {
-            const editKey = `settlement-edit:${settlementId}:addon:${addonId}`
-            const addonLineKey = (cartEditSettlementItem.addon_settlement_items ?? [])
-              .find((addon) => Number(addon.id ?? 0) === Number(addonId))?.line_key ?? `addon:${addonId}`
-            const addonSplits = prev[editKey] ?? normalizedSplits
-            if (addonSplits.length > 0) {
-              next[`settlement:${settlementId}:${addonLineKey}`] = addonSplits
-            }
-          })
-
-          return next
-        })
-      }
-      showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
-      setCartEditSettlementNoteDraft('')
-      setCartEditSettlementOpen(false)
-      await loadCart()
-      void fetchUnpaidCompletedAppointments(settlementQuery)
+  const confirmPrimaryStaffChangeForCartEditSettlement = async () => {
+    if (!pendingCartEditSettlementPayload) return
+    setCartEditSettlementLoading(true)
+    try {
+      await submitCartEditSettlementPayload(pendingCartEditSettlementPayload)
     } finally {
       setCartEditSettlementLoading(false)
     }
@@ -5431,9 +5796,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           return
         }
         const json = await res.json()
-        const paged = extractPaged<{ id?: number | string; name?: string; cn_name?: string | null }>(json)
+        const paged = extractPaged<{ id?: number | string; name?: string; cn_name?: string | null; show_in_pos_filter?: boolean | number | string | null }>(json)
         const mapped = paged.data
-          .map((item) => {
+          .map((item): CategoryOption | null => {
             const id = Number(item?.id)
             if (!Number.isFinite(id) || id <= 0 || !item?.name?.trim()) return null
             return {
@@ -5448,7 +5813,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 item?.show_in_pos_filter === 'true',
             }
           })
-          .filter((item): item is CategoryOption => Boolean(item))
+          .filter((item): item is CategoryOption => item != null)
         setCategories(mapped)
       } catch {
         setCategories([])
@@ -6548,24 +6913,25 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         setCheckingOut(false)
         return
       }
-      const ids = new Set<number>()
-      let total = 0
-      for (const row of rows) {
-        if (!row.staff_id || row.staff_id <= 0) {
-          reportCheckoutError(`Please select staff for all splits of package ${packageItem.package_name}.`)
-          setCheckingOut(false)
-          return
-        }
-        if (ids.has(row.staff_id)) {
-          reportCheckoutError(`Duplicate staff found in package split for ${packageItem.package_name}.`)
-          setCheckingOut(false)
-          return
-        }
-        ids.add(row.staff_id)
-        total += Number(row.share_percent || 0)
-      }
-      if (total !== 100) {
-        reportCheckoutError(`Total split for package ${packageItem.package_name} must be 100%.`)
+
+      const lineTotal = resolvePackageLineTotal(packageItem)
+      const splitMode = (rows[0]?.split_mode ?? 'percent') as StaffSplitMode
+      const validation = validateStaffSplitDraft(
+        rows.map((row) => ({
+          staff_id: row.staff_id,
+          share_percent: row.share_percent,
+          share_amount:
+            row.share_amount != null
+              ? Number(row.share_amount).toFixed(2)
+              : splitMode === 'amount' && lineTotal > 0
+                ? (lineTotal * (row.share_percent / 100)).toFixed(2)
+                : '0.00',
+        })),
+        splitMode,
+        splitMode === 'amount' ? lineTotal : null,
+      )
+      if (!validation.valid) {
+        reportCheckoutError(validation.error ?? `Invalid staff split for package ${packageItem.package_name}.`)
         setCheckingOut(false)
         return
       }
@@ -6595,17 +6961,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           qty: item.qty,
           unit_price: item.unit_price,
           line_total: item.line_total,
-          staff_splits: (selectedStaffSplitsByCartItemId.get(item.id) ?? []).map((split) => ({
-            staff_id: split.staff_id,
-            share_percent: split.share_percent,
-          })),
+          staff_splits: (selectedStaffSplitsByCartItemId.get(item.id) ?? []).map(serializeStaffSplitForApi),
           line_staff_splits: Object.entries(checkoutLineSplits)
             .filter(([key]) => key.startsWith(`cart:${item.id}:`))
             .map(([key, splits]) => ({
               line_key: key,
               line_type: key.includes(':booking_product_option:') ? 'booking_product_option' : 'booking_product_base',
               line_ref_id: Number(key.split(':').pop() ?? 0) || null,
-              staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
+              staff_splits: splits.map(serializeStaffSplitForApi),
             })),
         })),
         service_items: (cart.service_items ?? []).map((item) => ({
@@ -6636,7 +6999,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 line_key: key,
                 line_type: key.includes(':addon:') ? 'service_addon_deposit' : 'service_deposit',
                 line_ref_id: key.split(':').pop() ?? null,
-                staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
+                staff_splits: splits.map(serializeStaffSplitForApi),
               }))
           })(),
         })),
@@ -6645,11 +7008,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           cartAppointmentSettlementItems.forEach((settlement) => {
             ;(settlement.main_service_settlement_items ?? []).forEach((service, idx) => {
               const key = `settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`
-              rows.set(key, checkoutLineSplits[key] ?? service.staff_splits ?? settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])
+              rows.set(key, checkoutLineSplits[key] ?? service.staff_splits ?? settlement.staff_splits?.map(serializeStaffSplitForApi) ?? [])
             })
             ;(settlement.addon_settlement_items ?? []).forEach((addon, idx) => {
               const key = `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`
-              rows.set(key, checkoutLineSplits[key] ?? addon.staff_splits ?? settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])
+              rows.set(key, checkoutLineSplits[key] ?? addon.staff_splits ?? settlement.staff_splits?.map(serializeStaffSplitForApi) ?? [])
             })
           })
           Object.entries(checkoutLineSplits)
@@ -6662,7 +7025,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               line_key: key.split(':').slice(2).join(':'),
               line_type: key.includes(':addon:') ? 'settlement_addon' : 'settlement_service',
               line_ref_id: key.split(':').pop() ?? null,
-              staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
+              staff_splits: splits.map(serializeStaffSplitForApi),
             }))
         })(),
         package_items: cartPackageItems.map((item) => ({
@@ -6673,10 +7036,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           snapshot_name: item.package_name,
           snapshot_price: item.unit_price,
           customer_id: item.customer_id ?? selectedMember?.id ?? null,
-          staff_splits: (packageCheckoutSplits[item.id] ?? []).map((split) => ({
-            staff_id: split.staff_id,
-            share_percent: split.share_percent,
-          })),
+          staff_splits: (packageCheckoutSplits[item.id] ?? []).map(serializeStaffSplitForApi),
         })),
       }
 
@@ -7171,34 +7531,19 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     return splitSummary === '—' ? 'Staff: —' : `Staff: ${splitSummary}`
   }, [formatSettlementStaffLabel])
 
-  const createDraftRow = (seed?: Partial<CheckoutItemSplitDraft>): CheckoutItemSplitDraft => ({
-    id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    staff_id: seed?.staff_id ?? null,
-    share_percent: seed?.share_percent ?? 0,
-    search: seed?.search ?? '',
-    options: seed?.options ?? activeStaffs,
-    loading: false,
-    open: false,
-  })
+  const createDraftRow = (seed?: Partial<CheckoutItemSplitDraft>): CheckoutItemSplitDraft =>
+    createStaffSplitDraftRow({
+      staff_id: seed?.staff_id ?? null,
+      share_percent: seed?.share_percent ?? 0,
+      share_amount: seed?.share_amount ?? '0.00',
+      search: seed?.search ?? '',
+      options: seed?.options ?? activeStaffs,
+      loading: seed?.loading ?? false,
+      open: seed?.open ?? false,
+    })
 
-  const validateSplitDraft = (rows: CheckoutItemSplitDraft[]) => {
-    if (rows.length === 0) return { valid: false, error: 'Please add at least one staff row.' }
-
-    const ids = new Set<number>()
-    let total = 0
-    for (const row of rows) {
-      if (!row.staff_id || row.staff_id <= 0) return { valid: false, error: 'Please select staff for every row.' }
-      if (ids.has(row.staff_id)) return { valid: false, error: 'Duplicate staff is not allowed.' }
-      ids.add(row.staff_id)
-      if (!Number.isInteger(row.share_percent) || row.share_percent < 0 || row.share_percent > 100) {
-        return { valid: false, error: 'Share % must be an integer between 0 and 100.' }
-      }
-      total += row.share_percent
-    }
-    if (total !== 100) return { valid: false, error: 'Total share must be exactly 100%.' }
-
-    return { valid: true, error: null as string | null }
-  }
+  const validateSplitDraft = (rows: CheckoutItemSplitDraft[]) =>
+    getStaffSplitDraftValidation(rows, itemSplitMode, itemSplitLineTotal)
 
   const syncCheckoutAssignments = useCallback(async () => {
     if (!cartItems.length) {
@@ -7233,18 +7578,33 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
 
     const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === cartItemId)
+    const cartItem = cartItems.find((item) => item.id === cartItemId)
+    const lineTotal = Math.max(
+      0,
+      Number(cartItem?.line_total_after_discount ?? cartItem?.line_total_snapshot ?? cartItem?.line_total ?? 0),
+    )
     const rows = (assignment?.splits ?? []).map((split) => {
       const selected = nextStaffs.find((staff) => staff.id === split.staff_id)
+      const splitMode = split.split_mode ?? 'percent'
+      const shareAmount =
+        split.share_amount != null
+          ? Number(split.share_amount).toFixed(2)
+          : lineTotal > 0
+            ? (lineTotal * (split.share_percent / 100)).toFixed(2)
+            : '0.00'
       return createDraftRow({
         staff_id: split.staff_id,
         share_percent: split.share_percent,
-         search: selected ? getStaffInputLabel(selected) : '',
+        share_amount: shareAmount,
+        search: selected ? getStaffInputLabel(selected) : '',
         options: nextStaffs,
       })
     })
 
-    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
-    setItemSplitEditorTarget({ type: 'product', id: cartItemId })
+    setItemSplitLineTotal(lineTotal > 0 ? lineTotal : null)
+    setItemSplitMode((assignment?.splits?.[0]?.split_mode as StaffSplitMode | undefined) ?? 'percent')
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100, share_amount: lineTotal > 0 ? lineTotal.toFixed(2) : '0.00' })])
+    setItemSplitEditorTarget({ type: 'product', id: cartItemId, lineTotal: lineTotal > 0 ? lineTotal : null })
     setItemSplitAutoBalance(true)
     reportItemSplitError(null)
     setItemSplitEditorOpen(true)
@@ -7252,13 +7612,276 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
 
 
+  const resolveCartEditLinePackageCovered = useCallback((lineKey: string): boolean => {
+    if (!cartEditSettlementItem) return false
+    const originalServiceReference = Number(
+      cartEditOriginalService?.service_price
+      ?? cartEditOriginalService?.price
+      ?? cartEditSettlementItem.service_total
+      ?? 0,
+    )
+
+    const settlementEditMatch = lineKey.match(/^settlement-edit:(\d+):block:([^:]+):addon:(\d+)$/)
+    if (settlementEditMatch && cartEditSettlementItem.id === Number(settlementEditMatch[1])) {
+      const block = cartEditAddedMainBlocks.find((row) => row.tmp_id === settlementEditMatch[2])
+      const addonId = Number(settlementEditMatch[3])
+      const option = block?.addon_questions?.flatMap((q) => q.options ?? []).find((opt) => Number(opt.id) === addonId)
+      if (!option) return false
+      const bookingServiceId = Number(option.linked_booking_service_id ?? option.id ?? 0)
+      const qty = getAddonQuantity(block?.selected_addon_ids ?? {}, addonId)
+      const gross = Number(option.extra_price ?? 0) * Math.max(1, qty)
+      const amount = resolveEditSettlementAddonLineAmount(
+        addonId,
+        Number(option.extra_price ?? 0),
+        block?.selected_addon_ids ?? {},
+        block?.addon_price_overrides ?? {},
+        block?.addon_line_total_overrides ?? {},
+      )
+      return bookingServiceIdCoveredByPackage(cartEditSettlementItem, bookingServiceId, {
+        addon: {
+          linked_booking_service_id: bookingServiceId,
+          extra_price: option.extra_price,
+          balance_due: amount ?? 0,
+          gross_amount: gross,
+          quantity: qty,
+        },
+        originalServiceReference,
+      })
+    }
+
+    const settlementEditAddonMatch = lineKey.match(/^settlement-edit:(\d+):addon:(\d+)$/)
+    if (settlementEditAddonMatch && cartEditSettlementItem.id === Number(settlementEditAddonMatch[1])) {
+      const addonId = Number(settlementEditAddonMatch[2])
+      const option = cartEditAddonQuestions.flatMap((q) => q.options ?? []).find((opt) => Number(opt.id) === addonId)
+      if (!option) return false
+      const bookingServiceId = Number(option.linked_booking_service_id ?? option.id ?? 0)
+      const qty = getAddonQuantity(cartEditAddonQuantities, addonId)
+      const gross = Number(option.extra_price ?? 0) * Math.max(1, qty)
+      const amount = resolveEditSettlementAddonLineAmount(
+        addonId,
+        Number(option.extra_price ?? 0),
+        cartEditAddonQuantities,
+        cartEditAddonPriceOverrides,
+        cartEditAddonLineTotalOverrides,
+      )
+      return bookingServiceIdCoveredByPackage(cartEditSettlementItem, bookingServiceId, {
+        addon: {
+          linked_booking_service_id: bookingServiceId,
+          extra_price: option.extra_price,
+          balance_due: amount ?? 0,
+          gross_amount: gross,
+          quantity: qty,
+        },
+        originalServiceReference,
+      })
+    }
+
+    return false
+  }, [
+    cartEditAddedMainBlocks,
+    cartEditAddonLineTotalOverrides,
+    cartEditAddonPriceOverrides,
+    cartEditAddonQuantities,
+    cartEditAddonQuestions,
+    cartEditOriginalService,
+    cartEditSettlementItem,
+  ])
+
+  const resolveCheckoutLineTotal = useCallback((lineKey: string): number | null => {
+    if (!lineKey) return null
+
+    const positive = (value: number) => (value > 0.0001 ? roundMoney(value) : null)
+
+    const serviceMatch = lineKey.match(/^service:(\d+):(main|addon):(.+)$/)
+    if (serviceMatch) {
+      const serviceItem = cartServiceItems.find((item) => item.id === Number(serviceMatch[1]))
+      if (!serviceItem) return null
+      const blocks = getPosServiceDepositBlocks(serviceItem)
+      if (serviceMatch[2] === 'main') {
+        const ref = serviceMatch[3]
+        const service = blocks.find((row, idx) =>
+          String(row.line_key ?? 'main') === ref
+          || String(row.linked_booking_service_id ?? row.id ?? idx) === ref,
+        ) ?? blocks[0]
+        return service?.covered_by_package ? null : positive(Number(service?.deposit ?? 0))
+      }
+      for (const block of blocks) {
+        for (const addon of block.add_ons ?? []) {
+          const addonKey = String(addon.line_key ?? `addon:${addon.id ?? 0}`)
+          if (addonKey === serviceMatch[3] || String(addon.id ?? '') === serviceMatch[3] || addonKey.endsWith(`:${serviceMatch[3]}`)) {
+            return addon.covered_by_package ? null : positive(Number(addon.deposit ?? 0))
+          }
+        }
+      }
+      return null
+    }
+
+    const settlementMatch = lineKey.match(/^settlement:(\d+):(.+)$/)
+    if (settlementMatch) {
+      const settlement = cartAppointmentSettlementItems.find((item) => item.id === Number(settlementMatch[1]))
+      if (!settlement) return null
+      const rest = settlementMatch[2]
+      const serviceLine = (settlement.main_service_settlement_items ?? []).find((line, idx) =>
+        String(line.line_key ?? `service:${line.id ?? idx}`) === rest,
+      )
+      if (serviceLine) return positive(resolveSettlementLineAmountDue(serviceLine))
+      const addonLine = (settlement.addon_settlement_items ?? []).find((line, idx) =>
+        String(line.line_key ?? `addon:${line.id ?? idx}`) === rest,
+      )
+      if (addonLine) return positive(resolveSettlementLineAmountDue(addonLine))
+      return null
+    }
+
+    const settlementEditMatch = lineKey.match(/^settlement-edit:(\d+):block:([^:]+):addon:(\d+)$/)
+    if (settlementEditMatch && cartEditSettlementItem?.id === Number(settlementEditMatch[1])) {
+      if (resolveCartEditLinePackageCovered(lineKey)) return null
+      const block = cartEditAddedMainBlocks.find((row) => row.tmp_id === settlementEditMatch[2])
+      const addonId = Number(settlementEditMatch[3])
+      const option = block?.addon_questions?.flatMap((q) => q.options ?? []).find((opt) => Number(opt.id) === addonId)
+      if (option) {
+        const storedAddon = (cartEditSettlementItem.main_services ?? [])
+          .find((service) => Number(service.linked_booking_service_id ?? service.id ?? 0) === block?.service_id)
+          ?.add_ons?.find((row) => Number(row.id ?? 0) === addonId)
+        const amount = resolveEditSettlementAddonSplitLineTotal(
+          option,
+          block?.selected_addon_ids ?? {},
+          block?.addon_price_overrides ?? {},
+          block?.addon_line_total_overrides ?? {},
+          storedAddon,
+        )
+        return amount != null ? positive(amount) : null
+      }
+    }
+    const settlementEditAddonMatch = lineKey.match(/^settlement-edit:(\d+):addon:(\d+)$/)
+    if (settlementEditAddonMatch && cartEditSettlementItem?.id === Number(settlementEditAddonMatch[1])) {
+      if (resolveCartEditLinePackageCovered(lineKey)) return null
+      const addonId = Number(settlementEditAddonMatch[2])
+      const option = cartEditAddonQuestions.flatMap((q) => q.options ?? []).find((opt) => Number(opt.id) === addonId)
+      if (option) {
+        const storedAddon = (cartEditSettlementItem.addon_settlement_items ?? [])
+          .find((row) => Number(row.id ?? 0) === addonId)
+        const amount = resolveEditSettlementAddonSplitLineTotal(
+          option,
+          cartEditAddonQuantities,
+          cartEditAddonPriceOverrides,
+          cartEditAddonLineTotalOverrides,
+          storedAddon,
+        )
+        return amount != null ? positive(amount) : null
+      }
+    }
+
+    const bookingDraftMainMatch = lineKey.match(/^booking-draft:main:(\d+)$/)
+    if (bookingDraftMainMatch && bookingServiceDraft?.id === Number(bookingDraftMainMatch[1])) {
+      return positive(Number(bookingServiceDraft.price ?? bookingServiceDraft.service_price ?? 0))
+    }
+    const bookingDraftAddonMatch = lineKey.match(/^booking-draft:(?:block:[^:]+:)?addon:(\d+)$/)
+    if (bookingDraftAddonMatch) {
+      const addonId = Number(bookingDraftAddonMatch[1])
+      const option = bookingQuestions.flatMap((q) => q.options ?? []).find((opt) => Number(opt.id) === addonId)
+      if (option) {
+        const qty = getAddonQuantity(bookingAddonQuantities, addonId)
+        return positive(Number(option.extra_price ?? 0) * Math.max(1, qty))
+      }
+    }
+
+    const cartProductMatch = lineKey.match(/^cart:(\d+):booking_product_(?:base|option):(\d+)$/)
+    if (cartProductMatch) {
+      const cartItem = cartItems.find((item) => item.id === Number(cartProductMatch[1]))
+      if (!cartItem) return null
+      if (lineKey.includes(':booking_product_base')) {
+        return positive(Number(cartItem.line_total ?? 0))
+      }
+      const optionId = Number(cartProductMatch[2])
+      const option = (cartItem.selected_booking_product_options ?? [])
+        .flatMap((q) => q.options ?? [])
+        .find((opt) => Number(opt.id) === optionId)
+      if (option) {
+        return positive(Number(option.line_total_after_discount ?? option.extra_price ?? 0) * Math.max(1, cartItem.qty))
+      }
+    }
+
+    return null
+  }, [
+    bookingAddonQuantities,
+    bookingQuestions,
+    bookingServiceDraft,
+    cartAppointmentSettlementItems,
+    cartEditAddedMainBlocks,
+    cartEditAddonLineTotalOverrides,
+    cartEditAddonPriceOverrides,
+    cartEditAddonQuantities,
+    cartEditAddonQuestions,
+    cartEditSettlementItem?.addon_settlement_items,
+    cartEditSettlementItem?.id,
+    cartEditSettlementItem?.main_services,
+    cartItems,
+    cartServiceItems,
+    resolveCartEditLinePackageCovered,
+  ])
+
+  const itemSplitAllowAmountMode = useMemo(() => {
+    if (itemSplitEditorTarget?.applyCartEditSettlementMainServices && cartEditOriginalServiceCoveredByPackage) {
+      return false
+    }
+    if (itemSplitEditorTarget?.type === 'line' && itemSplitEditorTarget.lineKey) {
+      if (resolveCartEditLinePackageCovered(itemSplitEditorTarget.lineKey)) {
+        return false
+      }
+    }
+    return itemSplitLineTotal != null && itemSplitLineTotal > 0
+  }, [
+    cartEditOriginalServiceCoveredByPackage,
+    itemSplitEditorTarget,
+    itemSplitLineTotal,
+    resolveCartEditLinePackageCovered,
+  ])
+
+  const resolveProductCartItemLineTotal = useCallback((cartItemId: number): number | null => {
+    const item = cartItems.find((row) => row.id === cartItemId)
+    if (!item) return null
+    const total = Number(item.line_total_after_discount ?? item.line_total ?? 0)
+    return total > 0.0001 ? roundMoney(total) : null
+  }, [cartItems])
+
+  const resolveBulkReferenceLineTotal = useCallback((
+    lineKeys: string[],
+    productCartItemIds: number[] = [],
+    packageItemIds: number[] = [],
+  ): number | null => {
+    for (const key of lineKeys) {
+      const total = resolveCheckoutLineTotal(key)
+      if (total != null) return total
+    }
+    for (const id of productCartItemIds) {
+      const total = resolveProductCartItemLineTotal(id)
+      if (total != null) return total
+    }
+    for (const id of packageItemIds) {
+      const packageItem = cartPackageItems.find((row) => row.id === id)
+      if (packageItem) {
+        const total = Math.max(0, Number(packageItem.line_total_after_discount ?? packageItem.line_total ?? packageItem.line_total_snapshot ?? 0))
+        if (total > 0.0001) return roundMoney(total)
+      }
+    }
+    return null
+  }, [cartPackageItems, resolveCheckoutLineTotal, resolveProductCartItemLineTotal])
+
+
   const formatCheckoutSplitRows = (splits: CheckoutItemStaffSplit[]): string => {
-    const rows = (splits ?? []).filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
+    const rows = (splits ?? []).filter((split) =>
+      Number(split.staff_id) > 0
+      && (Number(split.share_percent) > 0 || (split.split_mode === 'amount' && Number(split.share_amount) > 0)),
+    )
     if (!rows.length) return '—'
 
     return rows.map((split) => {
       const staff = activeStaffs.find((item) => item.id === Number(split.staff_id))
-      return `${staff?.name ?? `Staff #${split.staff_id}`} (${Number(split.share_percent)}%)`
+      const staffName = staff?.name ?? `Staff #${split.staff_id}`
+      if (split.split_mode === 'amount' && split.share_amount != null) {
+        return `${staffName} (RM ${Number(split.share_amount).toFixed(2)})`
+      }
+      return `${staffName} (${Number(split.share_percent)}%)`
     }).join(' · ')
   }
 
@@ -7279,6 +7902,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     })
   }
 
+  const openCheckoutLineSplitEditor = (
+    lineKey: string,
+    title: string,
+    inheritedSplits: CheckoutItemStaffSplit[] = [],
+  ) => {
+    void openLineSplitEditor(lineKey, title, inheritedSplits, resolveCheckoutLineTotal(lineKey))
+  }
+
   const renderCheckoutStaffSplitButtons = (
     lineKey: string,
     title: string,
@@ -7289,7 +7920,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       <>
         <button
           type="button"
-          onClick={() => void openLineSplitEditor(lineKey, title, inheritedSplits)}
+          onClick={() => openCheckoutLineSplitEditor(lineKey, title, inheritedSplits)}
           className={`inline-flex items-center gap-1.5 rounded-lg border-2 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md active:scale-95 ${
             hasSplit
               ? 'border-indigo-500 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700'
@@ -7328,7 +7959,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             return (
               <span key={`${lineKey}-${split.staff_id}-${idx}`} className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-md bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-900 ring-1 ring-indigo-100 sm:rounded sm:px-2 sm:py-0.5 sm:text-[10px]">
                 <span className="min-w-0 break-words">{staff?.name ?? `Staff #${split.staff_id}`}</span>
-                <span className="shrink-0 text-indigo-700">{Number(split.share_percent)}%</span>
+                <span className="shrink-0 text-indigo-700">
+                  {split.split_mode === 'amount' && split.share_amount != null
+                    ? `RM ${Number(split.share_amount).toFixed(2)}`
+                    : `${Number(split.share_percent)}%`}
+                </span>
               </span>
             )
           }) : <span className="text-[11px] text-gray-500 sm:text-[10px]">No staff selected</span>}
@@ -7351,27 +7986,47 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       setActiveStaffs(nextStaffs)
     }
 
+    const uniqueLineKeys = Array.from(new Set(lineKeys))
+    const referenceTotal = resolveBulkReferenceLineTotal(uniqueLineKeys, productCartItemIds, packageItemIds)
+    const inheritedMode = (inheritedSplits[0]?.split_mode as StaffSplitMode | undefined) ?? 'percent'
+    const applyCartEditSettlementMainServices = options?.applyCartEditSettlementMainServices ?? false
+
     const rows = inheritedSplits.map((split) => {
       const selected = nextStaffs.find((staff) => staff.id === split.staff_id)
+      const shareAmount =
+        split.share_amount != null
+          ? Number(split.share_amount).toFixed(2)
+          : referenceTotal != null
+            ? (referenceTotal * (split.share_percent / 100)).toFixed(2)
+            : '0.00'
       return createDraftRow({
         staff_id: split.staff_id,
         share_percent: split.share_percent,
+        share_amount: shareAmount,
         search: selected ? getStaffInputLabel(selected) : '',
         options: nextStaffs,
       })
     })
 
-    const applyCartEditSettlementMainServices = options?.applyCartEditSettlementMainServices ?? false
     setBulkSplitOverwrite(applyCartEditSettlementMainServices)
-    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
+    setItemSplitLineTotal(referenceTotal)
+    setItemSplitMode(
+      applyCartEditSettlementMainServices && cartEditOriginalServiceCoveredByPackage ? 'percent' : inheritedMode,
+    )
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({
+      options: nextStaffs,
+      share_percent: 100,
+      share_amount: referenceTotal != null ? referenceTotal.toFixed(2) : '0.00',
+    })])
     setItemSplitEditorTarget({
       type: 'bulk',
       id: 0,
-      lineKeys: Array.from(new Set(lineKeys)),
+      lineKeys: uniqueLineKeys,
       productCartItemIds,
       packageItemIds,
       title,
       applyCartEditSettlementMainServices,
+      lineTotal: referenceTotal,
     })
     setItemSplitAutoBalance(true)
     reportItemSplitError(null)
@@ -7379,7 +8034,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }
 
 
-  const openLineSplitEditor = async (lineKey: string, title: string, inheritedSplits: CheckoutItemStaffSplit[] = []) => {
+  const openLineSplitEditor = async (lineKey: string, title: string, inheritedSplits: CheckoutItemStaffSplit[] = [], lineTotal: number | null = null) => {
     let nextStaffs = activeStaffs
     if (!nextStaffs.length) {
       nextStaffs = await fetchStaffOptions('')
@@ -7387,22 +8042,40 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
 
     const existingSplits = checkoutLineSplits[lineKey] ?? inheritedSplits
+    const resolvedTotal = lineTotal != null && lineTotal > 0 ? lineTotal : null
+    const allowAmountMode = resolvedTotal != null && !resolveCartEditLinePackageCovered(lineKey)
     const rows = existingSplits.map((split) => {
       const selected = nextStaffs.find((staff) => staff.id === split.staff_id)
+      const shareAmount =
+        split.share_amount != null
+          ? Number(split.share_amount).toFixed(2)
+          : resolvedTotal != null
+            ? (resolvedTotal * (split.share_percent / 100)).toFixed(2)
+            : '0.00'
       return createDraftRow({
         staff_id: split.staff_id,
         share_percent: split.share_percent,
+        share_amount: shareAmount,
         search: selected ? getStaffInputLabel(selected) : '',
         options: nextStaffs,
       })
     })
 
-    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
-    setItemSplitEditorTarget({ type: 'line', id: 0, lineKey, title })
+    setItemSplitLineTotal(resolvedTotal)
+    setItemSplitMode(
+      existingSplits[0]?.split_mode === 'amount' && allowAmountMode
+        ? 'amount'
+        : 'percent',
+    )
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100, share_amount: resolvedTotal != null ? resolvedTotal.toFixed(2) : '0.00' })])
+    setItemSplitEditorTarget({ type: 'line', id: 0, lineKey, title, lineTotal: resolvedTotal })
     setItemSplitAutoBalance(true)
     reportItemSplitError(null)
     setItemSplitEditorOpen(true)
   }
+
+  const resolvePackageLineTotal = (packageItem: PackageCartItem) =>
+    Math.max(0, Number(packageItem.line_total_after_discount ?? packageItem.line_total ?? packageItem.line_total_snapshot ?? 0))
 
   const openPackageSplitEditor = async (packageItemId: number) => {
     let nextStaffs = activeStaffs
@@ -7411,19 +8084,30 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       setActiveStaffs(nextStaffs)
     }
 
+    const packageItem = cartPackageItems.find((item) => item.id === packageItemId)
+    const lineTotal = packageItem ? resolvePackageLineTotal(packageItem) : 0
     const existingSplits = packageCheckoutSplits[packageItemId] ?? []
     const rows = existingSplits.map((split) => {
       const selected = nextStaffs.find((staff) => staff.id === split.staff_id)
+      const shareAmount =
+        split.share_amount != null
+          ? Number(split.share_amount).toFixed(2)
+          : lineTotal > 0
+            ? (lineTotal * (split.share_percent / 100)).toFixed(2)
+            : '0.00'
       return createDraftRow({
         staff_id: split.staff_id,
         share_percent: split.share_percent,
+        share_amount: shareAmount,
         search: selected ? getStaffInputLabel(selected) : '',
         options: nextStaffs,
       })
     })
 
-    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
-    setItemSplitEditorTarget({ type: 'package', id: packageItemId })
+    setItemSplitLineTotal(lineTotal > 0 ? lineTotal : null)
+    setItemSplitMode((existingSplits[0]?.split_mode as StaffSplitMode | undefined) ?? 'percent')
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100, share_amount: lineTotal > 0 ? lineTotal.toFixed(2) : '0.00' })])
+    setItemSplitEditorTarget({ type: 'package', id: packageItemId, lineTotal: lineTotal > 0 ? lineTotal : null })
     setItemSplitAutoBalance(true)
     reportItemSplitError(null)
     setItemSplitEditorOpen(true)
@@ -7436,23 +8120,36 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       setActiveStaffs(nextStaffs)
     }
 
-    const rows = (settlement.staff_splits ?? [])
+    const dueTotal = Number(settlement.amount_due_now ?? settlement.balance_due ?? 0)
+    const resolvedTotal = dueTotal > 0.0001 ? roundMoney(dueTotal) : null
+    const existingSplits = settlement.staff_splits ?? []
+    const rows = existingSplits
       .map((split) => {
         const staffId = Number(split.staff_id)
         const sharePercent = Number(split.share_percent)
         if (staffId <= 0 || sharePercent <= 0) return null
         const selected = nextStaffs.find((staff) => staff.id === staffId)
+        const extended = split as CheckoutItemStaffSplit
+        const shareAmount =
+          extended.share_amount != null
+            ? Number(extended.share_amount).toFixed(2)
+            : resolvedTotal != null
+              ? (resolvedTotal * (sharePercent / 100)).toFixed(2)
+              : '0.00'
         return createDraftRow({
           staff_id: staffId,
           share_percent: sharePercent,
+          share_amount: shareAmount,
           search: selected ? getStaffInputLabel(selected) : (split.staff_name ?? ''),
           options: nextStaffs,
         })
       })
       .filter((row): row is CheckoutItemSplitDraft => row != null)
 
-    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
-    setItemSplitEditorTarget({ type: 'settlement', id: settlement.id })
+    setItemSplitLineTotal(resolvedTotal)
+    setItemSplitMode((existingSplits[0] as CheckoutItemStaffSplit | undefined)?.split_mode ?? 'percent')
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100, share_amount: resolvedTotal != null ? resolvedTotal.toFixed(2) : '0.00' })])
+    setItemSplitEditorTarget({ type: 'settlement', id: settlement.id, lineTotal: resolvedTotal })
     setItemSplitAutoBalance(true)
     reportItemSplitError(null)
     setItemSplitEditorOpen(true)
@@ -7480,7 +8177,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
     if (!itemSplitEditorTarget) return
 
-    const mappedSplits = itemSplitDraftRows.map((row) => ({ staff_id: row.staff_id!, share_percent: row.share_percent }))
+    const referenceTotal = itemSplitEditorTarget.type === 'bulk'
+      ? (itemSplitEditorTarget.lineTotal ?? itemSplitLineTotal)
+      : itemSplitLineTotal
+    const mappedSplits = itemSplitEditorTarget.type === 'bulk'
+      ? mapBulkStaffSplitDraftToPayload(itemSplitDraftRows, itemSplitMode, referenceTotal, referenceTotal)
+      : mapStaffSplitDraftToPayload(itemSplitDraftRows, itemSplitMode, itemSplitLineTotal)
 
     if (itemSplitEditorTarget.type === 'product') {
       setCheckoutItemAssignments((prev) => prev.map((assignment) => {
@@ -7504,7 +8206,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       setCheckoutLineSplits((prev) => {
         const next = { ...prev }
         lineKeys.forEach((key) => {
-          if (forceOverwrite || !next[key]?.length) next[key] = mappedSplits
+          if (!forceOverwrite && next[key]?.length) return
+          const lineTotal = resolveCheckoutLineTotal(key)
+          next[key] = mapBulkStaffSplitDraftToPayload(itemSplitDraftRows, itemSplitMode, referenceTotal, lineTotal)
         })
         return next
       })
@@ -7512,7 +8216,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         const draftRows = mappedSplits.map((row) => ({
           staff_id: row.staff_id,
           share_percent: String(row.share_percent),
+          share_amount: row.share_amount != null ? Number(row.share_amount).toFixed(2) : '0.00',
         }))
+        setCartEditStaffSplitMode(itemSplitMode)
         setCartEditStaffSplits(draftRows)
         setCartEditAddedMainBlocks((prev) => prev.map((block) => ({
           ...block,
@@ -7521,18 +8227,25 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       }
       if (itemSplitEditorTarget.productCartItemIds?.length) {
         const productIds = new Set(itemSplitEditorTarget.productCartItemIds)
-        setCheckoutItemAssignments((prev) => prev.map((assignment) => (
-          productIds.has(assignment.cart_item_id) && (forceOverwrite || !assignment.splits?.length)
-            ? { ...assignment, is_default: false, splits: mappedSplits }
-            : assignment
-        )))
+        setCheckoutItemAssignments((prev) => prev.map((assignment) => {
+          if (!productIds.has(assignment.cart_item_id) || (!forceOverwrite && assignment.splits?.length)) return assignment
+          const lineTotal = resolveProductCartItemLineTotal(assignment.cart_item_id)
+          return {
+            ...assignment,
+            is_default: false,
+            splits: mapBulkStaffSplitDraftToPayload(itemSplitDraftRows, itemSplitMode, referenceTotal, lineTotal),
+          }
+        }))
       }
       if (itemSplitEditorTarget.packageItemIds?.length) {
         const packageIds = new Set(itemSplitEditorTarget.packageItemIds)
         setPackageCheckoutSplits((prev) => {
           const next = { ...prev }
           packageIds.forEach((id) => {
-            if (forceOverwrite || !next[id]?.length) next[id] = mappedSplits
+            if (!forceOverwrite && next[id]?.length) return
+            const packageItem = cartPackageItems.find((row) => row.id === id)
+            const lineTotal = packageItem ? resolvePackageLineTotal(packageItem) : null
+            next[id] = mapBulkStaffSplitDraftToPayload(itemSplitDraftRows, itemSplitMode, referenceTotal, lineTotal != null && lineTotal > 0 ? lineTotal : null)
           })
           return next
         })
@@ -7549,6 +8262,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               staff_splits: mappedSplits.map((split) => ({
                 staff_id: split.staff_id,
                 share_percent: split.share_percent,
+                share_amount: split.share_amount ?? null,
+                split_mode: split.split_mode,
                 staff_name: activeStaffs.find((staff) => staff.id === split.staff_id)?.name ?? null,
               })),
             }
@@ -8955,7 +9670,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                           <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="text-xs font-medium text-gray-800" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
                                           {coveredByPackage ? (
                                             <p className="mt-0.5 text-[10px] font-medium leading-snug text-emerald-700">
-                                              [PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(service.linked_booking_service_id ?? service.id ?? 0))?.package_name ?? 'Package'}
+                                              {formatPackageClaimLineText(
+                                                findPackageClaimForService(
+                                                  settlement.package_claims,
+                                                  Number(service.linked_booking_service_id ?? service.id ?? 0),
+                                                ),
+                                              )}
                                             </p>
                                           ) : null}
                                         </div>
@@ -9002,7 +9722,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                           quantity={addon.quantity}
                                           cnClassName="block text-[10px] text-gray-500"
                                           quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600"
-                                          trailing={coveredByPackage ? <span className="mt-0.5 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">[PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(addon.linked_booking_service_id ?? addon.id ?? 0))?.package_name ?? 'Package'}</span> : null}
+                                          trailing={coveredByPackage ? <span className="mt-0.5 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">{formatPackageClaimLineText(findPackageClaimForService(settlement.package_claims, Number(addon.linked_booking_service_id ?? addon.id ?? 0)))}</span> : null}
                                         />
                                         <span className="text-right font-semibold tabular-nums">
                                           {coveredByPackage ? (
@@ -9564,7 +10284,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           ...getSelectedAddonIds(cartEditAddonQuantities).map((id) => `settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`),
                           ...cartEditAddedMainBlocks.flatMap((block) => getSelectedAddonIds(block.selected_addon_ids).map((id) => `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`)),
                         ]
-                        const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
+                        const inherited = settlementInlineRowsToInheritedSplits(cartEditStaffSplits)
                         void openBulkSplitEditor('Edit Settlement Lines', lineKeys, inherited, [], [], { applyCartEditSettlementMainServices: true })
                       }}
                       className="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
@@ -9641,15 +10361,38 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   <button
                     type="button"
                     onClick={() => setCartEditStaffSplits((prev) => {
-                      const next = [...prev, { staff_id: null, share_percent: '' }]
+                      const next = [...prev, { staff_id: null, share_percent: '', share_amount: '0.00' }]
                       if (!cartEditStaffSplitAutoBalance) return next
-                      return rebalanceSettlementPrimaryShare(next)
+                      return rebalanceSettlementInlineStaffRows(next, cartEditStaffSplitMode, cartEditOriginalLineTotal, true)
                     })}
                     className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
                   >
                     + Add Staff
                   </button>
                 </div>
+                <StaffSplitModeToggle
+                  mode={cartEditStaffSplitMode}
+                  allowAmountMode={cartEditSettlementStaffSplitAllowAmountMode}
+                  showAmountOption={cartEditOriginalLineTotal != null && cartEditOriginalLineTotal > 0}
+                  className="mb-2 flex flex-wrap gap-2"
+                  onModeChange={setCartEditStaffSplitMode}
+                  onSelectAmount={() => {
+                    if (cartEditOriginalLineTotal == null) return
+                    setCartEditStaffSplitMode('amount')
+                    setCartEditStaffSplits((prev) => prev.map((row, index) => ({
+                      ...row,
+                      share_amount: percentsToAmounts(
+                        prev.map((item) => Number.parseInt(item.share_percent || '0', 10)),
+                        cartEditOriginalLineTotal,
+                      )[index]?.toFixed(2) ?? row.share_amount,
+                    })))
+                  }}
+                />
+                {cartEditStaffSplitMode === 'amount' && cartEditOriginalLineTotal != null ? (
+                  <p className="mb-2 text-xs text-gray-600">
+                    Line total: <span className="font-bold">{cartEditOriginalLineTotal.toFixed(2)}</span>
+                  </p>
+                ) : null}
                 <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700">
                   <input
                     type="checkbox"
@@ -9658,12 +10401,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       const checked = e.target.checked
                       setCartEditStaffSplitAutoBalance(checked)
                       if (checked) {
-                        setCartEditStaffSplits((prev) => rebalanceSettlementPrimaryShare(prev))
+                        setCartEditStaffSplits((prev) => rebalanceSettlementInlineStaffRows(prev, cartEditStaffSplitMode, cartEditOriginalLineTotal, true))
                       }
                     }}
                     className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                   />
-                  Auto Balance (lock first row, auto adjust to 100%)
+                  Auto Balance (lock first row{cartEditStaffSplitMode === 'amount' ? ', auto adjust to line total' : ', auto adjust to 100%'})
                 </label>
                 <div className="space-y-2">
                   {cartEditStaffSplits.map((split, idx) => (
@@ -9691,18 +10434,32 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             <option key={staff.id} value={staff.id}>{staff.name}</option>
                           ))}
                       </select>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          min={1}
-                          max={100}
-                          value={split.share_percent}
-                          disabled={cartEditStaffSplitAutoBalance && idx === 0}
-                          onChange={(e) => updateCartEditSplitShare(idx, e.target.value)}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-7 text-sm"
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
-                      </div>
+                      {cartEditStaffSplitMode === 'amount' ? (
+                        <div className="relative">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">RM</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={split.share_amount}
+                            disabled={cartEditStaffSplitAutoBalance && idx === 0}
+                            onChange={(e) => updateCartEditSplitAmount(idx, e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-2 text-sm"
+                          />
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={split.share_percent}
+                            disabled={cartEditStaffSplitAutoBalance && idx === 0}
+                            onChange={(e) => updateCartEditSplitShare(idx, e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-7 text-sm"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
+                        </div>
+                      )}
                       <button
                         type="button"
                         disabled={cartEditStaffSplits.length <= 1}
@@ -9757,7 +10514,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                     {renderLineSplitStack(lineKey, inherited, 'main service')}
                                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                                       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
-                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openCheckoutLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                     </div>
                                   </div>
                                 )
@@ -9996,13 +10753,25 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       </div>
                       <button
                         type="button"
-                        onClick={() => setCartEditAddedMainBlocks((prev) => prev.filter((item) => item.tmp_id !== block.tmp_id))}
+                        onClick={() => void removeCartEditAddedMainBlock(block.tmp_id)}
                         className="rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
                       >
                         Remove
                       </button>
                     </div>
                     <div className="space-y-2">
+                      <StaffSplitModeToggle
+                        mode={block.split_mode === 'amount' && resolveCartEditAddedMainBlockLineTotal(block) == null ? 'percent' : block.split_mode}
+                        allowAmountMode={resolveCartEditAddedMainBlockLineTotal(block) != null && !isCartEditAddedMainBlockPackageCovered(block)}
+                        showAmountOption={resolveCartEditAddedMainBlockLineTotal(block) != null}
+                        onModeChange={(mode) => updateCartEditAddedMainSplitMode(block.tmp_id, mode)}
+                        onSelectAmount={() => updateCartEditAddedMainSplitMode(block.tmp_id, 'amount')}
+                      />
+                      {block.split_mode === 'amount' && resolveCartEditAddedMainBlockLineTotal(block) != null ? (
+                        <p className="text-xs text-gray-600">
+                          Line total: <span className="font-bold">{resolveCartEditAddedMainBlockLineTotal(block)!.toFixed(2)}</span>
+                        </p>
+                      ) : null}
                       <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                         <input
                           type="checkbox"
@@ -10010,7 +10779,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           onChange={(e) => toggleCartEditAddedMainAutoBalance(block.tmp_id, e.target.checked)}
                           className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                         />
-                        Auto Balance (lock first row, auto adjust to 100%)
+                        Auto Balance (lock first row{block.split_mode === 'amount' ? ', auto adjust to line total' : ', auto adjust to 100%'})
                       </label>
                       {block.staff_splits.map((split, idx) => (
                         <div key={`cart-added-split-${block.tmp_id}-${idx}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px_auto]">
@@ -10036,21 +10805,32 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                 <option key={`cart-added-staff-${block.tmp_id}-${staff.id}`} value={staff.id}>{staff.name}</option>
                               ))}
                           </select>
-                          <input
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={split.share_percent}
-                            disabled={block.auto_balance && idx === 0}
-                            onChange={(e) => {
-                              const value = e.target.value
-                              updateCartEditAddedMainSplitShare(block.tmp_id, idx, value)
-                            }}
-                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          />
+                          {block.split_mode === 'amount' ? (
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">RM</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={split.share_amount}
+                                disabled={block.auto_balance && idx === 0}
+                                onChange={(e) => updateCartEditAddedMainSplitAmount(block.tmp_id, idx, e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-2 text-sm"
+                              />
+                            </div>
+                          ) : (
+                            <input
+                              type="number"
+                              min={1}
+                              max={100}
+                              value={split.share_percent}
+                              disabled={block.auto_balance && idx === 0}
+                              onChange={(e) => updateCartEditAddedMainSplitShare(block.tmp_id, idx, e.target.value)}
+                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            />
+                          )}
                           <button
                             type="button"
-                            onClick={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                            onClick={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
                               ? { ...item, staff_splits: item.staff_splits.length <= 1 ? item.staff_splits : item.staff_splits.filter((_, rowIdx) => rowIdx !== idx) }
                               : item))}
                             className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600"
@@ -10061,7 +10841,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       ))}
                       <button
                         type="button"
-                        onClick={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id ? { ...item, staff_splits: [...item.staff_splits, { staff_id: null, share_percent: '' }] } : item))}
+                        onClick={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id ? { ...item, staff_splits: [...item.staff_splits, { staff_id: null, share_percent: '', share_amount: '0.00' }] } : item))}
                         className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700"
                       >
                         + Add Staff
@@ -10077,12 +10857,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             variant="settlement"
                             option={opt}
                             selection={block.selected_addon_ids}
-                            onToggle={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
-                              ? { ...item, selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, opt, question.question_type, question.options.map((row) => row.id)) }
-                              : item))}
-                            onQuantityChange={(qty) => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
-                              ? { ...item, selected_addon_ids: setAddonQuantity(item.selected_addon_ids, opt, qty) }
-                              : item))}
+                            onToggle={() => void toggleCartEditAddedMainBlockAddon(block.tmp_id, opt, question.question_type, question.options.map((row) => row.id))}
+                            onQuantityChange={(qty) => void setCartEditAddedMainBlockAddonQuantity(block.tmp_id, opt, qty)}
                             durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={block.selected_addon_ids} />}
                             priceLabel={
                               <PosAddonSettlementPriceLabel
@@ -10104,7 +10880,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   {renderLineSplitStack(lineKey, inherited, 'service block')}
                                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                                     <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementBlockAddonPrice(block.tmp_id, opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
-                                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openCheckoutLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                   </div>
                                 </div>
                               )
@@ -10243,6 +11019,20 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             </div>
           </div>
         </div>
+      )}
+
+      {renderPosBodyModalPortal(
+        cartPrimaryStaffChangePrompt ? (
+          <PosPrimaryStaffChangeConfirmModal
+            prompt={cartPrimaryStaffChangePrompt}
+            loading={cartEditSettlementLoading}
+            onCancel={() => {
+              setCartPrimaryStaffChangePrompt(null)
+              setPendingCartEditSettlementPayload(null)
+            }}
+            onConfirm={() => void confirmPrimaryStaffChangeForCartEditSettlement()}
+          />
+        ) : null,
       )}
 
       {cartEditMainServicePickerOpen && cartEditSettlementItem && cartEditMainServicePickerTargetId ? (
@@ -10672,7 +11462,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                     <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
                                       <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
                                         <span className="text-gray-500">{idx + 1}.</span>
-                                        <div>{renderGlobalBulkLineCheckbox(serviceLineKey)}<ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(serviceLineKey, service.staff_splits ?? serviceItem.staff_splits ?? [], 'assigned staff')}<div className="mt-1 flex flex-wrap gap-1">{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(serviceLineKey, service.name ?? 'Service deposit', service.staff_splits ?? serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[serviceLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
+                                        <div>{renderGlobalBulkLineCheckbox(serviceLineKey)}<ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(serviceLineKey, service.staff_splits ?? serviceItem.staff_splits ?? [], 'assigned staff')}<div className="mt-1 flex flex-wrap gap-1">{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => openCheckoutLineSplitEditor(serviceLineKey, service.name ?? 'Service deposit', service.staff_splits ?? serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[serviceLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
                                         <div className="text-right"><PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} /></div>
                                       </div>
                                       {service.package_note ? (
@@ -10693,7 +11483,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
                                           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                             <span className="text-gray-500">+</span>
-                                            <div>{renderGlobalBulkLineCheckbox(addonLineKey)}<PosAddonLineName name={addon.name} cnName={addon.cn_name} quantity={addon.quantity} prefix="" cnClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(addonLineKey, addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [], 'main service')}<div className="mt-1 flex flex-wrap gap-1">{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(addonLineKey, addon.name ?? 'Service add-on deposit', addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[addonLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
+                                            <div>{renderGlobalBulkLineCheckbox(addonLineKey)}<PosAddonLineName name={addon.name} cnName={addon.cn_name} quantity={addon.quantity} prefix="" cnClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(addonLineKey, addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [], 'main service')}<div className="mt-1 flex flex-wrap gap-1">{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => openCheckoutLineSplitEditor(addonLineKey, addon.name ?? 'Service add-on deposit', addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[addonLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
                                             <div className="text-right"><PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} /></div>
                                           </div>
                                           {addon.package_note ? (
@@ -10835,7 +11625,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="mt-1 text-xs text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
                                         {coveredByPackage ? (
                                           <p className="mt-1 text-[10px] font-medium leading-snug text-emerald-700">
-                                            [PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(service.linked_booking_service_id ?? service.id ?? 0))?.package_name ?? 'Package'}
+                                            {formatPackageClaimLineText(
+                                              findPackageClaimForService(
+                                                settlement.package_claims,
+                                                Number(service.linked_booking_service_id ?? service.id ?? 0),
+                                              ),
+                                            )}
                                           </p>
                                         ) : null}
                                       </td>
@@ -10910,7 +11705,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         quantity={addon.quantity}
                                         cnClassName="block text-[10px] text-gray-500"
                                         quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600"
-                                        trailing={coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">[PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(addon.linked_booking_service_id ?? addon.id ?? 0))?.package_name ?? 'Package'}</span> : null}
+                                        trailing={coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">{formatPackageClaimLineText(findPackageClaimForService(settlement.package_claims, Number(addon.linked_booking_service_id ?? addon.id ?? 0)))}</span> : null}
                                       />
                                     </td>
                                     <td className="min-w-[260px] px-4 py-2 align-top">
@@ -10939,11 +11734,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   <p className="mt-1 text-xs text-gray-700">Service</p>
                                   {mainCoveredByPkg ? (
                                     <p className="mt-1 text-[10px] leading-snug text-cyan-800">
-                                      [PKG] {(settlement.package_claims ?? []).find((c) => c.booking_service_id === Number(settlement.booking_service_id ?? 0))?.package_name ?? 'Package'}
+                                      {formatPackageClaimLineText(
+                                        findPackageClaimForService(
+                                          settlement.package_claims,
+                                          Number(settlement.booking_service_id ?? 0),
+                                        ),
+                                      )}
                                     </p>
                                   ) : null}
                                 </td>
-                                <td className="min-w-[260px] px-4 py-2.5"><button type="button" onClick={() => void openLineSplitEditor(`settlement:${settlement.id}:service:original`, settlement.service_name ?? 'Settlement service', settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Assign Staff Split</button></td>
+                                <td className="min-w-[260px] px-4 py-2.5"><button type="button" onClick={() => openCheckoutLineSplitEditor(`settlement:${settlement.id}:service:original`, settlement.service_name ?? 'Settlement service', settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Assign Staff Split</button></td>
                                 <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
                                   {mainCoveredByPkg ? (
                                     <PosPackageIncludedAmount originalAmount={fallbackMainOriginal} inline />
@@ -11043,9 +11843,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           <td className="px-4 py-3.5 min-w-[260px] align-top">
                             <div className="space-y-2">
                               <p className="text-xs leading-relaxed text-gray-700">
-                                {splitRows.length > 0
-                                  ? `${splitRows.length} staff (${splitRows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)}%)`
-                                  : 'No staff assigned'}
+                                {splitRows.length > 0 ? formatCheckoutSplitRows(splitRows) : 'No staff assigned'}
                               </p>
                               <div className="flex flex-wrap items-center gap-2">
                                 <button
@@ -11587,113 +12385,54 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   Overwrite existing child staff splits
                 </label>
               ) : null}
-              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={itemSplitAutoBalance}
-                  onChange={(event) => {
-                    const checked = event.target.checked
-                    setItemSplitAutoBalance(checked)
-                    if (checked) {
-                      setItemSplitDraftRows((prev) => {
-                        if (prev.length <= 1) return prev
-                        const othersTotal = prev.slice(1).reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
-                        return prev.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row))
-                      })
+              <PosStaffSplitEditorPanel
+                rows={itemSplitDraftRows}
+                mode={itemSplitMode}
+                lineTotal={itemSplitLineTotal}
+                autoBalance={itemSplitAutoBalance}
+                allowAmountMode={itemSplitAllowAmountMode}
+                onModeChange={(mode) => {
+                  setItemSplitMode(mode)
+                  if (mode === 'amount' && itemSplitLineTotal != null && itemSplitLineTotal > 0) {
+                    setItemSplitDraftRows((prev) =>
+                      prev.map((row, index) => ({
+                        ...row,
+                        share_amount: percentsToAmounts(
+                          prev.map((item) => item.share_percent),
+                          itemSplitLineTotal,
+                        )[index]?.toFixed(2) ?? row.share_amount,
+                      })),
+                    )
+                  }
+                }}
+                onAutoBalanceChange={(checked) => {
+                  setItemSplitAutoBalance(checked)
+                  if (checked && itemSplitDraftRows.length > 1) {
+                    if (itemSplitMode === 'amount' && itemSplitLineTotal != null) {
+                      const amounts = percentsToAmounts(
+                        itemSplitDraftRows.map((row) => row.share_percent),
+                        itemSplitLineTotal,
+                      )
+                      setItemSplitDraftRows((prev) =>
+                        prev.map((row, index) => ({ ...row, share_amount: amounts[index]?.toFixed(2) ?? row.share_amount })),
+                      )
+                    } else {
+                      const othersTotal = itemSplitDraftRows
+                        .slice(1)
+                        .reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
+                      setItemSplitDraftRows((prev) =>
+                        prev.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row)),
+                      )
                     }
-                  }}
-                  className="h-4 w-4"
-                />
-                Auto Balance
-              </label>
-
-              <div className="space-y-3 pr-1">
-                {itemSplitDraftRows.map((row, index) => (
-                  <div key={row.id} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[1.6fr_0.8fr_auto] sm:items-end">
-                    <div className="relative">
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Staff</label>
-                      <input
-                        value={row.search}
-                        onFocus={() => setItemSplitDraftRows((prev) => prev.map((item) => item.id === row.id ? { ...item, open: true } : item))}
-                        onChange={(event) => setDraftRowSearch(row.id, event.target.value)}
-                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
-                        placeholder="Search staff by name / phone / email"
-                      />
-                      {row.open && (() => {
-                        // Filter out already selected staff (except the current row's selected staff)
-                        const selectedStaffIds = new Set(
-                          itemSplitDraftRows
-                            .filter(r => r.id !== row.id && r.staff_id !== null)
-                            .map(r => r.staff_id!)
-                        )
-                        const availableOptions = row.options.filter(staff => !selectedStaffIds.has(staff.id))
-                        
-                        return (
-                          <div className="absolute z-[230] mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-2xl ring-1 ring-black/5">
-                            {row.loading ? (
-                              <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>
-                            ) : availableOptions.length === 0 ? (
-                              <p className="px-3 py-2 text-xs text-gray-500">No available staff</p>
-                            ) : (
-                              availableOptions.map((staff) => (
-                                <button
-                                  key={staff.id}
-                                  type="button"
-                                  onClick={() => selectDraftRowStaff(row.id, staff)}
-                                  className="block w-full border-b border-gray-100 px-3 py-2 text-left hover:bg-gray-50"
-                                >
-                                  <p className="text-xs font-semibold text-gray-900">{getStaffDropdownPrimary(staff)}</p>
-                                  {!!staff.email && <p className="mt-0.5 text-[11px] text-gray-600">{staff.email}</p>}
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        )
-                      })()}
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Share %</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={row.share_percent}
-                        readOnly={itemSplitAutoBalance && index === 0}
-                        onChange={(event) => onChangeDraftShare(row.id, Number(event.target.value || 0))}
-                        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm read-only:bg-gray-100"
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => onRemoveDraftSplitRow(row.id)}
-                      className="h-10 rounded-lg border border-red-300 px-3 text-red-700 hover:bg-red-50 flex items-center justify-center transition-colors"
-                      title="Remove"
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={onAddDraftSplitRow}
-                className="inline-flex items-center gap-1.5 rounded-lg border-2 border-emerald-500 bg-gradient-to-r from-emerald-500 to-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:from-emerald-600 hover:to-emerald-700 hover:shadow-md active:scale-95"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Staff
-              </button>
-
-              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                <span className="text-sm text-gray-700">Total %</span>
-                <span className="text-sm font-bold text-gray-900">{itemSplitDraftRows.reduce((sum, row) => sum + row.share_percent, 0)}%</span>
-              </div>
+                  }
+                }}
+                onRowsChange={setItemSplitDraftRows}
+                onRowSearch={setDraftRowSearch}
+                onSelectStaff={selectDraftRowStaff}
+                onAddRow={onAddDraftSplitRow}
+                onRemoveRow={onRemoveDraftSplitRow}
+                getStaffLabel={getStaffDropdownPrimary}
+              />
 
             </div>
             </div>
@@ -12136,7 +12875,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     {renderLineSplitStack(`booking-draft:main:${bookingServiceDraft.id}`, bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [], 'assigned staff')}
                     <button
                       type="button"
-                      onClick={() => void openLineSplitEditor(`booking-draft:main:${bookingServiceDraft.id}`, bookingServiceDraft.name ?? 'Main service', bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])}
+                      onClick={() => openCheckoutLineSplitEditor(`booking-draft:main:${bookingServiceDraft.id}`, bookingServiceDraft.name ?? 'Main service', bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])}
                       className="min-h-[44px] w-full touch-manipulation rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 sm:min-h-0 sm:w-auto sm:rounded sm:px-2 sm:py-0.5 sm:text-[10px]"
                     >
                       {checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}
@@ -12185,7 +12924,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                     {renderLineSplitStack(lineKey, mainSplits, 'main service')}
                                     <div className="flex flex-wrap items-center gap-2">
                                       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editBookingMainAddonPrice(option.id, option.label, Number(option.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
-                                      <button type="button" onClick={(event) => { event.preventDefault(); void openLineSplitEditor(lineKey, option.label, mainSplits) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); openCheckoutLineSplitEditor(lineKey, option.label, mainSplits) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                     </div>
                                   </div>
                                 )
@@ -12231,7 +12970,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               return (
                                 <div className="mt-1 flex flex-wrap items-center gap-1">
                                   {renderLineSplitStack(lineKey, inherited, 'assigned staff')}
-                                  <button type="button" onClick={() => void openLineSplitEditor(lineKey, block.service?.name ?? 'Service block', inherited)} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                  <button type="button" onClick={() => openCheckoutLineSplitEditor(lineKey, block.service?.name ?? 'Service block', inherited)} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                 </div>
                               )
                             })()}
@@ -12340,7 +13079,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                     {renderLineSplitStack(lineKey, mainSplits, 'service block')}
                                     <div className="flex flex-wrap items-center gap-2">
                                       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editBookingBlockAddonPrice(block.id, option.id, option.label, Number(option.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
-                                      <button type="button" onClick={(event) => { event.preventDefault(); void openLineSplitEditor(lineKey, option.label, mainSplits) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); openCheckoutLineSplitEditor(lineKey, option.label, mainSplits) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                     </div>
                                   </div>
                                 )

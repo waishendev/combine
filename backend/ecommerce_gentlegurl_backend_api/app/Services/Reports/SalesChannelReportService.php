@@ -13,6 +13,7 @@ use App\Services\Booking\CustomerServicePackageService;
 use App\Models\User;
 use App\Support\BookingNotes;
 use App\Services\Ecommerce\InvoiceService;
+use App\Services\Ecommerce\StaffSplitNormalizer;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
@@ -329,15 +330,17 @@ class SalesChannelReportService
 
         $staffSplits = $item->staffSplits
             ->filter(fn ($split) => ! in_array((string) ($split->line_type ?? ''), ['booking_product_option'], true))
-            ->map(fn ($split) => [
+            ->map(fn ($split) => StaffSplitNormalizer::toReportSplit([
                 'staff_id' => (int) $split->staff_id,
-                'staff_name' => (string) ($split->staff?->name ?? ('Staff #' . $split->staff_id)),
                 'share_percent' => (int) $split->share_percent,
+                'share_amount' => $split->share_amount,
+                'split_mode' => $split->split_mode,
                 'commission_rate_snapshot' => (float) ($split->commission_rate_snapshot ?? 0),
-            ])
+            ], (string) ($split->staff?->name ?? ('Staff #' . $split->staff_id))))
             ->values();
 
         $staffSplits = $this->resolveBookingStaffSplitsForLine($item, $staffSplits);
+        $staffSplits = $this->resolveServicePackageStaffSplitsForLine($item, $staffSplits);
         $assignedStaffName = $item->booking?->staff?->name
             ?: ($staffSplits->first()['staff_name'] ?? null);
 
@@ -456,15 +459,17 @@ class SalesChannelReportService
                 'splits.staff_id',
                 'staffs.name as staff_name',
                 'splits.split_percent',
-                'splits.service_commission_rate_snapshot',
+                'splits.share_amount',
+                'splits.split_mode',
             ])
-            ->map(fn ($row) => [
+            ->map(fn ($row) => StaffSplitNormalizer::toReportSplit([
                 'staff_id' => (int) ($row->staff_id ?? 0),
-                'staff_name' => (string) ($row->staff_name ?? ('Staff #' . ($row->staff_id ?? 0))),
                 'share_percent' => (int) ($row->split_percent ?? 0),
-                'commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
-            ])
-            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+                'share_amount' => $row->share_amount,
+                'split_mode' => $row->split_mode ?? null,
+                'commission_rate_snapshot' => 0.0,
+            ], (string) ($row->staff_name ?? ('Staff #' . ($row->staff_id ?? 0)))))
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && ($row['share_percent'] > 0 || ($row['share_amount'] ?? 0) > 0))
             ->values();
 
         if ($bookingSplits->isNotEmpty()) {
@@ -484,6 +489,48 @@ class SalesChannelReportService
             'share_percent' => 100,
             'commission_rate_snapshot' => 0.0,
         ]]);
+    }
+
+    private function resolveServicePackageStaffSplitsForLine(OrderItem $item, $existingSplits)
+    {
+        if ($existingSplits->isNotEmpty()) {
+            return $existingSplits;
+        }
+
+        if ((string) ($item->line_type ?? '') !== 'service_package') {
+            return $existingSplits;
+        }
+
+        $packageId = (int) ($item->customer_service_package_id ?? 0);
+        $query = DB::table('service_package_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->where('splits.order_id', (int) ($item->order_id ?? 0));
+
+        if ($packageId > 0) {
+            $query->where('splits.customer_service_package_id', $packageId);
+        }
+
+        $packageSplits = $query
+            ->orderBy('splits.id')
+            ->get([
+                'splits.staff_id',
+                'staffs.name as staff_name',
+                'splits.share_percent',
+                'splits.split_mode',
+                'splits.split_sales_amount',
+                'splits.service_commission_rate_snapshot',
+            ])
+            ->map(fn ($row) => StaffSplitNormalizer::toReportSplit([
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'share_percent' => (int) ($row->share_percent ?? 0),
+                'split_mode' => $row->split_mode ?? null,
+                'split_sales_amount' => $row->split_sales_amount,
+                'commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ], (string) ($row->staff_name ?? ('Staff #' . ($row->staff_id ?? 0)))))
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && ($row['share_percent'] > 0 || ($row['share_amount'] ?? 0) > 0))
+            ->values();
+
+        return $packageSplits->isNotEmpty() ? $packageSplits : $existingSplits;
     }
 
 
@@ -561,12 +608,13 @@ class SalesChannelReportService
         $splits = $item->staffSplits
             ->filter(fn ($split) => (string) ($split->line_type ?? '') === 'booking_product_option'
                 && (string) ($split->line_ref_id ?? '') === $optionId)
-            ->map(fn ($split) => [
+            ->map(fn ($split) => StaffSplitNormalizer::toReportSplit([
                 'staff_id' => (int) $split->staff_id,
-                'staff_name' => (string) ($split->staff?->name ?? ('Staff #' . $split->staff_id)),
                 'share_percent' => (int) $split->share_percent,
+                'share_amount' => $split->share_amount,
+                'split_mode' => $split->split_mode,
                 'commission_rate_snapshot' => (float) ($split->commission_rate_snapshot ?? 0),
-            ])
+            ], (string) ($split->staff?->name ?? ('Staff #' . $split->staff_id))))
             ->values()
             ->all();
 
@@ -575,13 +623,14 @@ class SalesChannelReportService
         }
 
         return collect($option['staff_splits'] ?? [])
-            ->map(fn ($split) => [
+            ->map(fn ($split) => StaffSplitNormalizer::toReportSplit([
                 'staff_id' => (int) ($split['staff_id'] ?? 0),
-                'staff_name' => (string) ($split['staff_name'] ?? $split['name'] ?? ('Staff #' . ($split['staff_id'] ?? 0))),
                 'share_percent' => (int) ($split['share_percent'] ?? 0),
+                'share_amount' => $split['share_amount'] ?? null,
+                'split_mode' => $split['split_mode'] ?? null,
                 'commission_rate_snapshot' => (float) ($split['commission_rate_snapshot'] ?? 0),
-            ])
-            ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+            ], (string) ($split['staff_name'] ?? $split['name'] ?? ('Staff #' . ($split['staff_id'] ?? 0)))))
+            ->filter(fn (array $split) => $split['staff_id'] > 0 && ($split['share_percent'] > 0 || ($split['share_amount'] ?? 0) > 0))
             ->values()
             ->all();
     }
