@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 type ReceiptSharePanelProps = {
-  orderId: number
+  orderId?: number
   receiptPublicUrl: string
   defaultEmail?: string | null
   compact?: boolean
@@ -51,6 +51,7 @@ export default function ReceiptSharePanel({
   }, [receiptCooldownUntil])
 
   const sendReceiptToEmail = async () => {
+    if (!orderId) return
     const normalizedEmail = receiptEmail.trim()
     if (!normalizedEmail) {
       setReceiptEmailError('Email is required.')
@@ -120,6 +121,8 @@ export default function ReceiptSharePanel({
 
         <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <p className="text-sm font-semibold text-slate-700">Send receipt to email</p>
+          {orderId ? (
+          <>
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="email"
@@ -143,6 +146,10 @@ export default function ReceiptSharePanel({
           </div>
           {receiptEmailError ? <p className="text-xs font-medium text-red-600">{receiptEmailError}</p> : null}
           {sendSuccess ? <p className="text-xs font-medium text-emerald-700">Receipt sent successfully.</p> : null}
+          </>
+          ) : (
+            <p className="text-xs text-slate-500">Email delivery is not available for this receipt.</p>
+          )}
         </div>
 
         <button

@@ -242,6 +242,7 @@ type BookingServiceOption = {
   price_mode?: string | null
   price_range_min?: number | null
   price_range_max?: number | null
+  linked_booking_service_id?: number | null
   duration_min?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
@@ -704,7 +705,7 @@ export default function PosAppointmentsWorkspace({
     const bookingServiceId = Number(
       editOriginalService?.linked_booking_service_id
       ?? editOriginalService?.id
-      ?? appointmentDetail.service_id
+      ?? appointmentDetail.service?.id
       ?? 0,
     )
     return bookingServiceIdCoveredByPackage(appointmentDetail as SettlementCartItemLike, bookingServiceId, {

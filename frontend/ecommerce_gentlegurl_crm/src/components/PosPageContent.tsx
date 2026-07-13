@@ -842,6 +842,7 @@ type BookingServiceQuestionOption = {
   cn_name?: string | null
   cn_label?: string | null
   linked_cn_name?: string | null
+  linked_booking_service_id?: number | null
   extra_duration_min: number
   extra_price: number
   price_mode?: string | null
@@ -1868,7 +1869,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [cartEditSettlementServiceId, setCartEditSettlementServiceId] = useState<number | null>(null)
   const [cartEditSettlementLoading, setCartEditSettlementLoading] = useState(false)
   const [cartEditSettlementError, setCartEditSettlementError] = useState<string | null>(null)
-  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>>([])
+  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; linked_booking_service_id?: number | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>>([])
   const [cartEditAddonQuantities, setCartEditAddonQuantities] = useState<AddonSelectionMap>({})
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
@@ -1888,7 +1889,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     price_range_max?: number | null
     price_finalized?: boolean | null
     duration_min: number
-    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>
+    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; linked_booking_service_id?: number | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>
     selected_addon_ids: AddonSelectionMap
     addon_price_overrides: Record<number, number>
     addon_line_total_overrides: Record<number, number>
@@ -3801,6 +3802,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
                   cn_name: typeof option.cn_label === 'string' ? option.cn_label : (typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
+                  linked_booking_service_id: option.linked_booking_service_id == null ? null : Number(option.linked_booking_service_id),
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                   price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
@@ -3849,6 +3851,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
                   cn_name: typeof option.cn_label === 'string' ? option.cn_label : (typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
+                  linked_booking_service_id: option.linked_booking_service_id == null ? null : Number(option.linked_booking_service_id),
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                   price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
@@ -5793,9 +5796,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           return
         }
         const json = await res.json()
-        const paged = extractPaged<{ id?: number | string; name?: string; cn_name?: string | null }>(json)
+        const paged = extractPaged<{ id?: number | string; name?: string; cn_name?: string | null; show_in_pos_filter?: boolean | number | string | null }>(json)
         const mapped = paged.data
-          .map((item) => {
+          .map((item): CategoryOption | null => {
             const id = Number(item?.id)
             if (!Number.isFinite(id) || id <= 0 || !item?.name?.trim()) return null
             return {
@@ -5810,7 +5813,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 item?.show_in_pos_filter === 'true',
             }
           })
-          .filter((item): item is CategoryOption => Boolean(item))
+          .filter((item): item is CategoryOption => item != null)
         setCategories(mapped)
       } catch {
         setCategories([])
@@ -8242,7 +8245,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             if (!forceOverwrite && next[id]?.length) return
             const packageItem = cartPackageItems.find((row) => row.id === id)
             const lineTotal = packageItem ? resolvePackageLineTotal(packageItem) : null
-            next[id] = mapBulkStaffSplitDraftToPayload(itemSplitDraftRows, itemSplitMode, referenceTotal, lineTotal > 0 ? lineTotal : null)
+            next[id] = mapBulkStaffSplitDraftToPayload(itemSplitDraftRows, itemSplitMode, referenceTotal, lineTotal != null && lineTotal > 0 ? lineTotal : null)
           })
           return next
         })

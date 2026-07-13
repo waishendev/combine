@@ -170,7 +170,9 @@ export function mapStaffSplitDraftToPayload(
     staff_id: row.staff_id!,
     share_percent: row.share_percent,
     share_amount:
-      roundedTotal != null && mode === 'percent' ? null : roundMoney(roundedTotal * (row.share_percent / 100)),
+      mode === 'percent' || roundedTotal == null
+        ? null
+        : roundMoney(roundedTotal * (row.share_percent / 100)),
     split_mode: 'percent' as const,
   }))
 }
@@ -297,7 +299,12 @@ export function mapSettlementInlineStaffRowsForApi(
 }
 
 export function resolveSavedSettlementStaffSplitMode(
-  splits: Array<{ split_mode?: StaffSplitMode | string | null; share_amount?: number | string | null }> | null | undefined,
+  splits: Array<{
+    staff_id?: number
+    share_percent?: number | string | null
+    split_mode?: StaffSplitMode | string | null
+    share_amount?: number | string | null
+  }> | null | undefined,
   options?: { allowAmount?: boolean },
 ): StaffSplitMode {
   const allowAmount = options?.allowAmount !== false

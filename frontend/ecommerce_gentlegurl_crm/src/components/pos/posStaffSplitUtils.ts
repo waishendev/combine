@@ -31,7 +31,7 @@ export function createStaffNameResolver(
   activeStaffs: Array<{ id: number; name: string }>,
   options?: {
     fallbackStaff?: { id?: number; name?: string } | null
-    extraSplits?: Array<{ staff_id?: number; staff_name?: string }>
+    extraSplits?: Array<{ staff_id?: number; staff_name?: string | null }>
   },
 ): (id: number) => string | null | undefined {
   return (id) => {

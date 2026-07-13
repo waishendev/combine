@@ -20,6 +20,7 @@ export type PosPriceDisplaySource = {
   quantity?: number | null
   line_gross_amount?: number | null
   gross_amount?: number | null
+  line_total_override?: number | null
   price_mode?: string | null
   service_price_mode?: string | null
   linked_price_mode?: string | null
@@ -459,7 +460,10 @@ export function resolveEditSettlementAddedMainBlockLineTotal(
 }
 
 export function resolveSettlementAddonLineGross(
-  addon?: (StoredAddonRowLike & { balance_due?: number | null; line_total_after_discount?: number | null }) | null,
+  addon?: (StoredAddonRowLike & {
+    balance_due?: number | string | null
+    line_total_after_discount?: number | string | null
+  }) | null,
 ): number {
   if (!addon) return 0
   const lineGross = storedAddonLinePrice(addon)
@@ -469,10 +473,10 @@ export function resolveSettlementAddonLineGross(
 
 export function resolveSettlementAddonLineDue(
   addon?: (StoredAddonRowLike & {
-    balance_due?: number | null
-    line_total_after_discount?: number | null
-    discount_amount?: number | null
-    gross_amount?: number | null
+    balance_due?: number | string | null
+    line_total_after_discount?: number | string | null
+    discount_amount?: number | string | null
+    gross_amount?: number | string | null
   }) | null,
 ): number {
   if (!addon) return 0
@@ -501,11 +505,11 @@ export function resolveEditSettlementAddonLineAmount(
 
 /** Cash line total for add-on staff split (overrides, then stored settlement row, then catalog). */
 export function resolveEditSettlementAddonSplitLineTotal(
-  option: (PosPriceDisplaySource & StoredAddonRowLike & { id?: number }) | null | undefined,
+  option: (PosPriceDisplaySource & StoredAddonRowLike & { id?: number | null }) | null | undefined,
   selection: AddonSelectionMap,
   unitOverrides: Record<number, number>,
   lineTotalOverrides: Record<number, number>,
-  storedRow?: (PosPriceDisplaySource & StoredAddonRowLike & { id?: number }) | null,
+  storedRow?: (PosPriceDisplaySource & StoredAddonRowLike & { id?: number | null }) | null,
 ): number | null {
   if (!option) return null
   const optionId = Number(option.id ?? 0)
@@ -739,17 +743,22 @@ export type SettlementCartItemLike = {
     method_label?: string | null
   }> | null
   package_status?: { status?: string | null } | null
-  package_claims?: Array<{ booking_service_id: number }> | null
+  package_claims?: Array<{ booking_service_id?: number; status?: string | null }> | null
   main_services?: Array<{
     is_original?: boolean
     price_mode?: string | null
     price_range_min?: number | null
     price_range_max?: number | null
+    price_finalized?: boolean | null
+    add_ons?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null }>
   }> | null
   main_service_settlement_items?: Array<PosPriceDisplaySource & {
     is_original?: boolean
     linked_booking_service_id?: number | null
     id?: number | null
+    extra_price?: number | string | null
+    gross_amount?: number | string | null
+    balance_due?: number | string | null
     price_mode?: string | null
     price_range_min?: number | null
     price_range_max?: number | null
@@ -1011,17 +1020,9 @@ export function appointmentNeedsZeroBalanceCheckout(detail?: {
   return due <= 0.0001
 }
 
-export function settlementCartItemHasUnsettledRangePricing(settlement?: {
-  requires_settled_amount?: boolean | null
-  is_range_priced?: boolean | null
-  settled_service_amount?: number | string | null
-  addon_settlement_items?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null; is_original?: boolean }>
-  main_service_settlement_items?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null; is_original?: boolean }>
-  main_services?: Array<PosPriceDisplaySource & {
-    price_finalized?: boolean | null
-    add_ons?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null }>
-  }>
-} | null): boolean {
+export function settlementCartItemHasUnsettledRangePricing(
+  settlement?: SettlementCartItemLike | null,
+): boolean {
   if (!settlement) return false
   if (settlement.requires_settled_amount) return true
   if (settlement.is_range_priced && settlement.settled_service_amount == null) return true
