@@ -101,6 +101,61 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             },
           ] as MenuItem[])
         : []),
+      {
+        key: 'dashboard',
+        label: 'Dashboard',
+        icon: 'fa-solid fa-gauge',
+        href: '/dashboard',
+      },
+      {
+        key: 'reports',
+        label: 'Reports',
+        icon: 'fa-solid fa-chart-line',
+        children: [
+          {
+            key: 'yearly-sales-daily',
+            label: 'Yearly Sales Report',
+            href: '/reports/sales',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
+            key: 'staff-commission',
+            label: 'Staff Product Commissions',
+            href: '/ecommerce/commissions',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
+            key: 'my-pos-summary',
+            label: 'My POS Summary',
+            href: '/reports/my-pos-summary',
+            requiredPermission: 'reports.my-pos-summary.view',
+          },
+          {
+            key: 'pos-summary',
+            label: 'POS Summary Report',
+            href: '/reports/pos-summary',
+            requiredPermission: 'reports.pos-summary.view',
+          },
+          {
+            key: 'cash-shifts',
+            label: 'Cash Shift Report',
+            href: '/reports/cash-shifts',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
+            key: 'wishlist-report',
+            label: 'Wishlist Report',
+            href: '/reports/wishlist',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
+            key: 'product-profit-report',
+            label: 'Product Profit Report',
+            href: '/reports/product-profit',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+        ],
+      },
         // ======================
       // Admin Management
       // ======================
@@ -337,149 +392,6 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
         ],
       },
 
-      // ======================
-      // Reports
-      // ======================
-      {
-        key: 'reports',
-        label: 'Reports',
-        icon: 'fa-solid fa-chart-line',
-        children: [
-
-          // {
-          //   key: 'sales-customers-ecommerce',
-          //   label: 'Ecommerce Customer Sales',
-          //   href: '/reports/sales/customers-ecommerce',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-          // {
-          //   key: 'sales-customers-booking',
-          //   label: 'Booking Customer Sales',
-          //   href: '/reports/sales/customers-booking',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-          // {
-          //   key: 'sales-ecommerce',
-          //   label: 'Ecommerce Sales',
-          //   href: '/reports/sales/ecommerce',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-          // {
-          //   key: 'sales-booking',
-          //   label: 'Booking Sales',
-          //   href: '/reports/sales/booking',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-
-          // {
-          //   key: 'sales-daily',
-          //   label: 'Daily Sales',
-          //   href: '/reports/sales/daily',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-          // {
-          //   key: 'sales-by-category',
-          //   label: 'Category Sales',
-          //   href: '/reports/sales/by-category',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-          // {
-          //   key: 'sales-by-product',
-          //   label: 'Product Sales',
-          //   href: '/reports/sales/by-product',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-          // {
-          //   key: 'sales-by-customer',
-          //   label: 'Customer Sales',
-          //   href: '/reports/sales/by-customer',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-         
-          // {
-          //   key: 'staff-commission',
-          //   label: 'Staff Commission',
-          //   href: '/reports/staff-commission',
-          //   requiredPermission: 'ecommerce.reports.sales.view',
-          // },
-          {
-            key: 'yearly-sales-daily',
-            label: 'Yearly Sales Report',
-            href: '/reports/sales',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'staff-commission',
-            label: 'Staff Product Commissions',
-            href: '/ecommerce/commissions',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'my-pos-summary',
-            label: 'My POS Summary',
-            href: '/reports/my-pos-summary',
-            requiredPermission: 'reports.my-pos-summary.view',
-          },
-          {
-            key: 'pos-summary',
-            label: 'POS Summary Report',
-            href: '/reports/pos-summary',
-            requiredPermission: 'reports.pos-summary.view',
-          },
-          {
-            key: 'cash-shifts',
-            label: 'Cash Shift Report',
-            href: '/reports/cash-shifts',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'wishlist-report',
-            label: 'Wishlist Report',
-            href: '/reports/wishlist',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'product-profit-report',
-            label: 'Product Profit Report',
-            href: '/reports/product-profit',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-        ],
-      },
-      // {
-      //   key: 'daily-reports',
-      //   label: 'Daily Reports',
-      //   icon: 'fa-solid fa-chart-line',
-      //   children: [
-      
-      //         {
-      //           key: 'sales-daily-customers-ecommerce',
-      //           label: 'Ecommerce Customer Sales',
-      //           href: '/reports/sales/daily/customers-ecommerce',
-      //           requiredPermission: 'ecommerce.reports.sales.view',
-      //         },
-      //         {
-      //           key: 'sales-daily-customers-booking',
-      //           label: 'Booking Customer Sales',
-      //           href: '/reports/sales/daily/customers-booking',
-      //           requiredPermission: 'ecommerce.reports.sales.view',
-      //         },
-      //         {
-      //           key: 'sales-daily-ecommerce',
-      //           label: 'Ecommerce Sales',
-      //           href: '/reports/sales/daily/ecommerce',
-      //           requiredPermission: 'ecommerce.reports.sales.view',
-      //         },
-      //         {
-      //           key: 'sales-daily-booking',
-      //           label: 'Booking Sales',
-      //           href: '/reports/sales/daily/booking',
-      //           requiredPermission: 'ecommerce.reports.sales.view',
-      //         },
-
-      //   ],
-      // },
-
       {
         key: 'logs',
         label: 'Logs',
@@ -529,7 +441,6 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
           },
         ],
       },
-
 
        // ======================
       // Payment Gateway
@@ -635,12 +546,25 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
 
   const bookingMenuItems: MenuItem[] = useMemo(
     () => [
-      // {
-      //   key: 'booking-dashboard',
-      //   label: 'Booking Dashboard',
-      //   icon: 'fa-solid fa-calendar-days',
-      //   href: '/booking/reports',
-      // },
+      {
+        key: 'reports',
+        label: 'Reports',
+        icon: 'fa-solid fa-chart-line',
+        children: [
+          {
+            key: 'booking-commissions',
+            label: 'Staff Booking Commissions',
+            href: '/booking/commissions',
+            requiredPermission: 'booking.commissions.view',
+          },
+          {
+            key: 'booking-reports',
+            label: 'Daily Deposit Reports',
+            href: '/booking/reports',
+            requiredPermission: 'booking.reports.view',
+          },
+        ],
+      },
       {
         key: 'booking-management',
         label: 'Booking',
@@ -860,30 +784,6 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
           },
         ],
       },
-      {
-        key: 'reports',
-        label: 'Reports',
-        icon: 'fa-solid fa-chart-line',
-        children: [
-          {
-            key: 'booking-commissions',
-            label: 'Staff Booking Commissions',
-            href: '/booking/commissions',
-            requiredPermission: 'booking.commissions.view',
-          },
-          {
-            key: 'booking-reports',
-            label: 'Daily Deposit Reports',
-            href: '/booking/reports',
-            requiredPermission: 'booking.reports.view',
-          },
-        ],
-      },
-
-
-
-
-
       {
         key: 'settings',
         label: 'Shop Settings',

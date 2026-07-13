@@ -17,7 +17,7 @@ class ServicePackageTestingSeeder extends Seeder
             return;
         }
 
-        $customerId = $this->resolveCustomerId();
+        // $customerId = $this->resolveCustomerId();
         $serviceIds = $this->resolveBookingServices();
 
         if (count($serviceIds) === 0) {
@@ -28,29 +28,29 @@ class ServicePackageTestingSeeder extends Seeder
         $this->seedStaffServiceCommissionRates();
         $packageIds = $this->seedServicePackages($serviceIds);
         $this->seedServiceQuestionsAndOptions($serviceIds);
-        $this->seedCustomerOwnershipAndBalances($customerId, $packageIds);
+        // $this->seedCustomerOwnershipAndBalances($customerId, $packageIds);
 
         $this->command?->info('Service package testing data seeded successfully.');
     }
 
-    private function resolveCustomerId(): int
-    {
-        $existing = DB::table('customers')->orderBy('id')->value('id');
-        if ($existing) {
-            return (int) $existing;
-        }
+    // private function resolveCustomerId(): int
+    // {
+    //     $existing = DB::table('customers')->orderBy('id')->value('id');
+    //     if ($existing) {
+    //         return (int) $existing;
+    //     }
 
-        return (int) DB::table('customers')->insertGetId([
-            'name' => 'Service Package Demo Customer',
-            'email' => 'service.package.demo.customer@example.com',
-            'phone' => '60123450000',
-            'password' => Hash::make('Password123!'),
-            'tier' => 'basic',
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
+    //     return (int) DB::table('customers')->insertGetId([
+    //         'name' => 'Service Package Demo Customer',
+    //         'email' => 'service.package.demo.customer@example.com',
+    //         'phone' => '60123450000',
+    //         'password' => Hash::make('Password123!'),
+    //         'tier' => 'basic',
+    //         'is_active' => true,
+    //         'created_at' => now(),
+    //         'updated_at' => now(),
+    //     ]);
+    // }
 
     /**
      * @return int[]

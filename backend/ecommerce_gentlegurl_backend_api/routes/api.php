@@ -273,6 +273,7 @@ $protectedRoutes = function () {
         ->middleware('permission:dashboard.package_analytics.view|dashboard.analytics.view')
         ->group(function () {
             Route::get('/summary', [PackageDashboardAnalyticsController::class, 'summary']);
+            Route::get('/filter-options', [PackageDashboardAnalyticsController::class, 'filterOptions']);
             Route::get('/customer-packages', [PackageDashboardAnalyticsController::class, 'customerPackages']);
             Route::get('/sales', [PackageDashboardAnalyticsController::class, 'sales']);
             Route::get('/redemptions', [PackageDashboardAnalyticsController::class, 'redemptions']);

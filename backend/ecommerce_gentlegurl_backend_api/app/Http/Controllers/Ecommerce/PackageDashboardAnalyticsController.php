@@ -26,7 +26,7 @@ class PackageDashboardAnalyticsController extends Controller
             ->selectRaw("SUM(b.remaining_qty) remaining_redemptions, SUM(b.remaining_qty * {$balanceValue}) outstanding_service_value, SUM(CASE WHEN b.remaining_qty > 0 AND {$this->balanceRedemptionRawExpression()} IS NULL THEN 1 ELSE 0 END) missing_redemption_value_count")
             ->first();
 
-        $sales = $this->packageSalesQuery()->selectRaw('SUM(gross_amount) gross, SUM(refund_amount) refunds, SUM(net_amount) net')->first();
+        $sales = $this->packageSalesTotals();
         $redemptionsQuery = $this->usageValueQuery()->selectRaw("SUM(u.used_qty) redeemed_qty, SUM(u.used_qty * {$usageValue}) redeemed_value");
         if (Schema::hasColumn('customer_service_package_usages', 'status')) {
             $redemptionsQuery->whereIn('u.status', $this->completedUsageStatuses());
@@ -61,8 +61,42 @@ class PackageDashboardAnalyticsController extends Controller
         }
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') $query->where(fn ($q) => $q->where('c.name', 'like', "%{$search}%")->orWhere('sp.name', 'like', "%{$search}%"));
+        if ($request->filled('customer_id')) $query->where('c.id', (int) $request->query('customer_id'));
+        if ($request->filled('service_package_id')) $query->where('csp.service_package_id', (int) $request->query('service_package_id'));
         if ($request->filled('status')) $query->where('csp.status', $request->query('status'));
         return response()->json($query->orderByDesc('remaining_service_value')->paginate(min(max((int) $request->query('per_page', 10), 1), 50)));
+    }
+
+    public function filterOptions()
+    {
+        if (! $this->hasPackageTables()) {
+            return response()->json(['customers' => [], 'packages' => []]);
+        }
+
+        $packageName = $this->packageNameExpression();
+
+        $customers = DB::table('customer_service_packages as csp')
+            ->join('customers as c', 'c.id', '=', 'csp.customer_id')
+            ->select('c.id', 'c.name')
+            ->distinct()
+            ->orderBy('c.name')
+            ->get()
+            ->map(fn ($row) => ['id' => (int) $row->id, 'name' => (string) $row->name])
+            ->values();
+
+        $packages = DB::table('customer_service_packages as csp')
+            ->join('service_packages as sp', 'sp.id', '=', 'csp.service_package_id')
+            ->selectRaw("csp.service_package_id as id, MIN({$packageName}) as name")
+            ->groupBy('csp.service_package_id')
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($row) => ['id' => (int) $row->id, 'name' => (string) $row->name])
+            ->values();
+
+        return response()->json([
+            'customers' => $customers,
+            'packages' => $packages,
+        ]);
     }
 
     public function sales(Request $request)
@@ -100,8 +134,20 @@ class PackageDashboardAnalyticsController extends Controller
 
     private function balanceValueQuery() { return DB::table('customer_service_packages as csp')->leftJoin('customer_service_package_balances as b', 'b.customer_service_package_id', '=', 'csp.id')->leftJoin('service_package_items as spi', function ($join) { $join->on('spi.service_package_id', '=', 'csp.service_package_id')->on('spi.booking_service_id', '=', 'b.booking_service_id'); })->leftJoin('booking_services as bs', 'bs.id', '=', 'b.booking_service_id'); }
     private function usageValueQuery() { return DB::table('customer_service_package_usages as u')->leftJoin('customer_service_packages as csp_value', 'csp_value.id', '=', 'u.customer_service_package_id')->leftJoin('customer_service_package_balances as b_value', function ($join) { $join->on('b_value.customer_service_package_id', '=', 'u.customer_service_package_id')->on('b_value.booking_service_id', '=', 'u.booking_service_id'); })->leftJoin('service_package_items as spi_value', function ($join) { $join->on('spi_value.service_package_id', '=', 'csp_value.service_package_id')->on('spi_value.booking_service_id', '=', 'u.booking_service_id'); })->leftJoin('booking_services as bs', 'bs.id', '=', 'u.booking_service_id'); }
-    private function packageSalesQuery() { if (! Schema::hasTable('order_items') || ! Schema::hasColumn('order_items', 'service_package_id')) return $this->snapshotPackageSalesQuery(); $line = Schema::hasColumn('order_items', 'effective_line_total') ? 'oi.effective_line_total' : (Schema::hasColumn('order_items', 'line_total_snapshot') ? 'oi.line_total_snapshot' : 'oi.line_total'); $refund = Schema::hasColumn('orders', 'refund_total') ? 'COALESCE(o.refund_total, 0)' : '0'; return DB::query()->fromSub(DB::table('order_items as oi')->join('orders as o', 'o.id', '=', 'oi.order_id')->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')->where('oi.is_package', true)->whereNotNull('oi.service_package_id')->whereIn('o.payment_status', ['paid','completed','refunded','partially_refunded'])->whereNotIn('o.status', ['cancelled','voided','failed'])->selectRaw("o.order_number reference_no, c.name customer, COALESCE(oi.product_name_snapshot, sp.name) package, COALESCE(o.payment_provider, o.payment_method, 'Unknown') channel, o.payment_method, 'ORDER' purchased_from, {$line} gross_amount, COALESCE(o.discount_total, 0) discount, {$refund} refund_amount, GREATEST({$line} - {$refund}, 0) net_amount, o.status, COALESCE(o.paid_at, o.created_at) purchased_at"), 'sales'); }
-    private function snapshotPackageSalesQuery() { $reference = $this->hasCsp('purchase_reference_snapshot') ? "COALESCE(csp.purchase_reference_snapshot, CONCAT('CSP-', csp.id))" : "CONCAT('CSP-', csp.id)"; $purchase = $this->hasCsp('purchase_amount_snapshot') ? 'COALESCE(csp.purchase_amount_snapshot, 0)' : '0'; $refund = $this->hasCsp('refunded_amount_snapshot') ? 'COALESCE(csp.refunded_amount_snapshot, 0)' : '0'; return DB::query()->fromSub(DB::table('customer_service_packages as csp')->join('customers as c', 'c.id', '=', 'csp.customer_id')->join('service_packages as sp', 'sp.id', '=', 'csp.service_package_id')->where('csp.purchased_from', '!=', 'ADMIN')->selectRaw("csp.id, {$reference} reference_no, c.name customer, {$this->packageNameExpression()} package, csp.purchased_from channel, NULL payment_method, csp.purchased_from, {$purchase} gross_amount, 0 discount, {$refund} refund_amount, GREATEST({$purchase} - {$refund}, 0) net_amount, csp.status, csp.created_at purchased_at"), 'sales'); }
+    private function packageSalesTotals(): object
+    {
+        $purchase = $this->purchaseAmountExpression();
+        $refund = $this->refundAmountExpression();
+
+        return DB::table('customer_service_packages as csp')
+            ->join('service_packages as sp', 'sp.id', '=', 'csp.service_package_id')
+            ->where('csp.purchased_from', '!=', 'ADMIN')
+            ->selectRaw("SUM({$purchase}) as gross, SUM({$refund}) as refunds, SUM(GREATEST({$purchase} - {$refund}, 0)) as net")
+            ->first();
+    }
+
+    private function packageSalesQuery() { if (! Schema::hasTable('order_items') || ! Schema::hasColumn('order_items', 'service_package_id')) return $this->snapshotPackageSalesQuery(); $line = Schema::hasColumn('order_items', 'effective_line_total') ? 'oi.effective_line_total' : (Schema::hasColumn('order_items', 'line_total_snapshot') ? 'oi.line_total_snapshot' : 'oi.line_total'); $refund = Schema::hasColumn('orders', 'refund_total') ? 'COALESCE(o.refund_total, 0)' : '0'; $query = DB::table('order_items as oi')->join('orders as o', 'o.id', '=', 'oi.order_id')->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')->whereIn('o.payment_status', ['paid','completed','refunded','partially_refunded'])->whereNotIn('o.status', ['cancelled','voided','failed'])->where(function ($q) { $q->where(function ($inner) { $inner->where('oi.is_package', true)->whereNotNull('oi.service_package_id'); }); if (Schema::hasColumn('order_items', 'line_type')) { $q->orWhere('oi.line_type', 'service_package'); } }); return DB::query()->fromSub($query->selectRaw("o.order_number reference_no, c.name customer, COALESCE(oi.product_name_snapshot, sp.name) package, COALESCE(o.payment_provider, o.payment_method, 'Unknown') channel, o.payment_method, 'ORDER' purchased_from, {$line} gross_amount, COALESCE(o.discount_total, 0) discount, {$refund} refund_amount, GREATEST({$line} - {$refund}, 0) net_amount, o.status, COALESCE(o.paid_at, o.created_at) purchased_at"), 'sales'); }
+    private function snapshotPackageSalesQuery() { $reference = $this->hasCsp('purchase_reference_snapshot') ? "COALESCE(csp.purchase_reference_snapshot, CONCAT('CSP-', csp.id))" : "CONCAT('CSP-', csp.id)"; $purchase = $this->purchaseAmountExpression(); $refund = $this->refundAmountExpression(); return DB::query()->fromSub(DB::table('customer_service_packages as csp')->join('customers as c', 'c.id', '=', 'csp.customer_id')->join('service_packages as sp', 'sp.id', '=', 'csp.service_package_id')->where('csp.purchased_from', '!=', 'ADMIN')->selectRaw("csp.id, {$reference} reference_no, c.name customer, {$this->packageNameExpression()} package, csp.purchased_from channel, NULL payment_method, csp.purchased_from, {$purchase} gross_amount, 0 discount, {$refund} refund_amount, GREATEST({$purchase} - {$refund}, 0) net_amount, csp.status, csp.created_at purchased_at"), 'sales'); }
 
     private function balanceRedemptionValueExpression(): string { return 'COALESCE('.$this->balanceRedemptionRawExpression().', 0)'; }
     private function balanceRedemptionRawExpression(): string { return $this->hasBalance('redemption_value_snapshot') ? 'b.redemption_value_snapshot' : (Schema::hasColumn('service_package_items', 'redemption_value') ? 'spi.redemption_value' : 'NULL'); }

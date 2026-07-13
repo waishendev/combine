@@ -3,9 +3,7 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
-import EcommerceAnalyticsDashboard from '@/components/dashboard/EcommerceAnalyticsDashboard'
-import PackageAnalyticsDashboard from '@/components/dashboard/PackageAnalyticsDashboard'
-import StaffMySalesDashboard from '@/components/reports/StaffMySalesDashboard'
+import DashboardAnalyticsContent from '@/components/dashboard/DashboardAnalyticsContent'
 import { getCurrentUser } from '@/lib/auth'
 import { getTranslator } from '@/lib/i18n-server'
 import type { LangCode } from '@/lib/i18n'
@@ -53,39 +51,18 @@ export default async function DashboardPage() {
           {t('sidebar.dashboard')}
         </Link>
       </div>
-      <WelcomeCard
-          title={t('dashboard.welcomeTitle')}
-          greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
-          hint={t('dashboard.welcomeHint')}
+      {canViewAnyAnalytics ? (
+        <DashboardAnalyticsContent
+          canViewEcommerce={canViewEcommerceAnalytics}
+          canViewPackage={canViewPackageAnalytics}
         />
-      {/* {canViewAnyAnalytics ? (
-        <div className="space-y-6">
-          <WelcomeCard
-            title={t('dashboard.welcomeTitle')}
-            greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
-            hint="Welcome content is retained above your permission-aware analytics workspace."
-          />
-          <div className="space-y-8">
-            {canViewEcommerceAnalytics ? <EcommerceAnalyticsDashboard /> : null}
-            {canViewPackageAnalytics ? <PackageAnalyticsDashboard /> : null}
-          </div>
-        </div>
-      ) : isStaffAccount ? (
-        <div className="space-y-6">
-          <WelcomeCard
-            title={t('dashboard.welcomeTitle')}
-            greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
-            hint="View your personal sales summary below. Use the date filter to check different periods."
-          />
-          <StaffMySalesDashboard />
-        </div>
       ) : (
         <WelcomeCard
           title={t('dashboard.welcomeTitle')}
           greeting={t('dashboard.welcomeGreeting').replace('{name}', displayName)}
           hint={t('dashboard.welcomeHint')}
         />
-      )} */}
+      )}
     </div>
   )
 }
