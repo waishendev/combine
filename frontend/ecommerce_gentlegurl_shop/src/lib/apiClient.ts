@@ -1315,3 +1315,31 @@ export async function mergeWishlist(payload?: { session_token?: string }) {
     { includeSessionToken: payload?.session_token === undefined },
   );
 }
+
+export type CustomerWalletTransaction = {
+  id: number; transaction_no: string; type: string; direction: "credit" | "debit" | string; amount: string;
+  balance_before: string; balance_after: string; workspace_type?: string | null; payment_method_label?: string | null;
+  reference_no?: string | null; status: string; remark?: string | null; created_at: string; completed_at?: string | null;
+};
+
+export type CustomerWallet = { balance: string; wallet_balance: string; customer_id: number };
+
+export async function getCustomerWallet(): Promise<CustomerWallet> {
+  const response = await get<{ data?: CustomerWallet }>("/public/shop/customer/wallet");
+  return response.data ?? { balance: "0.00", wallet_balance: "0.00", customer_id: 0 };
+}
+
+export async function getCustomerWalletTransactions(status: string = "completed") {
+  const response = await get<{ data?: { transactions?: { data?: CustomerWalletTransaction[] } | CustomerWalletTransaction[] } }>(`/public/shop/customer/wallet/transactions?status=${encodeURIComponent(status)}`);
+  const tx = response.data?.transactions;
+  return Array.isArray(tx) ? tx : tx?.data ?? [];
+}
+
+export async function getCustomerWalletPaymentGateways(workspaceType: string = "ecommerce") {
+  const response = await get<{ data?: { payment_gateways?: Array<{ key: string; name: string; config?: unknown }> } }>(`/public/shop/customer/wallet/payment-gateways?workspace_type=${encodeURIComponent(workspaceType)}`);
+  return response.data?.payment_gateways ?? [];
+}
+
+export async function createCustomerWalletTopup(payload: { amount: number | string; payment_gateway_key: string; payment_method_label?: string; workspace_type?: string }) {
+  return post<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>("/public/shop/customer/wallet/topups", { ...payload, workspace_type: payload.workspace_type ?? "ecommerce" });
+}

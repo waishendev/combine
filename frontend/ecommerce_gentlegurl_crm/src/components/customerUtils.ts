@@ -23,6 +23,7 @@ export type CustomerApiItem = {
   spent_in_window?: number | null
   next_tier?: string | null
   amount_to_next_tier?: number | null
+  wallet_balance?: number | string | null
   loyalty_summary?: {
     available_points?: number | null
   } | null
@@ -104,6 +105,7 @@ export const mapCustomerApiItemToRow = (item: CustomerApiItem): CustomerRowData 
       item.allow_booking_without_deposit === 'true' ||
       item.allow_booking_without_deposit === '1' ||
       item.allow_booking_without_deposit === 1,
+    walletBalance: Number(item.wallet_balance ?? 0) || 0,
     availablePoints: (() => {
       const rawPoints =
         item.available_points ?? item.loyalty_summary?.available_points ?? null

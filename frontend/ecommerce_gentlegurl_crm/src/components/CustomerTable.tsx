@@ -86,6 +86,11 @@ export default function CustomerTable({
   const [isSavingDepositWaiver, setIsSavingDepositWaiver] = useState(false)
   const [adjustPointsTarget, setAdjustPointsTarget] = useState<CustomerRowData | null>(null)
   const [adjustPointsAction, setAdjustPointsAction] = useState<'add' | 'reduce'>('add')
+  const [balanceTarget, setBalanceTarget] = useState<CustomerRowData | null>(null)
+  const [balanceDirection, setBalanceDirection] = useState<'credit' | 'debit'>('credit')
+  const [balanceAmount, setBalanceAmount] = useState('')
+  const [balanceRemark, setBalanceRemark] = useState('')
+  const [balanceReference, setBalanceReference] = useState('')
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
@@ -99,6 +104,8 @@ export default function CustomerTable({
   const canDelete = permissions.includes('customers.delete')
   const canView = permissions.includes('customers.view')
   const canViewPointsLogs = permissions.includes('customers.points_adjustment_logs.view')
+  const canManageBalance = permissions.includes('customer_wallet.adjust')
+  const canViewWallet = permissions.includes('customer_wallet.view')
   const canAssignVoucher = permissions.includes('ecommerce.vouchers.assign')
   const showActions = canUpdate || canDelete || canView || canAssignVoucher
 
@@ -389,7 +396,7 @@ export default function CustomerTable({
     }
   }
 
-  const colCount = showActions || canView ? 9 : 8
+  const colCount = showActions || canView ? 10 : 9
 
   const totalPages = meta.last_page || 1
 
@@ -585,6 +592,34 @@ export default function CustomerTable({
         />
       )}
 
+
+      {balanceTarget && (
+        <CrmFormModalShell title="Manage Balance" onClose={() => setBalanceTarget(null)} widthClass="max-w-lg">
+          <div className="space-y-4 text-sm">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <div className="font-semibold">{balanceTarget.name}</div>
+              <div className="text-emerald-700 font-bold">Current Balance RM {(balanceTarget.walletBalance ?? 0).toFixed(2)}</div>
+              <div className="text-xs text-gray-500">Recent Wallet Transactions are available from the customer wallet API.</div>
+            </div>
+            <select value={balanceDirection} onChange={(event) => setBalanceDirection(event.target.value as 'credit' | 'debit')} className="w-full rounded border px-3 py-2">
+              <option value="credit">Add Credit</option><option value="debit">Deduct Balance</option>
+            </select>
+            <input value={balanceAmount} onChange={(event) => setBalanceAmount(event.target.value)} placeholder="Amount" className="w-full rounded border px-3 py-2" />
+            <textarea value={balanceRemark} onChange={(event) => setBalanceRemark(event.target.value)} placeholder="Reason / Remark required" className="w-full rounded border px-3 py-2" />
+            <input value={balanceReference} onChange={(event) => setBalanceReference(event.target.value)} placeholder="Optional reference" className="w-full rounded border px-3 py-2" />
+            <div className="rounded bg-amber-50 p-3 text-amber-900">New Balance RM {((balanceTarget.walletBalance ?? 0) + (balanceDirection === 'credit' ? Number(balanceAmount || 0) : -Number(balanceAmount || 0))).toFixed(2)}</div>
+            <button type="button" className="w-full rounded bg-teal-600 px-4 py-2 font-semibold text-white" onClick={async () => {
+              const res = await fetch(`/api/proxy/admin/customers/${balanceTarget.id}/wallet/adjustments`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ direction: balanceDirection, amount: balanceAmount, remark: balanceRemark, reference_no: balanceReference || undefined }) })
+              const json = await res.json().catch(() => null)
+              if (!res.ok) { window.alert(json?.message ?? 'Balance adjustment failed.'); return }
+              const next = Number(json?.data?.wallet_balance ?? 0)
+              setRows((prev) => prev.map((row) => row.id === balanceTarget.id ? { ...row, walletBalance: next } : row))
+              setBalanceTarget(null); setToastMessage('Customer balance adjusted successfully.'); setTimeout(() => setToastMessage(null), 2500)
+            }}>Save Adjustment</button>
+          </div>
+        </CrmFormModalShell>
+      )}
+
       {isCreateModalOpen && (
         <CustomerCreateModal
           onClose={() => setIsCreateModalOpen(false)}
@@ -735,6 +770,7 @@ export default function CustomerTable({
                   { key: 'phone', label: 'Phone' },
                   { key: 'tier', label: 'Tier' },
                   { key: 'availablePoints', label: 'Member Points' },
+                  { key: 'walletBalance', label: 'Balance' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'allowBookingWithoutDeposit', label: 'Required Deposit' },
                   { key: 'createdAt', label: t('common.createdAt') },
@@ -777,6 +813,13 @@ export default function CustomerTable({
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   canView={canView}
+                  canManageBalance={canManageBalance || canViewWallet}
+                  onManageBalance={() => {
+                    setBalanceTarget(customer)
+                    setBalanceAmount('')
+                    setBalanceRemark('')
+                    setBalanceReference('')
+                  }}
                   onAssignVoucher={() => {
                     if (canAssignVoucher) {
                       setAssigningCustomer(customer)

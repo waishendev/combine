@@ -46,6 +46,7 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
         'date_of_birth',
         'email_verified_at',
         'allow_booking_without_deposit',
+        'wallet_balance',
     ];
 
     protected $hidden = [
@@ -64,6 +65,7 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
             'date_of_birth' => 'date',
             'email_verified_at' => 'datetime',
             'allow_booking_without_deposit' => 'boolean',
+            'wallet_balance' => 'decimal:2',
         ];
     }
 
@@ -194,6 +196,11 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
     public function customerType(): BelongsTo
     {
         return $this->belongsTo(CustomerType::class);
+    }
+
+    public function walletTransactions(): HasMany
+    {
+        return $this->hasMany(CustomerWalletTransaction::class);
     }
 
     public function addresses(): HasMany
