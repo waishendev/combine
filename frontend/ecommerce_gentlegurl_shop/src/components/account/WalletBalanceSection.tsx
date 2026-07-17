@@ -171,8 +171,9 @@ export default function WalletBalanceSection({ workspaceType }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      await uploadCustomerWalletPaymentProof(pendingTopup.id, proofFile);
-      setMessage("Payment proof uploaded. Waiting for staff verification.");
+      const response = await uploadCustomerWalletPaymentProof(pendingTopup.id, proofFile);
+      if (response.data?.topup) setPendingTopup(response.data.topup);
+      setMessage(response.message ?? "Payment proof submitted. Waiting for staff verification.");
       setProofFile(null);
       if (proofPreviewUrl) URL.revokeObjectURL(proofPreviewUrl);
       setProofPreviewUrl(null);

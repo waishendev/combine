@@ -17,12 +17,37 @@ class AdminCustomerWalletController extends Controller
     {
         $rows = CustomerWalletTransaction::query()
             ->with('customer:id,name,email,phone,wallet_balance')
-            ->where('type', 'topup')
-            ->whereIn('status', ['pending', 'waiting_verification'])
+            ->pendingReview()
             ->latest()
             ->paginate((int) $request->query('per_page', 50));
 
         return response()->json(['success' => true, 'data' => ['topups' => $rows]]);
+    }
+
+
+    public function pendingTopupShow(CustomerWalletTransaction $topup): JsonResponse
+    {
+        abort_unless($topup->type === CustomerWalletTransaction::TYPE_TOPUP, 404);
+
+        return response()->json(['success' => true, 'data' => ['topup' => $topup->load('customer:id,name,email,phone,wallet_balance', 'creator:id,name')]]);
+    }
+
+    public function approvePendingTopup(Request $request, CustomerWalletTransaction $topup, CustomerWalletService $wallet): JsonResponse
+    {
+        abort_unless($topup->type === CustomerWalletTransaction::TYPE_TOPUP, 422, 'Only top-up transactions can be approved.');
+        $validated = $request->validate(['reference_no' => ['nullable', 'string', 'max:255'], 'remark' => ['nullable', 'string', 'max:2000']]);
+        $completed = $wallet->complete($topup, $validated['reference_no'] ?? $topup->reference_no, $request->user()?->id, $validated['remark'] ?? null);
+
+        return response()->json(['success' => true, 'message' => 'Top-up approved and balance credited.', 'data' => ['transaction' => $completed->load('customer:id,name,email,phone,wallet_balance', 'creator:id,name'), 'wallet_balance' => (string) $completed->balance_after]]);
+    }
+
+    public function rejectPendingTopup(Request $request, CustomerWalletTransaction $topup, CustomerWalletService $wallet): JsonResponse
+    {
+        abort_unless($topup->type === CustomerWalletTransaction::TYPE_TOPUP, 422, 'Only top-up transactions can be rejected.');
+        $validated = $request->validate(['remark' => ['required', 'string', 'max:2000']]);
+        $failed = $wallet->markFailed($topup, $validated['remark'], $request->user()?->id, CustomerWalletTransaction::STATUS_REJECTED);
+
+        return response()->json(['success' => true, 'message' => 'Top-up rejected. No balance was credited.', 'data' => ['transaction' => $failed->load('customer:id,name,email,phone,wallet_balance', 'creator:id,name')]]);
     }
 
     public function show(Customer $customer): JsonResponse
@@ -39,7 +64,7 @@ class AdminCustomerWalletController extends Controller
             'total_deposited' => number_format((float) ($summary?->total_deposited ?? 0), 2, '.', ''),
             'total_withdrawn' => number_format((float) ($summary?->total_withdrawn ?? 0), 2, '.', ''),
             'recent_transactions' => $customer->walletTransactions()->with('creator:id,name')->latest()->limit(10)->get(),
-            'pending_topups' => $customer->walletTransactions()->where('type', 'topup')->where('status', 'pending')->latest()->limit(20)->get(),
+            'pending_topups' => $customer->walletTransactions()->pendingReview()->latest()->limit(20)->get(),
         ]]);
     }
 
@@ -66,7 +91,7 @@ class AdminCustomerWalletController extends Controller
     public function approveTopup(Request $request, Customer $customer, CustomerWalletTransaction $transaction, CustomerWalletService $wallet): JsonResponse
     {
         abort_unless((int) $transaction->customer_id === (int) $customer->id, 404);
-        abort_unless($transaction->type === 'topup', 422, 'Only top-up transactions can be approved.');
+        abort_unless($transaction->type === CustomerWalletTransaction::TYPE_TOPUP, 422, 'Only top-up transactions can be approved.');
         $validated = $request->validate(['reference_no' => ['nullable', 'string', 'max:255'], 'remark' => ['nullable', 'string', 'max:2000']]);
         $completed = $wallet->complete($transaction, $validated['reference_no'] ?? $transaction->reference_no, $request->user()?->id, $validated['remark'] ?? null);
 
@@ -76,9 +101,9 @@ class AdminCustomerWalletController extends Controller
     public function rejectTopup(Request $request, Customer $customer, CustomerWalletTransaction $transaction, CustomerWalletService $wallet): JsonResponse
     {
         abort_unless((int) $transaction->customer_id === (int) $customer->id, 404);
-        abort_unless($transaction->type === 'topup', 422, 'Only top-up transactions can be rejected.');
+        abort_unless($transaction->type === CustomerWalletTransaction::TYPE_TOPUP, 422, 'Only top-up transactions can be rejected.');
         $validated = $request->validate(['remark' => ['required', 'string', 'max:2000']]);
-        $failed = $wallet->markFailed($transaction, $validated['remark'], $request->user()?->id, 'failed');
+        $failed = $wallet->markFailed($transaction, $validated['remark'], $request->user()?->id, CustomerWalletTransaction::STATUS_REJECTED);
 
         return response()->json(['success' => true, 'message' => 'Top-up rejected. No balance was credited.', 'data' => ['transaction' => $failed]]);
     }

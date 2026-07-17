@@ -1352,7 +1352,7 @@ export async function createCustomerWalletTopup(payload: { amount: number | stri
 export async function uploadCustomerWalletPaymentProof(topupId: number, file: File) {
   const formData = new FormData();
   formData.append("payment_proof", file);
-  return apiRequest<{ success?: boolean; data?: { topup?: CustomerWalletTransaction } }>(`/public/shop/customer/wallet/topups/${topupId}/payment-proof`, "POST", {
+  return apiRequest<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>(`/public/shop/customer/wallet/topups/${topupId}/payment-proof`, "POST", {
     body: formData,
   });
 }

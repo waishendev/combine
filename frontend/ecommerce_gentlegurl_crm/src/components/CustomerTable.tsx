@@ -109,7 +109,7 @@ export default function CustomerTable({
   const canManageBalance = permissions.includes('customer_wallet.adjust')
   const canViewWallet = permissions.includes('customer_wallet.view')
   const canAssignVoucher = permissions.includes('ecommerce.vouchers.assign')
-  const showActions = canUpdate || canDelete || canView || canAssignVoucher
+  const showActions = canUpdate || canDelete || canView || canAssignVoucher || canViewWallet
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -398,7 +398,7 @@ export default function CustomerTable({
     }
   }
 
-  const colCount = showActions || canView ? 10 : 9
+  const colCount = showActions ? 10 : 9
 
   const totalPages = meta.last_page || 1
 
@@ -629,27 +629,32 @@ export default function CustomerTable({
               <div className="rounded-lg bg-emerald-50 p-3"><div className="text-xs uppercase text-emerald-700">Current Balance</div><div className="text-xl font-bold text-emerald-800">RM {(balanceTarget.walletBalance ?? 0).toFixed(2)}</div></div>
               <div className="rounded-lg bg-blue-50 p-3"><div className="text-xs uppercase text-blue-700">Total Deposited</div><div className="text-xl font-bold text-blue-800">RM {Number(balanceDetail?.total_deposited ?? 0).toFixed(2)}</div><div className="mt-1 text-xs uppercase text-rose-700">Total Withdrawn: RM {Number(balanceDetail?.total_withdrawn ?? 0).toFixed(2)}</div></div>
             </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setBalanceDirection('credit')} className={`rounded px-4 py-2 font-semibold ${balanceDirection === 'credit' ? 'bg-emerald-600 text-white' : 'bg-gray-100'}`}>Deposit</button>
-              <button type="button" onClick={() => setBalanceDirection('debit')} className={`rounded px-4 py-2 font-semibold ${balanceDirection === 'debit' ? 'bg-rose-600 text-white' : 'bg-gray-100'}`}>Withdraw</button>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <input value={balanceAmount} onChange={(event) => setBalanceAmount(event.target.value)} placeholder="Amount" className="w-full rounded border px-3 py-2" />
-              <input value={balanceReference} onChange={(event) => setBalanceReference(event.target.value)} placeholder="Reference optional" className="w-full rounded border px-3 py-2" />
-              <textarea value={balanceRemark} onChange={(event) => setBalanceRemark(event.target.value)} placeholder="Reason / Remark required" className="w-full rounded border px-3 py-2 md:col-span-3" />
-            </div>
-            <div className="rounded bg-amber-50 p-3 text-amber-900">Current Balance RM {(balanceTarget.walletBalance ?? 0).toFixed(2)} · {balanceDirection === 'credit' ? 'Deposit +' : 'Withdraw -'}RM {Number(balanceAmount || 0).toFixed(2)} · New Balance RM {((balanceTarget.walletBalance ?? 0) + (balanceDirection === 'credit' ? Number(balanceAmount || 0) : -Number(balanceAmount || 0))).toFixed(2)}</div>
-            <button type="button" disabled={balanceBusy} className={`w-full rounded px-4 py-2 font-semibold text-white disabled:opacity-50 ${balanceDirection === 'credit' ? 'bg-emerald-600' : 'bg-rose-600'}`} onClick={async () => {
-              setBalanceBusy(true)
-              try {
-                const res = await fetch(`/api/proxy/admin/customers/${balanceTarget.id}/wallet/adjustments`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ direction: balanceDirection, amount: balanceAmount, remark: balanceRemark, reference_no: balanceReference || undefined }) })
-                const json = await res.json().catch(() => null)
-                if (!res.ok) { window.alert(json?.message ?? `${balanceDirection === 'credit' ? 'Deposit' : 'Withdraw'} failed.`); return }
-                const next = Number(json?.data?.wallet_balance ?? 0)
-                await refreshBalanceAfterAction(balanceTarget.id, next)
-                setBalanceAmount(''); setBalanceRemark(''); setBalanceReference(''); setToastMessage(balanceDirection === 'credit' ? 'Deposit completed.' : 'Withdraw completed.'); setTimeout(() => setToastMessage(null), 2500)
-              } finally { setBalanceBusy(false) }
-            }}>{balanceDirection === 'credit' ? 'Confirm Deposit' : 'Confirm Withdraw'}</button>
+            {canManageBalance ? (
+              <>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setBalanceDirection('credit')} className={`rounded px-4 py-2 font-semibold ${balanceDirection === 'credit' ? 'bg-emerald-600 text-white' : 'bg-gray-100'}`}>Deposit</button>
+                  <button type="button" onClick={() => setBalanceDirection('debit')} className={`rounded px-4 py-2 font-semibold ${balanceDirection === 'debit' ? 'bg-rose-600 text-white' : 'bg-gray-100'}`}>Withdraw</button>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <input value={balanceAmount} onChange={(event) => setBalanceAmount(event.target.value)} placeholder="Amount" className="w-full rounded border px-3 py-2" />
+                  <input value={balanceReference} onChange={(event) => setBalanceReference(event.target.value)} placeholder="Reference optional" className="w-full rounded border px-3 py-2" />
+                  <textarea value={balanceRemark} onChange={(event) => setBalanceRemark(event.target.value)} placeholder="Reason / Remark required" className="w-full rounded border px-3 py-2 md:col-span-3" />
+                </div>
+                <div className="rounded bg-amber-50 p-3 text-amber-900">Current Balance RM {(balanceTarget.walletBalance ?? 0).toFixed(2)} · {balanceDirection === 'credit' ? 'Deposit +' : 'Withdraw -'}RM {Number(balanceAmount || 0).toFixed(2)} · New Balance RM {((balanceTarget.walletBalance ?? 0) + (balanceDirection === 'credit' ? Number(balanceAmount || 0) : -Number(balanceAmount || 0))).toFixed(2)}</div>
+                <button type="button" disabled={balanceBusy} className={`w-full rounded px-4 py-2 font-semibold text-white disabled:opacity-50 ${balanceDirection === 'credit' ? 'bg-emerald-600' : 'bg-rose-600'}`} onClick={async () => {
+                  if (balanceDirection === 'debit' && Number(balanceAmount || 0) > (balanceTarget.walletBalance ?? 0)) { window.alert('Withdraw amount cannot exceed current balance.'); return }
+                  setBalanceBusy(true)
+                  try {
+                    const res = await fetch(`/api/proxy/admin/customers/${balanceTarget.id}/wallet/adjustments`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ direction: balanceDirection, amount: balanceAmount, remark: balanceRemark, reference_no: balanceReference || undefined }) })
+                    const json = await res.json().catch(() => null)
+                    if (!res.ok) { window.alert(json?.message ?? `${balanceDirection === 'credit' ? 'Deposit' : 'Withdraw'} failed.`); return }
+                    const next = Number(json?.data?.wallet_balance ?? 0)
+                    await refreshBalanceAfterAction(balanceTarget.id, next)
+                    setBalanceAmount(''); setBalanceRemark(''); setBalanceReference(''); setToastMessage(balanceDirection === 'credit' ? 'Deposit completed.' : 'Withdraw completed.'); setTimeout(() => setToastMessage(null), 2500)
+                  } finally { setBalanceBusy(false) }
+                }}>{balanceDirection === 'credit' ? 'Confirm Deposit' : 'Confirm Withdraw'}</button>
+              </>
+            ) : <p className="rounded border border-dashed border-slate-300 p-4 text-gray-500">You can view this wallet, but you do not have permission to Deposit or Withdraw.</p>}
 
             <div>
               <h3 className="mb-2 font-semibold">Pending Top Ups</h3>
@@ -837,7 +842,7 @@ export default function CustomerTable({
                   </button>
                 </th>
               ))}
-              {(showActions || canView) && (
+              {showActions && (
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                   {t('common.actions')}
                 </th>

@@ -50,7 +50,6 @@ export default function CustomerRow({
   onAssignVoucher,
   onEdit,
   onDelete,
-  onView,
   onToggleDepositWaiver,
   onAddPoints,
   onReducePoints,
@@ -81,7 +80,7 @@ export default function CustomerRow({
         {requiredDeposit == null ? '-' : requiredDeposit ? 'Yes' : 'No'}
       </td>
       <td className="px-4 py-2 border border-gray-200">{customer.createdAt}</td>
-      {(showActions || canView) && (
+      {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex flex-wrap items-center gap-2">
             {canView && (
@@ -114,7 +113,7 @@ export default function CustomerRow({
               </button>
             )}
             {canManageBalance && (
-              <button type="button" className="inline-flex h-8 items-center justify-center rounded bg-teal-600 px-2 text-xs font-semibold text-white hover:bg-teal-700" onClick={() => onManageBalance?.(customer)} title="Manage Balance">Balance</button>
+              <button type="button" className="inline-flex h-8 items-center gap-1 rounded bg-teal-600 px-2 text-xs font-semibold text-white hover:bg-teal-700" onClick={() => onManageBalance?.(customer)} title="Manage Balance" aria-label={`Manage Balance for ${customer.name}`}><i className="fa-solid fa-wallet" aria-hidden="true" /> Balance</button>
             )}
             {canUpdate && (
               <button

@@ -153,13 +153,18 @@ class PublicCustomerWalletController extends Controller
     public function uploadProof(Request $request, CustomerWalletTransaction $topup): JsonResponse
     {
         abort_unless($topup->customer_id === auth('customer')->id(), 404);
-        $request->validate(['payment_proof' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120']]);
+        $request->validate(['payment_proof' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120']]);
         $path = $request->file('payment_proof')->store('wallet-payment-proofs', 'public');
         $metadata = $topup->metadata ?? [];
         $metadata['payment_proof_url'] = Storage::disk('public')->url($path);
         $metadata['payment_proof_uploaded_at'] = now()->toDateTimeString();
-        $topup->forceFill(['metadata' => $metadata, 'remark' => 'Manual transfer proof uploaded. Pending verification.'])->save();
-        return response()->json(['success' => true, 'data' => ['topup' => $topup->refresh()]]);
+        $metadata['payment_proof_original_name'] = $request->file('payment_proof')->getClientOriginalName();
+        $topup->forceFill([
+            'metadata' => $metadata,
+            'status' => CustomerWalletTransaction::STATUS_WAITING_VERIFICATION,
+            'remark' => 'Manual transfer proof uploaded. Pending verification.',
+        ])->save();
+        return response()->json(['success' => true, 'message' => 'Payment proof submitted. Waiting for staff verification.', 'data' => ['topup' => $topup->refresh()]]);
     }
 
     private function normalizeGatewayKey(string $key): string

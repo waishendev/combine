@@ -1019,7 +1019,7 @@ export async function createCustomerWalletTopup(payload: { amount: number | stri
 export async function uploadCustomerWalletPaymentProof(topupId: number, file: File) {
   const formData = new FormData();
   formData.append("payment_proof", file);
-  return request<{ success?: boolean; data?: { topup?: CustomerWalletTransaction } }>(`/public/shop/customer/wallet/topups/${topupId}/payment-proof`, {
+  return request<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>(`/public/shop/customer/wallet/topups/${topupId}/payment-proof`, {
     method: "POST",
     body: formData,
   });

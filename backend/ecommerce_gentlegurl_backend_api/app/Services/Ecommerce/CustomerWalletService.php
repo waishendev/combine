@@ -24,8 +24,8 @@ class CustomerWalletService
                 [
                     'customer_id' => $locked->id,
                     'transaction_no' => $this->newTransactionNo('WTX'),
-                    'type' => 'topup',
-                    'direction' => 'credit',
+                    'type' => CustomerWalletTransaction::TYPE_TOPUP,
+                    'direction' => CustomerWalletTransaction::DIRECTION_CREDIT,
                     'amount' => $amount,
                     'balance_before' => $locked->wallet_balance ?? 0,
                     'balance_after' => $locked->wallet_balance ?? 0,
@@ -33,8 +33,8 @@ class CustomerWalletService
                     'payment_gateway_key' => $data['payment_gateway_key'] ?? null,
                     'payment_method_label' => $data['payment_method_label'] ?? null,
                     'reference_no' => $data['reference_no'] ?? null,
-                    'status' => 'pending',
-                    'remark' => $data['remark'] ?? 'Balance top up pending verification.',
+                    'status' => $this->initialTopupStatus($data),
+                    'remark' => $data['remark'] ?? 'Balance top up pending payment proof.',
                     'metadata' => $data['metadata'] ?? null,
                 ]
             );
@@ -45,11 +45,14 @@ class CustomerWalletService
     {
         return DB::transaction(function () use ($transaction, $referenceNo, $userId, $remark) {
             $walletTransaction = CustomerWalletTransaction::query()->lockForUpdate()->findOrFail($transaction->id);
-            if ($walletTransaction->status === 'completed') {
+            if ($walletTransaction->status === CustomerWalletTransaction::STATUS_COMPLETED) {
                 return $walletTransaction;
             }
-            if ($walletTransaction->direction !== 'credit') {
+            if ($walletTransaction->type !== CustomerWalletTransaction::TYPE_TOPUP || $walletTransaction->direction !== CustomerWalletTransaction::DIRECTION_CREDIT) {
                 throw ValidationException::withMessages(['transaction' => 'Only credit top ups can be completed.']);
+            }
+            if (! in_array($walletTransaction->status, CustomerWalletTransaction::PENDING_REVIEW_STATUSES, true)) {
+                throw ValidationException::withMessages(['transaction' => 'This top-up is not awaiting review.']);
             }
             $customer = Customer::query()->lockForUpdate()->findOrFail($walletTransaction->customer_id);
             $before = $this->normalizeAmount($customer->wallet_balance ?? 0);
@@ -63,7 +66,7 @@ class CustomerWalletService
                 'balance_before' => $before,
                 'balance_after' => $after,
                 'reference_no' => $referenceNo ?: $walletTransaction->reference_no,
-                'status' => 'completed',
+                'status' => CustomerWalletTransaction::STATUS_COMPLETED,
                 'completed_at' => now(),
                 'created_by' => $walletTransaction->created_by ?: $userId,
                 'metadata' => $metadata,
@@ -103,7 +106,7 @@ class CustomerWalletService
                 'source_type' => 'crm_adjustment',
                 'source_id' => $this->newTransactionNo('ADJ'),
                 'reference_no' => $referenceNo,
-                'status' => 'completed',
+                'status' => CustomerWalletTransaction::STATUS_COMPLETED,
                 'remark' => $remark,
                 'created_by' => $userId,
                 'completed_at' => now(),
@@ -114,13 +117,13 @@ class CustomerWalletService
 
     public function markFailed(CustomerWalletTransaction $transaction, string $remark, ?int $userId = null, string $status = 'failed'): CustomerWalletTransaction
     {
-        if (! in_array($status, ['failed', 'cancelled', 'rejected'], true)) {
-            $status = 'failed';
+        if (! in_array($status, [CustomerWalletTransaction::STATUS_FAILED, CustomerWalletTransaction::STATUS_CANCELLED, CustomerWalletTransaction::STATUS_REJECTED], true)) {
+            $status = CustomerWalletTransaction::STATUS_FAILED;
         }
 
         return DB::transaction(function () use ($transaction, $remark, $userId, $status) {
             $walletTransaction = CustomerWalletTransaction::query()->lockForUpdate()->findOrFail($transaction->id);
-            if ($walletTransaction->status === 'completed') {
+            if ($walletTransaction->status === CustomerWalletTransaction::STATUS_COMPLETED) {
                 throw ValidationException::withMessages(['transaction' => 'Completed transactions cannot be rejected.']);
             }
             $metadata = $walletTransaction->metadata ?? [];
@@ -144,7 +147,7 @@ class CustomerWalletService
 
         return DB::transaction(function () use ($transaction, $remark, $userId) {
             $original = CustomerWalletTransaction::query()->lockForUpdate()->findOrFail($transaction->id);
-            if ($original->status !== 'completed') {
+            if ($original->status !== CustomerWalletTransaction::STATUS_COMPLETED) {
                 throw ValidationException::withMessages(['transaction' => 'Only completed transactions can be reversed.']);
             }
             if ($original->reversed_transaction_id) {
@@ -172,7 +175,7 @@ class CustomerWalletService
                 'source_type' => 'wallet_reversal',
                 'source_id' => $this->newTransactionNo('REV'),
                 'reference_no' => $original->transaction_no,
-                'status' => 'completed',
+                'status' => CustomerWalletTransaction::STATUS_COMPLETED,
                 'remark' => $remark,
                 'created_by' => $userId,
                 'completed_at' => now(),
@@ -180,12 +183,26 @@ class CustomerWalletService
             ]);
 
             $original->forceFill([
-                'status' => 'reversed',
+                'status' => CustomerWalletTransaction::STATUS_REVERSED,
                 'reversed_transaction_id' => $reversal->id,
             ])->save();
 
             return $reversal;
         });
+    }
+
+
+    private function initialTopupStatus(array $data): string
+    {
+        $metadata = $data['metadata'] ?? [];
+        $provider = is_array($metadata) ? (string) ($metadata['provider'] ?? '') : '';
+        $gatewayKey = (string) ($data['payment_gateway_key'] ?? '');
+
+        if ($provider === 'manual' || $gatewayKey === 'manual_transfer' || $gatewayKey === 'manual_bank_transfer') {
+            return CustomerWalletTransaction::STATUS_PENDING_PROOF;
+        }
+
+        return CustomerWalletTransaction::STATUS_PENDING_PAYMENT;
     }
 
     private function validateAmount(string $amount): void
