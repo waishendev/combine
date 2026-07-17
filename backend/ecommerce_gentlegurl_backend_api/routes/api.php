@@ -397,19 +397,19 @@ $protectedRoutes = function () {
     Route::get('/customers/{customer}/history', [CustomerController::class, 'history'])
         ->middleware('permission:customers.view');
     Route::get('/admin/customer-wallet/topups/pending', [AdminCustomerWalletController::class, 'pendingTopups'])
-        ->middleware('permission:customer_wallet.view_transactions|customer_wallet.verify_topup');
+        ->middleware('permission:customer_wallet.view_transactions|customer_wallet.verify_topup|customers.view|pos.checkout|pos.appointments.manage');
     Route::get('/admin/customer-wallet/topups/{topup}', [AdminCustomerWalletController::class, 'pendingTopupShow'])
-        ->middleware('permission:customer_wallet.verify_topup');
+        ->middleware('permission:customer_wallet.verify_topup|customers.view|pos.checkout|pos.appointments.manage');
     Route::post('/admin/customer-wallet/topups/{topup}/approve', [AdminCustomerWalletController::class, 'approvePendingTopup'])
-        ->middleware('permission:customer_wallet.verify_topup');
+        ->middleware('permission:customer_wallet.verify_topup|customer_wallet.adjust|pos.checkout|pos.appointments.manage');
     Route::post('/admin/customer-wallet/topups/{topup}/reject', [AdminCustomerWalletController::class, 'rejectPendingTopup'])
-        ->middleware('permission:customer_wallet.verify_topup');
+        ->middleware('permission:customer_wallet.verify_topup|customer_wallet.adjust|pos.checkout|pos.appointments.manage');
     Route::get('/admin/customers/{customer}/wallet', [AdminCustomerWalletController::class, 'show'])
-        ->middleware('permission:customer_wallet.view');
+        ->middleware('permission:customer_wallet.view|customers.view');
     Route::get('/admin/customers/{customer}/wallet/transactions', [AdminCustomerWalletController::class, 'transactions'])
-        ->middleware('permission:customer_wallet.view_transactions');
+        ->middleware('permission:customer_wallet.view_transactions|customers.view');
     Route::post('/admin/customers/{customer}/wallet/adjustments', [AdminCustomerWalletController::class, 'adjust'])
-        ->middleware('permission:customer_wallet.adjust');
+        ->middleware('permission:customer_wallet.adjust|customers.update');
     Route::post('/admin/customers/{customer}/wallet/transactions/{transaction}/approve', [AdminCustomerWalletController::class, 'approveTopup'])
         ->middleware('permission:customer_wallet.adjust|customer_wallet.verify_topup');
     Route::post('/admin/customers/{customer}/wallet/transactions/{transaction}/reject', [AdminCustomerWalletController::class, 'rejectTopup'])

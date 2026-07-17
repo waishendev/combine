@@ -619,8 +619,11 @@ export default function PosRequestCenter({
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null)
       const balanceTopupPromise = fetch('/api/proxy/admin/customer-wallet/topups/pending?per_page=50', { cache: 'no-store' })
-        .then((res) => (res.ok ? res.json() : null))
-        .catch(() => null)
+        .then(async (res) => {
+          const payload = await res.json().catch(() => null)
+          if (!res.ok) throw new Error(String(payload?.message ?? `Failed to load balance top-ups (${res.status}).`))
+          return payload
+        })
 
       const [cancellationRes, ...remainingResponses] = await Promise.all([
         fetch('/api/proxy/pos/cancellation-requests?status=pending&per_page=50', { cache: 'no-store' }),

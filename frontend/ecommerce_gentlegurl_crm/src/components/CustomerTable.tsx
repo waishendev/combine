@@ -28,6 +28,7 @@ import { useI18n } from '@/lib/i18n'
 
 interface CustomerTableProps {
   permissions: string[]
+  roles?: Array<string | { id: number; name: string }>
 }
 
 type Meta = {
@@ -65,6 +66,7 @@ type ImportSummary = {
 
 export default function CustomerTable({
   permissions,
+  roles = [],
 }: CustomerTableProps) {
   const { t } = useI18n()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
@@ -101,13 +103,16 @@ export default function CustomerTable({
   const [importFailedRows, setImportFailedRows] = useState<Array<{ row: number; reason: string }>>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
+  const roleNames = roles.map((role) => typeof role === 'string' ? role : role.name)
+  const isWalletAdminRole = roleNames.some((role) => ['infra_core_x1', 'superAdmin', 'super_admin'].includes(role))
+
   const canCreate = permissions.includes('customers.create')
   const canUpdate = permissions.includes('customers.update')
   const canDelete = permissions.includes('customers.delete')
   const canView = permissions.includes('customers.view')
   const canViewPointsLogs = permissions.includes('customers.points_adjustment_logs.view')
-  const canManageBalance = permissions.includes('customer_wallet.adjust')
-  const canViewWallet = permissions.includes('customer_wallet.view')
+  const canManageBalance = permissions.includes('customer_wallet.adjust') || isWalletAdminRole
+  const canViewWallet = permissions.includes('customer_wallet.view') || permissions.includes('customer_wallet.adjust') || permissions.includes('customer_wallet.view_transactions') || isWalletAdminRole
   const canAssignVoucher = permissions.includes('ecommerce.vouchers.assign')
   const showActions = canUpdate || canDelete || canView || canAssignVoucher || canViewWallet
 
