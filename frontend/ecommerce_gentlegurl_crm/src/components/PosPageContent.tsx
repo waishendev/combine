@@ -8456,7 +8456,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           >
             Appointments
           </Link> */}
-          <PosRequestCenter />
+          <PosRequestCenter permissions={permissions} />
           {canCreateMember ? (
             <button
               type="button"

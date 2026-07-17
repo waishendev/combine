@@ -41,9 +41,9 @@ class CustomerWalletService
         });
     }
 
-    public function complete(CustomerWalletTransaction $transaction, ?string $referenceNo = null): CustomerWalletTransaction
+    public function complete(CustomerWalletTransaction $transaction, ?string $referenceNo = null, ?int $userId = null, ?string $remark = null): CustomerWalletTransaction
     {
-        return DB::transaction(function () use ($transaction, $referenceNo) {
+        return DB::transaction(function () use ($transaction, $referenceNo, $userId, $remark) {
             $walletTransaction = CustomerWalletTransaction::query()->lockForUpdate()->findOrFail($transaction->id);
             if ($walletTransaction->status === 'completed') {
                 return $walletTransaction;
@@ -55,12 +55,18 @@ class CustomerWalletService
             $before = $this->normalizeAmount($customer->wallet_balance ?? 0);
             $after = bcadd($before, $walletTransaction->amount, 2);
             $customer->forceFill(['wallet_balance' => $after])->save();
+            $metadata = $walletTransaction->metadata ?? [];
+            $metadata['approved_by'] = $userId;
+            $metadata['approved_at'] = now()->toDateTimeString();
+            if ($remark) { $metadata['approval_remark'] = $remark; }
             $walletTransaction->forceFill([
                 'balance_before' => $before,
                 'balance_after' => $after,
                 'reference_no' => $referenceNo ?: $walletTransaction->reference_no,
                 'status' => 'completed',
                 'completed_at' => now(),
+                'created_by' => $walletTransaction->created_by ?: $userId,
+                'metadata' => $metadata,
             ])->save();
             return $walletTransaction;
         });

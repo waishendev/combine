@@ -15,6 +15,7 @@ class CustomerWalletPermissionSeeder extends Seeder
         'customer_wallet.view_transactions' => 'Customer Wallet View Transactions',
         'customer_wallet.allow_negative_adjustment' => 'Customer Wallet Allow Negative Adjustment',
         'customer_wallet.reverse_transaction' => 'Customer Wallet Reverse Transaction',
+        'customer_wallet.verify_topup' => 'Customer Wallet Verify Top Up',
     ];
     public function run(): void
     {

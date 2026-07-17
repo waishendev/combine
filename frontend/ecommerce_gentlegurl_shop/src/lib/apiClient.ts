@@ -1320,6 +1320,7 @@ export type CustomerWalletTransaction = {
   id: number; transaction_no: string; type: string; direction: "credit" | "debit" | string; amount: string;
   balance_before: string; balance_after: string; workspace_type?: string | null; payment_method_label?: string | null;
   reference_no?: string | null; source_id?: string | null; status: string; remark?: string | null; created_at: string; completed_at?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type CustomerWallet = { balance: string; wallet_balance: string; customer_id: number };

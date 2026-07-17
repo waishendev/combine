@@ -20,6 +20,7 @@ export type PosRequestCenterProps = {
   disabledTitle?: string
   canReviewBookingRequests?: boolean
   onBookingRequestsChanged?: () => void | Promise<void>
+  permissions?: string[]
 }
 
 type BookingCancellationRequestRow = {
@@ -129,6 +130,8 @@ type ReturnRequestApiRow = {
   customer?: { name?: string | null; phone?: string | null; email?: string | null }
   timeline?: { created_at?: string | null }
 }
+
+type BalanceTopupRow = { id: number; transaction_no?: string | null; amount?: string | number | null; workspace_type?: string | null; payment_method_label?: string | null; reference_no?: string | null; status?: string | null; created_at?: string | null; completed_at?: string | null; balance_before?: string | number | null; balance_after?: string | number | null; metadata?: Record<string, unknown> | null; customer?: { id?: number; name?: string | null; phone?: string | null; email?: string | null; wallet_balance?: string | number | null } | null }
 
 type BookingConfirmState =
   | { kind: 'cancellation'; row: BookingRequestRow; action: 'approve' | 'reject' }
@@ -582,11 +585,14 @@ export default function PosRequestCenter({
   disabledTitle,
   canReviewBookingRequests = true,
   onBookingRequestsChanged,
+  permissions = [],
 }: PosRequestCenterProps) {
   const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState<'booking' | 'ecommerce'>('booking')
+  const [tab, setTab] = useState<'booking' | 'ecommerce' | 'balance'>('booking')
   const [bookingRows, setBookingRows] = useState<BookingRequestRow[]>([])
   const [ecommerceRows, setEcommerceRows] = useState<EcommerceRequestRow[]>([])
+  const [balanceRows, setBalanceRows] = useState<BalanceTopupRow[]>([])
+  const [viewingBalanceTopup, setViewingBalanceTopup] = useState<BalanceTopupRow | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bookingConfirm, setBookingConfirm] = useState<BookingConfirmState>(null)
@@ -600,7 +606,8 @@ export default function PosRequestCenter({
   const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
   const loadGenerationRef = useRef(0)
 
-  const totalCount = bookingRows.length + ecommerceRows.length
+  const canVerifyTopups = permissions.includes('customer_wallet.verify_topup') || permissions.includes('customer_wallet.adjust')
+  const totalCount = bookingRows.length + ecommerceRows.length + balanceRows.length
 
   const load = useCallback(async () => {
     const generation = ++loadGenerationRef.current
@@ -609,6 +616,9 @@ export default function PosRequestCenter({
 
     try {
       const depositProofPromise = fetch('/api/proxy/pos/payment-links/pending-review', { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null)
+      const balanceTopupPromise = fetch('/api/proxy/admin/customer-wallet/topups/pending?per_page=50', { cache: 'no-store' })
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null)
 
@@ -732,6 +742,10 @@ export default function PosRequestCenter({
 
       setBookingRows(nextBookingRows)
       setEcommerceRows(nextEcommerceRows)
+      const balancePayload = await balanceTopupPromise
+      const balancePage = balancePayload?.data?.topups
+      const topups = Array.isArray(balancePage?.data) ? balancePage.data as BalanceTopupRow[] : []
+      setBalanceRows(topups)
     } catch (err) {
       if (generation !== loadGenerationRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to load requests.')
@@ -751,8 +765,9 @@ export default function PosRequestCenter({
   const summaryCards = useMemo(() => [
     { label: 'Booking requests', value: bookingRows.length, className: 'border-amber-200 bg-amber-50 text-amber-900' },
     { label: 'Ecommerce requests', value: ecommerceRows.length, className: 'border-blue-200 bg-blue-50 text-blue-900' },
+    { label: 'Balance Top Ups', value: balanceRows.length, className: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
     { label: 'Total pending', value: totalCount, className: 'border-slate-200 bg-slate-50 text-slate-900' },
-  ], [bookingRows.length, ecommerceRows.length, totalCount])
+  ], [bookingRows.length, ecommerceRows.length, balanceRows.length, totalCount])
 
   const openBookingRowDetail = (row: BookingRequestRow) => {
     if (row.bookingId <= 0 && row.orderId) {
@@ -867,7 +882,7 @@ export default function PosRequestCenter({
     }
   }
 
-  const detailStackOpen = viewingBooking !== null || viewingOrderId !== null || viewingReturnId !== null
+  const detailStackOpen = viewingBooking !== null || viewingOrderId !== null || viewingReturnId !== null || viewingBalanceTopup !== null
   const confirmStackOpen = bookingConfirm !== null
 
   return (
@@ -897,11 +912,11 @@ export default function PosRequestCenter({
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300/90">Request Center</p>
                   <h3 className="mt-1 text-xl font-bold sm:text-2xl">Pending Tasks</h3>
-                  <p className="mt-1 text-sm text-slate-300">Booking, ecommerce orders, and return/refund requests that need staff action.</p>
+                  <p className="mt-1 text-sm text-slate-300">Booking, ecommerce, returns, and customer balance top-up requests that need staff action.</p>
                 </div>
                 <button type="button" onClick={() => setOpen(false)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-2xl leading-none text-slate-200 hover:bg-white/10 hover:text-white" aria-label="Close Request Center">×</button>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 sm:mt-5 sm:gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:grid-cols-4 sm:gap-3">
                 {summaryCards.map((card) => (
                   <div key={card.label} className={`rounded-xl border px-3 py-2.5 shadow-sm sm:px-4 sm:py-3 ${card.className}`}>
                     <p className="truncate text-[10px] font-semibold uppercase tracking-wide opacity-75 sm:text-xs">{card.label}</p>
@@ -914,7 +929,7 @@ export default function PosRequestCenter({
             <div className="border-b border-slate-200 bg-white px-3 py-3 sm:px-6">
               <div className="flex items-center gap-2">
                 <div className="flex min-w-0 flex-1 gap-1 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:rounded-none sm:bg-transparent sm:p-0">
-                  {(['booking', 'ecommerce'] as const).map((key) => (
+                  {(['booking', 'ecommerce', 'balance'] as const).map((key) => (
                     <button
                       key={key}
                       type="button"
@@ -925,7 +940,7 @@ export default function PosRequestCenter({
                           : 'text-slate-500 hover:bg-white/70 hover:text-slate-800 sm:border-transparent sm:hover:bg-slate-50'
                       }`}
                     >
-                      {key === 'booking' ? `Booking (${bookingRows.length})` : `Ecommerce (${ecommerceRows.length})`}
+                      {key === 'booking' ? `Booking (${bookingRows.length})` : key === 'ecommerce' ? `Ecommerce (${ecommerceRows.length})` : `Balance Top Ups (${balanceRows.length})`}
                     </button>
                   ))}
                 </div>
@@ -946,6 +961,12 @@ export default function PosRequestCenter({
               {error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div> : null}
               {loading && totalCount === 0 ? (
                 <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">Loading requests…</div>
+              ) : tab === 'balance' ? (
+                balanceRows.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No pending balance top-ups.</div>
+                ) : (
+                  <div className="space-y-3">{balanceRows.map((row) => { const proof = row.metadata?.payment_proof_url; return <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><p className="font-bold text-slate-950">{row.transaction_no} · {formatMoney(row.amount)}</p><p className="mt-1 text-sm text-slate-600">{row.customer?.name || '-'} · {row.customer?.phone || row.customer?.email || '-'}</p><p className="mt-1 text-xs text-slate-500">{row.workspace_type || '-'} · {row.payment_method_label || '-'} · Submitted {fmtDateTime(row.created_at)}</p><p className="mt-1 text-xs font-semibold text-slate-700">Payment proof: {proof ? 'Submitted' : 'Not uploaded'} · Current wallet balance {formatMoney(row.customer?.wallet_balance)}</p></div><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold" onClick={() => setViewingBalanceTopup(row)}>View Details</button>{canVerifyTopups ? <><button type="button" className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white" onClick={async () => { const res = await fetch(`/api/proxy/admin/customers/${row.customer?.id}/wallet/transactions/${row.id}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ remark: 'Approved from Request Center' }) }); if (!res.ok) { const json = await res.json().catch(() => null); setError(String(json?.message ?? 'Approve failed.')); return } await load() }}>Approve</button><button type="button" className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white" onClick={async () => { const reason = window.prompt('Reject reason?'); if (!reason) return; const res = await fetch(`/api/proxy/admin/customers/${row.customer?.id}/wallet/transactions/${row.id}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ remark: reason }) }); if (!res.ok) { const json = await res.json().catch(() => null); setError(String(json?.message ?? 'Reject failed.')); return } await load() }}>Reject</button></> : null}</div></div></div> })}</div>
+                )
               ) : tab === 'booking' ? (
                 bookingRows.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No pending booking requests.</div>

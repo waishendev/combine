@@ -12,6 +12,19 @@ use Illuminate\Validation\Rule;
 
 class AdminCustomerWalletController extends Controller
 {
+
+    public function pendingTopups(Request $request): JsonResponse
+    {
+        $rows = CustomerWalletTransaction::query()
+            ->with('customer:id,name,email,phone,wallet_balance')
+            ->where('type', 'topup')
+            ->whereIn('status', ['pending', 'waiting_verification'])
+            ->latest()
+            ->paginate((int) $request->query('per_page', 50));
+
+        return response()->json(['success' => true, 'data' => ['topups' => $rows]]);
+    }
+
     public function show(Customer $customer): JsonResponse
     {
         $summary = $customer->walletTransactions()
@@ -54,8 +67,8 @@ class AdminCustomerWalletController extends Controller
     {
         abort_unless((int) $transaction->customer_id === (int) $customer->id, 404);
         abort_unless($transaction->type === 'topup', 422, 'Only top-up transactions can be approved.');
-        $validated = $request->validate(['reference_no' => ['nullable', 'string', 'max:255']]);
-        $completed = $wallet->complete($transaction, $validated['reference_no'] ?? $transaction->reference_no);
+        $validated = $request->validate(['reference_no' => ['nullable', 'string', 'max:255'], 'remark' => ['nullable', 'string', 'max:2000']]);
+        $completed = $wallet->complete($transaction, $validated['reference_no'] ?? $transaction->reference_no, $request->user()?->id, $validated['remark'] ?? null);
 
         return response()->json(['success' => true, 'message' => 'Top-up approved and balance credited.', 'data' => ['transaction' => $completed->load('creator:id,name'), 'wallet_balance' => (string) $completed->balance_after]]);
     }

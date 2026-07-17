@@ -396,6 +396,8 @@ $protectedRoutes = function () {
 
     Route::get('/customers/{customer}/history', [CustomerController::class, 'history'])
         ->middleware('permission:customers.view');
+    Route::get('/admin/customer-wallet/topups/pending', [AdminCustomerWalletController::class, 'pendingTopups'])
+        ->middleware('permission:customer_wallet.view_transactions|customer_wallet.verify_topup');
     Route::get('/admin/customers/{customer}/wallet', [AdminCustomerWalletController::class, 'show'])
         ->middleware('permission:customer_wallet.view');
     Route::get('/admin/customers/{customer}/wallet/transactions', [AdminCustomerWalletController::class, 'transactions'])
@@ -403,9 +405,9 @@ $protectedRoutes = function () {
     Route::post('/admin/customers/{customer}/wallet/adjustments', [AdminCustomerWalletController::class, 'adjust'])
         ->middleware('permission:customer_wallet.adjust');
     Route::post('/admin/customers/{customer}/wallet/transactions/{transaction}/approve', [AdminCustomerWalletController::class, 'approveTopup'])
-        ->middleware('permission:customer_wallet.adjust');
+        ->middleware('permission:customer_wallet.adjust|customer_wallet.verify_topup');
     Route::post('/admin/customers/{customer}/wallet/transactions/{transaction}/reject', [AdminCustomerWalletController::class, 'rejectTopup'])
-        ->middleware('permission:customer_wallet.adjust');
+        ->middleware('permission:customer_wallet.adjust|customer_wallet.verify_topup');
     Route::post('/admin/customers/{customer}/wallet/transactions/{transaction}/reverse', [AdminCustomerWalletController::class, 'reverse'])
         ->middleware('permission:customer_wallet.reverse_transaction');
 

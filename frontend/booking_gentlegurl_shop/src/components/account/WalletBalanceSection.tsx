@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -58,6 +59,8 @@ export default function WalletBalanceSection({ workspaceType }: Props) {
   const [detailTx, setDetailTx] = useState<CustomerWalletTransaction | null>(null);
   const [pendingTopup, setPendingTopup] = useState<CustomerWalletTransaction | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null);
+  const [proofCaptureMode, setProofCaptureMode] = useState<"environment" | "user" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -143,6 +146,26 @@ export default function WalletBalanceSection({ workspaceType }: Props) {
     }
   };
 
+  const selectProofFile = (file: File | null) => {
+    if (proofPreviewUrl) URL.revokeObjectURL(proofPreviewUrl);
+    setProofPreviewUrl(null);
+    setProofFile(null);
+    if (!file) return;
+    const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    if (!allowed.includes(file.type)) {
+      setError("Invalid file type. Please upload JPG, PNG, WEBP, or PDF.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("File is too large. Maximum payment proof size is 5MB.");
+      return;
+    }
+    setProofFile(file);
+    if (file.type.startsWith("image/")) {
+      setProofPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
   const uploadProof = async () => {
     if (!pendingTopup || !proofFile) return;
     setSubmitting(true);
@@ -151,6 +174,8 @@ export default function WalletBalanceSection({ workspaceType }: Props) {
       await uploadCustomerWalletPaymentProof(pendingTopup.id, proofFile);
       setMessage("Payment proof uploaded. Waiting for staff verification.");
       setProofFile(null);
+      if (proofPreviewUrl) URL.revokeObjectURL(proofPreviewUrl);
+      setProofPreviewUrl(null);
       if (fileRef.current) fileRef.current.value = "";
       await refresh();
     } catch {
@@ -214,7 +239,11 @@ export default function WalletBalanceSection({ workspaceType }: Props) {
               <div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Payment Method</p>{gateways.length === 0 ? <p className="rounded-xl border border-dashed border-[var(--input-border)] px-4 py-6 text-center text-sm text-[var(--text-muted)]">No payment methods are currently available. Please contact the salon.</p> : <div className="space-y-2">{gateways.map((gateway) => <label key={gateway.key} className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-all ${selectedGateway === gateway.key ? "border-[var(--accent-strong)] bg-[var(--muted)]/60 shadow-sm ring-2 ring-[var(--accent)]/25" : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/50"}`}><input type="radio" name="wallet_payment_method" className="h-4 w-4 accent-[var(--accent-strong)]" checked={selectedGateway === gateway.key} onChange={() => setSelectedGateway(gateway.key)} /><span>{gateway.name}</span></label>)}</div>}</div>
               {isManual ? <div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Bank Account</p>{bankAccounts.length === 0 ? <p className="rounded-xl border border-dashed border-[var(--input-border)] px-4 py-4 text-sm text-[var(--text-muted)]">No bank account is configured for manual transfer.</p> : <div className="space-y-2">{bankAccounts.map((bank) => <label key={bank.id} className={`block cursor-pointer rounded-xl border-2 p-4 text-sm ${selectedBankAccountId === bank.id ? "border-[var(--accent-strong)] bg-[var(--muted)]/40 ring-2 ring-[var(--accent)]/20" : "border-[var(--card-border)] bg-[var(--card)]"}`}><div className="flex gap-3"><input type="radio" className="mt-1 h-4 w-4 accent-[var(--accent-strong)]" checked={selectedBankAccountId === bank.id} onChange={() => setSelectedBankAccountId(bank.id)} /><div><p className="font-semibold">{bank.label || bank.bank_name}</p><p className="text-[var(--text-muted)]">{bank.account_name} · {bank.account_number || bank.account_no}</p>{bank.instructions ? <p className="mt-2 text-xs text-[var(--text-muted)]">{bank.instructions}</p> : null}</div></div></label>)}</div>}{selectedBank ? <p className="mt-3 rounded-xl bg-[var(--background-soft)] px-4 py-3 text-xs text-[var(--text-muted)]">Transfer to {selectedBank.bank_name} and upload proof below after submitting.</p> : null}</div> : null}
               <div className="rounded-2xl bg-[var(--background-soft)] p-4 text-sm"><div className="flex justify-between"><span>Current Balance</span><strong>{money(balance)}</strong></div><div className="mt-2 flex justify-between"><span>Top Up Amount</span><strong>{money(topupAmount)}</strong></div><div className="mt-2 flex justify-between border-t border-[var(--muted)] pt-2"><span>Balance After Successful Top Up</span><strong>{money(Number(balance) + (Number.isFinite(topupAmount) ? topupAmount : 0))}</strong></div><p className="mt-3 text-xs text-[var(--text-muted)]">Balance will only be credited after payment is successfully verified.</p></div>
-              {pendingTopup && isManual ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p className="font-semibold">Waiting for Verification</p><p className="mt-1">Top-up request {pendingTopup.transaction_no} is pending. Upload payment proof for staff review.</p><input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={(event) => setProofFile(event.target.files?.[0] ?? null)} className="mt-3 block w-full text-sm" /><button type="button" disabled={!proofFile || submitting} onClick={uploadProof} className="mt-3 rounded-full bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Upload Payment Proof</button></div> : null}
+              {pendingTopup && isManual ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p className="font-semibold">Waiting for Verification</p><p className="mt-1">Top-up request {pendingTopup.transaction_no} is pending. Upload payment proof for staff review.</p><input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" capture={proofCaptureMode ?? undefined} onChange={(event) => selectProofFile(event.target.files?.[0] ?? null)} className="hidden" />
+                <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => { setProofCaptureMode(null); setTimeout(() => fileRef.current?.click(), 0); }} className="rounded-full border border-amber-300 px-3 py-1.5 text-xs font-semibold">Upload</button><button type="button" onClick={() => { setProofCaptureMode('environment'); setTimeout(() => fileRef.current?.click(), 0); }} className="rounded-full border border-amber-300 px-3 py-1.5 text-xs font-semibold">Back Camera</button><button type="button" onClick={() => { setProofCaptureMode('user'); setTimeout(() => fileRef.current?.click(), 0); }} className="rounded-full border border-amber-300 px-3 py-1.5 text-xs font-semibold">Front Camera</button></div>
+                {proofPreviewUrl ? <img src={proofPreviewUrl} alt="Payment proof preview" className="mt-3 max-h-44 rounded-lg border object-contain" /> : proofFile ? <p className="mt-3 text-xs font-semibold">Selected: {proofFile.name}</p> : null}
+                {proofFile ? <button type="button" onClick={() => selectProofFile(null)} className="mt-2 text-xs font-semibold text-amber-800 underline">Remove proof before upload</button> : null}
+                <button type="button" disabled={!proofFile || submitting} onClick={uploadProof} className="mt-3 rounded-full bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{pendingTopup.metadata?.payment_proof_url ? 'Replace proof' : 'Upload Payment Proof'}</button></div> : null}
             </div>
             <div className="flex justify-end gap-2 border-t border-[var(--muted)]/60 pt-4"><button type="button" onClick={() => setTopupOpen(false)} className="rounded-full border border-[var(--input-border)] px-5 py-2 text-sm font-semibold">Cancel</button><button type="button" disabled={submitting || gateways.length === 0} onClick={submitTopup} className="rounded-full bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">{submitting ? "Submitting..." : "Continue / Top Up"}</button></div>
           </div>
