@@ -3,13 +3,13 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import WalletBalanceSection from "@/components/account/WalletBalanceSection";
 import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
 import { normalizeInternationalPhone } from "@/lib/phone";
 import type {
   AddressPayload,
   CustomerAddress,
   CustomerProfileWithAddresses,
-  CustomerWalletTransaction,
   UpdateCustomerProfilePayload,
 } from "@/lib/types";
 import {
@@ -147,11 +147,6 @@ export default function AccountPage() {
   const [savingAddress, setSavingAddress] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [walletBalance, setWalletBalance] = useState("0.00");
-  const [walletTransactions, setWalletTransactions] = useState<CustomerWalletTransaction[]>([]);
-  const [walletGateways, setWalletGateways] = useState<Array<{ key: string; name: string }>>([]);
-  const [topupAmount, setTopupAmount] = useState("50");
-  const [selectedGateway, setSelectedGateway] = useState("");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const avatarUrl = useMemo(
@@ -185,30 +180,6 @@ export default function AccountPage() {
 
     void loadData();
   }, [router]);
-
-  const refreshWallet = async () => {
-    const [wallet, transactions, gateways] = await Promise.all([
-      getCustomerWallet(),
-      getCustomerWalletTransactions("all"),
-      getCustomerWalletPaymentGateways("booking"),
-    ]);
-    setWalletBalance(wallet.wallet_balance ?? wallet.balance ?? "0.00");
-    setWalletTransactions(transactions);
-    setWalletGateways(gateways);
-    setSelectedGateway((prev) => prev || gateways[0]?.key || "");
-    window.dispatchEvent(new CustomEvent("walletBalanceUpdated"));
-  };
-
-  const submitTopup = async () => {
-    if (!selectedGateway) { setError("Please select a payment method."); return; }
-    setError(null); setFeedback(null);
-    try {
-      const gateway = walletGateways.find((item) => item.key === selectedGateway);
-      await createCustomerWalletTopup({ amount: topupAmount, payment_gateway_key: selectedGateway, payment_method_label: gateway?.name, workspace_type: "booking" });
-      await refreshWallet();
-      setFeedback("Top up submitted. Balance will only be credited after payment is successfully verified.");
-    } catch (err) { setError(extractError(err)); }
-  };
 
   const refreshProfile = async () => {
     try {
@@ -438,30 +409,7 @@ export default function AccountPage() {
       )}
 
 
-      <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/80 p-6 shadow-sm">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Customer Balance</p>
-            <p className="mt-2 text-4xl font-bold text-[var(--accent-stronger)]">RM {Number(walletBalance).toFixed(2)}</p>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">Balance will only be credited after payment is successfully verified.</p>
-          </div>
-          <div className="min-w-[260px] rounded-lg border border-[var(--muted)]/60 p-4">
-            <p className="text-sm font-semibold text-[var(--foreground)]">Top Up Amount</p>
-            <div className="mt-3 flex flex-wrap gap-2">{[20,50,100,200].map((amount) => <button key={amount} type="button" onClick={() => setTopupAmount(String(amount))} className="rounded-full border px-3 py-1 text-sm">RM {amount}</button>)}</div>
-            <input value={topupAmount} onChange={(event) => setTopupAmount(event.target.value)} className="mt-3 w-full rounded-lg border border-[var(--input-border)] bg-[var(--background)] px-3 py-2" />
-            <select value={selectedGateway} onChange={(event) => setSelectedGateway(event.target.value)} className="mt-3 w-full rounded-lg border border-[var(--input-border)] bg-[var(--background)] px-3 py-2">
-              <option value="">Select payment method</option>
-              {walletGateways.map((gateway) => <option key={gateway.key} value={gateway.key}>{gateway.name}</option>)}
-            </select>
-            <p className="mt-3 text-xs text-[var(--text-muted)]">Balance After Successful Top Up: RM {(Number(walletBalance) + Number(topupAmount || 0)).toFixed(2)}</p>
-            <button type="button" onClick={submitTopup} className="mt-3 w-full rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">Top Up</button>
-          </div>
-        </div>
-        <div className="mt-6">
-          <h2 className="text-lg font-semibold text-[var(--accent-stronger)]">Balance Transactions</h2>
-          {walletTransactions.length === 0 ? <p className="mt-3 text-sm text-[var(--text-muted)]">No balance transactions yet.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-[var(--text-muted)]"><th>Date</th><th>Transaction No</th><th>Type</th><th>Credit</th><th>Debit</th><th>Balance After</th><th>Status</th><th>Receipt</th></tr></thead><tbody>{walletTransactions.map((tx) => <tr key={tx.id} className="border-t border-[var(--muted)]/50"><td className="py-2">{new Date(tx.created_at).toLocaleDateString()}</td><td>{tx.transaction_no}</td><td>{tx.type}</td><td>{tx.direction === "credit" ? `RM ${Number(tx.amount).toFixed(2)}` : "-"}</td><td>{tx.direction === "debit" ? `RM ${Number(tx.amount).toFixed(2)}` : "-"}</td><td>RM {Number(tx.balance_after).toFixed(2)}</td><td>{tx.status}</td><td>{tx.status === "completed" ? (tx.type === "topup" ? "Balance Top Up Receipt" : "Balance Adjustment Receipt") : "Pending"}</td></tr>)}</tbody></table></div>}
-        </div>
-      </section>
+      <WalletBalanceSection workspaceType="booking" />
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)]">
         <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">

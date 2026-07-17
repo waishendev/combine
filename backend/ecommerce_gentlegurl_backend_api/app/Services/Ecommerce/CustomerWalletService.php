@@ -105,6 +105,83 @@ class CustomerWalletService
         });
     }
 
+
+    public function markFailed(CustomerWalletTransaction $transaction, string $remark, ?int $userId = null, string $status = 'failed'): CustomerWalletTransaction
+    {
+        if (! in_array($status, ['failed', 'cancelled', 'rejected'], true)) {
+            $status = 'failed';
+        }
+
+        return DB::transaction(function () use ($transaction, $remark, $userId, $status) {
+            $walletTransaction = CustomerWalletTransaction::query()->lockForUpdate()->findOrFail($transaction->id);
+            if ($walletTransaction->status === 'completed') {
+                throw ValidationException::withMessages(['transaction' => 'Completed transactions cannot be rejected.']);
+            }
+            $metadata = $walletTransaction->metadata ?? [];
+            $metadata['reviewed_by'] = $userId;
+            $metadata['reviewed_at'] = now()->toDateTimeString();
+            $walletTransaction->forceFill([
+                'status' => $status,
+                'remark' => $remark,
+                'metadata' => $metadata,
+            ])->save();
+
+            return $walletTransaction;
+        });
+    }
+
+    public function reverse(CustomerWalletTransaction $transaction, string $remark, ?int $userId = null): CustomerWalletTransaction
+    {
+        if (trim($remark) === '') {
+            throw ValidationException::withMessages(['remark' => 'Reversal reason is required.']);
+        }
+
+        return DB::transaction(function () use ($transaction, $remark, $userId) {
+            $original = CustomerWalletTransaction::query()->lockForUpdate()->findOrFail($transaction->id);
+            if ($original->status !== 'completed') {
+                throw ValidationException::withMessages(['transaction' => 'Only completed transactions can be reversed.']);
+            }
+            if ($original->reversed_transaction_id) {
+                throw ValidationException::withMessages(['transaction' => 'This transaction has already been reversed.']);
+            }
+
+            $customer = Customer::query()->lockForUpdate()->findOrFail($original->customer_id);
+            $before = $this->normalizeAmount($customer->wallet_balance ?? 0);
+            $direction = $original->direction === 'credit' ? 'debit' : 'credit';
+            $after = $direction === 'credit' ? bcadd($before, $original->amount, 2) : bcsub($before, $original->amount, 2);
+            if (bccomp($after, '0.00', 2) < 0) {
+                throw ValidationException::withMessages(['transaction' => 'Reversal would make the customer balance negative.']);
+            }
+
+            $customer->forceFill(['wallet_balance' => $after])->save();
+            $reversal = CustomerWalletTransaction::query()->create([
+                'customer_id' => $customer->id,
+                'transaction_no' => $this->newTransactionNo('WTR'),
+                'type' => 'reversal',
+                'direction' => $direction,
+                'amount' => $original->amount,
+                'balance_before' => $before,
+                'balance_after' => $after,
+                'workspace_type' => 'crm',
+                'source_type' => 'wallet_reversal',
+                'source_id' => $this->newTransactionNo('REV'),
+                'reference_no' => $original->transaction_no,
+                'status' => 'completed',
+                'remark' => $remark,
+                'created_by' => $userId,
+                'completed_at' => now(),
+                'metadata' => ['reverses_transaction_no' => $original->transaction_no],
+            ]);
+
+            $original->forceFill([
+                'status' => 'reversed',
+                'reversed_transaction_id' => $reversal->id,
+            ])->save();
+
+            return $reversal;
+        });
+    }
+
     private function validateAmount(string $amount): void
     {
         if (bccomp($amount, '0.00', 2) <= 0 || bccomp($amount, '10000.00', 2) > 0) {

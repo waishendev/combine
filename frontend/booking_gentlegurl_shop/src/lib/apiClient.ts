@@ -983,7 +983,7 @@ export async function requestBookingCancellation(id: number, reason?: string) {
 export type CustomerWalletTransaction = {
   id: number; transaction_no: string; type: string; direction: "credit" | "debit" | string; amount: string;
   balance_before: string; balance_after: string; workspace_type?: string | null; payment_method_label?: string | null;
-  reference_no?: string | null; status: string; remark?: string | null; created_at: string; completed_at?: string | null;
+  reference_no?: string | null; source_id?: string | null; status: string; remark?: string | null; created_at: string; completed_at?: string | null;
 };
 
 export type CustomerWallet = { balance: string; wallet_balance: string; customer_id: number };
@@ -999,14 +999,27 @@ export async function getCustomerWalletTransactions(status: string = "completed"
   return Array.isArray(tx) ? tx : tx?.data ?? [];
 }
 
+export type CustomerWalletGateway = { key: string; name: string; config?: unknown; requires_proof?: boolean; gateway_key?: string; provider?: string };
+export type CustomerWalletBankAccount = { id: number; label?: string | null; bank_name: string; account_name: string; account_no?: string; account_number?: string; qr_image_url?: string | null; instructions?: string | null; is_default?: boolean };
+
 export async function getCustomerWalletPaymentGateways(workspaceType: string = "booking") {
-  const response = await request<{ data?: { payment_gateways?: Array<{ key: string; name: string; config?: unknown }> } }>(`/public/shop/customer/wallet/payment-gateways?workspace_type=${encodeURIComponent(workspaceType)}`);
-  return response.data?.payment_gateways ?? [];
+  const response = await request<{ data?: { payment_gateways?: CustomerWalletGateway[]; bank_accounts?: CustomerWalletBankAccount[] } }>(`/public/shop/customer/wallet/payment-gateways?workspace_type=${encodeURIComponent(workspaceType)}`);
+  return { payment_gateways: response.data?.payment_gateways ?? [], bank_accounts: response.data?.bank_accounts ?? [] };
 }
 
-export async function createCustomerWalletTopup(payload: { amount: number | string; payment_gateway_key: string; payment_method_label?: string; workspace_type?: string }) {
+export async function createCustomerWalletTopup(payload: { amount: number | string; payment_gateway_key: string; payment_method_label?: string; workspace_type?: string; bank_account_id?: number }) {
   return request<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>("/public/shop/customer/wallet/topups", {
     method: "POST",
     body: JSON.stringify({ ...payload, workspace_type: payload.workspace_type ?? "booking" }),
+  });
+}
+
+
+export async function uploadCustomerWalletPaymentProof(topupId: number, file: File) {
+  const formData = new FormData();
+  formData.append("payment_proof", file);
+  return request<{ success?: boolean; data?: { topup?: CustomerWalletTransaction } }>(`/public/shop/customer/wallet/topups/${topupId}/payment-proof`, {
+    method: "POST",
+    body: formData,
   });
 }
