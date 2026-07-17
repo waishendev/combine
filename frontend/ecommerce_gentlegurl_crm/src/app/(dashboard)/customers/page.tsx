@@ -45,7 +45,6 @@ export default async function CustomersPage() {
       </h2>
       <CustomerTable
         permissions={user.permissions}
-        roles={user.roles}
       />
     </div>
   )

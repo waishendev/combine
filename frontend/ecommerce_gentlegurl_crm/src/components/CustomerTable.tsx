@@ -28,7 +28,6 @@ import { useI18n } from '@/lib/i18n'
 
 interface CustomerTableProps {
   permissions: string[]
-  roles?: Array<string | { id: number; name: string }>
 }
 
 type Meta = {
@@ -66,7 +65,6 @@ type ImportSummary = {
 
 export default function CustomerTable({
   permissions,
-  roles = [],
 }: CustomerTableProps) {
   const { t } = useI18n()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
@@ -103,16 +101,14 @@ export default function CustomerTable({
   const [importFailedRows, setImportFailedRows] = useState<Array<{ row: number; reason: string }>>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const roleNames = roles.map((role) => typeof role === 'string' ? role : role.name)
-  const isWalletAdminRole = roleNames.some((role) => ['infra_core_x1', 'superAdmin', 'super_admin'].includes(role))
-
   const canCreate = permissions.includes('customers.create')
   const canUpdate = permissions.includes('customers.update')
   const canDelete = permissions.includes('customers.delete')
   const canView = permissions.includes('customers.view')
   const canViewPointsLogs = permissions.includes('customers.points_adjustment_logs.view')
-  const canManageBalance = permissions.includes('customer_wallet.adjust') || isWalletAdminRole
-  const canViewWallet = permissions.includes('customer_wallet.view') || permissions.includes('customer_wallet.adjust') || permissions.includes('customer_wallet.view_transactions') || isWalletAdminRole
+  const canManageBalance = permissions.includes('customer_wallet.adjust')
+  const canVerifyWalletTopup = permissions.includes('customer_wallet.verify_topup')
+  const canViewWallet = permissions.includes('customer_wallet.view')
   const canAssignVoucher = permissions.includes('ecommerce.vouchers.assign')
   const showActions = canUpdate || canDelete || canView || canAssignVoucher || canViewWallet
 
@@ -663,7 +659,7 @@ export default function CustomerTable({
 
             <div>
               <h3 className="mb-2 font-semibold">Pending Top Ups</h3>
-              {(balanceDetail?.pending_topups ?? []).length === 0 ? <p className="rounded border border-dashed p-4 text-gray-500">No pending top-ups for this customer.</p> : <div className="space-y-2">{(balanceDetail?.pending_topups ?? []).map((tx) => <div key={String(tx.id)} className="rounded border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="font-semibold">{String(tx.transaction_no)} · RM {Number(tx.amount ?? 0).toFixed(2)}</div><div className="text-xs text-gray-500">{String(tx.workspace_type ?? '-')} · {String(tx.payment_method_label ?? '-')} · {String(tx.created_at ?? '-')}</div>{typeof tx.metadata === 'object' && tx.metadata && 'payment_proof_url' in tx.metadata ? <a className="text-xs text-blue-600 underline" href={String((tx.metadata as { payment_proof_url?: unknown }).payment_proof_url)} target="_blank">View payment proof</a> : null}</div><div className="flex gap-2"><button type="button" className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white" onClick={async () => { const res = await fetch(`/api/proxy/admin/customers/${balanceTarget.id}/wallet/transactions/${tx.id}/approve`, { method: 'POST', headers: { Accept: 'application/json' } }); const json = await res.json().catch(() => null); if (!res.ok) { window.alert(json?.message ?? 'Approve failed.'); return } await refreshBalanceAfterAction(balanceTarget.id, Number(json?.data?.wallet_balance ?? balanceTarget.walletBalance ?? 0)) }}>Approve</button><button type="button" className="rounded bg-rose-600 px-3 py-1 text-xs font-semibold text-white" onClick={async () => { const reason = window.prompt('Reject reason?'); if (!reason) return; const res = await fetch(`/api/proxy/admin/customers/${balanceTarget.id}/wallet/transactions/${tx.id}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ remark: reason }) }); const json = await res.json().catch(() => null); if (!res.ok) { window.alert(json?.message ?? 'Reject failed.'); return } await refreshBalanceAfterAction(balanceTarget.id) }}>Reject</button></div></div></div>)}</div>}
+              {(balanceDetail?.pending_topups ?? []).length === 0 ? <p className="rounded border border-dashed p-4 text-gray-500">No pending top-ups for this customer.</p> : <div className="space-y-2">{(balanceDetail?.pending_topups ?? []).map((tx) => <div key={String(tx.id)} className="rounded border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="font-semibold">{String(tx.transaction_no)} · RM {Number(tx.amount ?? 0).toFixed(2)}</div><div className="text-xs text-gray-500">{String(tx.workspace_type ?? '-')} · {String(tx.payment_method_label ?? '-')} · {String(tx.created_at ?? '-')}</div>{typeof tx.metadata === 'object' && tx.metadata && 'payment_proof_url' in tx.metadata ? <a className="text-xs text-blue-600 underline" href={String((tx.metadata as { payment_proof_url?: unknown }).payment_proof_url)} target="_blank">View payment proof</a> : null}</div>{canVerifyWalletTopup ? <div className="flex gap-2"><button type="button" className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white" onClick={async () => { const res = await fetch(`/api/proxy/admin/customer-wallet/topups/${tx.id}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ remark: 'Approved from Manage Balance' }) }); const json = await res.json().catch(() => null); if (!res.ok) { window.alert(json?.message ?? 'Approve failed.'); return } await refreshBalanceAfterAction(balanceTarget.id, Number(json?.data?.wallet_balance ?? balanceTarget.walletBalance ?? 0)) }}>Approve</button><button type="button" className="rounded bg-rose-600 px-3 py-1 text-xs font-semibold text-white" onClick={async () => { const reason = window.prompt('Reject reason?'); if (!reason) return; const res = await fetch(`/api/proxy/admin/customer-wallet/topups/${tx.id}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ remark: reason }) }); const json = await res.json().catch(() => null); if (!res.ok) { window.alert(json?.message ?? 'Reject failed.'); return } await refreshBalanceAfterAction(balanceTarget.id) }}>Reject</button></div> : <span className="text-xs text-gray-500">Seed customer_wallet.verify_topup to approve/reject.</span>}</div></div>)}</div>}
             </div>
 
             <div>
