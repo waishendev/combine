@@ -57,6 +57,8 @@ type OfflineOrderActionsProps = {
   hideStaffAction?: boolean
   /** When false, hides Edit Sales Person / Edit Worker (e.g. sales report without ecommerce.orders.update). */
   canEditStaffSplit?: boolean
+  /** When false, hides Void Order (needs ecommerce.orders.update | pos.checkout | pos.appointments.manage). */
+  canVoid?: boolean
   onDone: () => void
 }
 
@@ -77,6 +79,27 @@ const normalizePaymentEditorMethod = (value?: string | null): PaymentMethodKey |
 }
 
 const money = (amount: number) => amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+/** Prefer field validation messages over a generic "Validation failed" top-level message. */
+function apiActionErrorMessage(json: unknown, fallback = 'Action failed.'): string {
+  if (!json || typeof json !== 'object') return fallback
+  const body = json as { message?: unknown; errors?: unknown }
+  if (body.errors && typeof body.errors === 'object' && body.errors !== null) {
+    const parts: string[] = []
+    for (const value of Object.values(body.errors as Record<string, unknown>)) {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (typeof item === 'string' && item.trim()) parts.push(item.trim())
+        }
+      } else if (typeof value === 'string' && value.trim()) {
+        parts.push(value.trim())
+      }
+    }
+    if (parts.length > 0) return parts.join(' ')
+  }
+  if (typeof body.message === 'string' && body.message.trim()) return body.message.trim()
+  return fallback
+}
 
 function toDatetimeLocalValue(value?: string | null): string {
   if (!value) return ''
@@ -100,7 +123,7 @@ const isFinalSettlementType = (value?: string | null) => {
   return t === 'final_settlement' || t === 'booking_settlement' || t === 'settlement_services' || t === 'settlement_service'
 }
 
-export default function OfflineOrderActions({ orderId, channel, billDate, currentPaymentMethod, orderAmount, paymentBreakdown, staffActionLabel = 'sales_person', hideStaffAction = false, canEditStaffSplit, onDone }: OfflineOrderActionsProps) {
+export default function OfflineOrderActions({ orderId, channel, billDate, currentPaymentMethod, orderAmount, paymentBreakdown, staffActionLabel = 'sales_person', hideStaffAction = false, canEditStaffSplit, canVoid = true, onDone }: OfflineOrderActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [modal, setModal] = useState<'sales_person' | 'payment_method' | 'bill_date' | 'void' | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -403,7 +426,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
 
       const json = await res.json().catch(() => ({}))
       if (!res.ok || json?.success === false) {
-        setError(typeof json?.message === 'string' ? json.message : 'Action failed.')
+        setError(apiActionErrorMessage(json))
         setSubmitting(false)
         return
       }
@@ -472,7 +495,9 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
             ) : null}
             <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openPaymentModal}>Edit Payment Method</button>
             <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openBillDateModal}>Edit Bill Date</button>
-            <button type="button" className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50" onClick={openVoidModal}>Void Order</button>
+            {canVoid ? (
+              <button type="button" className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50" onClick={openVoidModal}>Void Order</button>
+            ) : null}
           </div>
         ) : null}
       </div>

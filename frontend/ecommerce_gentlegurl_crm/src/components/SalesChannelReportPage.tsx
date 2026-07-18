@@ -998,6 +998,7 @@ export default function SalesChannelReportPage({
                               orderAmount={Number(row.order_total ?? row.net_amount ?? 0)}
                               paymentBreakdown={row.payments}
                               canEditStaffSplit={canUpdateOrder}
+                              canVoid={canVoidRefund}
                               onDone={() => {
                                 setRefreshKey((prev) => prev + 1)
                                 onDataChanged?.()
@@ -1058,6 +1059,7 @@ export default function SalesChannelReportPage({
                       staffActionLabel={isBookingWorkerType(row.type) ? 'worker' : 'sales_person'}
                       hideStaffAction={isBookingDepositType(row.type)}
                       canEditStaffSplit={canUpdateOrder}
+                      canVoid={canVoidRefund}
                       onDone={() => {
                         setRefreshKey((prev) => prev + 1)
                         onDataChanged?.()

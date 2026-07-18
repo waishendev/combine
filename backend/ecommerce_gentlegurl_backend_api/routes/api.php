@@ -932,13 +932,14 @@ $protectedRoutes = function () {
         Route::post('/orders/{order}/offline-actions/bill-date', [OfflineOrderManagementController::class, 'updateBillDate'])
             ->middleware('permission:ecommerce.orders.update|ecommerce.daily-sales-reports.view');
 
+        // Align with visual sales page + refund void: POS checkout / appointments manage / order update
         Route::get('/orders/{order}/offline-actions/void-preview', [OfflineOrderManagementController::class, 'voidOrderPreview'])
-            ->middleware('permission:ecommerce.orders.update|ecommerce.daily-sales-reports.view');
+            ->middleware('permission:ecommerce.orders.update|pos.checkout|pos.appointments.manage');
 
         Route::put('/orders/{order}/offline-actions/void', [OfflineOrderManagementController::class, 'voidOrder'])
-            ->middleware('permission:ecommerce.orders.update');
+            ->middleware('permission:ecommerce.orders.update|pos.checkout|pos.appointments.manage');
         Route::post('/orders/{order}/offline-actions/void', [OfflineOrderManagementController::class, 'voidOrder'])
-            ->middleware('permission:ecommerce.orders.update');
+            ->middleware('permission:ecommerce.orders.update|pos.checkout|pos.appointments.manage');
 
         Route::put('/orders/{order}/refund', [OrderController::class, 'refund'])
             ->middleware('permission:ecommerce.orders.update');
