@@ -119,6 +119,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             requiredPermission: 'ecommerce.reports.sales.view',
           },
           {
+            key: 'sales-visual-with-void',
+            label: 'Sales Report (Including Void)',
+            href: '/reports/sales/visual-with-void',
+            requiredPermission: 'ecommerce.reports.sales.with-void.view',
+          },
+          {
             key: 'staff-commission',
             label: 'Staff Product Commissions',
             href: '/ecommerce/commissions',
@@ -859,7 +865,6 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- keep active sidebar parents expanded after route/workspace changes.
     setOpenMenus((prev) => {
       const next = { ...prev }
       activeParentKeys.forEach((key) => {

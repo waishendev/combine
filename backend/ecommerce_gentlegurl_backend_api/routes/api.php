@@ -634,7 +634,7 @@ $protectedRoutes = function () {
 
     Route::get('/admin/reports/sales/{orderId}/details', [SalesChannelReportController::class, 'details'])
         ->whereNumber('orderId')
-        ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+        ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
 
     // Ecommerce Admin APIs
     Route::prefix('ecommerce')->group(function () {
@@ -1206,26 +1206,26 @@ $protectedRoutes = function () {
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/ecommerce', [SalesChannelReportController::class, 'ecommerce'])
-                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
 
             Route::get('/sales/booking', [SalesChannelReportController::class, 'booking'])
-                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
 
             Route::get('/sales/{orderId}/details', [SalesChannelReportController::class, 'details'])
                 ->whereNumber('orderId')
-                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
 
             Route::get('/sales-summary', [SalesChannelReportController::class, 'salesSummary'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/visual-daily/ecommerce', [SalesChannelReportController::class, 'visualDailyEcommerce'])
-                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
 
             Route::get('/sales/visual-daily/booking', [SalesChannelReportController::class, 'visualDailyBooking'])
-                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
 
             Route::get('/sales/visual-daily/all', [SalesChannelReportController::class, 'visualDailyAll'])
-                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
 
             Route::get('/sales/visual-period/all', [SalesChannelReportController::class, 'visualPeriodAll'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
