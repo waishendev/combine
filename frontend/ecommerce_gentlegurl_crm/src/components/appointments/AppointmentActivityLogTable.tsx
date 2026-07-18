@@ -6,7 +6,6 @@ type Row = {
   id: number
   appointment_id: number
   booking_number: string
-  customer_name: string | null
   action: string
   action_label: string
   actor_user_id: number | null
@@ -80,10 +79,10 @@ export default function AppointmentActivityLogTable() {
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Date & Time</th><th className="px-4 py-3">Booking ID</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Action</th><th className="px-4 py-3">Performed By</th></tr></thead>
+          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Date & Time</th><th className="px-4 py-3">Booking ID</th><th className="px-4 py-3">Action</th><th className="px-4 py-3">Performed By</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
-            {loading ? <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={5}>Loading...</td></tr> : rows.length === 0 ? <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={5}>No appointment activity logs found.</td></tr> : rows.map((row) => (
-              <tr key={row.id}><td className="px-4 py-3 text-slate-700">{formatDateTime(row.created_at)}</td><td className="px-4 py-3 font-medium text-slate-900">{row.booking_number}</td><td className="px-4 py-3 text-slate-700">{row.customer_name || 'Walk-in Customer'}</td><td className="px-4 py-3"><span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold text-pink-700">{row.action_label}</span></td><td className="px-4 py-3 text-slate-700">{row.actor_name || '—'}</td></tr>
+            {loading ? <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={4}>Loading...</td></tr> : rows.length === 0 ? <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={4}>No appointment activity logs found.</td></tr> : rows.map((row) => (
+              <tr key={row.id}><td className="px-4 py-3 text-slate-700">{formatDateTime(row.created_at)}</td><td className="px-4 py-3 font-medium text-slate-900">{row.booking_number}</td><td className="px-4 py-3"><span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold text-pink-700">{row.action_label}</span></td><td className="px-4 py-3 text-slate-700">{row.actor_name || '—'}</td></tr>
             ))}
           </tbody>
         </table>

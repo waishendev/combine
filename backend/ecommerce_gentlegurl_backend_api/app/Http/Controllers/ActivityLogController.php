@@ -121,8 +121,7 @@ class ActivityLogController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('model_label', 'ilike', "%{$search}%")
                   ->orWhere('user_name', 'ilike', "%{$search}%")
-                  ->orWhere('new_values->>booking_number', 'ilike', "%{$search}%")
-                  ->orWhere('new_values->>customer_name', 'ilike', "%{$search}%");
+                  ->orWhere('new_values->>booking_number', 'ilike', "%{$search}%");
             });
         }
 
@@ -141,7 +140,6 @@ class ActivityLogController extends Controller
                 'id' => $log->id,
                 'appointment_id' => $log->model_id,
                 'booking_number' => $log->new_values['booking_number'] ?? $log->model_label,
-                'customer_name' => $log->new_values['customer_name'] ?? null,
                 'action' => $log->action,
                 'action_label' => AppointmentActivityLogService::ACTIONS[$log->action] ?? $log->action,
                 'actor_user_id' => $log->user_id,

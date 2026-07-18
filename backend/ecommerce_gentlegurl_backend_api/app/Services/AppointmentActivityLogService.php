@@ -26,10 +26,6 @@ class AppointmentActivityLogService
             return null;
         }
 
-        $booking->loadMissing('customer');
-        $customerName = $booking->customer?->name
-            ?: (trim((string) ($booking->guest_name ?? '')) ?: null);
-
         return ActivityLog::create([
             'user_id' => $actor?->id,
             'user_name' => $actor?->name ?: ($actor?->email ?: $actor?->username),
@@ -41,7 +37,6 @@ class AppointmentActivityLogService
             'new_values' => array_filter(array_merge([
                 'appointment_id' => (int) $booking->id,
                 'booking_number' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
-                'customer_name' => $customerName,
                 'action_label' => self::ACTIONS[$action],
             ], $meta), fn ($value) => $value !== null && $value !== ''),
             'ip_address' => Request::ip(),
