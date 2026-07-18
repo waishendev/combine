@@ -36,6 +36,11 @@ type PoolBalances = {
   total_withdraw: number
 }
 
+type PeriodSummary = {
+  cash_sales: number
+  difference: number
+}
+
 const currency = (value: number | null | undefined) => `RM ${Number(value ?? 0).toFixed(2)}`
 const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
 const formatDate = (value?: string | null) => (value ? value.slice(0, 10) : '—')
@@ -45,6 +50,45 @@ function defaultDateRange() {
   const now = new Date()
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
   return { from: local, to: local }
+}
+
+function formatFilterPeriodLabel(dateFrom?: string, dateTo?: string) {
+  if (!dateFrom && !dateTo) return 'All dates'
+  if (dateFrom && !dateTo) return fromYmdDayLabel(dateFrom)
+  if (!dateFrom && dateTo) return fromYmdDayLabel(dateTo)
+  if (dateFrom === dateTo) return fromYmdDayLabel(dateFrom!)
+
+  const from = parseYmd(dateFrom!)
+  const to = parseYmd(dateTo!)
+  if (!from || !to) return `${dateFrom} – ${dateTo}`
+
+  if (from.year === to.year && from.month === to.month) {
+    return `${from.day} – ${to.day} ${monthShort(from.month)} ${from.year}`
+  }
+  if (from.year === to.year) {
+    return `${from.day} ${monthShort(from.month)} – ${to.day} ${monthShort(to.month)} ${from.year}`
+  }
+  return `${from.day} ${monthShort(from.month)} ${from.year} – ${to.day} ${monthShort(to.month)} ${to.year}`
+}
+
+function parseYmd(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return null
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  }
+}
+
+function monthShort(month: number) {
+  return new Intl.DateTimeFormat('en-GB', { month: 'short' }).format(new Date(2024, month - 1, 1))
+}
+
+function fromYmdDayLabel(value: string) {
+  const parsed = parseYmd(value)
+  if (!parsed) return value
+  return `${parsed.day} ${monthShort(parsed.month)} ${parsed.year}`
 }
 
 function DetailField({ label, value }: { label: string; value: string }) {
@@ -57,23 +101,35 @@ function DetailField({ label, value }: { label: string; value: string }) {
 }
 
 function SummaryStatCard({
+  eyebrow,
   label,
   value,
   accent,
+  footer,
+  valueClassName,
 }: {
+  eyebrow: string
   label: string
   value: string
-  accent: 'blue' | 'violet'
+  accent: 'blue' | 'violet' | 'emerald' | 'amber'
+  footer?: string
+  valueClassName?: string
 }) {
-  const accentClass = accent === 'blue'
-    ? 'border-blue-200 bg-blue-50 text-blue-900'
-    : 'border-violet-200 bg-violet-50 text-violet-900'
+  const accentClass = {
+    blue: 'border-blue-200 bg-blue-50 text-blue-900',
+    violet: 'border-violet-200 bg-violet-50 text-violet-900',
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    amber: 'border-amber-200 bg-amber-50 text-amber-900',
+  }[accent]
 
   return (
-    <div className={`rounded-2xl border p-5 shadow-sm ${accentClass}`}>
-      <p className="text-xs font-bold uppercase tracking-wide opacity-80">Current Pool</p>
+    <div className={`flex flex-col rounded-2xl border p-5 shadow-sm ${accentClass}`}>
+      <p className="text-xs font-bold uppercase tracking-wide opacity-80">{eyebrow}</p>
       <p className="mt-1 text-sm font-semibold opacity-90">{label}</p>
-      <p className="mt-3 text-3xl font-black">{value}</p>
+      <p className={`mt-3 text-3xl font-black ${valueClassName ?? ''}`}>{value}</p>
+      {footer ? (
+        <p className="mt-auto pt-4 text-xs font-medium leading-snug opacity-70">{footer}</p>
+      ) : null}
     </div>
   )
 }
@@ -100,6 +156,7 @@ const tableHeadings = [
   'Staff',
   'Opening',
   'Closing',
+  'Cash Sales',
   'Expected',
   'Difference',
   'Refill Packet',
@@ -114,8 +171,10 @@ const tableHeadings = [
 export default function CashShiftReportPage() {
   const defaults = useMemo(() => defaultDateRange(), [])
   const [filters, setFilters] = useState({ date_from: defaults.from, date_to: defaults.to, status: '', staff_id: '', user_id: '' })
+  const [appliedFilters, setAppliedFilters] = useState(filters)
   const [rows, setRows] = useState<CashShiftRow[]>([])
   const [poolBalances, setPoolBalances] = useState<PoolBalances | null>(null)
+  const [periodSummary, setPeriodSummary] = useState<PeriodSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -123,6 +182,11 @@ export default function CashShiftReportPage() {
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [selectedRow, setSelectedRow] = useState<CashShiftRow | null>(null)
+
+  const periodLabel = useMemo(
+    () => formatFilterPeriodLabel(appliedFilters.date_from, appliedFilters.date_to),
+    [appliedFilters.date_from, appliedFilters.date_to],
+  )
 
   const loadSummary = useCallback(async () => {
     setSummaryLoading(true)
@@ -143,16 +207,16 @@ export default function CashShiftReportPage() {
     }
   }, [])
 
-  const loadData = useCallback(async (targetPage = 1) => {
+  const loadData = useCallback(async (targetPage = 1, nextFilters = filters) => {
     setLoading(true)
     setError(null)
     try {
       const qs = new URLSearchParams({ page: String(targetPage), per_page: '20' })
-      if (filters.date_from) qs.set('date_from', filters.date_from)
-      if (filters.date_to) qs.set('date_to', filters.date_to)
-      if (filters.status) qs.set('status', filters.status)
-      if (filters.staff_id) qs.set('staff_id', filters.staff_id)
-      if (filters.user_id) qs.set('user_id', filters.user_id)
+      if (nextFilters.date_from) qs.set('date_from', nextFilters.date_from)
+      if (nextFilters.date_to) qs.set('date_to', nextFilters.date_to)
+      if (nextFilters.status) qs.set('status', nextFilters.status)
+      if (nextFilters.staff_id) qs.set('staff_id', nextFilters.staff_id)
+      if (nextFilters.user_id) qs.set('user_id', nextFilters.user_id)
 
       const [reportRes] = await Promise.all([
         fetch(`/api/proxy/ecommerce/reports/cash-shifts?${qs.toString()}`, { cache: 'no-store' }),
@@ -166,9 +230,15 @@ export default function CashShiftReportPage() {
       setPage(Number(payload.current_page ?? targetPage))
       setLastPage(Number(payload.last_page ?? 1))
       setTotal(Number(payload.total ?? 0))
+      setPeriodSummary({
+        cash_sales: Number(payload.period_summary?.cash_sales ?? 0),
+        difference: Number(payload.period_summary?.difference ?? 0),
+      })
+      setAppliedFilters(nextFilters)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load cash shift report.')
       setRows([])
+      setPeriodSummary(null)
     } finally {
       setLoading(false)
     }
@@ -176,20 +246,49 @@ export default function CashShiftReportPage() {
 
   useEffect(() => {
     void loadData(1)
-  }, [loadData])
+    // Initial load only; subsequent loads go through Apply / pagination.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const differenceValue = periodSummary?.difference ?? 0
+  const differenceAccent = differenceValue < 0 ? 'amber' : 'emerald'
+  const differenceValueClass = differenceValue < 0
+    ? 'text-red-700'
+    : differenceValue > 0
+      ? 'text-amber-800'
+      : ''
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryStatCard
+          eyebrow="Current Pool · Live now"
           label="Total Initial Cash"
           value={summaryLoading ? '…' : currency(poolBalances?.total_initial_cash)}
           accent="blue"
+          footer="Date filter does not change this."
         />
         <SummaryStatCard
+          eyebrow="Current Pool · Live now"
           label="Total Withdraw"
           value={summaryLoading ? '…' : currency(poolBalances?.total_withdraw)}
           accent="violet"
+          footer="Date filter does not change this."
+        />
+        <SummaryStatCard
+          eyebrow="Filtered Period"
+          label="Total Cash Sales"
+          value={loading && !periodSummary ? '…' : currency(periodSummary?.cash_sales)}
+          accent="emerald"
+          footer={`Sum of cash sales from CLOSE shifts · ${periodLabel}`}
+        />
+        <SummaryStatCard
+          eyebrow="Filtered Period"
+          label="Difference"
+          value={loading && !periodSummary ? '…' : currency(periodSummary?.difference)}
+          accent={differenceAccent}
+          footer={`Sum of close differences · ${periodLabel}`}
+          valueClassName={differenceValueClass}
         />
       </div>
 
@@ -220,7 +319,7 @@ export default function CashShiftReportPage() {
             <input type="number" min="1" value={filters.user_id} onChange={(e) => setFilters((p) => ({ ...p, user_id: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3" placeholder="Optional user ID" />
           </label>
           <div className="flex items-end">
-            <button type="button" onClick={() => void loadData(1)} disabled={loading} className="h-10 w-full rounded-lg bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60">
+            <button type="button" onClick={() => void loadData(1, filters)} disabled={loading} className="h-10 w-full rounded-lg bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60">
               {loading ? 'Loading…' : 'Apply Filters'}
             </button>
           </div>
@@ -256,6 +355,7 @@ export default function CashShiftReportPage() {
                     <td className="whitespace-nowrap px-4 py-3">{staffName ?? '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold">{row.opening_amount ? currency(row.opening_amount) : '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3">{!isOpen && row.closing_amount != null ? currency(row.closing_amount) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-emerald-700">{!isOpen ? currency(row.cash_sales) : '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3">{!isOpen ? currency(row.expected_cash) : '—'}</td>
                     <td className={`whitespace-nowrap px-4 py-3 font-semibold ${Number(row.difference ?? 0) < 0 ? 'text-red-600' : Number(row.difference ?? 0) > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
                       {!isOpen && row.difference != null ? currency(row.difference) : '—'}
@@ -284,9 +384,9 @@ export default function CashShiftReportPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-3 text-sm text-gray-600">
           <span>Total: {total}</span>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => void loadData(Math.max(1, page - 1))} disabled={loading || page <= 1} className="rounded-lg border border-gray-300 px-3 py-1.5 font-semibold disabled:opacity-50">Previous</button>
+            <button type="button" onClick={() => void loadData(Math.max(1, page - 1), appliedFilters)} disabled={loading || page <= 1} className="rounded-lg border border-gray-300 px-3 py-1.5 font-semibold disabled:opacity-50">Previous</button>
             <span>Page {page} / {lastPage}</span>
-            <button type="button" onClick={() => void loadData(Math.min(lastPage, page + 1))} disabled={loading || page >= lastPage} className="rounded-lg border border-gray-300 px-3 py-1.5 font-semibold disabled:opacity-50">Next</button>
+            <button type="button" onClick={() => void loadData(Math.min(lastPage, page + 1), appliedFilters)} disabled={loading || page >= lastPage} className="rounded-lg border border-gray-300 px-3 py-1.5 font-semibold disabled:opacity-50">Next</button>
           </div>
         </div>
       </div>
