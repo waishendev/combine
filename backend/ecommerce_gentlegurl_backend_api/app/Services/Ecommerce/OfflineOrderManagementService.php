@@ -43,6 +43,7 @@ class OfflineOrderManagementService
                 'oi.effective_line_total',
                 'oi.line_total_after_discount',
                 'oi.line_total',
+                'oi.selected_booking_product_options',
             ]);
 
         $orderItemIds = $items->pluck('id')->map(fn ($v) => (int) $v)->all();
@@ -54,8 +55,11 @@ class OfflineOrderManagementService
             ->orderBy('split.id')
             ->get([
                 'split.order_item_id',
+                'split.line_type',
+                'split.line_ref_id',
                 'split.staff_id',
                 'split.share_percent',
+                'split.amount_basis',
                 'staffs.name as staff_name',
             ])
             ->groupBy('order_item_id');
@@ -74,27 +78,173 @@ class OfflineOrderManagementService
                 ])
                 ->groupBy('customer_service_package_id');
 
-        return $items->map(function ($item) use ($productSplits, $packageSplits) {
-            $isPackage = (string) $item->line_type === 'service_package' && $item->customer_service_package_id;
+        return $items->flatMap(function ($item) use ($productSplits, $packageSplits) {
+            $lineType = (string) ($item->line_type ?? '');
+            if ($lineType === 'booking_product') {
+                return $this->mapBookingProductSalesPersonDraftRows(
+                    $item,
+                    $productSplits->get((int) $item->id) ?? collect(),
+                );
+            }
+
+            $isPackage = $lineType === 'service_package' && $item->customer_service_package_id;
             $splitRows = $isPackage
                 ? ($packageSplits->get((int) $item->customer_service_package_id) ?? collect())
                 : ($productSplits->get((int) $item->id) ?? collect());
 
-            return [
-                'order_item_id' => (int) $item->id,
-                'item_type' => $isPackage ? 'service_package' : 'product',
+            $itemType = $isPackage ? 'service_package' : ($lineType !== '' ? $lineType : 'product');
+            $orderItemId = (int) $item->id;
+
+            return [[
+                'draft_key' => (string) $orderItemId,
+                'order_item_id' => $orderItemId,
+                'item_type' => $itemType,
+                'line_ref_id' => null,
                 'name' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Item'),
                 'qty' => (int) ($item->quantity ?? 0),
                 'unit_amount' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
                 'line_total' => (float) ($item->effective_line_total ?? $item->line_total_after_discount ?? $item->line_total ?? 0),
                 'customer_service_package_id' => $item->customer_service_package_id ? (int) $item->customer_service_package_id : null,
-                'splits' => $splitRows->map(fn ($split) => [
-                    'staff_id' => (int) ($split->staff_id ?? 0),
-                    'staff_name' => (string) ($split->staff_name ?? ''),
-                    'share_percent' => (int) ($split->share_percent ?? 0),
-                ])->values()->all(),
-            ];
+                'splits' => $this->mapSplitRowsForDraft($splitRows),
+            ]];
         })->values()->all();
+    }
+
+    /**
+     * Expand a booking_product order item into base + each selected option (add-on),
+     * so Edit Sales Person can assign staff per line like Final Settlement + Add-Ons.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $splitRows
+     * @return array<int, array<string, mixed>>
+     */
+    private function mapBookingProductSalesPersonDraftRows(object $item, $splitRows): array
+    {
+        $orderItemId = (int) $item->id;
+        $qty = max(1, (int) ($item->quantity ?? 1));
+        $lineTotal = (float) ($item->effective_line_total ?? $item->line_total_after_discount ?? $item->line_total ?? 0);
+        $productName = (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Booking Product');
+        $options = $this->decodeBookingProductOptions($item->selected_booking_product_options ?? null);
+
+        if ($options === []) {
+            return [[
+                'draft_key' => (string) $orderItemId,
+                'order_item_id' => $orderItemId,
+                'item_type' => 'booking_product',
+                'line_ref_id' => null,
+                'name' => $productName,
+                'qty' => $qty,
+                'unit_amount' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
+                'line_total' => $lineTotal,
+                'customer_service_package_id' => null,
+                'splits' => $this->mapSplitRowsForDraft($splitRows),
+            ]];
+        }
+
+        $optionDrafts = [];
+        $optionTotal = 0.0;
+        foreach ($options as $option) {
+            $optionId = (string) ($option['id'] ?? $option['option_id'] ?? '');
+            if ($optionId === '') {
+                continue;
+            }
+            $unitPrice = (float) ($option['extra_price'] ?? $option['unit_price'] ?? 0);
+            $optionAmount = isset($option['line_total_after_discount'])
+                ? (float) $option['line_total_after_discount']
+                : (isset($option['line_total_override'])
+                    ? (float) $option['line_total_override']
+                    : round($unitPrice * $qty, 2));
+            $optionTotal = round($optionTotal + $optionAmount, 2);
+            $matchedSplits = $splitRows
+                ->filter(fn ($split) => (string) ($split->line_type ?? '') === 'booking_product_option'
+                    && (string) ($split->line_ref_id ?? '') === $optionId)
+                ->values();
+            if ($matchedSplits->isEmpty() && is_array($option['staff_splits'] ?? null)) {
+                $matchedSplits = collect($option['staff_splits'])->map(fn ($row) => (object) [
+                    'staff_id' => (int) ($row['staff_id'] ?? 0),
+                    'share_percent' => (int) ($row['share_percent'] ?? 0),
+                    'staff_name' => (string) ($row['staff_name'] ?? $row['name'] ?? ''),
+                ]);
+            }
+            $optionName = (string) ($option['label'] ?? $option['name'] ?? $option['option_name'] ?? 'Add-on');
+
+            $optionDrafts[] = [
+                'draft_key' => "{$orderItemId}:booking_product_option:{$optionId}",
+                'order_item_id' => $orderItemId,
+                'item_type' => 'booking_product_option',
+                'line_ref_id' => $optionId,
+                'name' => $optionName,
+                'qty' => $qty,
+                'unit_amount' => $unitPrice,
+                'line_total' => $optionAmount,
+                'customer_service_package_id' => null,
+                'splits' => $this->mapSplitRowsForDraft($matchedSplits),
+            ];
+        }
+
+        $baseAmount = round(max(0, $lineTotal - $optionTotal), 2);
+        $baseSplits = $splitRows
+            ->filter(function ($split) {
+                $type = (string) ($split->line_type ?? '');
+
+                return $type === 'booking_product_base' || $type === '' || $type === 'booking_product';
+            })
+            ->values();
+        $baseRefId = (string) ($baseSplits->first()->line_ref_id ?? $orderItemId);
+
+        return array_values(array_merge([[
+            'draft_key' => "{$orderItemId}:booking_product_base:{$baseRefId}",
+            'order_item_id' => $orderItemId,
+            'item_type' => 'booking_product_base',
+            'line_ref_id' => $baseRefId,
+            'name' => $productName,
+            'qty' => $qty,
+            'unit_amount' => round($baseAmount / $qty, 2),
+            'line_total' => $baseAmount,
+            'customer_service_package_id' => null,
+            'splits' => $this->mapSplitRowsForDraft($baseSplits),
+        ]], $optionDrafts));
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return array<int, array<string, mixed>>
+     */
+    private function decodeBookingProductOptions($raw): array
+    {
+        if (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $options = [];
+        foreach ($raw as $question) {
+            if (! is_array($question)) {
+                continue;
+            }
+            foreach ((array) ($question['options'] ?? []) as $option) {
+                if (is_array($option)) {
+                    $options[] = $option;
+                }
+            }
+        }
+
+        return $options;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, object>  $splitRows
+     * @return array<int, array{staff_id:int, staff_name:string, share_percent:int}>
+     */
+    private function mapSplitRowsForDraft($splitRows): array
+    {
+        return collect($splitRows)->map(fn ($split) => [
+            'staff_id' => (int) ($split->staff_id ?? 0),
+            'staff_name' => (string) ($split->staff_name ?? ''),
+            'share_percent' => (int) ($split->share_percent ?? 0),
+        ])->filter(fn (array $row) => $row['staff_id'] > 0)->values()->all();
     }
 
     public function getBookingWorkerDraft(Order $order): array
@@ -191,7 +341,24 @@ class OfflineOrderManagementService
             throw new RuntimeException('At least one item split is required.');
         }
 
-        DB::transaction(function () use ($order, $itemSplits, $remark, $actorId) {
+        $bookingTargets = [];
+        $needsEcommerceRecalc = false;
+        $orderAt = $order->created_at instanceof Carbon
+            ? $order->created_at
+            : Carbon::parse((string) $order->created_at);
+        $orderYear = (int) $orderAt->format('Y');
+        $orderMonth = (int) $orderAt->format('m');
+
+        DB::transaction(function () use (
+            $order,
+            $itemSplits,
+            $remark,
+            $actorId,
+            $orderYear,
+            $orderMonth,
+            &$bookingTargets,
+            &$needsEcommerceRecalc,
+        ) {
             $orderItems = DB::table('order_items')
                 ->where('order_id', (int) $order->id)
                 ->get([
@@ -202,6 +369,8 @@ class OfflineOrderManagementService
                     'effective_line_total',
                     'customer_service_package_id',
                     'service_package_id',
+                    'selected_booking_product_options',
+                    'quantity',
                 ])->keyBy('id');
 
             $staffs = Staff::query()->get(['id', 'commission_rate', 'service_commission_rate'])->keyBy('id');
@@ -220,6 +389,13 @@ class OfflineOrderManagementService
                     throw new RuntimeException('Invalid staff split. Total must be 100% and staffs must be unique.');
                 }
 
+                $splitLineType = (string) ($itemSplit['item_type'] ?? $itemSplit['split_line_type'] ?? '');
+                $lineRefId = array_key_exists('line_ref_id', $itemSplit) && $itemSplit['line_ref_id'] !== null && $itemSplit['line_ref_id'] !== ''
+                    ? (string) $itemSplit['line_ref_id']
+                    : null;
+                $isBookingProductLine = (string) $orderItem->line_type === 'booking_product'
+                    && in_array($splitLineType, ['booking_product_base', 'booking_product_option'], true);
+
                 $before = (string) $orderItem->line_type === 'service_package' && $orderItem->customer_service_package_id
                     ? DB::table('service_package_staff_splits')
                         ->where('customer_service_package_id', (int) $orderItem->customer_service_package_id)
@@ -227,12 +403,18 @@ class OfflineOrderManagementService
                         ->map(fn ($row) => (array) $row)
                         ->values()
                         ->all()
-                    : DB::table('order_item_staff_splits')
-                        ->where('order_item_id', $orderItemId)
-                        ->get(['staff_id', 'share_percent', 'commission_rate_snapshot'])
-                        ->map(fn ($row) => (array) $row)
-                        ->values()
-                        ->all();
+                    : ($isBookingProductLine
+                        ? $this->bookingProductSplitQuery($orderItemId, $splitLineType, $lineRefId)
+                            ->get(['staff_id', 'share_percent', 'commission_rate_snapshot', 'line_type', 'line_ref_id', 'amount_basis'])
+                            ->map(fn ($row) => (array) $row)
+                            ->values()
+                            ->all()
+                        : DB::table('order_item_staff_splits')
+                            ->where('order_item_id', $orderItemId)
+                            ->get(['staff_id', 'share_percent', 'commission_rate_snapshot'])
+                            ->map(fn ($row) => (array) $row)
+                            ->values()
+                            ->all());
 
                 if ((string) $orderItem->line_type === 'service_package' && $orderItem->customer_service_package_id) {
                     DB::table('service_package_staff_splits')
@@ -273,6 +455,54 @@ class OfflineOrderManagementService
                         ->map(fn ($row) => (array) $row)
                         ->values()
                         ->all();
+                } elseif ($isBookingProductLine) {
+                    $amountBasis = $this->bookingProductLineAmountBasis($orderItem, $splitLineType, $lineRefId);
+                    $resolvedRefId = $lineRefId ?? (string) $orderItemId;
+                    $existingSnapshot = $this->bookingProductSplitQuery($orderItemId, $splitLineType, $lineRefId)
+                        ->value('snapshot');
+                    $snapshot = is_string($existingSnapshot) ? (json_decode($existingSnapshot, true) ?: []) : (is_array($existingSnapshot) ? $existingSnapshot : []);
+                    if ($snapshot === []) {
+                        $snapshot = [
+                            'line_type' => $splitLineType,
+                            'staff_split_source' => 'edit_sales_person',
+                        ];
+                        if ($splitLineType === 'booking_product_option') {
+                            $snapshot['option'] = collect($this->decodeBookingProductOptions($orderItem->selected_booking_product_options ?? null))
+                                ->first(fn (array $option) => (string) ($option['id'] ?? $option['option_id'] ?? '') === $resolvedRefId) ?? [];
+                        }
+                    }
+
+                    $this->bookingProductSplitQuery($orderItemId, $splitLineType, $lineRefId)->delete();
+
+                    $rows = $splits->map(function (array $row) use ($orderItemId, $staffs, $splitLineType, $resolvedRefId, $amountBasis, $snapshot) {
+                        $staffId = (int) ($row['staff_id'] ?? 0);
+                        $staff = $staffs->get($staffId);
+
+                        return [
+                            'order_item_id' => $orderItemId,
+                            'line_type' => $splitLineType,
+                            'line_ref_id' => $resolvedRefId,
+                            'staff_id' => $staffId,
+                            'share_percent' => (int) ($row['share_percent'] ?? 0),
+                            'share_amount' => null,
+                            'split_mode' => 'percent',
+                            'amount_basis' => $amountBasis,
+                            'snapshot' => json_encode($snapshot),
+                            'commission_rate_snapshot' => (float) ($staff?->commission_rate ?? 0),
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ];
+                    })->values()->all();
+
+                    if (! empty($rows)) {
+                        DB::table('order_item_staff_splits')->insert($rows);
+                    }
+
+                    $after = $this->bookingProductSplitQuery($orderItemId, $splitLineType, $resolvedRefId)
+                        ->get(['staff_id', 'share_percent', 'commission_rate_snapshot', 'line_type', 'line_ref_id', 'amount_basis'])
+                        ->map(fn ($row) => (array) $row)
+                        ->values()
+                        ->all();
                 } else {
                     DB::table('order_item_staff_splits')
                         ->where('order_item_id', $orderItemId)
@@ -307,17 +537,92 @@ class OfflineOrderManagementService
                     'order_item',
                     $orderItemId,
                     'edit_sales_person',
-                    ['splits' => $before],
-                    ['splits' => $after],
+                    ['splits' => $before, 'item_type' => $splitLineType ?: null, 'line_ref_id' => $lineRefId],
+                    ['splits' => $after, 'item_type' => $splitLineType ?: null, 'line_ref_id' => $lineRefId],
                     $remark,
                     $actorId,
                 );
+
+                if (StaffCommissionService::isBookingCommissionLineType((string) $orderItem->line_type)) {
+                    foreach (array_merge($before, $after) as $row) {
+                        $staffId = (int) ($row['staff_id'] ?? 0);
+                        if ($staffId <= 0) {
+                            continue;
+                        }
+                        $bookingTargets[] = [
+                            'staff_id' => $staffId,
+                            'year' => $orderYear,
+                            'month' => $orderMonth,
+                        ];
+                    }
+                } else {
+                    $needsEcommerceRecalc = true;
+                }
             }
         });
 
-        $this->recalculateEcommerceCommissionForOrderMonth($order, 'edit_sales_person', $remark, $actorId);
+        if ($needsEcommerceRecalc) {
+            $this->recalculateEcommerceCommissionForOrderMonth($order, 'edit_sales_person', $remark, $actorId);
+        }
+        if (! empty($bookingTargets)) {
+            $this->recalculateBookingCommissionsForTargets($bookingTargets, $order, 'edit_sales_person', $remark, $actorId);
+        }
 
         return $order;
+    }
+
+    private function bookingProductSplitQuery(int $orderItemId, string $splitLineType, ?string $lineRefId)
+    {
+        $query = DB::table('order_item_staff_splits')
+            ->where('order_item_id', $orderItemId);
+
+        if ($splitLineType === 'booking_product_base') {
+            return $query->where(function ($inner) use ($lineRefId) {
+                $inner->where('line_type', 'booking_product_base')
+                    ->orWhereNull('line_type')
+                    ->orWhere('line_type', '')
+                    ->orWhere('line_type', 'booking_product');
+                if ($lineRefId !== null && $lineRefId !== '') {
+                    $inner->orWhere(function ($refQuery) use ($lineRefId) {
+                        $refQuery->where('line_type', 'booking_product_base')
+                            ->where('line_ref_id', $lineRefId);
+                    });
+                }
+            });
+        }
+
+        return $query
+            ->where('line_type', 'booking_product_option')
+            ->where('line_ref_id', (string) $lineRefId);
+    }
+
+    private function bookingProductLineAmountBasis(object $orderItem, string $splitLineType, ?string $lineRefId): float
+    {
+        $lineTotal = (float) ($orderItem->effective_line_total ?? $orderItem->line_total_after_discount ?? $orderItem->line_total ?? 0);
+        $qty = max(1, (int) ($orderItem->quantity ?? 1));
+        $options = $this->decodeBookingProductOptions($orderItem->selected_booking_product_options ?? null);
+        $optionTotal = 0.0;
+        $matchedOptionAmount = null;
+
+        foreach ($options as $option) {
+            $optionId = (string) ($option['id'] ?? $option['option_id'] ?? '');
+            $unitPrice = (float) ($option['extra_price'] ?? $option['unit_price'] ?? 0);
+            $optionAmount = isset($option['line_total_after_discount'])
+                ? (float) $option['line_total_after_discount']
+                : (isset($option['line_total_override'])
+                    ? (float) $option['line_total_override']
+                    : round($unitPrice * $qty, 2));
+            $optionTotal = round($optionTotal + $optionAmount, 2);
+            if ($optionId !== '' && $optionId === (string) $lineRefId) {
+                $matchedOptionAmount = $optionAmount;
+            }
+        }
+
+        if ($splitLineType === 'booking_product_option') {
+            return round(max(0, (float) ($matchedOptionAmount ?? 0)), 2);
+        }
+
+        return round(max(0, $lineTotal - $optionTotal), 2);
     }
 
     public function updateBookingWorker(Order $order, array $itemSplits, ?string $remark, ?int $actorId): Order
@@ -347,7 +652,7 @@ class OfflineOrderManagementService
                 ->whereIn('id', $bookingIds)
                 ->get(['id', 'staff_id', 'completed_at'])
                 ->keyBy('id');
-            $staffs = Staff::query()->whereIn('id', collect($itemSplits)->flatMap(fn ($item) => collect($item['splits'] ?? [])->pluck('staff_id'))->map(fn ($id) => (int) $id)->unique()->values())->get(['id', 'service_commission_rate'])->keyBy('id');
+            $staffs = Staff::query()->whereIn('id', collect($itemSplits)->flatMap(fn ($item) => collect($item['splits'] ?? [])->pluck('staff_id'))->map(fn ($id) => (int) $id)->unique()->values())->get(['id', 'commission_rate', 'service_commission_rate'])->keyBy('id');
 
             foreach ($itemSplits as $itemSplit) {
                 $orderItemId = (int) ($itemSplit['order_item_id'] ?? 0);
@@ -402,6 +707,30 @@ class OfflineOrderManagementService
 
                 if (! empty($rows)) {
                     DB::table('booking_service_staff_splits')->insert($rows);
+                }
+
+                // Keep order-line staff splits in sync so View Details / commission
+                // attribution match Edit Worker (otherwise stale checkout splits win).
+                DB::table('order_item_staff_splits')
+                    ->where('order_item_id', $orderItemId)
+                    ->delete();
+
+                $orderItemSplitRows = $splits->map(function (array $row) use ($orderItemId, $staffs) {
+                    $staffId = (int) ($row['staff_id'] ?? 0);
+                    $staff = $staffs->get($staffId);
+
+                    return [
+                        'order_item_id' => $orderItemId,
+                        'staff_id' => $staffId,
+                        'share_percent' => (int) ($row['share_percent'] ?? 0),
+                        'commission_rate_snapshot' => (float) ($staff?->service_commission_rate ?? $staff?->commission_rate ?? 0),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                })->values()->all();
+
+                if (! empty($orderItemSplitRows)) {
+                    DB::table('order_item_staff_splits')->insert($orderItemSplitRows);
                 }
 
                 $firstStaffId = (int) ($rows[0]['staff_id'] ?? 0);

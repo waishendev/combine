@@ -450,10 +450,6 @@ class SalesChannelReportService
 
     private function resolveBookingStaffSplitsForLine(OrderItem $item, $existingSplits)
     {
-        if ($existingSplits->isNotEmpty()) {
-            return $existingSplits;
-        }
-
         $bookingId = (int) ($item->booking_id ?? 0);
         if ($bookingId <= 0) {
             return $existingSplits;
@@ -461,6 +457,13 @@ class SalesChannelReportService
 
         $lineType = (string) ($item->line_type ?? '');
         if (! in_array($lineType, ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'], true)) {
+            return $existingSplits;
+        }
+
+        // Final Settlement / Deposit "Assigned staff" comes from Edit Worker
+        // (booking_service_staff_splits). Prefer that over stale order_item_staff_splits.
+        $preferBookingWorkerSplits = in_array($lineType, ['booking_deposit', 'booking_settlement'], true);
+        if (! $preferBookingWorkerSplits && $existingSplits->isNotEmpty()) {
             return $existingSplits;
         }
 
@@ -487,6 +490,10 @@ class SalesChannelReportService
 
         if ($bookingSplits->isNotEmpty()) {
             return $bookingSplits;
+        }
+
+        if ($existingSplits->isNotEmpty()) {
+            return $existingSplits;
         }
 
         $fallbackStaffId = (int) ($item->booking?->staff_id ?? 0);

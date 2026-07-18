@@ -6882,7 +6882,7 @@ class PosController extends Controller
             }
         }
 
-        [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
+        [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds, $checkedOutBookings] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
             $confirmedBookingIds = [];
             $packageCustomerIds = $cart->packageItems
                 ->pluck('customer_id')

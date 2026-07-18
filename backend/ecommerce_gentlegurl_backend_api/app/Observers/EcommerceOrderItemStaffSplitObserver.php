@@ -48,7 +48,7 @@ class EcommerceOrderItemStaffSplitObserver
             return [null, null];
         }
 
-        return [Carbon::parse($row->created_at), strtoupper((string) ($row->line_type ?? ''))];
+        return [Carbon::parse($row->created_at), (string) ($row->line_type ?? '')];
     }
 
     private function recalculateForStaff(int $staffId, Carbon $date, ?string $lineType = null): void
@@ -57,7 +57,7 @@ class EcommerceOrderItemStaffSplitObserver
             return;
         }
 
-        $type = $lineType === 'BOOKING_PRODUCT'
+        $type = StaffCommissionService::isBookingCommissionLineType($lineType)
             ? StaffCommissionService::TYPE_BOOKING
             : StaffCommissionService::TYPE_ECOMMERCE;
 

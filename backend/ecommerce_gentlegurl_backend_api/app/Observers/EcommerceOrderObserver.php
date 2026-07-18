@@ -41,14 +41,21 @@ class EcommerceOrderObserver
             $lineTypes = DB::table('order_items')
                 ->where('order_id', $orderId)
                 ->pluck('line_type')
-                ->map(fn ($v) => strtoupper((string) $v))
+                ->map(fn ($v) => (string) $v)
                 ->unique()
                 ->values();
 
-            if ($lineTypes->contains('BOOKING_PRODUCT')) {
+            $hasBooking = $lineTypes->contains(
+                fn ($lineType) => StaffCommissionService::isBookingCommissionLineType($lineType)
+            );
+            $hasEcommerce = $lineTypes->contains(
+                fn ($lineType) => $lineType !== '' && ! StaffCommissionService::isBookingCommissionLineType($lineType)
+            );
+
+            if ($hasBooking) {
                 app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_BOOKING);
             }
-            if ($lineTypes->contains(fn ($t) => $t !== 'BOOKING_PRODUCT')) {
+            if ($hasEcommerce) {
                 app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_ECOMMERCE);
             }
             return;
