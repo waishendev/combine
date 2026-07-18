@@ -197,10 +197,57 @@ class PosCashShiftController extends Controller
             })
             ->orderByDesc(DB::raw('COALESCE(closed_at, opened_at)'));
 
+        $periodSummary = $this->buildPeriodSummary(clone $query);
+
         $paginator = $query->paginate((int) ($validated['per_page'] ?? 20));
         $paginator->getCollection()->transform(fn (PosCashShift $shift) => $this->serializeShift($shift));
 
-        return $this->respond($paginator);
+        return $this->respond([
+            'data' => $paginator->items(),
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'from' => $paginator->firstItem(),
+            'to' => $paginator->lastItem(),
+            'period_summary' => $periodSummary,
+            'filters' => [
+                'date_from' => $validated['date_from'] ?? null,
+                'date_to' => $validated['date_to'] ?? null,
+            ],
+        ]);
+    }
+
+    /**
+     * Sum Cash Sales / Difference for CLOSE events in the current report filter.
+     *
+     * @return array{cash_sales: float, difference: float}
+     */
+    private function buildPeriodSummary(Builder $query): array
+    {
+        $closeShifts = $query
+            ->where('event_type', PosCashShift::EVENT_CLOSE)
+            ->with([
+                'linkedOpenShift.openedStaff:id,name,email,phone',
+                'linkedOpenShift.opener:id,name,email',
+            ])
+            ->get();
+
+        $cashSales = 0.0;
+        $difference = 0.0;
+
+        foreach ($closeShifts as $shift) {
+            $row = $this->serializeShift($shift);
+            $cashSales += (float) ($row['cash_sales'] ?? 0);
+            if ($row['difference'] !== null) {
+                $difference += (float) $row['difference'];
+            }
+        }
+
+        return [
+            'cash_sales' => round($cashSales, 2),
+            'difference' => round($difference, 2),
+        ];
     }
 
     private function globalOpenShiftQuery(): Builder
