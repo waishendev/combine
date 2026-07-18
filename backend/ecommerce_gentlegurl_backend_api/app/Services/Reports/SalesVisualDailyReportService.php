@@ -53,6 +53,121 @@ class SalesVisualDailyReportService
         return $this->monthlySalesSummary($year);
     }
 
+    /**
+     * One summary row per year for a multi-year range.
+     */
+    public function yearlySalesSummary(int $yearFrom, int $yearTo): array
+    {
+        if ($yearTo < $yearFrom) {
+            [$yearFrom, $yearTo] = [$yearTo, $yearFrom];
+        }
+
+        $start = Carbon::create($yearFrom, 1, 1)->startOfDay();
+        $end = Carbon::create($yearTo, 12, 31)->endOfDay();
+        $rows = [];
+
+        for ($year = $yearFrom; $year <= $yearTo; $year++) {
+            $rows[$year] = [
+                'year' => $year,
+                'month' => $year,
+                'month_name' => (string) $year,
+                'ecommerce_orders' => 0,
+                'booking_count' => 0,
+                'ecommerce_sales' => 0.0,
+                'booking_sales' => 0.0,
+                'total_sales' => 0.0,
+            ];
+        }
+
+        $bucketExpression = 'EXTRACT(YEAR FROM ' . $this->orderBillAtSql() . ')::int';
+
+        foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
+            $key = (int) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['ecommerce_orders'] = (int) $row->ecommerce_orders;
+            $rows[$key]['ecommerce_sales'] = round((float) $row->ecommerce_sales, 2);
+        }
+
+        foreach ($this->bookingSummaryRows($start, $end, $bucketExpression) as $row) {
+            $key = (int) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['booking_count'] = (int) $row->booking_count;
+            $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
+        }
+
+        $payload = $this->salesSummaryPayload($yearFrom, null, array_values($rows));
+        $payload['year_from'] = $yearFrom;
+        $payload['year_to'] = $yearTo;
+        $payload['mode'] = 'yearly';
+
+        return $payload;
+    }
+
+    /**
+     * Daily rows spanning one or more months within a year.
+     */
+    public function dailySalesSummaryRange(int $year, int $monthFrom, int $monthTo): array
+    {
+        if ($monthTo < $monthFrom) {
+            [$monthFrom, $monthTo] = [$monthTo, $monthFrom];
+        }
+        $monthFrom = max(1, min(12, $monthFrom));
+        $monthTo = max(1, min(12, $monthTo));
+
+        if ($monthFrom === $monthTo) {
+            return $this->dailySalesSummary($year, $monthFrom);
+        }
+
+        $start = Carbon::create($year, $monthFrom, 1)->startOfDay();
+        $end = Carbon::create($year, $monthTo, 1)->endOfMonth()->endOfDay();
+        $rows = [];
+
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $key = $cursor->toDateString();
+            $rows[$key] = [
+                'date' => $key,
+                'day' => (int) $cursor->day,
+                'ecommerce_orders' => 0,
+                'booking_count' => 0,
+                'ecommerce_sales' => 0.0,
+                'booking_sales' => 0.0,
+                'total_sales' => 0.0,
+            ];
+            $cursor->addDay();
+        }
+
+        $bucketExpression = 'DATE(' . $this->orderBillAtSql() . ')';
+
+        foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
+            $key = (string) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['ecommerce_orders'] = (int) $row->ecommerce_orders;
+            $rows[$key]['ecommerce_sales'] = round((float) $row->ecommerce_sales, 2);
+        }
+
+        foreach ($this->bookingSummaryRows($start, $end, $bucketExpression) as $row) {
+            $key = (string) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['booking_count'] = (int) $row->booking_count;
+            $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
+        }
+
+        $payload = $this->salesSummaryPayload($year, $monthFrom, array_values($rows));
+        $payload['month_from'] = $monthFrom;
+        $payload['month_to'] = $monthTo;
+
+        return $payload;
+    }
+
     private function monthlySalesSummary(int $year): array
     {
         $start = Carbon::create($year, 1, 1)->startOfDay();
@@ -135,7 +250,11 @@ class SalesVisualDailyReportService
             $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
         }
 
-        return $this->salesSummaryPayload($year, $month, array_values($rows));
+        $payload = $this->salesSummaryPayload($year, $month, array_values($rows));
+        $payload['month_from'] = $month;
+        $payload['month_to'] = $month;
+
+        return $payload;
     }
 
     private function ecommerceSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
@@ -205,9 +324,14 @@ class SalesVisualDailyReportService
 
     public function ecommerceDay(Carbon $day): array
     {
-        $start = $day->copy()->startOfDay();
-        $end = $day->copy()->endOfDay();
+        $payload = $this->ecommercePeriod($day->copy()->startOfDay(), $day->copy()->endOfDay());
+        $payload['date'] = $day->toDateString();
 
+        return $payload;
+    }
+
+    public function ecommercePeriod(Carbon $start, Carbon $end): array
+    {
         $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::ECOMMERCE, $start, $end);
 
         $lineTotal = $this->lineNetAmountSql('oi');
@@ -238,14 +362,13 @@ class SalesVisualDailyReportService
         $packageRedemption = $this->packageRedemptionValue($start, $end);
 
         return [
-            'date' => $day->toDateString(),
+            'date_from' => $start->toDateString(),
+            'date_to' => $end->toDateString(),
             'online_offline' => [
                 'online' => round((float) ($channelSplit->online ?? 0), 2),
                 'offline' => round((float) ($channelSplit->offline ?? 0), 2),
             ],
             'payment_methods' => $paymentBlock['rows'],
-            'refunds' => $this->refundRows($start, $end),
-            'refunds' => $this->refundRows($start, $end),
             'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
@@ -277,9 +400,14 @@ class SalesVisualDailyReportService
 
     public function bookingDay(Carbon $day): array
     {
-        $start = $day->copy()->startOfDay();
-        $end = $day->copy()->endOfDay();
+        $payload = $this->bookingPeriod($day->copy()->startOfDay(), $day->copy()->endOfDay());
+        $payload['date'] = $day->toDateString();
 
+        return $payload;
+    }
+
+    public function bookingPeriod(Carbon $start, Carbon $end): array
+    {
         $paymentBlock = $this->paymentMethodsForWorkspace(WorkspaceType::BOOKING, $start, $end);
 
         $lineTotal = $this->lineNetAmountSql('oi');
@@ -321,14 +449,13 @@ class SalesVisualDailyReportService
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as v");
 
         return [
-            'date' => $day->toDateString(),
+            'date_from' => $start->toDateString(),
+            'date_to' => $end->toDateString(),
             'online_offline' => [
                 'online' => $paymentBlock['totals']['online'],
                 'offline' => $paymentBlock['totals']['offline'],
             ],
             'payment_methods' => $paymentBlock['rows'],
-            'refunds' => $this->refundRows($start, $end),
-            'refunds' => $this->refundRows($start, $end),
             'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
@@ -346,7 +473,7 @@ class SalesVisualDailyReportService
             ],
             'service_consumed' => [
                 'amount' => round((float) $serviceConsumedQuery->value('v'), 2),
-                'message' => 'Final settlement lines for booking orders on this day.',
+                'message' => 'Final settlement lines for booking orders in this period.',
             ],
             'staff' => [
                 'sales_activity' => $staffSales,

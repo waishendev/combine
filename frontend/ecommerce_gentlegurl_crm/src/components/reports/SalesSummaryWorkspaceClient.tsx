@@ -15,6 +15,7 @@ type SummaryTotals = {
 type MonthlyRow = {
   month: number
   month_name: string
+  year?: number
   ecommerce_orders: number
   booking_count: number
   ecommerce_sales: number
@@ -34,8 +35,12 @@ type DailyRow = {
 
 type SalesSummaryPayload = {
   year: number
+  year_from?: number
+  year_to?: number
   month: number | null
-  mode: 'monthly' | 'daily'
+  month_from?: number | null
+  month_to?: number | null
+  mode: 'monthly' | 'daily' | 'yearly'
   summary: SummaryTotals
   rows: Array<MonthlyRow | DailyRow>
 }
@@ -44,8 +49,16 @@ function currentYear() {
   return new Date().getFullYear()
 }
 
+function currentMonth() {
+  return new Date().getMonth() + 1
+}
+
 function monthTitle(year: number, month: number) {
   return new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1))
+}
+
+function monthShort(month: number) {
+  return new Intl.DateTimeFormat('en-GB', { month: 'short' }).format(new Date(2024, month - 1, 1))
 }
 
 function formatDateLabel(ymd: string) {
@@ -63,8 +76,24 @@ function dateParts(ymd: string) {
   return { year: d.getFullYear(), month: d.getMonth() + 1 }
 }
 
+function normalizePair(from: number, to: number) {
+  return from <= to ? { from, to } : { from: to, to: from }
+}
+
 const fmtRm = (n: number) => `RM ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtInt = (n: number) => Number(n || 0).toLocaleString()
+
+const filterSelectClass =
+  'h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100'
+
+const filterYearSelectClass = `${filterSelectClass} w-[5.5rem]`
+const filterMonthSelectClass = `${filterSelectClass} w-[7rem]`
+const filterBoxClass =
+  'inline-flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm'
+const filterButtonPrimaryClass =
+  'h-9 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700'
+const filterButtonSecondaryClass =
+  'h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50'
 
 function isDailyRow(row: MonthlyRow | DailyRow): row is DailyRow {
   return 'date' in row
@@ -76,29 +105,91 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
   const searchParams = useSearchParams()
 
   const selectedYear = Number(searchParams.get('year') || currentYear())
-  const rawMonth = searchParams.get('month')
-  const selectedMonth = rawMonth ? Number(rawMonth) : null
-  const selectedMonthTitle = selectedMonth ? monthTitle(selectedYear, selectedMonth) : null
+  const hasMonthFilter = searchParams.has('month') || searchParams.has('month_from') || searchParams.has('month_to')
+  const rawMonthFrom = Number(searchParams.get('month_from') || searchParams.get('month') || 0)
+  const rawMonthTo = Number(searchParams.get('month_to') || searchParams.get('month') || rawMonthFrom || 0)
+  const monthPair = hasMonthFilter && rawMonthFrom > 0
+    ? normalizePair(Math.max(1, Math.min(12, rawMonthFrom)), Math.max(1, Math.min(12, rawMonthTo || rawMonthFrom)))
+    : null
+  const selectedMonthFrom = monthPair?.from ?? null
+  const selectedMonthTo = monthPair?.to ?? null
+  const isMonthlyView = selectedMonthFrom != null
+
+  const rawYearFrom = Number(searchParams.get('year_from') || selectedYear)
+  const rawYearTo = Number(searchParams.get('year_to') || rawYearFrom)
+  const yearPair = normalizePair(
+    Number.isFinite(rawYearFrom) && rawYearFrom > 0 ? rawYearFrom : selectedYear,
+    Number.isFinite(rawYearTo) && rawYearTo > 0 ? rawYearTo : selectedYear,
+  )
+  const selectedYearFrom = isMonthlyView ? selectedYear : yearPair.from
+  const selectedYearTo = isMonthlyView ? selectedYear : yearPair.to
+  const isMultiYear = !isMonthlyView && selectedYearFrom !== selectedYearTo
+
+  const monthRangeTitle = useMemo(() => {
+    if (!selectedMonthFrom || !selectedMonthTo) return null
+    if (selectedMonthFrom === selectedMonthTo) return monthTitle(selectedYear, selectedMonthFrom)
+    return `${monthShort(selectedMonthFrom)} – ${monthShort(selectedMonthTo)} ${selectedYear}`
+  }, [selectedMonthFrom, selectedMonthTo, selectedYear])
+
+  const yearRangeLabel = useMemo(() => {
+    if (selectedYearFrom === selectedYearTo) return String(selectedYearFrom)
+    return `${selectedYearFrom} – ${selectedYearTo}`
+  }, [selectedYearFrom, selectedYearTo])
 
   const [data, setData] = useState<SalesSummaryPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [draftYearFrom, setDraftYearFrom] = useState(String(selectedYearFrom))
+  const [draftYearTo, setDraftYearTo] = useState(String(selectedYearTo))
+  const [draftMonthFrom, setDraftMonthFrom] = useState(String(selectedMonthFrom ?? currentMonth()))
+  const [draftMonthTo, setDraftMonthTo] = useState(String(selectedMonthTo ?? selectedMonthFrom ?? currentMonth()))
+
+  useEffect(() => {
+    setDraftYearFrom(String(selectedYearFrom))
+    setDraftYearTo(String(selectedYearTo))
+  }, [selectedYearFrom, selectedYearTo])
+
+  useEffect(() => {
+    if (selectedMonthFrom != null && selectedMonthTo != null) {
+      setDraftMonthFrom(String(selectedMonthFrom))
+      setDraftMonthTo(String(selectedMonthTo))
+    }
+  }, [selectedMonthFrom, selectedMonthTo])
 
   const yearOptions = useMemo(() => {
     const now = currentYear()
-    const earliest = Math.min(selectedYear, now - 4)
-    const latest = Math.max(selectedYear, now + 1)
-    const years = []
+    const earliest = Math.min(selectedYearFrom, selectedYearTo, now - 10)
+    const latest = Math.max(selectedYearFrom, selectedYearTo, now + 2)
+    const years: number[] = []
     for (let y = latest; y >= earliest; y--) years.push(y)
     return years
-  }, [selectedYear])
+  }, [selectedYearFrom, selectedYearTo])
+
+  const monthOptions = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => {
+        const value = index + 1
+        const label = new Intl.DateTimeFormat('en-GB', { month: 'short' }).format(new Date(2024, index, 1))
+        return { value, label }
+      }),
+    [],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const qs = new URLSearchParams({ year: String(selectedYear) })
-      if (selectedMonth) qs.set('month', String(selectedMonth))
+      const qs = new URLSearchParams()
+      if (isMonthlyView && selectedMonthFrom != null && selectedMonthTo != null) {
+        qs.set('year', String(selectedYear))
+        qs.set('month', String(selectedMonthFrom))
+        qs.set('month_from', String(selectedMonthFrom))
+        qs.set('month_to', String(selectedMonthTo))
+      } else {
+        qs.set('year', String(selectedYearFrom))
+        qs.set('year_from', String(selectedYearFrom))
+        qs.set('year_to', String(selectedYearTo))
+      }
       const res = await fetch(`/api/proxy/ecommerce/reports/sales-summary?${qs.toString()}`, { cache: 'no-store' })
       if (!res.ok) {
         setData(null)
@@ -112,57 +203,80 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
     } finally {
       setLoading(false)
     }
-  }, [selectedMonth, selectedYear])
+  }, [isMonthlyView, selectedMonthFrom, selectedMonthTo, selectedYear, selectedYearFrom, selectedYearTo])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const setYear = (year: string) => {
-    const q = new URLSearchParams(searchParams.toString())
-    q.set('year', year)
-    if (!selectedMonth) {
-      q.delete('month')
-    }
+  const openYearSummary = (year = selectedYearFrom) => {
+    const q = new URLSearchParams()
+    q.set('year', String(year))
+    q.set('year_from', String(year))
+    q.set('year_to', String(year))
     router.push(`${pathname}?${q.toString()}`)
   }
 
-  const setMonth = (month: string) => {
-    const q = new URLSearchParams(searchParams.toString())
-    q.set('year', String(selectedYear))
-    q.set('month', month)
+  const applyYearRange = () => {
+    const pair = normalizePair(Number(draftYearFrom) || currentYear(), Number(draftYearTo) || currentYear())
+    const q = new URLSearchParams()
+    q.set('year', String(pair.from))
+    q.set('year_from', String(pair.from))
+    q.set('year_to', String(pair.to))
     router.push(`${pathname}?${q.toString()}`)
   }
 
-  const monthOptions = useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, index) => {
-        const value = index + 1
-        const label = new Intl.DateTimeFormat('en-GB', { month: 'long' }).format(new Date(2024, index, 1))
-        return { value, label }
-      }),
-    [],
-  )
+  const resetYearRange = () => {
+    const y = currentYear()
+    setDraftYearFrom(String(y))
+    setDraftYearTo(String(y))
+    const q = new URLSearchParams()
+    q.set('year', String(y))
+    q.set('year_from', String(y))
+    q.set('year_to', String(y))
+    router.push(`${pathname}?${q.toString()}`)
+  }
 
-  const openYearSummary = () => {
-    const q = new URLSearchParams(searchParams.toString())
+  const applyMonthRange = () => {
+    const pair = normalizePair(
+      Math.max(1, Math.min(12, Number(draftMonthFrom) || 1)),
+      Math.max(1, Math.min(12, Number(draftMonthTo) || 1)),
+    )
+    const q = new URLSearchParams()
     q.set('year', String(selectedYear))
-    q.delete('month')
+    q.set('month', String(pair.from))
+    q.set('month_from', String(pair.from))
+    q.set('month_to', String(pair.to))
+    router.push(`${pathname}?${q.toString()}`)
+  }
+
+  const resetMonthRange = () => {
+    const m = currentMonth()
+    setDraftMonthFrom(String(m))
+    setDraftMonthTo(String(m))
+    const q = new URLSearchParams()
+    q.set('year', String(selectedYear))
+    q.set('month', String(m))
+    q.set('month_from', String(m))
+    q.set('month_to', String(m))
     router.push(`${pathname}?${q.toString()}`)
   }
 
   const openMonth = (month: number) => {
-    const q = new URLSearchParams(searchParams.toString())
-    q.set('year', String(selectedYear))
+    const q = new URLSearchParams()
+    q.set('year', String(selectedYearFrom === selectedYearTo ? selectedYearFrom : selectedYear))
     q.set('month', String(month))
+    q.set('month_from', String(month))
+    q.set('month_to', String(month))
     router.push(`${pathname}?${q.toString()}`)
   }
 
   const openDailyDetail = (date: string) => {
+    const parts = dateParts(date)
     const q = new URLSearchParams({
       date,
-      year: String(selectedYear),
-      month: String(selectedMonth ?? dateParts(date).month),
+      year: String(parts.year),
+      month: String(parts.month),
       mode: 'all',
       date_from: date,
       date_to: date,
@@ -174,9 +288,9 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
   }
 
   const shiftPeriod = (delta: number) => {
-    const q = new URLSearchParams(searchParams.toString())
-    if (selectedMonth) {
-      let nextMonth = selectedMonth + delta
+    if (isMonthlyView && selectedMonthFrom != null && selectedMonthTo != null) {
+      if (selectedMonthFrom !== selectedMonthTo) return
+      let nextMonth = selectedMonthFrom + delta
       let nextYear = selectedYear
       if (nextMonth < 1) {
         nextMonth = 12
@@ -185,16 +299,26 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
         nextMonth = 1
         nextYear += 1
       }
+      const q = new URLSearchParams()
       q.set('year', String(nextYear))
       q.set('month', String(nextMonth))
-    } else {
-      q.set('year', String(selectedYear + delta))
-      q.delete('month')
+      q.set('month_from', String(nextMonth))
+      q.set('month_to', String(nextMonth))
+      router.push(`${pathname}?${q.toString()}`)
+      return
     }
+
+    if (isMultiYear) return
+    const nextYear = selectedYearFrom + delta
+    const q = new URLSearchParams()
+    q.set('year', String(nextYear))
+    q.set('year_from', String(nextYear))
+    q.set('year_to', String(nextYear))
     router.push(`${pathname}?${q.toString()}`)
   }
 
   const rows = data?.rows ?? []
+  const isYearlyRows = !isMonthlyView && (isMultiYear || data?.mode === 'yearly')
 
   const tableTotals = useMemo(() => {
     if (rows.length === 0) return null
@@ -210,60 +334,69 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
     )
   }, [rows])
 
+  const subtitle = isMonthlyView
+    ? `Daily ecommerce and booking sales summary for ${monthRangeTitle}.`
+    : `Yearly ecommerce and booking sales summary for ${yearRangeLabel}.`
+
+  const tableHeading = isMonthlyView
+    ? `${monthRangeTitle} daily summary`
+    : isMultiYear
+      ? `${yearRangeLabel} yearly summary`
+      : `${selectedYearFrom} monthly summary`
+
+  const firstColumnLabel = isMonthlyView ? 'Date' : isYearlyRows ? 'Year' : 'Month'
+  const canShiftPeriod =
+    (isMonthlyView && selectedMonthFrom != null && selectedMonthFrom === selectedMonthTo)
+    || (!isMonthlyView && !isMultiYear)
+
   return (
     <div className="overflow-y-auto px-6 py-6 lg:px-10">
       <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs" aria-label="Breadcrumb">
         <span className="text-gray-500">Reports</span>
         <span className="text-gray-400">/</span>
-        <button type="button" onClick={openYearSummary} className="font-medium text-blue-700 hover:text-blue-900 hover:underline">
+        <button type="button" onClick={() => openYearSummary(selectedYear)} className="font-medium text-blue-700 hover:text-blue-900 hover:underline">
           Sales Report
         </button>
         <span className="text-gray-400">/</span>
-        {selectedMonth ? (
-          <button type="button" onClick={openYearSummary} className="font-medium text-blue-700 hover:text-blue-900 hover:underline">
+        {isMonthlyView ? (
+          <button type="button" onClick={() => openYearSummary(selectedYear)} className="font-medium text-blue-700 hover:text-blue-900 hover:underline">
             {selectedYear}
           </button>
         ) : (
-          <span className="font-medium text-gray-700">{selectedYear}</span>
+          <span className="font-medium text-gray-700">{yearRangeLabel}</span>
         )}
-        {selectedMonthTitle ? (
+        {monthRangeTitle ? (
           <>
             <span className="text-gray-400">/</span>
-            <span className="font-medium text-gray-700">{selectedMonthTitle.split(' ')[0]}</span>
+            <span className="font-medium text-gray-700">
+              {selectedMonthFrom === selectedMonthTo
+                ? monthShort(selectedMonthFrom!)
+                : `${monthShort(selectedMonthFrom!)} – ${monthShort(selectedMonthTo!)}`}
+            </span>
           </>
         ) : null}
       </nav>
 
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-3">
-          {selectedMonth ? (
-            <button
-              type="button"
-              onClick={openYearSummary}
-              className="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-            >
-              ← Back to yearly summary
-            </button>
-          ) : null}
-          <div>
-            <h2 className="text-3xl font-semibold text-slate-900">{selectedMonthTitle ? 'Monthly Sales Report' : 'Yearly Sales Report'}</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              {selectedMonthTitle
-                ? `Daily ecommerce and booking sales summary for ${selectedMonthTitle}.`
-                : `Yearly ecommerce and booking sales summary for ${selectedYear}.`}
-            </p>
-          </div>
+      <div className="mb-6 space-y-3">
+        {isMonthlyView ? (
+          <button
+            type="button"
+            onClick={() => openYearSummary(selectedYear)}
+            className="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            ← Back to yearly summary
+          </button>
+        ) : null}
+        <div>
+          <h2 className="text-3xl font-semibold text-slate-900">{isMonthlyView ? 'Monthly Sales Report' : 'Yearly Sales Report'}</h2>
+          <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {selectedMonth ? (
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              Month
-              <select
-                value={selectedMonth}
-                onChange={(event) => setMonth(event.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              >
+        {isMonthlyView ? (
+          <div className={filterBoxClass}>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+              From
+              <select value={draftMonthFrom} onChange={(event) => setDraftMonthFrom(event.target.value)} className={filterMonthSelectClass}>
                 {monthOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -271,33 +404,71 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
                 ))}
               </select>
             </label>
-          ) : null}
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-            Year
-            <select
-              value={selectedYear}
-              onChange={(event) => setYear(event.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-            >
-              {yearOptions.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+              To
+              <select value={draftMonthTo} onChange={(event) => setDraftMonthTo(event.target.value)} className={filterMonthSelectClass}>
+                {monthOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={applyMonthRange} className={filterButtonPrimaryClass}>
+              Apply
+            </button>
+            <button type="button" onClick={resetMonthRange} className={filterButtonSecondaryClass}>
+              This month
+            </button>
+          </div>
+        ) : (
+          <div className={filterBoxClass}>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+              From
+              <select value={draftYearFrom} onChange={(event) => setDraftYearFrom(event.target.value)} className={filterYearSelectClass}>
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+              To
+              <select value={draftYearTo} onChange={(event) => setDraftYearTo(event.target.value)} className={filterYearSelectClass}>
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={applyYearRange} className={filterButtonPrimaryClass}>
+              Apply
+            </button>
+            <button type="button" onClick={resetYearRange} className={filterButtonSecondaryClass}>
+              This year
+            </button>
+          </div>
+        )}
       </div>
 
       {error ? <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div> : null}
 
-      <SalesVisualPeriodDashboard year={selectedYear} month={selectedMonth} onShiftPeriod={shiftPeriod} canViewStaffReport={canViewStaffReport} />
+      <SalesVisualPeriodDashboard
+        year={selectedYear}
+        yearFrom={selectedYearFrom}
+        yearTo={selectedYearTo}
+        month={selectedMonthFrom}
+        monthFrom={selectedMonthFrom}
+        monthTo={selectedMonthTo}
+        onShiftPeriod={canShiftPeriod ? shiftPeriod : undefined}
+        canViewStaffReport={canViewStaffReport}
+      />
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h3 className="text-lg font-semibold text-slate-900">
-            {selectedMonthTitle ? `${selectedMonthTitle} daily summary` : `${selectedYear} monthly summary`}
-          </h3>
+          <h3 className="text-lg font-semibold text-slate-900">{tableHeading}</h3>
           <p className="mt-1 text-xs text-slate-500">
             Ecommerce sales count product lines only. Booking count and sales use the same booking line buckets as the Daily Sales visual report.
           </p>
@@ -307,7 +478,7 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
           <table className="w-full min-w-[860px] text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-5 py-3">{selectedMonth ? 'Date' : 'Month'}</th>
+                <th className="px-5 py-3">{firstColumnLabel}</th>
                 <th className="px-5 py-3 text-right">Ecommerce Order Count</th>
                 <th className="px-5 py-3 text-right">Booking Count</th>
                 <th className="px-5 py-3 text-right">Ecommerce Sales</th>
@@ -330,10 +501,18 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
                 </tr>
               ) : (
                 rows.map((row) => {
-                  const key = isDailyRow(row) ? row.date : String(row.month)
+                  const key = isDailyRow(row) ? row.date : String(row.year ?? row.month)
                   const label = isDailyRow(row) ? formatDateLabel(row.date) : row.month_name
-                  const onClick = isDailyRow(row) ? () => openDailyDetail(row.date) : () => openMonth(row.month)
-                  const aria = isDailyRow(row) ? `Open Daily Sales detail for ${row.date}` : `Open daily summary for ${row.month_name}`
+                  const onClick = isDailyRow(row)
+                    ? () => openDailyDetail(row.date)
+                    : isYearlyRows
+                      ? () => openYearSummary(Number(row.year ?? row.month))
+                      : () => openMonth(row.month)
+                  const aria = isDailyRow(row)
+                    ? `Open Daily Sales detail for ${row.date}`
+                    : isYearlyRows
+                      ? `Open yearly summary for ${row.month_name}`
+                      : `Open daily summary for ${row.month_name}`
 
                   return (
                     <tr key={key} className="hover:bg-blue-50/50">

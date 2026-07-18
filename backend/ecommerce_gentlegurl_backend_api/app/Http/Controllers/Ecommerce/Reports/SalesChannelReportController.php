@@ -18,69 +18,135 @@ class SalesChannelReportController extends Controller
 
     public function salesSummary(Request $request)
     {
-        $year = (int) $request->query('year', Carbon::today()->year);
-        $year = max(2000, min(2100, $year));
+        $year = max(2000, min(2100, (int) $request->query('year', Carbon::today()->year)));
 
-        $month = null;
-        if ($request->filled('month')) {
-            $month = max(1, min(12, (int) $request->query('month')));
+        $yearFrom = $request->filled('year_from')
+            ? max(2000, min(2100, (int) $request->query('year_from')))
+            : $year;
+        $yearTo = $request->filled('year_to')
+            ? max(2000, min(2100, (int) $request->query('year_to')))
+            : $yearFrom;
+        if ($yearTo < $yearFrom) {
+            [$yearFrom, $yearTo] = [$yearTo, $yearFrom];
         }
 
-        return response()->json($this->visualDaily->salesSummary($year, $month));
+        // Multi-year yearly summary (one row per year).
+        if (! $request->filled('month') && ! $request->filled('month_from') && $yearFrom !== $yearTo) {
+            return response()->json($this->visualDaily->yearlySalesSummary($yearFrom, $yearTo));
+        }
+
+        $monthFrom = null;
+        $monthTo = null;
+        if ($request->filled('month_from') || $request->filled('month_to') || $request->filled('month')) {
+            $monthFrom = max(1, min(12, (int) ($request->query('month_from') ?: $request->query('month') ?: 1)));
+            $monthTo = max(1, min(12, (int) ($request->query('month_to') ?: $request->query('month') ?: $monthFrom)));
+            if ($monthTo < $monthFrom) {
+                [$monthFrom, $monthTo] = [$monthTo, $monthFrom];
+            }
+        }
+
+        // Month range within a year → daily rows across those months.
+        if ($monthFrom !== null) {
+            return response()->json($this->visualDaily->dailySalesSummaryRange($year, $monthFrom, $monthTo));
+        }
+
+        // Single-year monthly summary (Jan–Dec rows).
+        return response()->json($this->visualDaily->salesSummary($yearFrom, null));
     }
 
     public function visualDailyEcommerce(Request $request)
     {
-        $day = $request->filled('date')
-            ? Carbon::parse((string) $request->query('date'))->startOfDay()
-            : Carbon::today();
+        [$start, $end] = $this->resolveVisualDateRange($request);
 
-        return response()->json($this->visualDaily->ecommerceDay($day));
+        if ($start->toDateString() === $end->toDateString()) {
+            return response()->json($this->visualDaily->ecommerceDay($start));
+        }
+
+        return response()->json($this->visualDaily->ecommercePeriod($start, $end));
     }
 
     public function visualDailyBooking(Request $request)
     {
-        $day = $request->filled('date')
-            ? Carbon::parse((string) $request->query('date'))->startOfDay()
-            : Carbon::today();
+        [$start, $end] = $this->resolveVisualDateRange($request);
 
-        return response()->json($this->visualDaily->bookingDay($day));
+        if ($start->toDateString() === $end->toDateString()) {
+            return response()->json($this->visualDaily->bookingDay($start));
+        }
+
+        return response()->json($this->visualDaily->bookingPeriod($start, $end));
     }
 
     public function visualDailyAll(Request $request)
     {
-        $day = $request->filled('date')
-            ? Carbon::parse((string) $request->query('date'))->startOfDay()
-            : Carbon::today();
+        [$start, $end] = $this->resolveVisualDateRange($request);
 
-        return response()->json($this->visualDaily->allDay($day));
+        if ($start->toDateString() === $end->toDateString()) {
+            return response()->json($this->visualDaily->allDay($start));
+        }
+
+        $payload = $this->visualDaily->allPeriod($start, $end);
+        $payload['date_from'] = $start->toDateString();
+        $payload['date_to'] = $end->toDateString();
+
+        return response()->json($payload);
     }
 
     public function visualPeriodAll(Request $request)
     {
         $year = max(2000, min(2100, (int) $request->query('year', Carbon::today()->year)));
 
-        $month = null;
-        if ($request->filled('month')) {
-            $month = max(1, min(12, (int) $request->query('month')));
+        $yearFrom = $request->filled('year_from')
+            ? max(2000, min(2100, (int) $request->query('year_from')))
+            : $year;
+        $yearTo = $request->filled('year_to')
+            ? max(2000, min(2100, (int) $request->query('year_to')))
+            : $yearFrom;
+        if ($yearTo < $yearFrom) {
+            [$yearFrom, $yearTo] = [$yearTo, $yearFrom];
         }
 
-        if ($month !== null) {
-            $start = Carbon::create($year, $month, 1)->startOfDay();
-            $end = $start->copy()->endOfMonth()->endOfDay();
-            $label = $start->format('F Y');
+        $monthFrom = null;
+        $monthTo = null;
+        if ($request->filled('month_from') || $request->filled('month_to') || $request->filled('month')) {
+            $monthFrom = max(1, min(12, (int) ($request->query('month_from') ?: $request->query('month') ?: 1)));
+            $monthTo = max(1, min(12, (int) ($request->query('month_to') ?: $request->query('month') ?: $monthFrom)));
+            if ($monthTo < $monthFrom) {
+                [$monthFrom, $monthTo] = [$monthTo, $monthFrom];
+            }
+        }
+
+        if ($monthFrom !== null) {
+            $start = Carbon::create($year, $monthFrom, 1)->startOfDay();
+            $end = Carbon::create($year, $monthTo, 1)->endOfMonth()->endOfDay();
+            $label = $monthFrom === $monthTo
+                ? $start->format('F Y')
+                : $start->format('M') . ' – ' . $end->format('M Y');
             $mode = 'monthly';
-        } else {
-            $start = Carbon::create($year, 1, 1)->startOfDay();
-            $end = $start->copy()->endOfYear()->endOfDay();
-            $label = (string) $year;
+            $month = $monthFrom;
+        } elseif ($yearFrom !== $yearTo) {
+            $start = Carbon::create($yearFrom, 1, 1)->startOfDay();
+            $end = Carbon::create($yearTo, 12, 31)->endOfDay();
+            $label = $yearFrom . ' – ' . $yearTo;
             $mode = 'yearly';
+            $month = null;
+            $year = $yearFrom;
+        } else {
+            $start = Carbon::create($yearFrom, 1, 1)->startOfDay();
+            $end = $start->copy()->endOfYear()->endOfDay();
+            $label = (string) $yearFrom;
+            $mode = 'yearly';
+            $month = null;
+            $year = $yearFrom;
         }
 
         $payload = $this->visualDaily->allPeriod($start, $end);
         $payload['period'] = [
             'year' => $year,
+            'year_from' => $yearFrom,
+            'year_to' => $yearTo,
             'month' => $month,
+            'month_from' => $monthFrom,
+            'month_to' => $monthTo,
             'mode' => $mode,
             'label' => $label,
         ];
@@ -208,5 +274,27 @@ class SalesChannelReportController extends Controller
             Carbon::parse((string) $request->query('date_from'))->startOfDay(),
             Carbon::parse((string) $request->query('date_to'))->endOfDay(),
         ];
+    }
+
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function resolveVisualDateRange(Request $request): array
+    {
+        if ($request->filled('date_from') || $request->filled('date_to')) {
+            $from = Carbon::parse((string) ($request->query('date_from') ?: $request->query('date_to') ?: $request->query('date', Carbon::today()->toDateString())))->startOfDay();
+            $to = Carbon::parse((string) ($request->query('date_to') ?: $request->query('date_from') ?: $from->toDateString()))->endOfDay();
+            if ($to->lt($from)) {
+                [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
+            }
+
+            return [$from, $to];
+        }
+
+        $day = $request->filled('date')
+            ? Carbon::parse((string) $request->query('date'))->startOfDay()
+            : Carbon::today();
+
+        return [$day->copy()->startOfDay(), $day->copy()->endOfDay()];
     }
 }

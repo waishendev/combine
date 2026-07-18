@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 import SalesVisualSummaryCards, { type SalesVisualSummaryData } from '@/components/reports/SalesVisualSummaryCards'
@@ -9,6 +9,8 @@ type Mode = 'ecommerce' | 'booking' | 'all'
 
 type VisualPayload = SalesVisualSummaryData & {
   date?: string
+  date_from?: string
+  date_to?: string
   points_redemption?: { message?: string | null }
   service_consumed?: { amount?: number; message?: string | null }
 }
@@ -26,6 +28,17 @@ function formatDisplayDay(ymd: string) {
   return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(d)
 }
 
+function normalizeRange(from: string, to: string) {
+  if (!from && !to) {
+    const today = formatYmd(new Date())
+    return { from: today, to: today }
+  }
+  if (!from) return { from: to, to }
+  if (!to) return { from, to: from }
+  if (from <= to) return { from, to }
+  return { from: to, to: from }
+}
+
 const dayNavButtonClass =
   'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-lg leading-none text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-900'
 
@@ -41,7 +54,16 @@ export default function SalesVisualDailyDashboard({
   canViewStaffReport?: boolean
 }) {
   const searchParams = useSearchParams()
-  const date = searchParams.get('date') ?? formatYmd(new Date())
+  const today = useMemo(() => formatYmd(new Date()), [])
+  const range = useMemo(() => {
+    const rawFrom = searchParams.get('date_from') || searchParams.get('date') || today
+    const rawTo = searchParams.get('date_to') || searchParams.get('date_from') || searchParams.get('date') || today
+    return normalizeRange(rawFrom, rawTo)
+  }, [searchParams, today])
+
+  const dateFrom = range.from
+  const dateTo = range.to
+  const isSingleDay = dateFrom === dateTo
 
   const [data, setData] = useState<VisualPayload | null>(null)
   const [loading, setLoading] = useState(true)
@@ -52,7 +74,12 @@ export default function SalesVisualDailyDashboard({
     setError(null)
     try {
       const path = mode === 'ecommerce' ? 'ecommerce' : mode === 'booking' ? 'booking' : 'all'
-      const res = await fetch(`/api/proxy/ecommerce/reports/sales/visual-daily/${path}?date=${encodeURIComponent(date)}`, {
+      const qs = new URLSearchParams({
+        date: dateFrom,
+        date_from: dateFrom,
+        date_to: dateTo,
+      })
+      const res = await fetch(`/api/proxy/ecommerce/reports/sales/visual-daily/${path}?${qs.toString()}`, {
         cache: 'no-store',
       })
       if (!res.ok) {
@@ -67,29 +94,40 @@ export default function SalesVisualDailyDashboard({
     } finally {
       setLoading(false)
     }
-  }, [date, mode])
+  }, [dateFrom, dateTo, mode])
 
   useEffect(() => {
     void load()
   }, [load, refreshKey])
 
+  const periodLabel = isSingleDay
+    ? formatDisplayDay(dateFrom)
+    : `${formatDisplayDay(dateFrom)} – ${formatDisplayDay(dateTo)}`
+
   return (
     <div className="mb-8 space-y-4">
       <div className="flex items-center justify-center gap-2">
-        {onShiftDay ? (
+        {onShiftDay && isSingleDay ? (
           <button type="button" onClick={() => onShiftDay(-1)} className={dayNavButtonClass} aria-label="Previous day">
             ‹
           </button>
         ) : null}
-        <span className="min-w-[9.5rem] text-center text-base font-semibold text-slate-800">{formatDisplayDay(date)}</span>
-        {onShiftDay ? (
+        <span className="min-w-[9.5rem] text-center text-base font-semibold text-slate-800">{periodLabel}</span>
+        {onShiftDay && isSingleDay ? (
           <button type="button" onClick={() => onShiftDay(1)} className={dayNavButtonClass} aria-label="Next day">
             ›
           </button>
         ) : null}
       </div>
 
-      <SalesVisualSummaryCards mode={mode} loading={loading} error={error} data={data} periodScope="day" canViewStaffReport={canViewStaffReport} />
+      <SalesVisualSummaryCards
+        mode={mode}
+        loading={loading}
+        error={error}
+        data={data}
+        periodScope={isSingleDay ? 'day' : 'month'}
+        canViewStaffReport={canViewStaffReport}
+      />
     </div>
   )
 }

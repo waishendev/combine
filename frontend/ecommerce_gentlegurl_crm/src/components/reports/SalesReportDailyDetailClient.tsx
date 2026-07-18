@@ -37,6 +37,26 @@ function dateParts(ymd: string) {
   }
 }
 
+function normalizeRange(from: string, to: string) {
+  if (!from && !to) {
+    const today = formatYmd(new Date())
+    return { from: today, to: today }
+  }
+  if (!from) return { from: to, to }
+  if (!to) return { from, to: from }
+  if (from <= to) return { from, to }
+  return { from: to, to: from }
+}
+
+function addDays(ymd: string, delta: number) {
+  const next = parseYmd(ymd)
+  next.setDate(next.getDate() + delta)
+  return formatYmd(next)
+}
+
+const filterInputClass =
+  'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100'
+
 const segmentClass = (active: boolean) =>
   `rounded-md px-3 py-1.5 text-sm font-semibold transition ${
     active ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
@@ -48,46 +68,71 @@ export default function SalesReportDailyDetailClient({ canExport, canViewStaffRe
   const searchParams = useSearchParams()
   const didInit = useRef(false)
   const [visualRefreshKey, setVisualRefreshKey] = useState(0)
+  const [draftFrom, setDraftFrom] = useState('')
+  const [draftTo, setDraftTo] = useState('')
 
-  const date = searchParams.get('date') ?? formatYmd(new Date())
-  const parts = dateParts(date)
-  const selectedYear = Number(searchParams.get('year') || parts.year)
-  const selectedMonth = Number(searchParams.get('month') || parts.month)
+  const today = useMemo(() => formatYmd(new Date()), [])
+  const appliedRange = useMemo(() => {
+    const rawFrom = searchParams.get('date_from') || searchParams.get('date') || today
+    const rawTo = searchParams.get('date_to') || searchParams.get('date_from') || searchParams.get('date') || today
+    return normalizeRange(rawFrom, rawTo)
+  }, [searchParams, today])
+
+  const dateFrom = appliedRange.from
+  const dateTo = appliedRange.to
+  const isSingleDay = dateFrom === dateTo
+  const focusParts = dateParts(dateFrom)
+  const selectedYear = Number(searchParams.get('year') || focusParts.year)
+  const selectedMonth = Number(searchParams.get('month') || focusParts.month)
   const monthTitle = useMemo(() => formatMonthTitle(selectedYear, selectedMonth), [selectedMonth, selectedYear])
-  const displayDate = useMemo(() => formatDisplayDay(date), [date])
+  const rangeLabel = useMemo(() => {
+    if (isSingleDay) return formatDisplayDay(dateFrom)
+    return `${formatDisplayDay(dateFrom)} – ${formatDisplayDay(dateTo)}`
+  }, [dateFrom, dateTo, isSingleDay])
 
   const modeParam = searchParams.get('mode')
   const mode: Mode = modeParam === 'booking' ? 'booking' : modeParam === 'ecommerce' ? 'ecommerce' : 'all'
 
   useEffect(() => {
+    setDraftFrom(dateFrom)
+    setDraftTo(dateTo)
+  }, [dateFrom, dateTo])
+
+  useEffect(() => {
     if (didInit.current) return
     didInit.current = true
 
-    const initialDate = searchParams.get('date') ?? date
-    const initialParts = dateParts(initialDate)
+    const initialDate = searchParams.get('date') || searchParams.get('date_from') || today
+    const initialFrom = searchParams.get('date_from') || initialDate
+    const initialTo = searchParams.get('date_to') || searchParams.get('date_from') || initialDate
+    const range = normalizeRange(initialFrom, initialTo)
+    const parts = dateParts(range.from)
     const q = new URLSearchParams(searchParams.toString())
     let changed = false
 
     if (!q.get('date')) {
-      q.set('date', initialDate)
+      q.set('date', range.from)
+      changed = true
+    }
+    if (!q.get('date_from') || !q.get('date_to')) {
+      q.set('date_from', range.from)
+      q.set('date_to', range.to)
       changed = true
     }
     if (!q.get('year')) {
-      q.set('year', String(initialParts.year))
+      q.set('year', String(parts.year))
       changed = true
     }
     if (!q.get('month')) {
-      q.set('month', String(initialParts.month))
+      q.set('month', String(parts.month))
       changed = true
     }
     if (!q.get('mode')) {
       q.set('mode', 'all')
       changed = true
     }
-    if (!q.get('date_from') || !q.get('date_to')) {
-      q.set('date_from', initialDate)
-      q.set('date_to', initialDate)
-      if (!q.get('page')) q.set('page', '1')
+    if (!q.get('page')) {
+      q.set('page', '1')
       changed = true
     }
     if (q.get('mode') === 'all') {
@@ -104,26 +149,24 @@ export default function SalesReportDailyDetailClient({ canExport, canViewStaffRe
     if (changed) {
       router.replace(`${pathname}?${q.toString()}`)
     }
-  }, [date, pathname, router, searchParams])
+  }, [pathname, router, searchParams, today])
 
-  useEffect(() => {
-    const currentParts = dateParts(date)
-    const from = searchParams.get('date_from')
-    const to = searchParams.get('date_to')
-    const year = searchParams.get('year')
-    const month = searchParams.get('month')
-
-    if (from === date && to === date && year === String(currentParts.year) && month === String(currentParts.month)) {
-      return
-    }
-
+  const pushRange = (from: string, to: string) => {
+    const range = normalizeRange(from, to)
+    const parts = dateParts(range.from)
     const q = new URLSearchParams(searchParams.toString())
-    q.set('date_from', date)
-    q.set('date_to', date)
-    q.set('year', String(currentParts.year))
-    q.set('month', String(currentParts.month))
-    router.replace(`${pathname}?${q.toString()}`)
-  }, [date, pathname, router, searchParams])
+    q.set('date', range.from)
+    q.set('date_from', range.from)
+    q.set('date_to', range.to)
+    q.set('year', String(parts.year))
+    q.set('month', String(parts.month))
+    q.set('page', '1')
+    if (mode === 'all') {
+      q.set('ec_page', '1')
+      q.set('bk_page', '1')
+    }
+    router.push(`${pathname}?${q.toString()}`)
+  }
 
   const setMode = (next: Mode) => {
     const q = new URLSearchParams(searchParams.toString())
@@ -136,26 +179,20 @@ export default function SalesReportDailyDetailClient({ canExport, canViewStaffRe
     router.push(`${pathname}?${q.toString()}`)
   }
 
-  const setDay = (next: string) => {
-    const nextParts = dateParts(next)
-    const q = new URLSearchParams(searchParams.toString())
-    q.set('date', next)
-    q.set('date_from', next)
-    q.set('date_to', next)
-    q.set('year', String(nextParts.year))
-    q.set('month', String(nextParts.month))
-    q.set('page', '1')
-    if (mode === 'all') {
-      q.set('ec_page', '1')
-      q.set('bk_page', '1')
-    }
-    router.push(`${pathname}?${q.toString()}`)
+  const applyDateFilter = () => {
+    pushRange(draftFrom || dateFrom, draftTo || dateTo)
+  }
+
+  const resetToToday = () => {
+    setDraftFrom(today)
+    setDraftTo(today)
+    pushRange(today, today)
   }
 
   const shiftDay = (delta: number) => {
-    const next = parseYmd(date)
-    next.setDate(next.getDate() + delta)
-    setDay(formatYmd(next))
+    if (!isSingleDay) return
+    const next = addDays(dateFrom, delta)
+    pushRange(next, next)
   }
 
   const backToMonth = () => {
@@ -165,7 +202,9 @@ export default function SalesReportDailyDetailClient({ canExport, canViewStaffRe
 
   const refreshVisualSummary = () => setVisualRefreshKey((prev) => prev + 1)
 
-  const subtitle = `Ecommerce and booking sales detail for ${displayDate}.`
+  const subtitle = isSingleDay
+    ? `Ecommerce and booking sales detail for ${rangeLabel}.`
+    : `Ecommerce and booking sales detail from ${formatDisplayDay(dateFrom)} to ${formatDisplayDay(dateTo)}.`
 
   return (
     <div className="overflow-y-auto px-6 py-6 lg:px-10">
@@ -184,7 +223,7 @@ export default function SalesReportDailyDetailClient({ canExport, canViewStaffRe
           {monthTitle.split(' ')[0]}
         </button>
         <span className="text-gray-400">/</span>
-        <span className="font-medium text-gray-700">{displayDate}</span>
+        <span className="font-medium text-gray-700">{rangeLabel}</span>
       </nav>
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -199,6 +238,40 @@ export default function SalesReportDailyDetailClient({ canExport, canViewStaffRe
           <div>
             <h2 className="text-3xl font-semibold text-slate-900">Daily Sales Report</h2>
             <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+              From
+              <input
+                type="date"
+                value={draftFrom}
+                onChange={(event) => setDraftFrom(event.target.value)}
+                className={filterInputClass}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+              To
+              <input
+                type="date"
+                value={draftTo}
+                onChange={(event) => setDraftTo(event.target.value)}
+                className={filterInputClass}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={applyDateFilter}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={resetToToday}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+              Today
+            </button>
           </div>
         </div>
       </div>
@@ -215,7 +288,12 @@ export default function SalesReportDailyDetailClient({ canExport, canViewStaffRe
         </button>
       </div>
 
-      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} onShiftDay={shiftDay} canViewStaffReport={canViewStaffReport} />
+      <SalesVisualDailyDashboard
+        mode={mode}
+        refreshKey={visualRefreshKey}
+        onShiftDay={isSingleDay ? shiftDay : undefined}
+        canViewStaffReport={canViewStaffReport}
+      />
 
       <h3 className="mb-4 text-lg font-semibold text-slate-800">Transactions</h3>
       {mode === 'all' ? (
