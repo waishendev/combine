@@ -341,7 +341,24 @@ class OfflineOrderManagementService
             throw new RuntimeException('At least one item split is required.');
         }
 
-        DB::transaction(function () use ($order, $itemSplits, $remark, $actorId) {
+        $bookingTargets = [];
+        $needsEcommerceRecalc = false;
+        $orderAt = $order->created_at instanceof Carbon
+            ? $order->created_at
+            : Carbon::parse((string) $order->created_at);
+        $orderYear = (int) $orderAt->format('Y');
+        $orderMonth = (int) $orderAt->format('m');
+
+        DB::transaction(function () use (
+            $order,
+            $itemSplits,
+            $remark,
+            $actorId,
+            $orderYear,
+            $orderMonth,
+            &$bookingTargets,
+            &$needsEcommerceRecalc,
+        ) {
             $orderItems = DB::table('order_items')
                 ->where('order_id', (int) $order->id)
                 ->get([
@@ -525,10 +542,31 @@ class OfflineOrderManagementService
                     $remark,
                     $actorId,
                 );
+
+                if (StaffCommissionService::isBookingCommissionLineType((string) $orderItem->line_type)) {
+                    foreach (array_merge($before, $after) as $row) {
+                        $staffId = (int) ($row['staff_id'] ?? 0);
+                        if ($staffId <= 0) {
+                            continue;
+                        }
+                        $bookingTargets[] = [
+                            'staff_id' => $staffId,
+                            'year' => $orderYear,
+                            'month' => $orderMonth,
+                        ];
+                    }
+                } else {
+                    $needsEcommerceRecalc = true;
+                }
             }
         });
 
-        $this->recalculateEcommerceCommissionForOrderMonth($order, 'edit_sales_person', $remark, $actorId);
+        if ($needsEcommerceRecalc) {
+            $this->recalculateEcommerceCommissionForOrderMonth($order, 'edit_sales_person', $remark, $actorId);
+        }
+        if (! empty($bookingTargets)) {
+            $this->recalculateBookingCommissionsForTargets($bookingTargets, $order, 'edit_sales_person', $remark, $actorId);
+        }
 
         return $order;
     }
@@ -614,7 +652,7 @@ class OfflineOrderManagementService
                 ->whereIn('id', $bookingIds)
                 ->get(['id', 'staff_id', 'completed_at'])
                 ->keyBy('id');
-            $staffs = Staff::query()->whereIn('id', collect($itemSplits)->flatMap(fn ($item) => collect($item['splits'] ?? [])->pluck('staff_id'))->map(fn ($id) => (int) $id)->unique()->values())->get(['id', 'service_commission_rate'])->keyBy('id');
+            $staffs = Staff::query()->whereIn('id', collect($itemSplits)->flatMap(fn ($item) => collect($item['splits'] ?? [])->pluck('staff_id'))->map(fn ($id) => (int) $id)->unique()->values())->get(['id', 'commission_rate', 'service_commission_rate'])->keyBy('id');
 
             foreach ($itemSplits as $itemSplit) {
                 $orderItemId = (int) ($itemSplit['order_item_id'] ?? 0);
@@ -669,6 +707,30 @@ class OfflineOrderManagementService
 
                 if (! empty($rows)) {
                     DB::table('booking_service_staff_splits')->insert($rows);
+                }
+
+                // Keep order-line staff splits in sync so View Details / commission
+                // attribution match Edit Worker (otherwise stale checkout splits win).
+                DB::table('order_item_staff_splits')
+                    ->where('order_item_id', $orderItemId)
+                    ->delete();
+
+                $orderItemSplitRows = $splits->map(function (array $row) use ($orderItemId, $staffs) {
+                    $staffId = (int) ($row['staff_id'] ?? 0);
+                    $staff = $staffs->get($staffId);
+
+                    return [
+                        'order_item_id' => $orderItemId,
+                        'staff_id' => $staffId,
+                        'share_percent' => (int) ($row['share_percent'] ?? 0),
+                        'commission_rate_snapshot' => (float) ($staff?->service_commission_rate ?? $staff?->commission_rate ?? 0),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                })->values()->all();
+
+                if (! empty($orderItemSplitRows)) {
+                    DB::table('order_item_staff_splits')->insert($orderItemSplitRows);
                 }
 
                 $firstStaffId = (int) ($rows[0]['staff_id'] ?? 0);

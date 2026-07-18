@@ -21,6 +21,11 @@ class StaffCommissionService
     /** Paid booking lines that count toward staff booking sales (deposit + settlement + add-ons). */
     private const BOOKING_COMMISSION_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'];
 
+    public static function isBookingCommissionLineType(?string $lineType): bool
+    {
+        return in_array(strtolower((string) $lineType), self::BOOKING_COMMISSION_LINE_TYPES, true);
+    }
+
     public function normalizeType(?string $type): string
     {
         $normalized = strtoupper((string) $type);
@@ -448,9 +453,11 @@ class StaffCommissionService
             'order_item_staff_splits',
             $this->effectiveLineTotalExpr(),
         );
+        // Total Sales = attributed split sales (same as sales visual / booking monthly).
+        // Tier % is applied later in recalculateMonthly — do not multiply by per-staff product rate here.
         $productSales = (float) $this->baseEcommerceProductSplitQuery($start, $nextMonthStart)
             ->where('order_item_staff_splits.staff_id', $staffId)
-            ->selectRaw("COALESCE(SUM(({$splitSalesExpr}) * ({$this->productCommissionRateExpr()})), 0) AS total_sales")
+            ->selectRaw("COALESCE(SUM({$splitSalesExpr}), 0) AS total_sales")
             ->value('total_sales');
 
         $productCount = (int) $this->baseEcommerceProductSplitQuery($start, $nextMonthStart)
@@ -459,7 +466,7 @@ class StaffCommissionService
 
         $packageSales = (float) $this->baseEcommercePackageSplitQuery($start, $nextMonthStart)
             ->where('service_package_staff_splits.staff_id', $staffId)
-            ->selectRaw("COALESCE(SUM((service_package_staff_splits.split_sales_amount::numeric) * ({$this->servicePackageCommissionRateExpr()})), 0) AS total_sales")
+            ->selectRaw('COALESCE(SUM(service_package_staff_splits.split_sales_amount::numeric), 0) AS total_sales')
             ->value('total_sales');
 
         $packageCount = (int) $this->baseEcommercePackageSplitQuery($start, $nextMonthStart)
@@ -675,16 +682,6 @@ class StaffCommissionService
             ->pluck('total', 'booking_id')
             ->map(fn ($total) => round((float) $total, 2))
             ->all();
-    }
-
-    private function productCommissionRateExpr(): string
-    {
-        return '(CASE WHEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(order_item_staff_splits.commission_rate_snapshot, 0)::numeric END)';
-    }
-
-    private function servicePackageCommissionRateExpr(): string
-    {
-        return '(CASE WHEN COALESCE(service_package_staff_splits.service_commission_rate_snapshot, 0)::numeric > 1 THEN COALESCE(service_package_staff_splits.service_commission_rate_snapshot, 0)::numeric / 100 ELSE COALESCE(service_package_staff_splits.service_commission_rate_snapshot, 0)::numeric END)';
     }
 
     private function monthWindow(int $year, int $month): array
