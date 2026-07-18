@@ -20,6 +20,7 @@ export type PosRequestCenterProps = {
   disabledTitle?: string
   canReviewBookingRequests?: boolean
   onBookingRequestsChanged?: () => void | Promise<void>
+  permissions?: string[]
 }
 
 type BookingCancellationRequestRow = {
@@ -129,6 +130,8 @@ type ReturnRequestApiRow = {
   customer?: { name?: string | null; phone?: string | null; email?: string | null }
   timeline?: { created_at?: string | null }
 }
+
+type BalanceTopupRow = { id: number; transaction_no?: string | null; amount?: string | number | null; workspace_type?: string | null; payment_method_label?: string | null; reference_no?: string | null; status?: string | null; created_at?: string | null; submitted_at?: string | null; completed_at?: string | null; balance_before?: string | number | null; balance_after?: string | number | null; metadata?: Record<string, unknown> | null; customer?: { id?: number; name?: string | null; phone?: string | null; email?: string | null; wallet_balance?: string | number | null } | null }
 
 type BookingConfirmState =
   | { kind: 'cancellation'; row: BookingRequestRow; action: 'approve' | 'reject' }
@@ -582,11 +585,14 @@ export default function PosRequestCenter({
   disabledTitle,
   canReviewBookingRequests = true,
   onBookingRequestsChanged,
+  permissions = [],
 }: PosRequestCenterProps) {
   const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState<'booking' | 'ecommerce'>('booking')
+  const [tab, setTab] = useState<'booking' | 'ecommerce' | 'balance'>('booking')
   const [bookingRows, setBookingRows] = useState<BookingRequestRow[]>([])
   const [ecommerceRows, setEcommerceRows] = useState<EcommerceRequestRow[]>([])
+  const [balanceRows, setBalanceRows] = useState<BalanceTopupRow[]>([])
+  const [viewingBalanceTopup, setViewingBalanceTopup] = useState<BalanceTopupRow | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bookingConfirm, setBookingConfirm] = useState<BookingConfirmState>(null)
@@ -600,7 +606,8 @@ export default function PosRequestCenter({
   const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
   const loadGenerationRef = useRef(0)
 
-  const totalCount = bookingRows.length + ecommerceRows.length
+  const canVerifyTopups = permissions.includes('customer_wallet.verify_topup') || permissions.includes('customer_wallet.adjust')
+  const totalCount = bookingRows.length + ecommerceRows.length + balanceRows.length
 
   const load = useCallback(async () => {
     const generation = ++loadGenerationRef.current
@@ -611,6 +618,12 @@ export default function PosRequestCenter({
       const depositProofPromise = fetch('/api/proxy/pos/payment-links/pending-review', { cache: 'no-store' })
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null)
+      const balanceTopupPromise = fetch('/api/proxy/admin/customer-wallet/topups/pending?per_page=50', { cache: 'no-store' })
+        .then(async (res) => {
+          const payload = await res.json().catch(() => null)
+          if (!res.ok) throw new Error(String(payload?.message ?? `Failed to load balance top-ups (${res.status}).`))
+          return payload
+        })
 
       const [cancellationRes, ...remainingResponses] = await Promise.all([
         fetch('/api/proxy/pos/cancellation-requests?status=pending&per_page=50', { cache: 'no-store' }),
@@ -732,6 +745,17 @@ export default function PosRequestCenter({
 
       setBookingRows(nextBookingRows)
       setEcommerceRows(nextEcommerceRows)
+      const balancePayload = await balanceTopupPromise
+      const balanceEnvelope = balancePayload?.data?.topups ?? balancePayload?.data ?? balancePayload
+      const topups = Array.isArray(balanceEnvelope)
+        ? balanceEnvelope as BalanceTopupRow[]
+        : Array.isArray(balanceEnvelope?.data)
+          ? balanceEnvelope.data as BalanceTopupRow[]
+          : Array.isArray(balanceEnvelope?.topups)
+            ? balanceEnvelope.topups as BalanceTopupRow[]
+            : []
+      console.debug('[RequestCenter] Balance top-ups loaded', { endpoint: '/api/proxy/admin/customer-wallet/topups/pending?per_page=50', count: topups.length })
+      setBalanceRows(topups)
     } catch (err) {
       if (generation !== loadGenerationRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to load requests.')
@@ -748,11 +772,39 @@ export default function PosRequestCenter({
     void load()
   }, [open, load])
 
+
+
+  const reviewBalanceTopup = async (row: BalanceTopupRow, action: 'approve' | 'reject') => {
+    setError(null)
+    const body: Record<string, string> = {}
+    if (action === 'reject') {
+      const reason = window.prompt('Reject reason?')
+      if (!reason) return
+      body.remark = reason
+    } else {
+      body.remark = 'Approved from Request Center'
+    }
+
+    const res = await fetch(`/api/proxy/admin/customer-wallet/topups/${row.id}/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      setError(String(json?.message ?? `${action === 'approve' ? 'Approve' : 'Reject'} failed.`))
+      return
+    }
+    setViewingBalanceTopup(null)
+    await load()
+  }
+
   const summaryCards = useMemo(() => [
     { label: 'Booking requests', value: bookingRows.length, className: 'border-amber-200 bg-amber-50 text-amber-900' },
     { label: 'Ecommerce requests', value: ecommerceRows.length, className: 'border-blue-200 bg-blue-50 text-blue-900' },
+    { label: 'Balance Top Ups', value: balanceRows.length, className: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
     { label: 'Total pending', value: totalCount, className: 'border-slate-200 bg-slate-50 text-slate-900' },
-  ], [bookingRows.length, ecommerceRows.length, totalCount])
+  ], [bookingRows.length, ecommerceRows.length, balanceRows.length, totalCount])
 
   const openBookingRowDetail = (row: BookingRequestRow) => {
     if (row.bookingId <= 0 && row.orderId) {
@@ -867,7 +919,7 @@ export default function PosRequestCenter({
     }
   }
 
-  const detailStackOpen = viewingBooking !== null || viewingOrderId !== null || viewingReturnId !== null
+  const detailStackOpen = viewingBooking !== null || viewingOrderId !== null || viewingReturnId !== null || viewingBalanceTopup !== null
   const confirmStackOpen = bookingConfirm !== null
 
   return (
@@ -897,11 +949,11 @@ export default function PosRequestCenter({
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300/90">Request Center</p>
                   <h3 className="mt-1 text-xl font-bold sm:text-2xl">Pending Tasks</h3>
-                  <p className="mt-1 text-sm text-slate-300">Booking, ecommerce orders, and return/refund requests that need staff action.</p>
+                  <p className="mt-1 text-sm text-slate-300">Booking, ecommerce, returns, and customer balance top-up requests that need staff action.</p>
                 </div>
                 <button type="button" onClick={() => setOpen(false)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-2xl leading-none text-slate-200 hover:bg-white/10 hover:text-white" aria-label="Close Request Center">×</button>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 sm:mt-5 sm:gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:grid-cols-4 sm:gap-3">
                 {summaryCards.map((card) => (
                   <div key={card.label} className={`rounded-xl border px-3 py-2.5 shadow-sm sm:px-4 sm:py-3 ${card.className}`}>
                     <p className="truncate text-[10px] font-semibold uppercase tracking-wide opacity-75 sm:text-xs">{card.label}</p>
@@ -914,7 +966,7 @@ export default function PosRequestCenter({
             <div className="border-b border-slate-200 bg-white px-3 py-3 sm:px-6">
               <div className="flex items-center gap-2">
                 <div className="flex min-w-0 flex-1 gap-1 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:rounded-none sm:bg-transparent sm:p-0">
-                  {(['booking', 'ecommerce'] as const).map((key) => (
+                  {(['booking', 'ecommerce', 'balance'] as const).map((key) => (
                     <button
                       key={key}
                       type="button"
@@ -925,7 +977,7 @@ export default function PosRequestCenter({
                           : 'text-slate-500 hover:bg-white/70 hover:text-slate-800 sm:border-transparent sm:hover:bg-slate-50'
                       }`}
                     >
-                      {key === 'booking' ? `Booking (${bookingRows.length})` : `Ecommerce (${ecommerceRows.length})`}
+                      {key === 'booking' ? `Booking (${bookingRows.length})` : key === 'ecommerce' ? `Ecommerce (${ecommerceRows.length})` : `Balance Top Ups (${balanceRows.length})`}
                     </button>
                   ))}
                 </div>
@@ -946,6 +998,12 @@ export default function PosRequestCenter({
               {error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div> : null}
               {loading && totalCount === 0 ? (
                 <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">Loading requests…</div>
+              ) : tab === 'balance' ? (
+                balanceRows.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No pending balance top-ups.</div>
+                ) : (
+                  <div className="space-y-3">{balanceRows.map((row) => { const proof = row.metadata?.payment_proof_url; return <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><p className="font-bold text-slate-950">{row.transaction_no} · {formatMoney(row.amount)}</p><p className="mt-1 text-sm text-slate-600">{row.customer?.name || '-'} · {row.customer?.phone || row.customer?.email || '-'}</p><p className="mt-1 text-xs text-slate-500">{row.workspace_type || '-'} · {row.payment_method_label || '-'} · Submitted {fmtDateTime(row.submitted_at ?? row.created_at)}</p><p className="mt-1 text-xs font-semibold text-slate-700">Status: {row.status || '-'} · Payment proof: {proof ? 'Submitted' : 'Not uploaded'} · Current wallet balance {formatMoney(row.customer?.wallet_balance)}</p></div><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold" onClick={() => setViewingBalanceTopup(row)}>View Details</button>{canVerifyTopups ? <><button type="button" className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => void reviewBalanceTopup(row, 'approve')}>Approve</button><button type="button" className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => void reviewBalanceTopup(row, 'reject')}>Reject</button></> : null}</div></div></div> })}</div>
+                )
               ) : tab === 'booking' ? (
                 bookingRows.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No pending booking requests.</div>
@@ -1138,6 +1196,36 @@ export default function PosRequestCenter({
               <button type="button" disabled={submitting} onClick={() => void submitBookingReview()} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{submitting ? 'Submitting...' : 'Submit'}</button>
             </div>
           </div>
+        </div>
+      ) : null)}
+
+      {renderPosBodyModalPortal(
+        viewingBalanceTopup ? (
+        <div className="pos-body-stack-modal-detail z-[90] flex items-center justify-end bg-slate-950/50" role="dialog" aria-modal="true">
+          <aside className="flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="border-b border-slate-200 px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-600">Balance Top Up Request</p>
+                  <h3 className="mt-1 text-xl font-bold text-slate-950">{viewingBalanceTopup.transaction_no}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{viewingBalanceTopup.customer?.name || '-'} · {viewingBalanceTopup.customer?.phone || viewingBalanceTopup.customer?.email || '-'}</p>
+                </div>
+                <button type="button" onClick={() => setViewingBalanceTopup(null)} className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Close balance top-up detail">×</button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Customer</p><div className="mt-3 space-y-2 text-sm"><Info label="Name" value={viewingBalanceTopup.customer?.name ?? '—'} /><Info label="Phone" value={viewingBalanceTopup.customer?.phone ?? '—'} /><Info label="Email" value={viewingBalanceTopup.customer?.email ?? '—'} /><Info label="Current Balance" value={formatMoney(viewingBalanceTopup.customer?.wallet_balance)} /></div></section>
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Top-up</p><div className="mt-3 space-y-2 text-sm"><Info label="Amount" value={formatMoney(viewingBalanceTopup.amount)} /><Info label="Workspace" value={viewingBalanceTopup.workspace_type ?? '—'} /><Info label="Payment Method" value={viewingBalanceTopup.payment_method_label ?? '—'} /><Info label="Status" value={viewingBalanceTopup.status ?? '—'} /><Info label="Submitted At" value={fmtDateTime(viewingBalanceTopup.submitted_at ?? viewingBalanceTopup.created_at)} /></div></section>
+              </div>
+              <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Payment proof</p>{typeof viewingBalanceTopup.metadata?.payment_proof_url === 'string' ? <a href={viewingBalanceTopup.metadata.payment_proof_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Open uploaded proof</a> : <p className="mt-3 text-sm text-slate-500">No payment proof metadata found.</p>}<p className="mt-2 text-xs text-slate-500">Uploaded: {typeof viewingBalanceTopup.metadata?.payment_proof_uploaded_at === 'string' ? fmtDateTime(viewingBalanceTopup.metadata.payment_proof_uploaded_at) : '—'}</p>{typeof viewingBalanceTopup.metadata?.payment_proof_original_name === 'string' ? <p className="text-xs text-slate-500">File: {viewingBalanceTopup.metadata.payment_proof_original_name}</p> : null}</section>
+              <section className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950"><p className="font-bold">Balance preview</p><div className="mt-2 grid gap-2 sm:grid-cols-3"><Info label="Current Balance" value={formatMoney(viewingBalanceTopup.customer?.wallet_balance)} /><Info label="Top Up Amount" value={formatMoney(viewingBalanceTopup.amount)} /><Info label="After Approval" value={formatMoney(Number(viewingBalanceTopup.customer?.wallet_balance ?? 0) + Number(viewingBalanceTopup.amount ?? 0))} /></div></section>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              <button type="button" onClick={() => setViewingBalanceTopup(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">Close</button>
+              {canVerifyTopups ? <><button type="button" onClick={() => void reviewBalanceTopup(viewingBalanceTopup, 'reject')} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white">Reject Top Up</button><button type="button" onClick={() => void reviewBalanceTopup(viewingBalanceTopup, 'approve')} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white">Approve Top Up</button></> : null}
+            </div>
+          </aside>
         </div>
       ) : null)}
 

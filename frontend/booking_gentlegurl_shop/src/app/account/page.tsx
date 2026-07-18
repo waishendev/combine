@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import WalletBalanceSection from "@/components/account/WalletBalanceSection";
 import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
 import { normalizeInternationalPhone } from "@/lib/phone";
 import type {
@@ -406,6 +407,9 @@ export default function AccountPage() {
           {error}
         </div>
       )}
+
+
+      <WalletBalanceSection workspaceType="booking" />
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)]">
         <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">

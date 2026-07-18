@@ -14,6 +14,7 @@ export interface CustomerRowData {
   type?: string
   isActive: boolean
   availablePoints?: number
+  walletBalance?: number
   allowBookingWithoutDeposit?: boolean
   createdAt: string
   updatedAt: string
@@ -34,6 +35,8 @@ interface CustomerRowProps {
   onToggleDepositWaiver?: (customer: CustomerRowData) => void
   onAddPoints?: (customer: CustomerRowData) => void
   onReducePoints?: (customer: CustomerRowData) => void
+  onManageBalance?: (customer: CustomerRowData) => void
+  canManageBalance?: boolean
 }
 
 export default function CustomerRow({
@@ -47,10 +50,11 @@ export default function CustomerRow({
   onAssignVoucher,
   onEdit,
   onDelete,
-  onView,
   onToggleDepositWaiver,
   onAddPoints,
   onReducePoints,
+  onManageBalance,
+  canManageBalance = false,
 }: CustomerRowProps) {
   const { t } = useI18n()
   const requiredDeposit =
@@ -65,6 +69,7 @@ export default function CustomerRow({
       <td className="px-4 py-2 border border-gray-200 font-medium text-gray-900">
         {customer.availablePoints != null ? customer.availablePoints.toLocaleString() : '—'}
       </td>
+      <td className="px-4 py-2 border border-gray-200 font-semibold text-emerald-700">RM {(customer.walletBalance ?? 0).toFixed(2)}</td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={customer.isActive ? 'active' : 'inactive'}
@@ -75,7 +80,7 @@ export default function CustomerRow({
         {requiredDeposit == null ? '-' : requiredDeposit ? 'Yes' : 'No'}
       </td>
       <td className="px-4 py-2 border border-gray-200">{customer.createdAt}</td>
-      {(showActions || canView) && (
+      {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex flex-wrap items-center gap-2">
             {canView && (
@@ -106,6 +111,9 @@ export default function CustomerRow({
               >
                 <i className="fa-solid fa-ticket" />
               </button>
+            )}
+            {canManageBalance && (
+              <button type="button" className="inline-flex h-8 items-center gap-1 rounded bg-teal-600 px-2 text-xs font-semibold text-white hover:bg-teal-700" onClick={() => onManageBalance?.(customer)} title="Manage Balance" aria-label={`Manage Balance for ${customer.name}`}><i className="fa-solid fa-wallet" aria-hidden="true" /> Balance</button>
             )}
             {canUpdate && (
               <button

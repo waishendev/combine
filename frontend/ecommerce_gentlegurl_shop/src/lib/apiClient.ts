@@ -1315,3 +1315,44 @@ export async function mergeWishlist(payload?: { session_token?: string }) {
     { includeSessionToken: payload?.session_token === undefined },
   );
 }
+
+export type CustomerWalletTransaction = {
+  id: number; transaction_no: string; type: string; direction: "credit" | "debit" | string; amount: string;
+  balance_before: string; balance_after: string; workspace_type?: string | null; payment_method_label?: string | null;
+  reference_no?: string | null; source_id?: string | null; status: string; remark?: string | null; created_at: string; completed_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type CustomerWallet = { balance: string; wallet_balance: string; customer_id: number };
+
+export async function getCustomerWallet(): Promise<CustomerWallet> {
+  const response = await get<{ data?: CustomerWallet }>("/public/shop/customer/wallet");
+  return response.data ?? { balance: "0.00", wallet_balance: "0.00", customer_id: 0 };
+}
+
+export async function getCustomerWalletTransactions(status: string = "completed") {
+  const response = await get<{ data?: { transactions?: { data?: CustomerWalletTransaction[] } | CustomerWalletTransaction[] } }>(`/public/shop/customer/wallet/transactions?status=${encodeURIComponent(status)}`);
+  const tx = response.data?.transactions;
+  return Array.isArray(tx) ? tx : tx?.data ?? [];
+}
+
+export type CustomerWalletGateway = { key: string; name: string; config?: unknown; requires_proof?: boolean; gateway_key?: string; provider?: string };
+export type CustomerWalletBankAccount = { id: number; label?: string | null; bank_name: string; account_name: string; account_no?: string; account_number?: string; qr_image_url?: string | null; instructions?: string | null; is_default?: boolean };
+
+export async function getCustomerWalletPaymentGateways(workspaceType: string = "ecommerce") {
+  const response = await get<{ data?: { payment_gateways?: CustomerWalletGateway[]; bank_accounts?: CustomerWalletBankAccount[] } }>(`/public/shop/customer/wallet/payment-gateways?workspace_type=${encodeURIComponent(workspaceType)}`);
+  return { payment_gateways: response.data?.payment_gateways ?? [], bank_accounts: response.data?.bank_accounts ?? [] };
+}
+
+export async function createCustomerWalletTopup(payload: { amount: number | string; payment_gateway_key: string; payment_method_label?: string; workspace_type?: string; bank_account_id?: number }) {
+  return post<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>("/public/shop/customer/wallet/topups", { ...payload, workspace_type: payload.workspace_type ?? "ecommerce" });
+}
+
+
+export async function uploadCustomerWalletPaymentProof(topupId: number, file: File) {
+  const formData = new FormData();
+  formData.append("payment_proof", file);
+  return apiRequest<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>(`/public/shop/customer/wallet/topups/${topupId}/payment-proof`, "POST", {
+    body: formData,
+  });
+}

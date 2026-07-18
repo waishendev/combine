@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import BookingAppointmentDrawer from '@/components/booking/BookingAppointmentDrawer'
 import OrderViewPanel from '@/components/OrderViewPanel'
 import StatusBadge from '@/components/StatusBadge'
+import WalletTransactionDetailDrawer from '@/components/wallet/WalletTransactionDetailDrawer'
 
 type HistoryResponse = {
   data?: {
@@ -74,7 +75,34 @@ type HistoryPackage = {
   }>
 }
 
-type TabKey = 'all' | 'ecommerce' | 'booking'
+
+type WalletTx = {
+  id: number
+  transaction_no?: string | null
+  type?: string | null
+  direction?: string | null
+  amount?: string | number | null
+  balance_before?: string | number | null
+  balance_after?: string | number | null
+  workspace_type?: string | null
+  payment_method_label?: string | null
+  reference_no?: string | null
+  status?: string | null
+  remark?: string | null
+  created_at?: string | null
+  completed_at?: string | null
+  creator?: { name?: string | null } | null
+}
+
+type WalletSummary = {
+  wallet_balance?: string | number | null
+  total_deposited?: string | number | null
+  total_withdrawn?: string | number | null
+  pending_topups?: WalletTx[]
+  recent_transactions?: WalletTx[]
+}
+
+type TabKey = 'all' | 'ecommerce' | 'booking' | 'balance'
 
 type DrawerState =
   | { type: 'order'; orderId: number }
@@ -118,6 +146,7 @@ const tabs: Array<{ key: TabKey; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'ecommerce', label: 'Ecommerce' },
   { key: 'booking', label: 'Booking' },
+  { key: 'balance', label: 'Balance' },
 ]
 
 function formatDate(value?: string | null) {
@@ -234,6 +263,9 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
       net_amount: number
     }>
   >([])
+  const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null)
+  const [walletTx, setWalletTx] = useState<WalletTx[]>([])
+  const [walletDetailTx, setWalletDetailTx] = useState<WalletTx | null>(null)
   const [bookingTx, setBookingTx] = useState<
     Array<{
       order_id: number
@@ -282,7 +314,7 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
         qs.set('page', '1')
         qs.set('customer_id', customerId)
 
-        const [ecommerceResponse, bookingResponse, customerResponse] = await Promise.all([
+        const [ecommerceResponse, bookingResponse, customerResponse, walletResponse, walletTransactionsResponse] = await Promise.all([
           fetch(`/api/proxy/ecommerce/reports/sales/ecommerce?${qs.toString()}`, {
             cache: 'no-store',
             signal: controller.signal,
@@ -296,6 +328,8 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
             signal: controller.signal,
             headers: { Accept: 'application/json', 'Accept-Language': 'en' },
           }),
+          fetch(`/api/proxy/admin/customers/${customerId}/wallet`, { cache: 'no-store', signal: controller.signal, headers: { Accept: 'application/json' } }),
+          fetch(`/api/proxy/admin/customers/${customerId}/wallet/transactions?per_page=100`, { cache: 'no-store', signal: controller.signal, headers: { Accept: 'application/json' } }),
         ])
 
         if (!ecommerceResponse.ok || !bookingResponse.ok) {
@@ -331,6 +365,20 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
 
         setEcommerceTx(ecRows)
         setBookingTx(bkRows)
+
+        if (walletResponse.ok) {
+          const walletJson = await walletResponse.json().catch(() => null) as { data?: WalletSummary } | null
+          setWalletSummary(walletJson?.data ?? null)
+        } else {
+          setWalletSummary(null)
+        }
+        if (walletTransactionsResponse.ok) {
+          const walletTxJson = await walletTransactionsResponse.json().catch(() => null) as { data?: { transactions?: { data?: WalletTx[] } | WalletTx[] } } | null
+          const txPayload = walletTxJson?.data?.transactions
+          setWalletTx(Array.isArray(txPayload) ? txPayload : txPayload?.data ?? [])
+        } else {
+          setWalletTx([])
+        }
 
         const parseTime = (value?: string | null) => {
           if (!value) return null
@@ -429,9 +477,13 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
       { label: 'Total Spent', value: formatAmount(summary?.total_spent) },
       { label: 'Total Orders/Bookings', value: String(summary?.total_orders_bookings ?? 0) },
       { label: 'Last Activity Date', value: formatDate(summary?.last_activity_date) },
+      { label: 'Current Balance', value: formatAmount(Number(walletSummary?.wallet_balance ?? 0)) },
+      { label: 'Total Wallet Credits', value: formatAmount(Number(walletSummary?.total_deposited ?? 0)) },
+      { label: 'Total Wallet Debits', value: formatAmount(Number(walletSummary?.total_withdrawn ?? 0)) },
+      { label: 'Pending Top Up Amount', value: formatAmount((walletSummary?.pending_topups ?? []).reduce((sum, tx) => sum + Number(tx.amount ?? 0), 0)) },
     ]
     return cards
-  }, [customerDetail?.gender, customerDetail?.date_of_birth, customerDetail?.is_active, customerDetail?.loyalty_summary, customerDetail?.tier, payload?.customer_summary])
+  }, [customerDetail?.gender, customerDetail?.date_of_birth, customerDetail?.is_active, customerDetail?.loyalty_summary, customerDetail?.tier, payload?.customer_summary, walletSummary])
 
   const dateFrom = dateFromQuery
   const dateTo = dateToQuery
@@ -697,9 +749,35 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
               </div>
             </section>
           )}
+
+
+          {(activeTab === 'all' || activeTab === 'balance') && (
+            <section className="rounded-xl border border-slate-300 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
+                <h4 className="text-base font-semibold text-slate-900">Customer Balance History</h4>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{walletTx.length} records</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600"><tr><th className="px-4 py-3">Transaction No</th><th className="px-4 py-3">Date/time</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Workspace</th><th className="px-4 py-3">Payment Method</th><th className="px-4 py-3">Credit</th><th className="px-4 py-3">Debit</th><th className="px-4 py-3">Before</th><th className="px-4 py-3">After</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Processed By</th><th className="px-4 py-3">Reason</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3">Receipt</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">{walletTx.map((tx) => <tr key={tx.id}><td className="px-4 py-3 font-medium">{tx.transaction_no ?? '-'}</td><td className="px-4 py-3">{formatDate(tx.created_at)}</td><td className="px-4 py-3">{tx.type === 'topup' ? 'Customer Top Up' : tx.type === 'admin_credit' ? 'CRM Deposit' : tx.type === 'admin_debit' ? 'CRM Withdrawal' : tx.type ?? '-'}</td><td className="px-4 py-3">{tx.workspace_type ?? '-'}</td><td className="px-4 py-3">{tx.payment_method_label ?? '-'}</td><td className="px-4 py-3 text-emerald-700">{tx.direction === 'credit' ? `+${formatAmount(Number(tx.amount ?? 0))}` : '-'}</td><td className="px-4 py-3 text-rose-700">{tx.direction === 'debit' ? `-${formatAmount(Number(tx.amount ?? 0))}` : '-'}</td><td className="px-4 py-3">{formatAmount(Number(tx.balance_before ?? 0))}</td><td className="px-4 py-3">{formatAmount(Number(tx.balance_after ?? 0))}</td><td className="px-4 py-3">{tx.status === 'pending' ? 'Pending Verification' : tx.status ?? '-'}</td><td className="px-4 py-3">{tx.creator?.name ?? '-'}</td><td className="px-4 py-3">{tx.remark ?? '-'}</td><td className="px-4 py-3">{tx.reference_no ?? '-'}</td><td className="px-4 py-3"><button type="button" onClick={() => setWalletDetailTx(tx)} className="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">{tx.status === 'completed' ? 'Receipt' : 'Details'}</button></td></tr>)}{walletTx.length === 0 ? <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={14}>No balance transactions.</td></tr> : null}</tbody>
+                </table>
+              </div>
+            </section>
+          )}
           </div>
         </div>
       </div>
+
+
+      {walletDetailTx ? (
+        <WalletTransactionDetailDrawer
+          customerId={customerId}
+          transactionId={walletDetailTx.id}
+          fallback={walletDetailTx}
+          onClose={() => setWalletDetailTx(null)}
+        />
+      ) : null}
 
       {drawer?.type === 'order' ? (
         <OrderViewPanel orderId={drawer.orderId} onClose={() => setDrawer(null)} zIndexClassName="z-[70]" />

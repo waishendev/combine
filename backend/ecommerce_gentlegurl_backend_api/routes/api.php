@@ -50,6 +50,8 @@ use App\Http\Controllers\Ecommerce\ProductStockMovementController;
 use App\Http\Controllers\Ecommerce\ProductVariantBundleItemController;
 use App\Http\Controllers\Ecommerce\ReturnRequestController;
 use App\Http\Controllers\Ecommerce\PublicAccountController;
+use App\Http\Controllers\Ecommerce\PublicCustomerWalletController;
+use App\Http\Controllers\Ecommerce\AdminCustomerWalletController;
 use App\Http\Controllers\Ecommerce\VoucherController;
 use App\Http\Controllers\Ecommerce\VoucherAssignLogController;
 use App\Http\Controllers\Ecommerce\SalesReportController;
@@ -216,6 +218,12 @@ Route::prefix('/public/shop')->group(function () {
     Route::middleware(['api.session', 'auth:customer,sanctum'])->group(function () {
 
         Route::get('/account/overview', [PublicAccountController::class, 'overview']);
+        Route::get('/customer/wallet', [PublicCustomerWalletController::class, 'show']);
+        Route::get('/customer/wallet/transactions', [PublicCustomerWalletController::class, 'transactions']);
+        Route::get('/customer/wallet/payment-gateways', [PublicCustomerWalletController::class, 'gateways']);
+        Route::post('/customer/wallet/topups', [PublicCustomerWalletController::class, 'topup']);
+        Route::get('/customer/wallet/topups/{topup}', [PublicCustomerWalletController::class, 'topupShow']);
+        Route::post('/customer/wallet/topups/{topup}/payment-proof', [PublicCustomerWalletController::class, 'uploadProof']);
 
         // Order History
         Route::get('/bookings', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
@@ -388,6 +396,28 @@ $protectedRoutes = function () {
 
     Route::get('/customers/{customer}/history', [CustomerController::class, 'history'])
         ->middleware('permission:customers.view');
+    Route::get('/admin/customer-wallet/topups/pending', [AdminCustomerWalletController::class, 'pendingTopups'])
+        ->middleware('permission:customer_wallet.view_transactions|customer_wallet.verify_topup');
+    Route::get('/admin/customer-wallet/topups/{topup}', [AdminCustomerWalletController::class, 'pendingTopupShow'])
+        ->middleware('permission:customer_wallet.verify_topup');
+    Route::post('/admin/customer-wallet/topups/{topup}/approve', [AdminCustomerWalletController::class, 'approvePendingTopup'])
+        ->middleware('permission:customer_wallet.verify_topup');
+    Route::post('/admin/customer-wallet/topups/{topup}/reject', [AdminCustomerWalletController::class, 'rejectPendingTopup'])
+        ->middleware('permission:customer_wallet.verify_topup');
+    Route::get('/admin/customers/{customer}/wallet', [AdminCustomerWalletController::class, 'show'])
+        ->middleware('permission:customer_wallet.view');
+    Route::get('/admin/customers/{customer}/wallet/transactions', [AdminCustomerWalletController::class, 'transactions'])
+        ->middleware('permission:customer_wallet.view_transactions');
+    Route::get('/admin/customers/{customer}/wallet/transactions/{transaction}', [AdminCustomerWalletController::class, 'transactionDetail'])
+        ->middleware('permission:customer_wallet.view_transactions');
+    Route::post('/admin/customers/{customer}/wallet/adjustments', [AdminCustomerWalletController::class, 'adjust'])
+        ->middleware('permission:customer_wallet.adjust');
+    Route::post('/admin/customers/{customer}/wallet/transactions/{transaction}/approve', [AdminCustomerWalletController::class, 'approveTopup'])
+        ->middleware('permission:customer_wallet.adjust|customer_wallet.verify_topup');
+    Route::post('/admin/customers/{customer}/wallet/transactions/{transaction}/reject', [AdminCustomerWalletController::class, 'rejectTopup'])
+        ->middleware('permission:customer_wallet.adjust|customer_wallet.verify_topup');
+    Route::post('/admin/customers/{customer}/wallet/transactions/{transaction}/reverse', [AdminCustomerWalletController::class, 'reverse'])
+        ->middleware('permission:customer_wallet.reverse_transaction');
 
     Route::get('/customers/{customer}', [CustomerController::class, 'show'])
         ->middleware('permission:customers.view');

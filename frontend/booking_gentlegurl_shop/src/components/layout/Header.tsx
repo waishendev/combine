@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { getBookingCart, getServicePackages } from "@/lib/apiClient";
+import { getBookingCart, getCustomerWallet, getServicePackages } from "@/lib/apiClient";
 import { CartDrawer } from "@/components/booking/CartDrawer";
 
 const PACKAGES_PATH = "/services-packages";
@@ -19,6 +19,7 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hasPackages, setHasPackages] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   const packagesHref = PACKAGES_PATH;
@@ -37,6 +38,17 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
     setUserMenuOpen(false);
     router.push("/");
   };
+
+  useEffect(() => {
+    if (!user) { const id = window.setTimeout(() => setWalletBalance(null), 0); return () => window.clearTimeout(id); }
+    let cancelled = false;
+    const loadWallet = async () => {
+      try { const wallet = await getCustomerWallet(); if (!cancelled) setWalletBalance(wallet.wallet_balance ?? wallet.balance ?? "0.00"); } catch { if (!cancelled) setWalletBalance(null); }
+    };
+    void loadWallet();
+    window.addEventListener("walletBalanceUpdated", loadWallet);
+    return () => { cancelled = true; window.removeEventListener("walletBalanceUpdated", loadWallet); };
+  }, [user]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -185,7 +197,7 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                 <Link
                   href="/account"
                   className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
-                  aria-label="Account"
+                  aria-label={walletBalance !== null ? `Balance RM ${Number(walletBalance).toFixed(2)}` : "Account"}
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
@@ -241,7 +253,7 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                       className="h-full w-full object-cover"
                     />
                   </div>
-                  <span className="text-sm font-medium text-[var(--foreground)]/80">{user?.name}</span>
+                  <span className="text-left"><span className="block text-sm font-medium text-[var(--foreground)]/80">{user?.name}</span>{walletBalance !== null && <span className="block text-[11px] font-semibold text-[var(--accent-strong)]">Balance RM {Number(walletBalance).toFixed(2)}</span>}</span>
                   <svg
                     className={`h-3 w-3 transition-transform ${userMenuOpen ? "rotate-180" : ""}`}
                     fill="none"

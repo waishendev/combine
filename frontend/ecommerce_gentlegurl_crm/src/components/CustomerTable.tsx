@@ -86,6 +86,13 @@ export default function CustomerTable({
   const [isSavingDepositWaiver, setIsSavingDepositWaiver] = useState(false)
   const [adjustPointsTarget, setAdjustPointsTarget] = useState<CustomerRowData | null>(null)
   const [adjustPointsAction, setAdjustPointsAction] = useState<'add' | 'reduce'>('add')
+  const [balanceTarget, setBalanceTarget] = useState<CustomerRowData | null>(null)
+  const [balanceDirection, setBalanceDirection] = useState<'credit' | 'debit'>('credit')
+  const [balanceAmount, setBalanceAmount] = useState('')
+  const [balanceRemark, setBalanceRemark] = useState('')
+  const [balanceReference, setBalanceReference] = useState('')
+  const [balanceDetail, setBalanceDetail] = useState<{ total_deposited?: string; total_withdrawn?: string; recent_transactions?: Array<Record<string, unknown>>; pending_topups?: Array<Record<string, unknown>> } | null>(null)
+  const [balanceBusy, setBalanceBusy] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
@@ -99,8 +106,11 @@ export default function CustomerTable({
   const canDelete = permissions.includes('customers.delete')
   const canView = permissions.includes('customers.view')
   const canViewPointsLogs = permissions.includes('customers.points_adjustment_logs.view')
+  const canManageBalance = permissions.includes('customer_wallet.adjust')
+  const canVerifyWalletTopup = permissions.includes('customer_wallet.verify_topup')
+  const canViewWallet = permissions.includes('customer_wallet.view')
   const canAssignVoucher = permissions.includes('ecommerce.vouchers.assign')
-  const showActions = canUpdate || canDelete || canView || canAssignVoucher
+  const showActions = canUpdate || canDelete || canView || canAssignVoucher || canViewWallet
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -389,7 +399,7 @@ export default function CustomerTable({
     }
   }
 
-  const colCount = showActions || canView ? 9 : 8
+  const colCount = showActions ? 10 : 9
 
   const totalPages = meta.last_page || 1
 
@@ -557,6 +567,29 @@ export default function CustomerTable({
     }
   }
 
+  const loadBalanceDetail = async (customer: CustomerRowData) => {
+    setBalanceBusy(true)
+    try {
+      const res = await fetch(`/api/proxy/admin/customers/${customer.id}/wallet`, { cache: 'no-store', headers: { Accept: 'application/json' } })
+      const json = await res.json().catch(() => null)
+      if (res.ok) {
+        setBalanceDetail(json?.data ?? null)
+      } else {
+        setBalanceDetail(null)
+      }
+    } finally {
+      setBalanceBusy(false)
+    }
+  }
+
+  const refreshBalanceAfterAction = async (customerId: number, nextBalance?: number) => {
+    if (typeof nextBalance === 'number' && Number.isFinite(nextBalance)) {
+      setRows((prev) => prev.map((row) => row.id === customerId ? { ...row, walletBalance: nextBalance } : row))
+    }
+    const customer = rows.find((row) => row.id === customerId)
+    if (customer) await loadBalanceDetail({ ...customer, walletBalance: nextBalance ?? customer.walletBalance })
+  }
+
   const handlePointsAdjusted = (customerId: number, availablePoints: number) => {
     setRows((prev) =>
       prev.map((row) =>
@@ -583,6 +616,58 @@ export default function CustomerTable({
           onClose={() => setIsFilterModalOpen(false)}
           disabled={loading}
         />
+      )}
+
+
+      {balanceTarget && (
+        <CrmFormModalShell title="Manage Balance" onClose={() => { setBalanceTarget(null); setBalanceDetail(null) }} size="xl">
+          <div className="space-y-5 text-sm">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="rounded-lg bg-slate-50 p-3 md:col-span-2">
+                <div className="font-semibold">{balanceTarget.name}</div>
+                <div className="text-gray-600">{balanceTarget.email} · {balanceTarget.phone}</div>
+              </div>
+              <div className="rounded-lg bg-emerald-50 p-3"><div className="text-xs uppercase text-emerald-700">Current Balance</div><div className="text-xl font-bold text-emerald-800">RM {(balanceTarget.walletBalance ?? 0).toFixed(2)}</div></div>
+              <div className="rounded-lg bg-blue-50 p-3"><div className="text-xs uppercase text-blue-700">Total Deposited</div><div className="text-xl font-bold text-blue-800">RM {Number(balanceDetail?.total_deposited ?? 0).toFixed(2)}</div><div className="mt-1 text-xs uppercase text-rose-700">Total Withdrawn: RM {Number(balanceDetail?.total_withdrawn ?? 0).toFixed(2)}</div></div>
+            </div>
+            {canManageBalance ? (
+              <>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setBalanceDirection('credit')} className={`rounded px-4 py-2 font-semibold ${balanceDirection === 'credit' ? 'bg-emerald-600 text-white' : 'bg-gray-100'}`}>Deposit</button>
+                  <button type="button" onClick={() => setBalanceDirection('debit')} className={`rounded px-4 py-2 font-semibold ${balanceDirection === 'debit' ? 'bg-rose-600 text-white' : 'bg-gray-100'}`}>Withdraw</button>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <input value={balanceAmount} onChange={(event) => setBalanceAmount(event.target.value)} placeholder="Amount" className="w-full rounded border px-3 py-2" />
+                  <input value={balanceReference} onChange={(event) => setBalanceReference(event.target.value)} placeholder="Reference optional" className="w-full rounded border px-3 py-2" />
+                  <textarea value={balanceRemark} onChange={(event) => setBalanceRemark(event.target.value)} placeholder="Reason / Remark required" className="w-full rounded border px-3 py-2 md:col-span-3" />
+                </div>
+                <div className="rounded bg-amber-50 p-3 text-amber-900">Current Balance RM {(balanceTarget.walletBalance ?? 0).toFixed(2)} · {balanceDirection === 'credit' ? 'Deposit +' : 'Withdraw -'}RM {Number(balanceAmount || 0).toFixed(2)} · New Balance RM {((balanceTarget.walletBalance ?? 0) + (balanceDirection === 'credit' ? Number(balanceAmount || 0) : -Number(balanceAmount || 0))).toFixed(2)}</div>
+                <button type="button" disabled={balanceBusy} className={`w-full rounded px-4 py-2 font-semibold text-white disabled:opacity-50 ${balanceDirection === 'credit' ? 'bg-emerald-600' : 'bg-rose-600'}`} onClick={async () => {
+                  if (balanceDirection === 'debit' && Number(balanceAmount || 0) > (balanceTarget.walletBalance ?? 0)) { window.alert('Withdraw amount cannot exceed current balance.'); return }
+                  setBalanceBusy(true)
+                  try {
+                    const res = await fetch(`/api/proxy/admin/customers/${balanceTarget.id}/wallet/adjustments`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ direction: balanceDirection, amount: balanceAmount, remark: balanceRemark, reference_no: balanceReference || undefined }) })
+                    const json = await res.json().catch(() => null)
+                    if (!res.ok) { window.alert(json?.message ?? `${balanceDirection === 'credit' ? 'Deposit' : 'Withdraw'} failed.`); return }
+                    const next = Number(json?.data?.wallet_balance ?? 0)
+                    await refreshBalanceAfterAction(balanceTarget.id, next)
+                    setBalanceAmount(''); setBalanceRemark(''); setBalanceReference(''); setToastMessage(balanceDirection === 'credit' ? 'Deposit completed.' : 'Withdraw completed.'); setTimeout(() => setToastMessage(null), 2500)
+                  } finally { setBalanceBusy(false) }
+                }}>{balanceDirection === 'credit' ? 'Confirm Deposit' : 'Confirm Withdraw'}</button>
+              </>
+            ) : <p className="rounded border border-dashed border-slate-300 p-4 text-gray-500">You can view this wallet, but you do not have permission to Deposit or Withdraw.</p>}
+
+            <div>
+              <h3 className="mb-2 font-semibold">Pending Top Ups</h3>
+              {(balanceDetail?.pending_topups ?? []).length === 0 ? <p className="rounded border border-dashed p-4 text-gray-500">No pending top-ups for this customer.</p> : <div className="space-y-2">{(balanceDetail?.pending_topups ?? []).map((tx) => <div key={String(tx.id)} className="rounded border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="font-semibold">{String(tx.transaction_no)} · RM {Number(tx.amount ?? 0).toFixed(2)}</div><div className="text-xs text-gray-500">{String(tx.workspace_type ?? '-')} · {String(tx.payment_method_label ?? '-')} · {String(tx.created_at ?? '-')}</div>{typeof tx.metadata === 'object' && tx.metadata && 'payment_proof_url' in tx.metadata ? <a className="text-xs text-blue-600 underline" href={String((tx.metadata as { payment_proof_url?: unknown }).payment_proof_url)} target="_blank">View payment proof</a> : null}</div>{canVerifyWalletTopup ? <div className="flex gap-2"><button type="button" className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white" onClick={async () => { const res = await fetch(`/api/proxy/admin/customer-wallet/topups/${tx.id}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ remark: 'Approved from Manage Balance' }) }); const json = await res.json().catch(() => null); if (!res.ok) { window.alert(json?.message ?? 'Approve failed.'); return } await refreshBalanceAfterAction(balanceTarget.id, Number(json?.data?.wallet_balance ?? balanceTarget.walletBalance ?? 0)) }}>Approve</button><button type="button" className="rounded bg-rose-600 px-3 py-1 text-xs font-semibold text-white" onClick={async () => { const reason = window.prompt('Reject reason?'); if (!reason) return; const res = await fetch(`/api/proxy/admin/customer-wallet/topups/${tx.id}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ remark: reason }) }); const json = await res.json().catch(() => null); if (!res.ok) { window.alert(json?.message ?? 'Reject failed.'); return } await refreshBalanceAfterAction(balanceTarget.id) }}>Reject</button></div> : <span className="text-xs text-gray-500">Seed customer_wallet.verify_topup to approve/reject.</span>}</div></div>)}</div>}
+            </div>
+
+            <div>
+              <h3 className="mb-2 font-semibold">Wallet Transactions</h3>
+              <div className="overflow-x-auto"><table className="min-w-full text-xs"><thead><tr className="bg-slate-100 text-left"><th className="p-2">Date/time</th><th>Transaction No</th><th>Type</th><th>Deposit</th><th>Withdraw</th><th>Balance After</th><th>Created By</th><th>Reason</th><th>Reference</th><th>Status</th><th>Receipt</th><th>Actions</th></tr></thead><tbody>{(balanceDetail?.recent_transactions ?? []).map((tx) => <tr key={String(tx.id)} className="border-t"><td className="p-2">{String(tx.created_at ?? '-')}</td><td>{String(tx.transaction_no ?? '-')}</td><td>{String(tx.type ?? '-')}</td><td className="text-emerald-700">{tx.direction === 'credit' ? `RM ${Number(tx.amount ?? 0).toFixed(2)}` : '-'}</td><td className="text-rose-700">{tx.direction === 'debit' ? `RM ${Number(tx.amount ?? 0).toFixed(2)}` : '-'}</td><td>RM {Number(tx.balance_after ?? 0).toFixed(2)}</td><td>{typeof tx.creator === 'object' && tx.creator && 'name' in tx.creator ? String((tx.creator as { name?: unknown }).name) : '-'}</td><td>{String(tx.remark ?? '-')}</td><td>{String(tx.reference_no ?? '-')}</td><td>{String(tx.status ?? '-')}</td><td>{String(tx.status) === 'completed' ? 'Receipt' : 'Details'}</td><td>{permissions.includes('customer_wallet.reverse_transaction') && String(tx.status) === 'completed' ? <button type="button" className="text-rose-600 underline" onClick={async () => { const reason = window.prompt('Reversal reason?'); if (!reason) return; const res = await fetch(`/api/proxy/admin/customers/${balanceTarget.id}/wallet/transactions/${tx.id}/reverse`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ remark: reason }) }); const json = await res.json().catch(() => null); if (!res.ok) { window.alert(json?.message ?? 'Reverse failed.'); return } await refreshBalanceAfterAction(balanceTarget.id, Number(json?.data?.wallet_balance ?? balanceTarget.walletBalance ?? 0)) }}>Reverse</button> : '-'}</td></tr>)}</tbody></table></div>
+            </div>
+          </div>
+        </CrmFormModalShell>
       )}
 
       {isCreateModalOpen && (
@@ -735,6 +820,7 @@ export default function CustomerTable({
                   { key: 'phone', label: 'Phone' },
                   { key: 'tier', label: 'Tier' },
                   { key: 'availablePoints', label: 'Member Points' },
+                  { key: 'walletBalance', label: 'Balance' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'allowBookingWithoutDeposit', label: 'Required Deposit' },
                   { key: 'createdAt', label: t('common.createdAt') },
@@ -757,7 +843,7 @@ export default function CustomerTable({
                   </button>
                 </th>
               ))}
-              {(showActions || canView) && (
+              {showActions && (
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                   {t('common.actions')}
                 </th>
@@ -777,6 +863,14 @@ export default function CustomerTable({
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   canView={canView}
+                  canManageBalance={canManageBalance || canViewWallet}
+                  onManageBalance={() => {
+                    setBalanceTarget(customer)
+                    void loadBalanceDetail(customer)
+                    setBalanceAmount('')
+                    setBalanceRemark('')
+                    setBalanceReference('')
+                  }}
                   onAssignVoucher={() => {
                     if (canAssignVoucher) {
                       setAssigningCustomer(customer)

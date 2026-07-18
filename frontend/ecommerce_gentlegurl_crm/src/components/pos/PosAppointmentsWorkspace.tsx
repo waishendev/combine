@@ -4837,6 +4837,7 @@ export default function PosAppointmentsWorkspace({
                   Create Appointment
                 </button>
                 <PosRequestCenter
+                  permissions={permissions}
                   disabled={cashShiftActionDisabled}
                   disabledTitle={cashShiftActionTitle}
                   canReviewBookingRequests={canReviewCancellationRequests}
