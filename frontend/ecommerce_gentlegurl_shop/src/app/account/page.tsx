@@ -424,7 +424,7 @@ export default function AccountPage() {
       )}
 
 
-      <WalletBalanceSection workspaceType="ecommerce" />
+      {/* <WalletBalanceSection workspaceType="ecommerce" /> */}
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)]">
         <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
