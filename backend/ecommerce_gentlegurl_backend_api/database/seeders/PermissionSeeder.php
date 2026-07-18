@@ -59,6 +59,7 @@ class PermissionSeeder extends Seeder
             'service-packages' => 'Booking',
             'customer-service-packages' => 'Booking',
             'activity-logs' => 'Activity Logs',
+            'appointment_activity_logs' => 'Appointment Activity Logs',
         ];
 
         $groupModels = [];
@@ -118,6 +119,7 @@ class PermissionSeeder extends Seeder
             'service-packages' => ['view', 'create', 'update', 'delete'],
             'customer-service-packages' => ['view', 'update'],
             'activity-logs' => ['view'],
+            'appointment_activity_logs' => ['view'],
             'booking' => [
                 'appointments.view',
                 'appointments.update_status',

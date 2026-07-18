@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             CustomerSuperAdminSeeder::class,
             SuperAdminRoleSeeder::class,
             SalesReportWithVoidPermissionSeeder::class,
+            AppointmentActivityLogPermissionSeeder::class,
             SuperAdminSeeder::class,
             StaffPermissionSeeder::class,
 

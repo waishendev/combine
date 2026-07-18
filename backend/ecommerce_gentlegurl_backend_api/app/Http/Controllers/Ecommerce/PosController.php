@@ -48,6 +48,7 @@ use App\Services\Booking\BookingOrderConfirmationService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\SettingService;
+use App\Services\AppointmentActivityLogService;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
@@ -85,6 +86,7 @@ class PosController extends Controller
         protected BookingCancellationService $bookingCancellationService,
         protected BookingOrderConfirmationService $bookingOrderConfirmationService,
         protected BookingAddonQuantityService $addonQuantityService,
+        protected AppointmentActivityLogService $appointmentActivityLogService,
     ) {}
 
     public function memberSearch(Request $request)
@@ -647,6 +649,10 @@ class PosController extends Controller
             contactPhone: $contactPhone,
         ));
 
+        $this->appointmentActivityLogService->log($booking, 'appointment.email_queued', $request->user(), [
+            'recipient_email' => $validated['email'],
+        ]);
+
         return $this->respond(['ok' => true]);
     }
 
@@ -670,8 +676,11 @@ class PosController extends Controller
             return $this->respondError($e->getMessage() ?: __('Unable to apply package to this appointment.'), 422);
         }
 
+        $freshBooking = $booking->fresh(['customer', 'service', 'staff']);
+        $this->appointmentActivityLogService->log($freshBooking, 'appointment.package_applied', $request->user());
+
         return $this->respond([
-            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+            'appointment' => $this->resolveAppointmentSnapshot($freshBooking),
         ], __('Package reserved successfully for appointment.'));
     }
 
@@ -1227,8 +1236,13 @@ class PosController extends Controller
             return $this->respondError($e->getMessage() ?: __('Unable to apply packages.'), 422);
         }
 
+        $freshBooking = $booking->fresh(['customer', 'service', 'staff']);
+        $this->appointmentActivityLogService->log($freshBooking, 'appointment.package_applied', $request->user(), [
+            'applied_count' => $applications->count(),
+        ]);
+
         return $this->respond([
-            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+            'appointment' => $this->resolveAppointmentSnapshot($freshBooking),
         ], __('Packages applied successfully.'));
     }
 
@@ -1631,6 +1645,11 @@ class PosController extends Controller
 
         $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
 
+        $this->appointmentActivityLogService->log($booking, 'appointment.checked_out', $request->user(), [
+            'order_id' => (int) $order->id,
+            'order_number' => (string) $order->order_number,
+        ]);
+
         return $this->respond([
             'order_id' => (int) $order->id,
             'order_number' => (string) $order->order_number,
@@ -1730,6 +1749,10 @@ class PosController extends Controller
 
         $booking = $booking->fresh(['service', 'customer']);
         $freshSummary = $this->resolveAppointmentFinancialSummary($booking);
+        $this->appointmentActivityLogService->log($booking, 'appointment.checked_out', $request->user(), [
+            'order_id' => (int) $order->id,
+            'order_number' => (string) $order->order_number,
+        ]);
 
         return $this->respond([
             'order_id' => (int) $order->id,
@@ -2731,7 +2754,7 @@ class PosController extends Controller
         return $this->respond(['questions' => $questions]);
     }
 
-    public function markAppointmentCompleted(int $id)
+    public function markAppointmentCompleted(Request $request, int $id)
     {
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
@@ -2764,9 +2787,11 @@ class PosController extends Controller
         });
 
         $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
+        $freshBooking = $booking->fresh(['customer', 'service', 'staff']);
+        $this->appointmentActivityLogService->log($freshBooking, 'appointment.completed', $request->user());
 
         return $this->respond([
-            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+            'appointment' => $this->resolveAppointmentSnapshot($freshBooking),
         ], __('Appointment marked as completed.'));
     }
 
@@ -2785,7 +2810,7 @@ class PosController extends Controller
         }
 
         if ($targetStatus === 'COMPLETED') {
-            return $this->markAppointmentCompleted($id);
+            return $this->markAppointmentCompleted($request, $id);
         }
 
         DB::transaction(function () use ($booking, $targetStatus, $voidDeposit, $request) {
@@ -2814,9 +2839,29 @@ class PosController extends Controller
             $message = __('Appointment status updated and deposit receipt(s) voided.');
         }
 
+        $freshBooking = $booking->fresh(['customer', 'service', 'staff']);
+        $activityAction = $this->appointmentActivityActionForStatus($targetStatus);
+        if ($activityAction) {
+            $this->appointmentActivityLogService->log($freshBooking, $activityAction, $request->user(), [
+                'previous_status' => 'CONFIRMED',
+                'new_status' => $targetStatus,
+            ]);
+        }
+
         return $this->respond([
-            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+            'appointment' => $this->resolveAppointmentSnapshot($freshBooking),
         ], $message);
+    }
+
+    private function appointmentActivityActionForStatus(string $status): ?string
+    {
+        return match ($status) {
+            'COMPLETED' => 'appointment.completed',
+            'CANCELLED' => 'appointment.cancelled',
+            'LATE_CANCELLATION' => 'appointment.late_cancelled',
+            'NO_SHOW' => 'appointment.no_show',
+            default => null,
+        };
     }
 
     public function approveHoldAppointment(Request $request, int $id)
@@ -2875,7 +2920,6 @@ class PosController extends Controller
         } catch (\RuntimeException $exception) {
             return $this->respondError(__($exception->getMessage()), 422);
         }
-
         $this->dispatchBookingConfirmationEmails($confirmedBookingIds);
 
         return $this->respond([
@@ -3151,7 +3195,13 @@ class PosController extends Controller
             'created_at' => now(),
         ]);
 
-        $this->sendBookingRescheduledEmail($booking->fresh(['service', 'staff', 'customer']), $oldStart, $oldEnd);
+        $freshBooking = $booking->fresh(['service', 'staff', 'customer']);
+        $this->appointmentActivityLogService->log($freshBooking, 'appointment.rescheduled', $request->user(), [
+            'old_start_at' => $oldStart?->toDateTimeString(),
+            'new_start_at' => $newStart->toDateTimeString(),
+        ]);
+
+        $this->sendBookingRescheduledEmail($freshBooking, $oldStart, $oldEnd);
 
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
@@ -8028,6 +8078,7 @@ class PosController extends Controller
             $orderPaymentService->handlePaid($order);
 
             $receiptUrl = $this->buildReceiptUrl($order, $request);
+            $checkedOutBookings = $cart->appointmentSettlementItems->pluck('booking')->filter()->values();
 
             $cart->items()->delete();
             $cart->serviceItems()->delete();
@@ -8035,8 +8086,15 @@ class PosController extends Controller
             $cart->appointmentSettlementItems()->delete();
             $this->clearVoucherFromCart($cart);
 
-            return [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds];
+            return [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds, $checkedOutBookings];
         });
+
+        foreach ($checkedOutBookings as $checkedOutBooking) {
+            $this->appointmentActivityLogService->log($checkedOutBooking, 'appointment.checked_out', $request->user(), [
+                'order_id' => (int) $order->id,
+                'order_number' => (string) $order->order_number,
+            ]);
+        }
 
         $this->dispatchBookingConfirmationEmails($confirmedBookingIds);
 
