@@ -3036,9 +3036,7 @@ class PosController extends Controller
             return $this->respondError(__('Only CONFIRMED appointment can be rescheduled from POS.'), 422);
         }
 
-        if (! $booking->start_at || now()->greaterThanOrEqualTo($booking->start_at)) {
-            return $this->respondError(__('Past bookings cannot be rescheduled.'), 422);
-        }
+        // Past start time is allowed from POS while still CONFIRMED (not yet Mark as Completed).
 
         $targetStaffId = isset($validated['staff_id']) && $validated['staff_id']
             ? (int) $validated['staff_id']
@@ -3128,6 +3126,9 @@ class PosController extends Controller
             ...$scheduleOverride,
         ]);
         $this->recordScheduleOverrideAudit($booking->fresh(), $scheduleOverride, $request);
+
+        // Keep deposit / booking staff attribution aligned with the reschedule Assigned Staff.
+        $this->syncRescheduleDepositStaffAttribution($booking->fresh(['service']), $targetStaffId);
 
         BookingLog::create([
             'booking_id' => $booking->id,
@@ -12066,6 +12067,180 @@ class PosController extends Controller
             $booking->staff_id = (int) ($rows[0]['staff_id'] ?? $booking->staff_id);
             $booking->save();
         }
+    }
+
+    /**
+     * After POS reschedule, keep settlement + deposit attribution aligned with the new Assigned Staff:
+     * booking_service_staff_splits, addon_items_json staff_splits, deposit order_item_staff_splits,
+     * and order_service_items.assigned_staff_id.
+     */
+    protected function syncRescheduleDepositStaffAttribution(Booking $booking, int $targetStaffId): void
+    {
+        if ($targetStaffId <= 0) {
+            return;
+        }
+
+        $commissionRate = (float) (Staff::query()->where('id', $targetStaffId)->value('service_commission_rate') ?? 0);
+        $targetSplits = [[
+            'staff_id' => $targetStaffId,
+            'share_percent' => 100,
+            'share_amount' => null,
+            'split_mode' => StaffSplitNormalizer::MODE_PERCENT,
+        ]];
+
+        $splitsMatchTarget = static function ($splits) use ($targetStaffId): bool {
+            $rows = collect($splits ?? [])
+                ->filter(fn ($split) => is_array($split))
+                ->map(fn (array $split) => [
+                    'staff_id' => (int) ($split['staff_id'] ?? 0),
+                    'share_percent' => (int) ($split['share_percent'] ?? 0),
+                ])
+                ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+                ->values();
+
+            return $rows->count() === 1
+                && (int) ($rows->first()['staff_id'] ?? 0) === $targetStaffId
+                && (int) ($rows->first()['share_percent'] ?? 0) === 100;
+        };
+
+        $bookingSplits = DB::table('booking_service_staff_splits')
+            ->where('booking_id', (int) $booking->id)
+            ->orderBy('id')
+            ->get(['staff_id', 'split_percent']);
+
+        $bookingSplitsMatch = $bookingSplits->count() === 1
+            && (int) ($bookingSplits->first()->staff_id ?? 0) === $targetStaffId
+            && (int) ($bookingSplits->first()->split_percent ?? 0) === 100;
+
+        if (! $bookingSplitsMatch) {
+            $this->persistBookingStaffSplits($booking, [[
+                'staff_id' => $targetStaffId,
+                'share_percent' => 100,
+                'share_amount' => null,
+                'split_mode' => StaffSplitNormalizer::MODE_PERCENT,
+                'service_commission_rate_snapshot' => $commissionRate,
+            ]]);
+        }
+
+        // Keep Appointment Settlement line staff (addon_items_json) in sync with Assigned Staff.
+        $settlementItems = collect($booking->addon_items_json ?? []);
+        if ($settlementItems->isNotEmpty()) {
+            $rewritten = $settlementItems
+                ->map(function ($item) use ($targetSplits, $splitsMatchTarget) {
+                    if (! is_array($item)) {
+                        return $item;
+                    }
+
+                    if (array_key_exists('staff_splits', $item) || strtolower((string) ($item['item_kind'] ?? '')) === 'main_service') {
+                        if (! $splitsMatchTarget($item['staff_splits'] ?? [])) {
+                            $item['staff_splits'] = $targetSplits;
+                        }
+                    }
+
+                    if (! empty($item['addon_items']) && is_array($item['addon_items'])) {
+                        $item['addon_items'] = collect($item['addon_items'])
+                            ->map(function ($addon) use ($targetSplits, $splitsMatchTarget) {
+                                if (! is_array($addon)) {
+                                    return $addon;
+                                }
+                                if (array_key_exists('staff_splits', $addon) && ! $splitsMatchTarget($addon['staff_splits'] ?? [])) {
+                                    $addon['staff_splits'] = $targetSplits;
+                                }
+
+                                return $addon;
+                            })
+                            ->values()
+                            ->all();
+                    }
+
+                    return $item;
+                })
+                ->values()
+                ->all();
+
+            if (json_encode($rewritten) !== json_encode($settlementItems->values()->all())) {
+                $booking->addon_items_json = $rewritten;
+                $booking->save();
+            }
+        }
+
+        $depositItems = OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where(function ($query) {
+                $query->where('line_type', 'booking_deposit')
+                    ->orWhere(function ($addonQuery) {
+                        $addonQuery->where('line_type', 'booking_addon')
+                            ->where('variant_name_snapshot', 'Booking Add-on Deposit');
+                    });
+            })
+            ->whereHas('order', fn ($query) => $query->whereNotIn('status', ['voided', 'cancelled', 'draft']))
+            ->get();
+
+        foreach ($depositItems as $depositItem) {
+            $amountBasis = round(max(0, (float) (
+                $depositItem->effective_line_total
+                ?? $depositItem->line_total_after_discount
+                ?? $depositItem->line_total
+                ?? 0
+            )), 2);
+            if ($amountBasis <= 0.0001) {
+                continue;
+            }
+
+            $existingSplits = DB::table('order_item_staff_splits')
+                ->where('order_item_id', (int) $depositItem->id)
+                ->orderBy('id')
+                ->get(['staff_id', 'share_percent']);
+
+            // No explicit splits: sales reports fall back to booking_service_staff_splits (already synced above).
+            if ($existingSplits->isEmpty()) {
+                continue;
+            }
+
+            $splitsMatch = $existingSplits->count() === 1
+                && (int) ($existingSplits->first()->staff_id ?? 0) === $targetStaffId
+                && (int) ($existingSplits->first()->share_percent ?? 0) === 100;
+
+            if ($splitsMatch) {
+                continue;
+            }
+
+            $lineType = (string) ($depositItem->line_type ?? '') === 'booking_addon'
+                ? 'booking_addon'
+                : 'booking_deposit';
+
+            DB::table('order_item_staff_splits')
+                ->where('order_item_id', (int) $depositItem->id)
+                ->delete();
+
+            OrderItemStaffSplit::query()->create([
+                'order_item_id' => (int) $depositItem->id,
+                'line_type' => $lineType,
+                'line_ref_id' => (string) ($depositItem->booking_service_id ?: $booking->service_id ?: ''),
+                'staff_id' => $targetStaffId,
+                'share_percent' => 100,
+                'share_amount' => null,
+                'split_mode' => StaffSplitNormalizer::MODE_PERCENT,
+                'amount_basis' => $amountBasis,
+                'commission_rate_snapshot' => $commissionRate,
+                'snapshot' => [
+                    'booking_id' => (int) $booking->id,
+                    'booking_service_id' => (int) ($depositItem->booking_service_id ?? $booking->service_id ?? 0),
+                    'source' => 'pos_reschedule_deposit_staff_sync',
+                ],
+            ]);
+        }
+
+        OrderServiceItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where(function ($query) use ($targetStaffId) {
+                $query->whereNull('assigned_staff_id')
+                    ->orWhere('assigned_staff_id', '!=', $targetStaffId);
+            })
+            ->update([
+                'assigned_staff_id' => $targetStaffId,
+                'updated_at' => now(),
+            ]);
     }
 
     /**

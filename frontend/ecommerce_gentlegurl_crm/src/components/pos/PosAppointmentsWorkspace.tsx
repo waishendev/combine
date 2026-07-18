@@ -3778,8 +3778,17 @@ export default function PosAppointmentsWorkspace({
       setAppointmentReschedulePolicyWarnings(warnings)
       showMsg(warnings.length ? 'Appointment rescheduled with override warning.' : 'Appointment rescheduled.', 'success')
       setAppointmentRescheduleOpen(false)
+      setEditSettlementOpen(false)
+      setAppointmentLineStaffSplits((prev) => {
+        const prefix = `appointment-settlement:${appointmentDetail.id}:`
+        const next: typeof prev = {}
+        for (const [key, value] of Object.entries(prev)) {
+          if (!key.startsWith(prefix)) next[key] = value
+        }
+        return next
+      })
       await fetchAppointments({ silent: true })
-      await refreshOpenedAppointmentDetail()
+      await openAppointmentDetail(appointmentDetail.id)
     } finally {
       setAppointmentRescheduleSubmitting(false)
     }
@@ -3791,7 +3800,7 @@ export default function PosAppointmentsWorkspace({
     appointmentRescheduleSlotValue,
     appointmentRescheduleStaffId,
     fetchAppointments,
-    refreshOpenedAppointmentDetail,
+    openAppointmentDetail,
     showMsg,
   ])
 
