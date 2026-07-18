@@ -75,6 +75,46 @@ class AdminCustomerWalletController extends Controller
         ]]);
     }
 
+
+    public function transactionDetail(Customer $customer, CustomerWalletTransaction $transaction): JsonResponse
+    {
+        abort_unless((int) $transaction->customer_id === (int) $customer->id, 404);
+        $transaction->load('customer:id,name,email,phone,wallet_balance', 'creator:id,name');
+        $metadata = is_array($transaction->metadata) ? $transaction->metadata : [];
+
+        return response()->json(['success' => true, 'data' => ['transaction' => [
+            'id' => $transaction->id,
+            'transaction_no' => $transaction->transaction_no,
+            'receipt_no' => ($transaction->status === CustomerWalletTransaction::STATUS_COMPLETED ? 'RCPT-' : 'DETAIL-').$transaction->transaction_no,
+            'type' => $transaction->type,
+            'direction' => $transaction->direction,
+            'amount' => (string) $transaction->amount,
+            'balance_before' => (string) $transaction->balance_before,
+            'balance_after' => (string) $transaction->balance_after,
+            'workspace_type' => $transaction->workspace_type,
+            'payment_gateway_key' => $transaction->payment_gateway_key,
+            'payment_method_label' => $transaction->payment_method_label,
+            'reference_no' => $transaction->reference_no,
+            'source_type' => $transaction->source_type,
+            'source_id' => $transaction->source_id,
+            'status' => $transaction->status,
+            'remark' => $transaction->remark,
+            'created_at' => $transaction->created_at,
+            'completed_at' => $transaction->completed_at,
+            'submitted_at' => $metadata['payment_proof_uploaded_at'] ?? null,
+            'approved_at' => $metadata['approved_at'] ?? null,
+            'approved_by' => $metadata['approved_by'] ?? null,
+            'approval_remark' => $metadata['approval_remark'] ?? null,
+            'payment_proof' => [
+                'url' => $metadata['payment_proof_url'] ?? null,
+                'uploaded_at' => $metadata['payment_proof_uploaded_at'] ?? null,
+                'original_name' => $metadata['payment_proof_original_name'] ?? null,
+            ],
+            'customer' => $transaction->customer?->only(['id', 'name', 'email', 'phone']),
+            'processor' => $transaction->creator ? ['id' => $transaction->creator->id, 'name' => $transaction->creator->name] : null,
+        ]]]);
+    }
+
     public function adjust(Request $request, Customer $customer, CustomerWalletService $wallet): JsonResponse
     {
         $validated = $request->validate([

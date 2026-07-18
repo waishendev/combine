@@ -408,6 +408,8 @@ $protectedRoutes = function () {
         ->middleware('permission:customer_wallet.view');
     Route::get('/admin/customers/{customer}/wallet/transactions', [AdminCustomerWalletController::class, 'transactions'])
         ->middleware('permission:customer_wallet.view_transactions');
+    Route::get('/admin/customers/{customer}/wallet/transactions/{transaction}', [AdminCustomerWalletController::class, 'transactionDetail'])
+        ->middleware('permission:customer_wallet.view_transactions');
     Route::post('/admin/customers/{customer}/wallet/adjustments', [AdminCustomerWalletController::class, 'adjust'])
         ->middleware('permission:customer_wallet.adjust');
     Route::post('/admin/customers/{customer}/wallet/transactions/{transaction}/approve', [AdminCustomerWalletController::class, 'approveTopup'])

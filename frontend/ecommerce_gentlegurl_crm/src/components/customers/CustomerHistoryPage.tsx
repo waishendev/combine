@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import BookingAppointmentDrawer from '@/components/booking/BookingAppointmentDrawer'
 import OrderViewPanel from '@/components/OrderViewPanel'
 import StatusBadge from '@/components/StatusBadge'
+import WalletTransactionDetailDrawer from '@/components/wallet/WalletTransactionDetailDrawer'
 
 type HistoryResponse = {
   data?: {
@@ -264,6 +265,7 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
   >([])
   const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null)
   const [walletTx, setWalletTx] = useState<WalletTx[]>([])
+  const [walletDetailTx, setWalletDetailTx] = useState<WalletTx | null>(null)
   const [bookingTx, setBookingTx] = useState<
     Array<{
       order_id: number
@@ -758,7 +760,7 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600"><tr><th className="px-4 py-3">Transaction No</th><th className="px-4 py-3">Date/time</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Workspace</th><th className="px-4 py-3">Payment Method</th><th className="px-4 py-3">Credit</th><th className="px-4 py-3">Debit</th><th className="px-4 py-3">Before</th><th className="px-4 py-3">After</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Processed By</th><th className="px-4 py-3">Reason</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3">Receipt</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">{walletTx.map((tx) => <tr key={tx.id}><td className="px-4 py-3 font-medium">{tx.transaction_no ?? '-'}</td><td className="px-4 py-3">{formatDate(tx.created_at)}</td><td className="px-4 py-3">{tx.type === 'topup' ? 'Customer Top Up' : tx.type === 'admin_credit' ? 'CRM Deposit' : tx.type === 'admin_debit' ? 'CRM Withdrawal' : tx.type ?? '-'}</td><td className="px-4 py-3">{tx.workspace_type ?? '-'}</td><td className="px-4 py-3">{tx.payment_method_label ?? '-'}</td><td className="px-4 py-3 text-emerald-700">{tx.direction === 'credit' ? `+${formatAmount(Number(tx.amount ?? 0))}` : '-'}</td><td className="px-4 py-3 text-rose-700">{tx.direction === 'debit' ? `-${formatAmount(Number(tx.amount ?? 0))}` : '-'}</td><td className="px-4 py-3">{formatAmount(Number(tx.balance_before ?? 0))}</td><td className="px-4 py-3">{formatAmount(Number(tx.balance_after ?? 0))}</td><td className="px-4 py-3">{tx.status === 'pending' ? 'Pending Verification' : tx.status ?? '-'}</td><td className="px-4 py-3">{tx.creator?.name ?? '-'}</td><td className="px-4 py-3">{tx.remark ?? '-'}</td><td className="px-4 py-3">{tx.reference_no ?? '-'}</td><td className="px-4 py-3">{tx.status === 'completed' ? 'Receipt' : 'Details'}</td></tr>)}{walletTx.length === 0 ? <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={14}>No balance transactions.</td></tr> : null}</tbody>
+                  <tbody className="divide-y divide-slate-100">{walletTx.map((tx) => <tr key={tx.id}><td className="px-4 py-3 font-medium">{tx.transaction_no ?? '-'}</td><td className="px-4 py-3">{formatDate(tx.created_at)}</td><td className="px-4 py-3">{tx.type === 'topup' ? 'Customer Top Up' : tx.type === 'admin_credit' ? 'CRM Deposit' : tx.type === 'admin_debit' ? 'CRM Withdrawal' : tx.type ?? '-'}</td><td className="px-4 py-3">{tx.workspace_type ?? '-'}</td><td className="px-4 py-3">{tx.payment_method_label ?? '-'}</td><td className="px-4 py-3 text-emerald-700">{tx.direction === 'credit' ? `+${formatAmount(Number(tx.amount ?? 0))}` : '-'}</td><td className="px-4 py-3 text-rose-700">{tx.direction === 'debit' ? `-${formatAmount(Number(tx.amount ?? 0))}` : '-'}</td><td className="px-4 py-3">{formatAmount(Number(tx.balance_before ?? 0))}</td><td className="px-4 py-3">{formatAmount(Number(tx.balance_after ?? 0))}</td><td className="px-4 py-3">{tx.status === 'pending' ? 'Pending Verification' : tx.status ?? '-'}</td><td className="px-4 py-3">{tx.creator?.name ?? '-'}</td><td className="px-4 py-3">{tx.remark ?? '-'}</td><td className="px-4 py-3">{tx.reference_no ?? '-'}</td><td className="px-4 py-3"><button type="button" onClick={() => setWalletDetailTx(tx)} className="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">{tx.status === 'completed' ? 'Receipt' : 'Details'}</button></td></tr>)}{walletTx.length === 0 ? <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={14}>No balance transactions.</td></tr> : null}</tbody>
                 </table>
               </div>
             </section>
@@ -766,6 +768,16 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
           </div>
         </div>
       </div>
+
+
+      {walletDetailTx ? (
+        <WalletTransactionDetailDrawer
+          customerId={customerId}
+          transactionId={walletDetailTx.id}
+          fallback={walletDetailTx}
+          onClose={() => setWalletDetailTx(null)}
+        />
+      ) : null}
 
       {drawer?.type === 'order' ? (
         <OrderViewPanel orderId={drawer.orderId} onClose={() => setDrawer(null)} zIndexClassName="z-[70]" />
