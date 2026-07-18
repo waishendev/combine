@@ -47,11 +47,13 @@ export default function SalesVisualDailyDashboard({
   refreshKey = 0,
   onShiftDay,
   canViewStaffReport = false,
+  includeVoid = false,
 }: {
   mode: Mode
   refreshKey?: number
   onShiftDay?: (delta: number) => void
   canViewStaffReport?: boolean
+  includeVoid?: boolean
 }) {
   const searchParams = useSearchParams()
   const today = useMemo(() => formatYmd(new Date()), [])
@@ -79,6 +81,7 @@ export default function SalesVisualDailyDashboard({
         date_from: dateFrom,
         date_to: dateTo,
       })
+      if (includeVoid) qs.set('include_void', 'true')
       const res = await fetch(`/api/proxy/ecommerce/reports/sales/visual-daily/${path}?${qs.toString()}`, {
         cache: 'no-store',
       })
@@ -94,7 +97,7 @@ export default function SalesVisualDailyDashboard({
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, mode])
+  }, [dateFrom, dateTo, includeVoid, mode])
 
   useEffect(() => {
     void load()

@@ -15,6 +15,15 @@ use Illuminate\Support\Facades\DB;
  */
 class SalesVisualDailyReportService
 {
+    private bool $includeVoidOrders = false;
+
+    public function includeVoidOrders(bool $includeVoid): self
+    {
+        $this->includeVoidOrders = $includeVoid;
+
+        return $this;
+    }
+
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
 
     /** Booking lines attributed to staff sales once a booking is settled (includes prior deposits). */
@@ -31,17 +40,21 @@ class SalesVisualDailyReportService
      */
     private function applyOrderScope(Builder $q, string $alias = 'o'): Builder
     {
-        return $q
-            ->where(function (Builder $w) use ($alias) {
+        $q->where(function (Builder $w) use ($alias) {
                 $w->where("{$alias}.status", 'completed')
                     ->orWhere("{$alias}.payment_status", 'paid');
             })
-            ->whereNotIn("{$alias}.status", ['cancelled', 'draft', 'voided'])
             ->where(function (Builder $w) use ($alias) {
                 $w->where("{$alias}.payment_status", '!=', 'refunded')
                     ->orWhereNull("{$alias}.payment_status");
             })
             ->whereNull("{$alias}.refunded_at");
+
+        if (! $this->includeVoidOrders) {
+            $q->whereNotIn("{$alias}.status", ['cancelled', 'draft', 'voided']);
+        }
+
+        return $q;
     }
 
     public function salesSummary(int $year, ?int $month = null): array

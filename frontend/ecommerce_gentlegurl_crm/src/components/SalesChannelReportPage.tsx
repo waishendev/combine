@@ -492,6 +492,7 @@ export default function SalesChannelReportPage({
   isAllWorkspace = false,
   showDateInputsInFilterModal = true,
   onDataChanged,
+  includeVoid = false,
 }: {
   mode: Mode
   canExport?: boolean
@@ -505,6 +506,7 @@ export default function SalesChannelReportPage({
   /** Sales Visual manages date elsewhere; hide date inputs in modal. */
   showDateInputsInFilterModal?: boolean
   onDataChanged?: () => void
+  includeVoid?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -567,6 +569,7 @@ export default function SalesChannelReportPage({
       if (resolved.paymentMethod !== 'all') qs.set('payment_method', resolved.paymentMethod)
       if (mode === 'ecommerce' && resolved.status !== 'all') qs.set('status', resolved.status)
       if (mode === 'booking' && resolved.type !== 'all') qs.set('type', resolved.type)
+      if (includeVoid) qs.set('include_void', 'true')
 
       const response = await fetch(`/api/proxy/ecommerce/reports/sales/${mode}?${qs.toString()}`, {
         cache: 'no-store',
@@ -603,7 +606,7 @@ export default function SalesChannelReportPage({
 
     void fetchData()
     return () => controller.abort()
-  }, [mode, resolved, refreshKey])
+  }, [includeVoid, mode, resolved, refreshKey])
 
   const updateQuery = (patch: Record<string, string>) => {
     const next = new URLSearchParams(searchParams.toString())
@@ -665,7 +668,7 @@ export default function SalesChannelReportPage({
     setDetailBookingId(bookingId ?? null)
 
     try {
-      const response = await fetch(`/api/proxy/admin/reports/sales/${orderId}/details`, { cache: 'no-store' })
+      const response = await fetch(`/api/proxy/admin/reports/sales/${orderId}/details${includeVoid ? '?include_void=true' : ''}`, { cache: 'no-store' })
       const data = await response.json().catch(() => null) as OrderDetail | { message?: string } | null
       if (!response.ok) {
         setDetailError(data && 'message' in data && typeof data.message === 'string' ? data.message : 'Unable to load order details.')
@@ -711,8 +714,9 @@ export default function SalesChannelReportPage({
     if (resolved.paymentMethod !== 'all') qs.set('payment_method', resolved.paymentMethod)
     if (mode === 'ecommerce' && resolved.status !== 'all') qs.set('status', resolved.status)
     if (mode === 'booking' && resolved.type !== 'all') qs.set('type', resolved.type)
+    if (includeVoid) qs.set('include_void', 'true')
     return `/api/proxy/ecommerce/reports/sales/export/${mode}?${qs.toString()}`
-  }, [mode, resolved])
+  }, [includeVoid, mode, resolved])
 
   const groupedEcommerceRows = useMemo(() => {
     const groups = new Map<string, EcommerceRow>()

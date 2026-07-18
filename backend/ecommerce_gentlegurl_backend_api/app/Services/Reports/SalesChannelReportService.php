@@ -23,6 +23,15 @@ use Illuminate\Support\Str;
 
 class SalesChannelReportService
 {
+    private bool $includeVoidOrders = false;
+
+    public function includeVoidOrders(bool $includeVoid): self
+    {
+        $this->includeVoidOrders = $includeVoid;
+
+        return $this;
+    }
+
     public function __construct(
         private InvoiceService $invoiceService,
     ) {
@@ -53,21 +62,25 @@ class SalesChannelReportService
      */
     private function applyOrderScope(Builder $q, string $alias = 'o'): Builder
     {
-        return $q
-            ->where(function (Builder $w) use ($alias) {
+        $q->where(function (Builder $w) use ($alias) {
                 $w->where("{$alias}.status", 'completed')
                     ->orWhere("{$alias}.payment_status", 'paid');
             })
-            ->whereNotIn("{$alias}.status", ['cancelled', 'draft', 'voided'])
             ->where(function (Builder $w) use ($alias) {
                 $w->where("{$alias}.payment_status", '!=', 'refunded')
                     ->orWhereNull("{$alias}.payment_status");
             })
             ->whereNull("{$alias}.refunded_at");
+
+        if (! $this->includeVoidOrders) {
+            $q->whereNotIn("{$alias}.status", ['cancelled', 'draft', 'voided']);
+        }
+
+        return $q;
     }
 
 
-    public function orderDetails(int $orderId): array
+    public function orderDetails(int $orderId, bool $includeVoid = false): array
     {
         $order = Order::query()
             ->with([
@@ -89,7 +102,7 @@ class SalesChannelReportService
                 $query->where('status', 'completed')
                     ->orWhere('payment_status', 'paid');
             })
-            ->whereNotIn('status', ['cancelled', 'draft', 'voided'])
+            ->when(! $includeVoid, fn ($query) => $query->whereNotIn('status', ['cancelled', 'draft', 'voided']))
             ->where(function ($query) {
                 $query->where('payment_status', '!=', 'refunded')
                     ->orWhereNull('payment_status');

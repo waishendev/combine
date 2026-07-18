@@ -23,11 +23,13 @@ export default function SalesVisualWorkspaceClient({
   canUpdateOrder = false,
   canVoidRefund = false,
   canViewStaffReport = false,
+  includeVoid = false,
 }: {
   canExport: boolean
   canUpdateOrder?: boolean
   canVoidRefund?: boolean
   canViewStaffReport?: boolean
+  includeVoid?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -111,12 +113,12 @@ export default function SalesVisualWorkspaceClient({
       <div className="text-xs mb-4">
         <span className="text-gray-500">Reports</span>
         <span className="mx-1">/</span>
-        <span className="text-gray-700">Sales report</span>
+        <span className="text-gray-700">{includeVoid ? 'Sales report (including void)' : 'Sales report'}</span>
       </div>
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-3xl font-semibold text-slate-900">Sales report</h2>
+          <h2 className="text-3xl font-semibold text-slate-900">{includeVoid ? 'Sales report (including void)' : 'Sales report'}</h2>
           <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
         </div>
         <div className="inline-flex items-center gap-2">
@@ -134,7 +136,7 @@ export default function SalesVisualWorkspaceClient({
         </div>
       </div>
 
-      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} canViewStaffReport={canViewStaffReport} />
+      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} canViewStaffReport={canViewStaffReport} includeVoid={includeVoid} />
 
       <h3 className="text-lg font-semibold text-slate-800 mb-4">Transactions</h3>
       {mode === 'all' ? (
@@ -145,16 +147,16 @@ export default function SalesVisualWorkspaceClient({
               Product-line orders only. Booking deposits and other booking lines appear under Booking below (same as POS rows with
               booking line types).
             </p>
-            <SalesChannelReportPage mode="ecommerce" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
+            <SalesChannelReportPage mode="ecommerce" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} includeVoid={includeVoid} />
           </section>
           <section>
             <h4 className="text-base font-semibold text-slate-800">Booking</h4>
             <p className="mb-3 text-xs text-slate-500">Deposits, settlement, add-ons, and packages — grouped to one row per order; line details remain in View Details.</p>
-            <SalesChannelReportPage mode="booking" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
+            <SalesChannelReportPage mode="booking" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} includeVoid={includeVoid} />
           </section>
         </div>
       ) : (
-        <SalesChannelReportPage mode={mode} canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
+        <SalesChannelReportPage mode={mode} canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} includeVoid={includeVoid} />
       )}
     </div>
   )

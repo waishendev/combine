@@ -59,10 +59,10 @@ class SalesChannelReportController extends Controller
         [$start, $end] = $this->resolveVisualDateRange($request);
 
         if ($start->toDateString() === $end->toDateString()) {
-            return response()->json($this->visualDaily->ecommerceDay($start));
+            return response()->json($this->visualDaily->includeVoidOrders($request->boolean('include_void'))->ecommerceDay($start));
         }
 
-        return response()->json($this->visualDaily->ecommercePeriod($start, $end));
+        return response()->json($this->visualDaily->includeVoidOrders($request->boolean('include_void'))->ecommercePeriod($start, $end));
     }
 
     public function visualDailyBooking(Request $request)
@@ -70,10 +70,10 @@ class SalesChannelReportController extends Controller
         [$start, $end] = $this->resolveVisualDateRange($request);
 
         if ($start->toDateString() === $end->toDateString()) {
-            return response()->json($this->visualDaily->bookingDay($start));
+            return response()->json($this->visualDaily->includeVoidOrders($request->boolean('include_void'))->bookingDay($start));
         }
 
-        return response()->json($this->visualDaily->bookingPeriod($start, $end));
+        return response()->json($this->visualDaily->includeVoidOrders($request->boolean('include_void'))->bookingPeriod($start, $end));
     }
 
     public function visualDailyAll(Request $request)
@@ -81,10 +81,10 @@ class SalesChannelReportController extends Controller
         [$start, $end] = $this->resolveVisualDateRange($request);
 
         if ($start->toDateString() === $end->toDateString()) {
-            return response()->json($this->visualDaily->allDay($start));
+            return response()->json($this->visualDaily->includeVoidOrders($request->boolean('include_void'))->allDay($start));
         }
 
-        $payload = $this->visualDaily->allPeriod($start, $end);
+        $payload = $this->visualDaily->includeVoidOrders($request->boolean('include_void'))->allPeriod($start, $end);
         $payload['date_from'] = $start->toDateString();
         $payload['date_to'] = $end->toDateString();
 
@@ -156,14 +156,14 @@ class SalesChannelReportController extends Controller
 
     public function details(int $orderId)
     {
-        return response()->json($this->service->orderDetails($orderId));
+        return response()->json($this->service->orderDetails($orderId, request()->boolean('include_void')));
     }
 
     public function ecommerce(Request $request)
     {
         [$start, $end] = $this->resolveDateRange($request);
 
-        $data = $this->service->ecommerce($start, $end, [
+        $data = $this->service->includeVoidOrders($request->boolean('include_void'))->ecommerce($start, $end, [
             'channel' => $request->query('channel'),
             'payment_method' => $request->query('payment_method'),
             'status' => $request->query('status'),
@@ -179,7 +179,7 @@ class SalesChannelReportController extends Controller
     {
         [$start, $end] = $this->resolveDateRange($request);
 
-        $data = $this->service->booking($start, $end, [
+        $data = $this->service->includeVoidOrders($request->boolean('include_void'))->booking($start, $end, [
             'channel' => $request->query('channel'),
             'payment_method' => $request->query('payment_method'),
             'type' => $request->query('type'),
@@ -195,7 +195,7 @@ class SalesChannelReportController extends Controller
     {
         [$start, $end] = $this->resolveDateRange($request);
 
-        $rows = $this->service->ecommerceRows($start, $end, [
+        $rows = $this->service->includeVoidOrders($request->boolean('include_void'))->ecommerceRows($start, $end, [
             'channel' => $request->query('channel'),
             'payment_method' => $request->query('payment_method'),
             'status' => $request->query('status'),
@@ -230,7 +230,7 @@ class SalesChannelReportController extends Controller
     {
         [$start, $end] = $this->resolveDateRange($request);
 
-        $rows = $this->service->bookingRows($start, $end, [
+        $rows = $this->service->includeVoidOrders($request->boolean('include_void'))->bookingRows($start, $end, [
             'channel' => $request->query('channel'),
             'payment_method' => $request->query('payment_method'),
             'type' => $request->query('type'),
