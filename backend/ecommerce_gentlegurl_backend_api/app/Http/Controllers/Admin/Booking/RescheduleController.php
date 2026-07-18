@@ -6,13 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Services\Booking\BookingAvailabilityService;
+use App\Services\AppointmentActivityLogService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class RescheduleController extends Controller
 {
-    public function __construct(private readonly BookingAvailabilityService $availabilityService)
-    {
+    public function __construct(
+        private readonly BookingAvailabilityService $availabilityService,
+        private readonly AppointmentActivityLogService $appointmentActivityLogService,
+    ) {
     }
 
     public function store(Request $request, int $id)
@@ -65,6 +68,8 @@ class RescheduleController extends Controller
             ],
             'created_at' => now(),
         ]);
+
+        $this->appointmentActivityLogService->log($booking->fresh(['customer']), 'appointment.rescheduled', $request->user());
 
         return $this->respond($booking->fresh(['service', 'staff', 'customer']));
     }

@@ -291,6 +291,8 @@ $protectedRoutes = function () {
     // Activity Logs
     Route::get('/activity-logs', [ActivityLogController::class, 'index'])
         ->middleware('permission:activity-logs.view');
+    Route::get('/admin/appointment-activity-logs', [ActivityLogController::class, 'appointmentIndex'])
+        ->middleware('permission:appointment_activity_logs.view');
 
     Route::get('/admin/daily-bookings', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'daily'])
         ->middleware('permission:booking.appointments.view|pos.checkout');

@@ -12,6 +12,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\Voucher;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\AppointmentActivityLogService;
 use App\Services\Ecommerce\StaffSplitNormalizer;
 use App\Support\BookingNotes;
 use App\Models\Booking\BookingPayment;
@@ -26,6 +27,7 @@ class AppointmentController extends Controller
     public function __construct(
         private readonly StaffCommissionService $staffCommissionService,
         private readonly CustomerServicePackageService $customerServicePackageService,
+        private readonly AppointmentActivityLogService $appointmentActivityLogService,
     )
     {
     }
@@ -864,6 +866,21 @@ class AppointmentController extends Controller
                 'meta' => $logMeta,
                 'created_at' => now(),
             ]);
+
+            $activityAction = match ($status) {
+                'COMPLETED' => 'appointment.completed',
+                'CANCELLED' => 'appointment.cancelled',
+                'LATE_CANCELLATION' => 'appointment.late_cancelled',
+                'NO_SHOW' => 'appointment.no_show',
+                default => null,
+            };
+
+            if ($activityAction && $previousStatus !== $status) {
+                $this->appointmentActivityLogService->log($booking, $activityAction, $request->user(), [
+                    'previous_status' => $previousStatus,
+                    'new_status' => $status,
+                ]);
+            }
         });
 
         return $this->respond([

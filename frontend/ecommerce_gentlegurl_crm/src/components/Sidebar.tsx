@@ -595,6 +595,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             requiredPermission: 'booking.appointments.view',
           },
           {
+            key: 'appointment-activity-logs',
+            label: 'Appointment Activity Logs',
+            href: '/appointments/activity-logs',
+            requiredPermission: 'appointment_activity_logs.view',
+          },
+          {
             key: 'booking-services',
             label: 'Services',
             href: '/booking/services',
