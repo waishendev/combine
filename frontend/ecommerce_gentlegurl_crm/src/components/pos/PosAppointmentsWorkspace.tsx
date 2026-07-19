@@ -178,12 +178,13 @@ const appointmentMatchesStatusFilter = (row: PosAppointmentListItem, value: stri
   return status === value
 }
 
-type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
+type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
 
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
   { method: 'cash', label: 'Cash' },
   { method: 'qrpay', label: 'QRPay' },
   { method: 'credit_card', label: 'Credit Card' },
+  { method: 'customer_balance', label: 'Customer Balance' },
 ]
 
 const toPaymentCents = (value: number | string | null | undefined) => {
@@ -496,6 +497,7 @@ export default function PosAppointmentsWorkspace({
     name: string
     phone?: string | null
   } | null>(null)
+  const [createAppointmentMemberWalletBalance, setCreateAppointmentMemberWalletBalance] = useState<number | null>(null)
   const [createAppointmentMemberPickerOpen, setCreateAppointmentMemberPickerOpen] = useState(false)
   const [createAppointmentMemberQuery, setCreateAppointmentMemberQuery] = useState('')
   const [createAppointmentMemberResults, setCreateAppointmentMemberResults] = useState<PosMemberSearchRow[]>([])
@@ -510,7 +512,14 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentSlots, setCreateAppointmentSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[]; unavailable_staff_reasons?: Record<string, string> }>>([])
   const [createAppointmentSlotsLoading, setCreateAppointmentSlotsLoading] = useState(false)
   const [createAppointmentNotes, setCreateAppointmentNotes] = useState('')
-  const [createAppointmentDepositPayments, setCreateAppointmentDepositPayments] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
+  const [createAppointmentDepositPayments, setCreateAppointmentDepositPayments] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
+  useEffect(() => {
+    setCreateAppointmentMemberWalletBalance(null)
+    setCreateAppointmentDepositPayments((prev) => ({ ...prev, customer_balance: '' }))
+    const memberId = createAppointmentMemberSummary?.id
+    if (!memberId) return
+    void fetch(`/api/proxy/admin/customers/${memberId}/wallet`).then((r) => r.ok ? r.json() : null).then((json) => setCreateAppointmentMemberWalletBalance(Number(json?.data?.wallet_balance ?? 0))).catch(() => setCreateAppointmentMemberWalletBalance(null))
+  }, [createAppointmentMemberSummary?.id])
   const [createAppointmentQuestions, setCreateAppointmentQuestions] = useState<ServiceAddonQuestion[]>([])
   const [createAppointmentAddonQuantities, setCreateAppointmentAddonQuantities] = useState<AddonSelectionMap>({})
   const [createAppointmentAddonPriceOverrides, setCreateAppointmentAddonPriceOverrides] = useState<Record<number, number>>({})
@@ -549,8 +558,16 @@ export default function PosAppointmentsWorkspace({
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [settlementSheetOpen, setSettlementSheetOpen] = useState(false)
   const [settlementBarPulse, setSettlementBarPulse] = useState(false)
-  const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay' | 'credit_card' | 'split'>('cash')
-  const [appointmentSettlementPaymentAmounts, setAppointmentSettlementPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
+  const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay' | 'credit_card' | 'customer_balance' | 'split'>('cash')
+  const [appointmentSettlementPaymentAmounts, setAppointmentSettlementPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
+  const [appointmentMemberWalletBalance, setAppointmentMemberWalletBalance] = useState<number | null>(null)
+  useEffect(() => {
+    setAppointmentMemberWalletBalance(null)
+    setAppointmentSettlementPaymentAmounts((prev) => ({ ...prev, customer_balance: '' }))
+    const memberId = Number(appointmentDetail?.customer?.id ?? 0)
+    if (!memberId) return
+    void fetch(`/api/proxy/admin/customers/${memberId}/wallet`).then((r) => r.ok ? r.json() : null).then((json) => setAppointmentMemberWalletBalance(Number(json?.data?.wallet_balance ?? 0))).catch(() => setAppointmentMemberWalletBalance(null))
+  }, [appointmentDetail?.customer?.id])
   const [appointmentCheckoutConfirmationOpen, setAppointmentCheckoutConfirmationOpen] = useState(false)
   const [appointmentCheckoutError, setAppointmentCheckoutError] = useState<string | null>(null)
   const [appointmentDiscountTypeDraft, setAppointmentDiscountTypeDraft] = useState<'percentage' | 'fixed'>('fixed')
@@ -563,7 +580,7 @@ export default function PosAppointmentsWorkspace({
     order_id: number
     order_number: string
     receipt_public_url: string | null
-    payment_method: 'cash' | 'qrpay' | 'credit_card' | 'split'
+    payment_method: 'cash' | 'qrpay' | 'credit_card' | 'customer_balance' | 'split'
     paid_amount: number
     cash_received: number
     change_amount: number
@@ -1540,7 +1557,7 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentSlotValue('')
     setCreateAppointmentSlots([])
     setCreateAppointmentNotes('')
-    setCreateAppointmentDepositPayments({ cash: '', qrpay: '', credit_card: '' })
+    setCreateAppointmentDepositPayments({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
     if (appointmentQrProofPreviewUrl) {
       URL.revokeObjectURL(appointmentQrProofPreviewUrl)
     }
@@ -2132,7 +2149,7 @@ export default function PosAppointmentsWorkspace({
       setAppointmentSettlementResult(null)
       setAppointmentCheckoutConfirmationOpen(false)
       setAppointmentPaymentMethod('cash')
-      setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
+      setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
@@ -2329,7 +2346,8 @@ export default function PosAppointmentsWorkspace({
     const settlementCashCents = toPaymentCents(appointmentSettlementPaymentAmounts.cash)
     const settlementQrPayCents = toPaymentCents(appointmentSettlementPaymentAmounts.qrpay)
     const settlementCreditCardCents = toPaymentCents(appointmentSettlementPaymentAmounts.credit_card)
-    const settlementTotalPaidCents = settlementCashCents + settlementQrPayCents + settlementCreditCardCents
+    const settlementCustomerBalanceCents = toPaymentCents(appointmentSettlementPaymentAmounts.customer_balance)
+    const settlementTotalPaidCents = settlementCashCents + settlementQrPayCents + settlementCreditCardCents + settlementCustomerBalanceCents
     const dueCents = toPaymentCents(dueAmount)
     const settlementCashOnlyOverpaid = settlementCashCents > dueCents && settlementQrPayCents === 0 && settlementCreditCardCents === 0
     const settlementMixedOverpaid = settlementTotalPaidCents > dueCents && (settlementQrPayCents > 0 || settlementCreditCardCents > 0)
@@ -2446,7 +2464,7 @@ export default function PosAppointmentsWorkspace({
       setAppointmentReceiptCooldownUntil(0)
       setAppointmentQrCodeFullscreen(false)
       setAppointmentReceiptQrLoaded(false)
-      setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
+      setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
@@ -4558,7 +4576,8 @@ export default function PosAppointmentsWorkspace({
   const appointmentSettlementCashCents = toPaymentCents(appointmentSettlementPaymentAmounts.cash)
   const appointmentSettlementQrPayCents = toPaymentCents(appointmentSettlementPaymentAmounts.qrpay)
   const appointmentSettlementCreditCardCents = toPaymentCents(appointmentSettlementPaymentAmounts.credit_card)
-  const appointmentSettlementTotalPaidCents = appointmentSettlementCashCents + appointmentSettlementQrPayCents + appointmentSettlementCreditCardCents
+  const appointmentSettlementCustomerBalanceCents = toPaymentCents(appointmentSettlementPaymentAmounts.customer_balance)
+  const appointmentSettlementTotalPaidCents = appointmentSettlementCashCents + appointmentSettlementQrPayCents + appointmentSettlementCreditCardCents + appointmentSettlementCustomerBalanceCents
   const appointmentDueAfterDiscountCents = toPaymentCents(appointmentDueAfterDiscount)
   const appointmentSettlementHasNonCashPayment = appointmentSettlementQrPayCents > 0 || appointmentSettlementCreditCardCents > 0
   const appointmentSettlementRemaining = Math.max(0, (appointmentDueAfterDiscountCents - appointmentSettlementTotalPaidCents) / 100)
@@ -5597,10 +5616,10 @@ export default function PosAppointmentsWorkspace({
                               const due = appointmentDueAmountNow
                               if (checkoutZeroBalanceSettlement) {
                                 setAppointmentPaymentMethod('qrpay')
-                                setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
+                                setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
                               } else {
                                 setAppointmentPaymentMethod('cash')
-                                setAppointmentSettlementPaymentAmounts({ cash: due > 0 ? due.toFixed(2) : '', qrpay: '', credit_card: '' })
+                                setAppointmentSettlementPaymentAmounts({ cash: due > 0 ? due.toFixed(2) : '', qrpay: '', credit_card: '', customer_balance: '' })
                               }
                               setAppointmentDiscountTypeDraft('fixed')
                               setAppointmentDiscountValueDraft('')
@@ -6419,13 +6438,17 @@ export default function PosAppointmentsWorkspace({
                               min="0"
                               step="0.01"
                               value={createAppointmentDepositPayments[method]}
+                              max={method === 'customer_balance' ? (createAppointmentMemberWalletBalance ?? 0).toFixed(2) : undefined}
+                              disabled={method === 'customer_balance' && !createAppointmentMemberSummary?.id}
                               onChange={(e) => {
-                                setCreateAppointmentDepositPayments((prev) => ({ ...prev, [method]: e.target.value }))
+                                const value = method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), createAppointmentMemberWalletBalance ?? 0)) : e.target.value
+                                setCreateAppointmentDepositPayments((prev) => ({ ...prev, [method]: value }))
                                 reportCreateAppointmentError(null)
                               }}
                               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                               placeholder="0.00"
                             />
+                            {method === 'customer_balance' ? <p className="mt-1 text-[11px] font-semibold text-emerald-700">{createAppointmentMemberSummary ? `Available: RM ${(createAppointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}</p> : null}
                           </div>
                         ))}
                       </div>
@@ -8534,10 +8557,12 @@ export default function PosAppointmentsWorkspace({
                       <div key={method} className="rounded-lg border border-gray-200 bg-white p-3">
                         <button
                           type="button"
+                          disabled={method === 'customer_balance' && !appointmentDetail?.customer?.id}
                           onClick={() => {
+                            if (method === 'customer_balance' && !appointmentDetail?.customer?.id) return
                             reportAppointmentCheckoutError(null)
                             setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
-                            setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', [method]: appointmentDueAfterDiscount.toFixed(2) })
+                            setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', customer_balance: '', [method]: Math.min(appointmentDueAfterDiscount, method === 'customer_balance' ? (appointmentMemberWalletBalance ?? 0) : appointmentDueAfterDiscount).toFixed(2) })
                           }}
                           className="mb-2 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
                         >
@@ -8549,14 +8574,19 @@ export default function PosAppointmentsWorkspace({
                           min="0"
                           step="0.01"
                           value={appointmentSettlementPaymentAmounts[method]}
+                          max={method === 'customer_balance' ? Math.min(appointmentMemberWalletBalance ?? 0, appointmentDueAfterDiscount).toFixed(2) : undefined}
+                          disabled={method === 'customer_balance' && !appointmentDetail?.customer?.id}
                           onChange={(e) => {
                             reportAppointmentCheckoutError(null)
+                            if (method === 'customer_balance' && !appointmentDetail?.customer?.id) return
                             setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
-                            setAppointmentSettlementPaymentAmounts((prev) => ({ ...prev, [method]: e.target.value }))
+                            const value = method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), appointmentMemberWalletBalance ?? 0, appointmentDueAfterDiscount)) : e.target.value
+                            setAppointmentSettlementPaymentAmounts((prev) => ({ ...prev, [method]: value }))
                           }}
                           className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-900 focus:border-blue-500 focus:outline-none"
                           placeholder="0.00"
                         />
+                        {method === 'customer_balance' ? <p className="mt-1 text-[11px] font-semibold text-emerald-700">{appointmentDetail?.customer?.id ? `Available: RM ${(appointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Member required'}</p> : null}
                       </div>
                     ))}
                   </div>

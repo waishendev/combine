@@ -192,6 +192,33 @@ class CustomerWalletService
     }
 
 
+    /** Deduct a CRM payment row exactly once, using its completed order as idempotency key. */
+    public function payForCrmOrder(Customer $customer, int $orderId, string $referenceNo, string $amount, ?int $userId = null): CustomerWalletTransaction
+    {
+        $amount = $this->normalizeAmount($amount);
+        if (bccomp($amount, '0.00', 2) <= 0) throw ValidationException::withMessages(['payments' => 'Customer Balance amount must be greater than zero.']);
+
+        return DB::transaction(function () use ($customer, $orderId, $referenceNo, $amount, $userId) {
+            $existing = CustomerWalletTransaction::query()->where('source_type', 'crm_order_payment')->where('source_id', (string) $orderId)->lockForUpdate()->first();
+            if ($existing) return $existing;
+            $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
+            if (! $locked->is_active) throw ValidationException::withMessages(['payments' => 'Customer Balance requires an active member.']);
+            $before = $this->normalizeAmount($locked->wallet_balance ?? 0);
+            $after = bcsub($before, $amount, 2);
+            if (bccomp($after, '0.00', 2) < 0) throw ValidationException::withMessages(['payments' => 'Customer Balance is insufficient for this payment.']);
+            $locked->forceFill(['wallet_balance' => $after])->save();
+            return CustomerWalletTransaction::query()->create([
+                'customer_id' => $locked->id, 'transaction_no' => $this->newTransactionNo('WTX'),
+                'type' => 'checkout_payment', 'direction' => 'debit', 'amount' => $amount,
+                'balance_before' => $before, 'balance_after' => $after, 'workspace_type' => 'crm',
+                'payment_gateway_key' => 'customer_balance', 'payment_method_label' => 'Customer Balance',
+                'source_type' => 'crm_order_payment', 'source_id' => (string) $orderId, 'reference_no' => $referenceNo,
+                'status' => CustomerWalletTransaction::STATUS_COMPLETED, 'remark' => 'CRM Customer Balance payment.',
+                'created_by' => $userId, 'completed_at' => now(),
+            ]);
+        });
+    }
+
     /** Deduct an order payable amount once; source_type/source_id provide idempotency. */
     public function payForCheckout(Customer $customer, string $workspaceType, int $orderId, string $referenceNo, string $amount): CustomerWalletTransaction
     {

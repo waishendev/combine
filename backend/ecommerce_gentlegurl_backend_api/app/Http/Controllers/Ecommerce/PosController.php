@@ -56,6 +56,7 @@ use App\Models\Ecommerce\PointsEarnBatch;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OfflineOrderManagementService;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\Ecommerce\CustomerWalletService;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
 use App\Support\BookingNotes;
@@ -1276,9 +1277,9 @@ class PosController extends Controller
         $validated = $request->validate(array_merge([
             'payment_method' => $hasPaymentsPayload
                 ? ['nullable', 'string', 'max:50']
-                : ['required', 'in:cash,qrpay,billplz_credit_card,credit_card'],
+                : ['required', 'in:cash,qrpay,billplz_credit_card,credit_card,customer_balance'],
             'payments' => ['nullable', 'array'],
-            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
             'qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'discount_type' => ['nullable', 'in:percentage,fixed'],
@@ -1622,6 +1623,7 @@ class PosController extends Controller
             }
 
             $this->replaceOrderPayments($order, $paymentRows, 'pos_appointment_settlement');
+            $this->settleCustomerBalancePayment($order, $booking->customer_id ? (int) $booking->customer_id : null, $paymentRows, (int) $request->user()->id);
             if ($request->hasFile('qr_payment_proof')) {
                 OrderUpload::query()->create([
                     'order_id' => (int) $order->id,
@@ -2378,9 +2380,9 @@ class PosController extends Controller
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'gt:0'],
-            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments' => ['nullable', 'array'],
-            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
             'remark' => ['nullable', 'string', 'max:255'],
         ]);
@@ -2449,6 +2451,7 @@ class PosController extends Controller
             }
 
             $this->replaceOrderPayments($order, $paymentRows, 'pos_add_appointment_deposit');
+            $this->settleCustomerBalancePayment($order, $booking->customer_id ? (int) $booking->customer_id : null, $paymentRows, $userId);
             $this->orderPaymentService->handlePaid($order->fresh(['items']));
             $this->syncBookingDepositAmountFromOrderItems($booking->fresh(['service']));
             $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
@@ -2478,9 +2481,9 @@ class PosController extends Controller
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:0'],
-            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments' => ['nullable', 'array'],
-            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
             'remark' => ['nullable', 'string', 'max:255'],
         ]);
@@ -3886,7 +3889,7 @@ class PosController extends Controller
             'addon_staff_splits.*.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
             'deposit_amount' => ['nullable', 'numeric', 'min:0'],
             'deposit_payments' => ['nullable', 'array'],
-            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
             'availability_override' => ['nullable', 'boolean'],
             'availability_override_reason' => ['nullable', 'string', 'max:1000'],
@@ -4301,7 +4304,7 @@ class PosController extends Controller
             'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
             'deposit_amount' => ['nullable', 'numeric', 'min:0'],
             'deposit_payments' => ['nullable', 'array'],
-            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
             'deposit_qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'availability_override' => ['nullable', 'boolean'],
@@ -4689,6 +4692,7 @@ class PosController extends Controller
                 }
 
                 $this->replaceOrderPayments($depositOrder, $depositPayments, 'pos_create_appointment_deposit');
+                $this->settleCustomerBalancePayment($depositOrder, $booking->customer_id ? (int) $booking->customer_id : null, $depositPayments, (int) $request->user()->id);
 
                 if ($depositProofPath) {
                     OrderUpload::query()->create([
@@ -6740,9 +6744,9 @@ class PosController extends Controller
         $validated = $request->validate(array_merge([
             'payment_method' => $hasPaymentsPayload
                 ? ['nullable', 'string', 'max:50']
-                : ['nullable', 'in:cash,qrpay,billplz_credit_card,credit_card'],
+                : ['nullable', 'in:cash,qrpay,billplz_credit_card,credit_card,customer_balance'],
             'payments' => ['nullable', 'array'],
-            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
             'qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
@@ -8066,6 +8070,7 @@ class PosController extends Controller
 
             $this->deductPosCheckoutStock($cart, (int) $request->user()->id);
             $this->replaceOrderPayments($order, $paymentRows, 'pos_checkout');
+            $this->settleCustomerBalancePayment($order, $customerId ? (int) $customerId : null, $paymentRows, (int) $request->user()->id);
             if ($request->hasFile('qr_payment_proof')) {
                 OrderUpload::query()->create([
                     'order_id' => (int) $order->id,
@@ -8176,7 +8181,7 @@ class PosController extends Controller
             ]]);
         }
 
-        $allowed = ['cash', 'qrpay', 'credit_card'];
+        $allowed = ['cash', 'qrpay', 'credit_card', 'customer_balance'];
         foreach ($rows as $row) {
             if (! in_array((string) $row['method'], $allowed, true)) {
                 throw ValidationException::withMessages(['payments' => __('Unsupported payment method.')]);
@@ -8575,6 +8580,16 @@ class PosController extends Controller
         }
 
         return count($paymentRows) === 1 ? (string) $paymentRows[0]['method'] : 'split';
+    }
+
+    private function settleCustomerBalancePayment(Order $order, ?int $customerId, array $paymentRows, ?int $userId): void
+    {
+        $walletAmount = round((float) collect($paymentRows)->where('method', 'customer_balance')->sum('amount'), 2);
+        if ($walletAmount <= 0) return;
+        if (! $customerId) throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        if ($walletAmount > (float) $order->grand_total + 0.0001) throw ValidationException::withMessages(['payments' => 'Customer Balance cannot exceed the amount payable.']);
+        $customer = Customer::query()->findOrFail($customerId);
+        app(CustomerWalletService::class)->payForCrmOrder($customer, (int) $order->id, (string) $order->order_number, (string) $walletAmount, $userId);
     }
 
     private function replaceOrderPayments(Order $order, array $paymentRows, string $source): void

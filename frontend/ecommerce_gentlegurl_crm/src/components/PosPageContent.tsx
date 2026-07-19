@@ -131,12 +131,13 @@ import {
   isBluetoothPrinterConnected,
   type ReceiptLineItem,
 } from '@/utils/printReceipt'
-type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
+type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
 
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
   { method: 'qrpay', label: 'QRPay' },
   { method: 'cash', label: 'Cash' },
   { method: 'credit_card', label: 'Credit Card' },
+  { method: 'customer_balance', label: 'Customer Balance' },
 ]
 
 const toPaymentCents = (value: number | string | null | undefined) => {
@@ -150,6 +151,7 @@ const buildDefaultSplitForTotal = (total: number): Record<SplitPaymentMethod, st
   cash: '',
   qrpay: total > 0 ? total.toFixed(2) : '',
   credit_card: '',
+  customer_balance: '',
 })
 
 const isSplitManuallyLocked = (amounts: Record<SplitPaymentMethod, string>) =>
@@ -1996,6 +1998,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [memberOrderViewId, setMemberOrderViewId] = useState<number | null>(null)
   const [lookupMember, setLookupMember] = useState<Member | null>(null)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
+  const [memberWalletBalance, setMemberWalletBalance] = useState<number | null>(null)
+  useEffect(() => {
+    setMemberWalletBalance(null)
+    setSplitPaymentAmounts((prev) => ({ ...prev, customer_balance: '' }))
+    if (!selectedMember?.id) return
+    void fetch(`/api/proxy/admin/customers/${selectedMember.id}/wallet`).then((r) => r.ok ? r.json() : null).then((json) => setMemberWalletBalance(Number(json?.data?.wallet_balance ?? 0))).catch(() => setMemberWalletBalance(null))
+  }, [selectedMember?.id])
   const openServiceItemPackageModal = useCallback((serviceItem: ServiceCartItem) => {
     if (!selectedMember?.id) return
     setApplyPackageModalTarget(null)
@@ -2047,8 +2056,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [discountRemarkDraft, setDiscountRemarkDraft] = useState('')
   const staffSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card'>('qrpay')
-  const [splitPaymentAmounts, setSplitPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card' | 'customer_balance'>('qrpay')
+  const [splitPaymentAmounts, setSplitPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
   const [autoCalculateSplit, setAutoCalculateSplit] = useState(true)
   const [qrProofFile, setQrProofFile] = useState<File | null>(null)
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
@@ -2064,7 +2073,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     order_number: string
     receipt_public_url: string | null
     total: number
-    payment_method: 'cash' | 'qrpay' | 'billplz_credit_card' | 'split'
+    payment_method: 'cash' | 'qrpay' | 'billplz_credit_card' | 'customer_balance' | 'split'
     paid_amount: number
     change_amount: number
     refunds?: Array<{ refund_no?: string | null; booking_code?: string | null; amount?: number; method?: string | null }>
@@ -6716,12 +6725,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const splitCashCents = toPaymentCents(splitPaymentAmounts.cash)
   const splitQrPayCents = toPaymentCents(splitPaymentAmounts.qrpay)
   const splitCreditCardCents = toPaymentCents(splitPaymentAmounts.credit_card)
-  const splitTotalPaidCents = splitCashCents + splitQrPayCents + splitCreditCardCents
+  const splitCustomerBalanceCents = toPaymentCents(splitPaymentAmounts.customer_balance)
+  const splitTotalPaidCents = splitCashCents + splitQrPayCents + splitCreditCardCents + splitCustomerBalanceCents
   const cartTotalCents = toPaymentCents(cartTotal)
   const cartCheckoutIsZeroTotal = cartTotal <= 0.0001
-  const splitHasNonCashPayment = splitQrPayCents > 0 || splitCreditCardCents > 0
+  const splitHasNonCashPayment = splitQrPayCents > 0 || splitCreditCardCents > 0 || splitCustomerBalanceCents > 0
   const hasQrPayAmount = splitQrPayCents > 0
-  const splitCashOnlyOverpaid = splitCashCents > cartTotalCents && splitQrPayCents === 0 && splitCreditCardCents === 0
+  const splitCashOnlyOverpaid = splitCashCents > cartTotalCents && splitQrPayCents === 0 && splitCreditCardCents === 0 && splitCustomerBalanceCents === 0
   const splitMixedOverpaid = splitTotalPaidCents > cartTotalCents && splitHasNonCashPayment
   const splitRemaining = Math.max(0, (cartTotalCents - splitTotalPaidCents) / 100)
   const splitOverpaid = Math.max(0, (splitTotalPaidCents - cartTotalCents) / 100)
@@ -6759,6 +6769,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       cash: '',
       qrpay: '',
       credit_card: '',
+      customer_balance: '',
       ...(cartTotal > 0.0001 ? { [method]: cartTotal.toFixed(2) } : {}),
     })
   }, [cartTotal, reportCheckoutError])
@@ -12115,10 +12126,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         min="0"
                         step="0.01"
                         value={splitPaymentAmounts[method]}
-                        onChange={(e) => handleSplitPaymentAmountChange(method, e.target.value)}
+                        max={method === 'customer_balance' ? Math.min(memberWalletBalance ?? 0, cartTotal).toFixed(2) : undefined}
+                        disabled={method === 'customer_balance' && !selectedMember?.id}
+                        onChange={(e) => handleSplitPaymentAmountChange(method, method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), memberWalletBalance ?? 0, cartTotal)) : e.target.value)}
                         className="mt-1 h-12 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-base font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                         placeholder="0.00"
                       />
+                      {method === 'customer_balance' ? <p className="mt-1 text-xs font-semibold text-emerald-700">{selectedMember ? `Available: RM ${(memberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}</p> : null}
                       </>
                       ) : (
                         <p className="text-xs font-medium text-slate-500">No amount required</p>
