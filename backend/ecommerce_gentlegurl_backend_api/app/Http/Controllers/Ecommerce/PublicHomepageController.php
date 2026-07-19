@@ -202,6 +202,7 @@ class PublicHomepageController extends Controller
             $paymentGateways = PaymentGateway::query()
                 ->where('type', $type)
                 ->where('is_active', true)
+                ->where('allow_checkout', true)
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get([
@@ -209,8 +210,8 @@ class PublicHomepageController extends Controller
                     'key',
                     'name',
                     'is_active',
+                    'allow_checkout',
                     'is_default',
-                    'config',
                 ]);
 
             $branding = SettingService::get('branding', [

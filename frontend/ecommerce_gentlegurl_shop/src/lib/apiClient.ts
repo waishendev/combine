@@ -274,6 +274,7 @@ export type PublicPaymentGateway = {
   name: string;
   is_active: boolean;
   is_default: boolean;
+  allow_checkout?: boolean;
   config?: Record<string, unknown> | null;
 };
 
@@ -932,7 +933,7 @@ export async function getPaymentGateways(): Promise<PublicPaymentGateway[]> {
     { includeSessionToken: true, headers: { Accept: "application/json" } },
   );
 
-  return response.data?.payment_gateways ?? [];
+  return (response.data?.payment_gateways ?? []).filter((gateway) => gateway.is_active !== false && gateway.allow_checkout !== false);
 }
 
 export async function getBillplzPaymentGatewayOptions(params: {

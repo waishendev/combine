@@ -21,6 +21,7 @@ use App\Models\BankAccount;
 use App\Models\Setting;
 use App\Models\BillplzBill;
 use App\Models\BillplzPaymentGatewayOption;
+use App\Models\Ecommerce\PaymentGateway;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
 use App\Services\Ecommerce\OrderReserveService;
@@ -171,6 +172,20 @@ class PublicCheckoutController extends Controller
         }
 
         $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
+        $gatewayKey = match ($paymentMethod) {
+            'billplz_credit_card' => 'billplz_card',
+            'billplz_online_banking' => 'billplz_fpx',
+            default => 'manual_transfer',
+        };
+        $checkoutGatewayAvailable = PaymentGateway::query()
+            ->where('type', $type)
+            ->where('key', $gatewayKey)
+            ->where('is_active', true)
+            ->where('allow_checkout', true)
+            ->exists();
+        if (! $checkoutGatewayAvailable) {
+            return $this->respondError(__('Selected payment gateway is not available for checkout.'), 422);
+        }
         $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $type, $paymentMethod);
         if (
             $paymentMethod === 'billplz_online_banking'

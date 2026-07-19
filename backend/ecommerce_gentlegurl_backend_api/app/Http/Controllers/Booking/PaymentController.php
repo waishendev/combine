@@ -46,6 +46,21 @@ class PaymentController extends Controller
         }
 
         $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
+        $gatewayKey = match ($paymentMethod) {
+            'billplz_credit_card' => 'billplz_card',
+            'billplz_online_banking' => 'billplz_fpx',
+            default => 'manual_transfer',
+        };
+        $gateway = PaymentGateway::query()
+            ->where('type', $type)
+            ->where('key', $gatewayKey)
+            ->where('is_active', true)
+            ->where('allow_checkout', true)
+            ->first();
+
+        if (! $gateway) {
+            return $this->respondError('Selected payment gateway is not available for checkout.', 422);
+        }
         $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $type, $paymentMethod);
         if ($paymentMethod === 'billplz_online_banking' && ! $selectedGatewayOption && $this->hasActiveBillplzOptions($type, 'online_banking')) {
             return $this->respondError('Selected online banking option is not available.', 422);
@@ -108,17 +123,6 @@ class PaymentController extends Controller
                 ]),
                 'manual_bank_account' => $payment->raw_response['bank_account'] ?? null,
             ]);
-        }
-
-        $gatewayKey = $paymentMethod === 'billplz_credit_card' ? 'billplz_card' : 'billplz_fpx';
-        $gateway = PaymentGateway::query()
-            ->where('type', $type)
-            ->where('key', $gatewayKey)
-            ->where('is_active', true)
-            ->first();
-
-        if (! $gateway) {
-            return $this->respondError('Selected payment gateway is not available.', 422);
         }
 
         $billplz = $this->createBillplzBill($booking, $type, $paymentMethod, $gateway->config ?? [], $selectedGatewayOption);

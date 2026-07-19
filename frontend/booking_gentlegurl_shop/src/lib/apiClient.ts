@@ -33,6 +33,7 @@ export type PublicBookingBankAccount = {
   qr_image_url?: string | null;
   instructions?: string | null;
   is_default?: boolean;
+  allow_checkout?: boolean;
 };
 
 export type PublicBookingPaymentGateway = {
@@ -41,6 +42,7 @@ export type PublicBookingPaymentGateway = {
   name: string;
   is_active?: boolean;
   is_default?: boolean;
+  allow_checkout?: boolean;
 };
 
 export type BillplzPaymentGatewayOption = {
@@ -410,7 +412,7 @@ export async function getBookingBankAccounts() {
 
 export async function getBookingPaymentGateways() {
   const response = await request<{ data?: { payment_gateways?: PublicBookingPaymentGateway[] } }>("/public/shop/homepage?type=booking");
-  return response?.data?.payment_gateways ?? [];
+  return (response?.data?.payment_gateways ?? []).filter((gateway) => gateway.is_active !== false && gateway.allow_checkout !== false);
 }
 
 export async function payBooking(bookingId: string | number, payload?: {

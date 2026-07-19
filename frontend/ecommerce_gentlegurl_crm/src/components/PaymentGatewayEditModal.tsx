@@ -18,6 +18,8 @@ interface FormState {
   name: string
   isActive: 'active' | 'inactive'
   isDefault: 'yes' | 'no'
+  allowCheckout: boolean
+  allowWalletTopup: boolean
   apiKey: string
   collectionId: string
   xSignature: string
@@ -30,6 +32,8 @@ const initialFormState: FormState = {
   name: '',
   isActive: 'active',
   isDefault: 'no',
+  allowCheckout: true,
+  allowWalletTopup: false,
   apiKey: '',
   collectionId: '',
   xSignature: '',
@@ -110,6 +114,8 @@ export default function PaymentGatewayEditModal({
             paymentGateway.is_default === true || paymentGateway.is_default === 'true' || paymentGateway.is_default === 1
               ? 'yes'
               : 'no',
+          allowCheckout: paymentGateway.allow_checkout !== false && paymentGateway.allow_checkout !== 'false' && paymentGateway.allow_checkout !== 0 && paymentGateway.allow_checkout !== '0',
+          allowWalletTopup: paymentGateway.allow_wallet_topup === true || paymentGateway.allow_wallet_topup === 'true' || paymentGateway.allow_wallet_topup === 1 || paymentGateway.allow_wallet_topup === '1',
           apiKey: typeof config.api_key === 'string' ? config.api_key : '',
           collectionId: typeof config.collection_id === 'string' ? config.collection_id : '',
           xSignature: typeof config.x_signature === 'string' ? config.x_signature : '',
@@ -138,7 +144,8 @@ export default function PaymentGatewayEditModal({
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     const { name, value } = event.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    const checked = 'checked' in event.target ? event.target.checked : false
+    setForm((prev) => ({ ...prev, [name]: event.target.type === 'checkbox' ? checked : value }))
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -169,6 +176,8 @@ export default function PaymentGatewayEditModal({
           name: trimmedName,
           is_active: form.isActive === 'active',
           is_default: form.isDefault === 'yes',
+          allow_checkout: form.allowCheckout,
+          allow_wallet_topup: form.allowWalletTopup,
           config,
           type: workspaceType,
         }),
@@ -221,6 +230,8 @@ export default function PaymentGatewayEditModal({
             name: trimmedName,
             isActive: form.isActive === 'active',
             isDefault: form.isDefault === 'yes',
+            allowCheckout: form.allowCheckout,
+            allowWalletTopup: form.allowWalletTopup,
             sort_order: loadedPaymentGateway?.sort_order ?? null,
             createdAt: loadedPaymentGateway?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
@@ -314,12 +325,24 @@ export default function PaymentGatewayEditModal({
                   </select>
                 </div>
 
+                <fieldset className="rounded-md border border-gray-200 p-3">
+                  <legend className="px-1 text-sm font-medium text-gray-700">Available For</legend>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" name="allowCheckout" checked={form.allowCheckout} onChange={handleChange} disabled={disableForm} />
+                    Allow Checkout
+                  </label>
+                  <label className="mt-2 flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" name="allowWalletTopup" checked={form.allowWalletTopup} onChange={handleChange} disabled={disableForm} />
+                    Allow Wallet Top Up
+                  </label>
+                </fieldset>
+
                 <div>
                   <label
                     htmlFor="edit-isDefault"
                     className="block text-sm font-medium text-gray-700 mb-1"
                   >
-                    Default Gateway
+                    Default Checkout Gateway
                   </label>
                   <select
                     id="edit-isDefault"
