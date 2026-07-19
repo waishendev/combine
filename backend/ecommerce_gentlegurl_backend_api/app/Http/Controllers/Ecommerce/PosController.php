@@ -2563,14 +2563,29 @@ class PosController extends Controller
                 }
             }
 
-            $order = Order::query()->find((int) $depositItem->order_id);
+            $order = Order::query()->lockForUpdate()->find((int) $depositItem->order_id);
             if ($order) {
+                $order->loadMissing('payments');
                 $this->refreshOrderTotalsFromItems($order);
+                $previousWalletAmount = round((float) collect($order->payments ?? [])
+                    ->filter(fn ($payment) => $this->normalizePosPaymentMethod((string) ($payment->payment_method ?? '')) === 'customer_balance')
+                    ->sum(fn ($payment) => (float) ($payment->amount ?? 0)), 2);
+                $newWalletAmount = round((float) collect($paymentRows)
+                    ->where('method', 'customer_balance')
+                    ->sum('amount'), 2);
+
                 if ($newAmount > 0.0001 && ($hasPaymentUpdate || abs($newAmount - $previousAmount) > 0.0001)) {
                     $order->update([
                         'payment_method' => $this->orderPaymentMethodForRows($paymentRows),
                     ]);
                     $this->replaceOrderPayments($order, $paymentRows, 'pos_edit_appointment_deposit');
+                    $this->syncCustomerBalancePaymentDelta(
+                        $order,
+                        $booking->customer_id ? (int) $booking->customer_id : null,
+                        $previousWalletAmount,
+                        $newWalletAmount,
+                        $userId,
+                    );
                 }
             }
 
@@ -8590,6 +8605,31 @@ class PosController extends Controller
         if ($walletAmount > (float) $order->grand_total + 0.0001) throw ValidationException::withMessages(['payments' => 'Customer Balance cannot exceed the amount payable.']);
         $customer = Customer::query()->findOrFail($customerId);
         app(CustomerWalletService::class)->payForCrmOrder($customer, (int) $order->id, (string) $order->order_number, (string) $walletAmount, $userId);
+    }
+
+    private function syncCustomerBalancePaymentDelta(Order $order, ?int $customerId, float $previousWalletAmount, float $newWalletAmount, ?int $userId): void
+    {
+        if (abs($previousWalletAmount - $newWalletAmount) < 0.0001) {
+            return;
+        }
+        if ($newWalletAmount > 0.0001 && ! $customerId) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        }
+        if (! $customerId) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        }
+        if ($newWalletAmount > (float) $order->grand_total + 0.0001) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance cannot exceed the amount payable.']);
+        }
+        $customer = Customer::query()->findOrFail($customerId);
+        app(CustomerWalletService::class)->applyCrmOrderPaymentDelta(
+            $customer,
+            (int) $order->id,
+            (string) $order->order_number,
+            (string) $previousWalletAmount,
+            (string) $newWalletAmount,
+            $userId,
+        );
     }
 
     private function replaceOrderPayments(Order $order, array $paymentRows, string $source): void

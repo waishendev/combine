@@ -328,6 +328,7 @@ const PAYMENT_METHOD_TABLE_LABELS: Record<string, string> = {
   billplz_fpx: 'Online Banking (Billplz)',
   billplz_credit_card: 'Credit Card (Billplz)',
   billplz_card: 'Credit Card (Billplz)',
+  customer_balance: 'Customer Balance',
 }
 
 const paymentMethodDisplayLabel = (raw: string) => {

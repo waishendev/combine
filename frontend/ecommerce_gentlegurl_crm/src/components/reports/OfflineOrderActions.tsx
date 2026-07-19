@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 type StaffOption = { id: number; name: string }
-type PaymentMethodKey = 'cash' | 'qrpay' | 'credit_card'
+type PaymentMethodKey = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
 type PaymentBreakdownRow = { method?: string | null; payment_method?: string | null; amount?: number | string | null }
 
 type VoidScope = 'order_only' | 'order_and_appointment'
@@ -68,15 +68,17 @@ const PAYMENT_METHODS: Array<{ method: PaymentMethodKey; label: string }> = [
   { method: 'cash', label: 'Cash' },
   { method: 'qrpay', label: 'QRPay' },
   { method: 'credit_card', label: 'Credit Card' },
+  { method: 'customer_balance', label: 'Customer Balance' },
 ]
 
-const emptyPaymentAmounts = (): Record<PaymentMethodKey, string> => ({ cash: '', qrpay: '', credit_card: '' })
+const emptyPaymentAmounts = (): Record<PaymentMethodKey, string> => ({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
 
 const normalizePaymentEditorMethod = (value?: string | null): PaymentMethodKey | null => {
   const key = String(value ?? '').trim().toLowerCase()
   if (key === 'cash') return 'cash'
   if (key === 'qrpay' || key === 'qr_pay' || key === 'qr pay') return 'qrpay'
   if (['credit_card', 'billplz_credit_card', 'billplz_card', 'card', 'credit-card', 'credit card'].includes(key)) return 'credit_card'
+  if (key === 'customer_balance' || key === 'customer balance' || key === 'wallet') return 'customer_balance'
   return null
 }
 
@@ -145,6 +147,9 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   const [draftItems, setDraftItems] = useState<ItemSplitDraft[]>([])
   const [editingDraftKey, setEditingDraftKey] = useState<string | null>(null)
   const [paymentAmounts, setPaymentAmounts] = useState<Record<PaymentMethodKey, string>>(emptyPaymentAmounts)
+  const [paymentMember, setPaymentMember] = useState<{ id: number; name: string } | null>(null)
+  const [paymentWalletBalance, setPaymentWalletBalance] = useState<number | null>(null)
+  const [paymentWalletLoading, setPaymentWalletLoading] = useState(false)
   const [billDateInput, setBillDateInput] = useState('')
   const [remark, setRemark] = useState('')
   const [voidPreview, setVoidPreview] = useState<VoidPreview | null>(null)
@@ -161,6 +166,26 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   const assignedAmount = assignedCents / 100
   const balanceCents = orderTotalCents - assignedCents
   const paymentTotalMatches = balanceCents === 0 && paymentRows.length > 0
+  const existingCustomerBalanceAllocation = useMemo(() => {
+    const rows = Array.isArray(paymentBreakdown) ? paymentBreakdown : []
+    return rows.reduce((sum, row) => {
+      const method = normalizePaymentEditorMethod(row.method ?? row.payment_method)
+      if (method !== 'customer_balance') return sum
+      const amount = Number(row.amount ?? 0)
+      return Number.isFinite(amount) && amount > 0 ? sum + amount : sum
+    }, 0)
+  }, [paymentBreakdown])
+  const customerBalanceCents = useMemo(() => Math.round(Number(paymentAmounts.customer_balance || 0) * 100), [paymentAmounts.customer_balance])
+  const maxCustomerBalanceCents = useMemo(() => {
+    if (!paymentMember) return 0
+    const availableCents = Math.round(Number(paymentWalletBalance ?? 0) * 100)
+    const existingCents = Math.round(existingCustomerBalanceAllocation * 100)
+    return Math.max(0, availableCents + existingCents)
+  }, [existingCustomerBalanceAllocation, paymentMember, paymentWalletBalance])
+  const customerBalanceWithinLimit = customerBalanceCents <= maxCustomerBalanceCents
+  const canSavePaymentMethod = paymentTotalMatches
+    && customerBalanceWithinLimit
+    && (customerBalanceCents === 0 || Boolean(paymentMember))
 
   const buildInitialPaymentAmounts = () => {
     const next = emptyPaymentAmounts()
@@ -185,12 +210,49 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     return next
   }
 
+  const loadPaymentMemberContext = async () => {
+    setPaymentWalletLoading(true)
+    setPaymentMember(null)
+    setPaymentWalletBalance(null)
+    try {
+      const orderRes = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      })
+      const orderJson = await orderRes.json().catch(() => ({}))
+      const customer = orderJson?.data?.customer as { id?: number; name?: string; is_active?: boolean } | null | undefined
+      const customerId = Number(customer?.id ?? 0)
+      if (!orderRes.ok || !customerId || customer?.is_active === false) {
+        setPaymentAmounts((prev) => (prev.customer_balance ? { ...prev, customer_balance: '' } : prev))
+        return
+      }
+
+      const member = { id: customerId, name: String(customer?.name ?? `Member #${customerId}`) }
+      setPaymentMember(member)
+
+      const walletRes = await fetch(`/api/proxy/admin/customers/${customerId}/wallet`, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      })
+      const walletJson = await walletRes.json().catch(() => ({}))
+      if (walletRes.ok) {
+        setPaymentWalletBalance(Number(walletJson?.data?.wallet_balance ?? 0))
+      }
+    } catch {
+      setPaymentMember(null)
+      setPaymentWalletBalance(null)
+    } finally {
+      setPaymentWalletLoading(false)
+    }
+  }
+
   const openPaymentModal = () => {
     setPaymentAmounts(buildInitialPaymentAmounts())
     setRemark('')
     setError(null)
     setModal('payment_method')
     setMenuOpen(false)
+    void loadPaymentMemberContext()
   }
 
   const openBillDateModal = () => {
@@ -356,6 +418,9 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     setVoidPreview(null)
     setVoidScope('order_and_appointment')
     setVoidPreviewLoading(false)
+    setPaymentMember(null)
+    setPaymentWalletBalance(null)
+    setPaymentWalletLoading(false)
   }
 
   const validateItem = (item: ItemSplitDraft): string | null => {
@@ -408,6 +473,16 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
       } else if (modal === 'payment_method') {
         if (!paymentTotalMatches) {
           setError(balanceCents > 0 ? `Remaining RM ${money(balanceCents / 100)}` : `Overpaid RM ${money(Math.abs(balanceCents) / 100)}`)
+          setSubmitting(false)
+          return
+        }
+        if (customerBalanceCents > 0 && !paymentMember) {
+          setError('Customer Balance is only available for member transactions.')
+          setSubmitting(false)
+          return
+        }
+        if (!customerBalanceWithinLimit) {
+          setError(`Customer Balance cannot exceed RM ${money(maxCustomerBalanceCents / 100)}.`)
           setSubmitting(false)
           return
         }
@@ -590,24 +665,60 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                     <span className="text-base font-bold text-slate-900">RM {money(orderTotalCents / 100)}</span>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {PAYMENT_METHODS.map(({ method, label }) => (
-                      <div key={method}>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">{label} Amount</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={paymentAmounts[method]}
-                          onChange={(event) => {
-                            setError(null)
-                            setPaymentAmounts((prev) => ({ ...prev, [method]: event.target.value }))
-                          }}
-                          className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none"
-                          placeholder="0.00"
-                        />
-                      </div>
-                    ))}
+                  {paymentWalletLoading ? (
+                    <p className="text-xs text-slate-500">Loading member balance…</p>
+                  ) : paymentMember ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
+                      <p><span className="font-semibold">Member</span> · {paymentMember.name}</p>
+                      <p className="mt-1"><span className="font-semibold">Customer Balance</span> · Available RM {money(Number(paymentWalletBalance ?? 0))}</p>
+                      {existingCustomerBalanceAllocation > 0 ? (
+                        <p className="mt-1"><span className="font-semibold">Existing Customer Balance Allocation</span> · RM {money(existingCustomerBalanceAllocation)}</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                      Guest / walk-in transactions cannot use Customer Balance.
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {PAYMENT_METHODS.map(({ method, label }) => {
+                      const isWallet = method === 'customer_balance'
+                      const walletDisabled = isWallet && !paymentMember
+                      return (
+                        <div key={method}>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">{label} Amount</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            max={isWallet && paymentMember ? (maxCustomerBalanceCents / 100).toFixed(2) : undefined}
+                            value={paymentAmounts[method]}
+                            disabled={walletDisabled}
+                            onChange={(event) => {
+                              setError(null)
+                              const raw = event.target.value
+                              if (!isWallet) {
+                                setPaymentAmounts((prev) => ({ ...prev, [method]: raw }))
+                                return
+                              }
+                              const capped = Math.min(Number(raw || 0), maxCustomerBalanceCents / 100)
+                              setPaymentAmounts((prev) => ({
+                                ...prev,
+                                customer_balance: raw === '' ? '' : String(Number.isFinite(capped) ? capped : 0),
+                              }))
+                            }}
+                            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                            placeholder="0.00"
+                          />
+                          {isWallet && paymentMember ? (
+                            <p className="mt-1 text-[11px] font-semibold text-emerald-700">
+                              Editable up to RM {money(maxCustomerBalanceCents / 100)}
+                            </p>
+                          ) : null}
+                        </div>
+                      )
+                    })}
                   </div>
 
                   <div className="grid grid-cols-1 gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 sm:grid-cols-3">
@@ -720,7 +831,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                 disabled={
                   submitting
                   || (modal === 'void' && voidPreviewLoading)
-                  || (modal === 'payment_method' && !paymentTotalMatches)
+                  || (modal === 'payment_method' && !canSavePaymentMethod)
                   || (modal === 'bill_date' && !billDateInput.trim())
                   || (modal === 'sales_person' && (canEditStaffSplit === false || draftItems.length === 0))
                 }

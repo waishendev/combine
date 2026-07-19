@@ -100,7 +100,7 @@ class OfflineOrderManagementController extends Controller
         $validated = $request->validate([
             'payment_method' => ['nullable', 'string', 'max:100'],
             'payments' => ['nullable', 'array'],
-            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
             'remark' => ['nullable', 'string', 'max:1000'],
             'remarks' => ['nullable', 'string', 'max:1000'],

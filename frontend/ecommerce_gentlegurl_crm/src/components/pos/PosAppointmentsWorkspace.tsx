@@ -7703,6 +7703,12 @@ export default function PosAppointmentsWorkspace({
                   {canEditAppointmentSettlement ? (
                   <PosAppointmentDepositCreditSection
                     bookingId={appointmentDetail.id}
+                    memberId={editSettlementCustomerId ?? appointmentDetail.customer?.id ?? null}
+                    memberName={
+                      editSettlementMemberSummary?.name
+                      ?? appointmentDetail.customer?.name
+                      ?? null
+                    }
                     initialTransactions={appointmentDetail.deposit_transactions}
                     initialTotal={Number(appointmentDetail.deposit_previously_collected_amount ?? appointmentDetail.deposit_contribution ?? 0)}
                     onTotalChange={setEditSettlementDepositTotal}

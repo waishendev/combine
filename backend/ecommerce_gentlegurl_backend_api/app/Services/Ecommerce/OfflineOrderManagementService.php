@@ -7,20 +7,24 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPayment;
 use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageUsage;
+use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Staff;
 use App\Services\Booking\StaffCommissionService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class OfflineOrderManagementService
 {
     private const ALLOWED_VOID_STATUSES = ['paid', 'completed', 'confirmed', 'packed', 'shipped', 'ready_for_pickup'];
 
-    public function __construct(private StaffCommissionService $staffCommissionService)
-    {
+    public function __construct(
+        private StaffCommissionService $staffCommissionService,
+        private CustomerWalletService $customerWalletService,
+    ) {
     }
 
     public function getSalesPersonDraft(Order $order): array
@@ -791,28 +795,41 @@ class OfflineOrderManagementService
     {
         $this->ensureOfflineOrder($order);
 
-        $before = [
-            'payment_method' => $order->payment_method,
-        ];
+        return DB::transaction(function () use ($order, $paymentMethod, $remark, $actorId, $payments) {
+            $lockedOrder = Order::query()->lockForUpdate()->findOrFail($order->id);
+            $lockedOrder->load('payments');
 
-        $paymentRows = $this->normalizePaymentRows($payments, (float) $order->grand_total, $paymentMethod);
+            $before = [
+                'payment_method' => $lockedOrder->payment_method,
+            ];
 
-        $order->payment_method = count($paymentRows) > 1 ? 'split' : (string) ($paymentRows[0]['method'] ?? trim($paymentMethod));
-        $order->save();
-        $order->payments()->delete();
-        foreach ($paymentRows as $row) {
-            $order->payments()->create([
-                'payment_method' => (string) $row['method'],
-                'amount' => round((float) $row['amount'], 2),
-                'meta' => ['source' => 'edit_payment_method'],
-            ]);
-        }
+            $paymentRows = $this->normalizePaymentRows($payments, (float) $lockedOrder->grand_total, $paymentMethod);
+            $previousWallet = $this->sumCustomerBalanceAmount(
+                $lockedOrder->payments->map(fn ($payment) => [
+                    'method' => (string) ($payment->payment_method ?? ''),
+                    'amount' => (float) ($payment->amount ?? 0),
+                ])->all()
+            );
+            $newWallet = $this->sumCustomerBalanceAmount($paymentRows);
+            $this->syncCustomerBalanceAllocation($lockedOrder, $previousWallet, $newWallet, $actorId);
 
-        $this->log('order', (int) $order->id, 'edit_payment_method', $before, [
-            'payment_method' => $order->payment_method,
-        ], $remark, $actorId);
+            $lockedOrder->payment_method = count($paymentRows) > 1 ? 'split' : (string) ($paymentRows[0]['method'] ?? trim($paymentMethod));
+            $lockedOrder->save();
+            $lockedOrder->payments()->delete();
+            foreach ($paymentRows as $row) {
+                $lockedOrder->payments()->create([
+                    'payment_method' => (string) $row['method'],
+                    'amount' => round((float) $row['amount'], 2),
+                    'meta' => ['source' => 'edit_payment_method'],
+                ]);
+            }
 
-        return $order->fresh();
+            $this->log('order', (int) $lockedOrder->id, 'edit_payment_method', $before, [
+                'payment_method' => $lockedOrder->payment_method,
+            ], $remark, $actorId);
+
+            return $lockedOrder->fresh();
+        });
     }
 
     public function updateBillDate(Order $order, Carbon $billDate, ?string $remark, ?int $actorId): Order
@@ -836,7 +853,7 @@ class OfflineOrderManagementService
 
     private function normalizePaymentRows(?array $payments, float $expectedTotal, string $fallbackMethod): array
     {
-        $allowed = ['cash', 'qrpay', 'credit_card'];
+        $allowed = ['cash', 'qrpay', 'credit_card', 'customer_balance'];
         $rows = collect($payments ?? [])
             ->map(function (array $row) {
                 $method = strtolower(trim((string) ($row['method'] ?? '')));
@@ -872,6 +889,41 @@ class OfflineOrderManagementService
         }
 
         return $rows->all();
+    }
+
+    /**
+     * @param  array<int, array{method?: string, amount?: float|int|string}>  $paymentRows
+     */
+    private function sumCustomerBalanceAmount(array $paymentRows): float
+    {
+        return round((float) collect($paymentRows)
+            ->filter(fn (array $row) => strtolower(trim((string) ($row['method'] ?? ''))) === 'customer_balance')
+            ->sum(fn (array $row) => (float) ($row['amount'] ?? 0)), 2);
+    }
+
+    private function syncCustomerBalanceAllocation(Order $order, float $previousWallet, float $newWallet, ?int $actorId): void
+    {
+        if (abs($previousWallet - $newWallet) < 0.0001) {
+            return;
+        }
+
+        $customerId = (int) ($order->customer_id ?? 0);
+        if ($newWallet > 0.0001 && $customerId <= 0) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        }
+        if ($customerId <= 0) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        }
+
+        $customer = Customer::query()->findOrFail($customerId);
+        $this->customerWalletService->applyCrmOrderPaymentDelta(
+            $customer,
+            (int) $order->id,
+            (string) $order->order_number,
+            (string) $previousWallet,
+            (string) $newWallet,
+            $actorId,
+        );
     }
 
     public function buildVoidOrderPreview(Order $order): array

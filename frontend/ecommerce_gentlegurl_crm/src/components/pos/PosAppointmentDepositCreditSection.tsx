@@ -8,24 +8,27 @@ import PosDepositOrderStaffSplitModal from '@/components/pos/PosDepositOrderStaf
 
 import type { PosDepositTransaction } from './posAppointmentTypes'
 
-type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
+type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
 
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
   { method: 'cash', label: 'Cash' },
   { method: 'qrpay', label: 'QRPay' },
   { method: 'credit_card', label: 'Credit Card' },
+  { method: 'customer_balance', label: 'Customer Balance' },
 ]
 
 const EMPTY_SPLIT_PAYMENTS: Record<SplitPaymentMethod, string> = {
   cash: '',
   qrpay: '',
   credit_card: '',
+  customer_balance: '',
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
   qrpay: 'QRPay',
   credit_card: 'Credit Card',
+  customer_balance: 'Customer Balance',
   billplz_credit_card: 'Credit Card',
   billplz_card: 'Credit Card',
   billplz_fpx: 'Online Banking',
@@ -57,6 +60,8 @@ type DepositFormMode =
 
 type PosAppointmentDepositCreditSectionProps = {
   bookingId: number
+  memberId?: number | null
+  memberName?: string | null
   initialTransactions?: PosDepositTransaction[]
   initialTotal?: number
   onTotalChange?: (total: number) => void
@@ -74,6 +79,8 @@ type PosAppointmentDepositCreditSectionProps = {
 
 export default function PosAppointmentDepositCreditSection({
   bookingId,
+  memberId = null,
+  memberName = null,
   initialTransactions,
   initialTotal,
   onTotalChange,
@@ -106,6 +113,27 @@ export default function PosAppointmentDepositCreditSection({
   const [remarkDraft, setRemarkDraft] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<SplitPaymentMethod>('qrpay')
   const [splitPayments, setSplitPayments] = useState<Record<SplitPaymentMethod, string>>(EMPTY_SPLIT_PAYMENTS)
+  const [memberWalletBalance, setMemberWalletBalance] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!memberId) {
+      setMemberWalletBalance(null)
+      setSplitPayments((prev) => (prev.customer_balance ? { ...prev, customer_balance: '' } : prev))
+      return
+    }
+    let cancelled = false
+    void fetch(`/api/proxy/admin/customers/${memberId}/wallet`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!cancelled) setMemberWalletBalance(Number(json?.data?.wallet_balance ?? 0))
+      })
+      .catch(() => {
+        if (!cancelled) setMemberWalletBalance(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [memberId])
 
   useEffect(() => {
     if (initialTransactions !== undefined) {
@@ -204,6 +232,24 @@ export default function PosAppointmentDepositCreditSection({
     () => splitPaymentRows.reduce((sum, row) => sum + row.amount, 0),
     [splitPaymentRows],
   )
+  const existingCustomerBalanceAllocation = useMemo(() => {
+    if (!editingTransaction) return 0
+    if (editingTransaction.payments?.length) {
+      return editingTransaction.payments.reduce((sum, row) => {
+        const method = String(row.method ?? '').toLowerCase()
+        if (method !== 'customer_balance') return sum
+        const amount = Number(row.amount ?? 0)
+        return Number.isFinite(amount) && amount > 0 ? sum + amount : sum
+      }, 0)
+    }
+    return String(editingTransaction.payment_method ?? '').toLowerCase() === 'customer_balance'
+      ? Number(editingTransaction.amount ?? 0)
+      : 0
+  }, [editingTransaction])
+  const maxCustomerBalance = useMemo(() => {
+    if (!memberId) return 0
+    return Math.max(0, Number(memberWalletBalance ?? 0) + existingCustomerBalanceAllocation)
+  }, [existingCustomerBalanceAllocation, memberId, memberWalletBalance])
 
   const resetForm = useCallback(() => {
     setFormMode({ type: 'idle' })
@@ -231,7 +277,7 @@ export default function PosAppointmentDepositCreditSection({
       const nextSplit: Record<SplitPaymentMethod, string> = { ...EMPTY_SPLIT_PAYMENTS }
       transaction.payments.forEach((row) => {
         const key = row.method === 'billplz_credit_card' ? 'credit_card' : row.method
-        if (key === 'cash' || key === 'qrpay' || key === 'credit_card') {
+        if (key === 'cash' || key === 'qrpay' || key === 'credit_card' || key === 'customer_balance') {
           nextSplit[key] = String(Number(row.amount ?? 0))
         }
       })
@@ -241,12 +287,16 @@ export default function PosAppointmentDepositCreditSection({
     }
 
     const normalized = method === 'billplz_credit_card' ? 'credit_card' : method
-    const activeMethod: SplitPaymentMethod = normalized === 'cash' || normalized === 'credit_card' ? normalized : 'qrpay'
+    const activeMethod: SplitPaymentMethod =
+      normalized === 'cash' || normalized === 'credit_card' || normalized === 'customer_balance'
+        ? normalized
+        : 'qrpay'
     setPaymentMethod(activeMethod)
     setSplitPayments({
       cash: activeMethod === 'cash' ? String(amount) : '',
       qrpay: activeMethod === 'qrpay' ? String(amount) : '',
       credit_card: activeMethod === 'credit_card' ? String(amount) : '',
+      customer_balance: activeMethod === 'customer_balance' ? String(amount) : '',
     })
   }, [onError])
 
@@ -288,7 +338,17 @@ export default function PosAppointmentDepositCreditSection({
   const saveDeposit = useCallback(async () => {
     const amount = Math.max(0, splitPaymentTotal)
     if (amount <= 0) {
-      onError?.('Enter at least one payment amount under Cash, QRPay, or Credit Card.')
+      onError?.('Enter at least one payment amount under Cash, QRPay, Credit Card, or Customer Balance.')
+      return
+    }
+
+    const walletAmount = Number(splitPayments.customer_balance || 0)
+    if (walletAmount > 0.0001 && !memberId) {
+      onError?.('Customer Balance is only available when a member is assigned.')
+      return
+    }
+    if (walletAmount > maxCustomerBalance + 0.0001) {
+      onError?.(`Customer Balance cannot exceed RM ${maxCustomerBalance.toFixed(2)}.`)
       return
     }
 
@@ -322,11 +382,17 @@ export default function PosAppointmentDepositCreditSection({
       }
       applyMutationResponse(json)
       resetForm()
+      if (memberId) {
+        void fetch(`/api/proxy/admin/customers/${memberId}/wallet`, { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((walletJson) => setMemberWalletBalance(Number(walletJson?.data?.wallet_balance ?? 0)))
+          .catch(() => null)
+      }
       showMsg?.(formMode.type === 'add' ? 'Deposit added.' : 'Deposit updated.', 'success')
     } finally {
       setSaving(false)
     }
-  }, [applyMutationResponse, bookingId, buildPaymentPayload, editingTransaction?.id, formMode.type, onError, remarkDraft, resetForm, showMsg, splitPaymentTotal])
+  }, [applyMutationResponse, bookingId, buildPaymentPayload, editingTransaction?.id, formMode.type, maxCustomerBalance, memberId, onError, remarkDraft, resetForm, showMsg, splitPaymentTotal, splitPayments.customer_balance])
 
   const showSplitFields = splitPaymentRows.length > 1
 
@@ -460,36 +526,60 @@ export default function PosAppointmentDepositCreditSection({
 
           <div className="space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">Payment method</p>
+            {memberId ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-[11px] text-emerald-900">
+                <p><span className="font-semibold">Member</span> · {memberName || `Member #${memberId}`}</p>
+                <p className="mt-0.5"><span className="font-semibold">Customer Balance</span> · Available RM {(memberWalletBalance ?? 0).toFixed(2)}</p>
+                {existingCustomerBalanceAllocation > 0 ? (
+                  <p className="mt-0.5"><span className="font-semibold">Existing Customer Balance Allocation</span> · RM {existingCustomerBalanceAllocation.toFixed(2)}</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-[11px] text-gray-500">Assign a member to enable Customer Balance.</p>
+            )}
             {!showSplitFields ? (
               <div className="flex flex-wrap gap-2">
-                {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
+                {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                  const walletDisabled = method === 'customer_balance' && !memberId
+                  return (
                   <button
                     key={method}
                     type="button"
+                    disabled={walletDisabled}
                     onClick={() => {
+                      if (walletDisabled) return
                       onError?.(null)
                       setPaymentMethod(method)
                       const currentAmount = splitPayments[method] || splitPaymentRows[0]?.amount?.toFixed(2) || ''
+                      const capped = method === 'customer_balance'
+                        ? String(Math.min(Number(currentAmount || 0), maxCustomerBalance))
+                        : currentAmount
                       setSplitPayments({
-                        cash: method === 'cash' ? currentAmount : '',
-                        qrpay: method === 'qrpay' ? currentAmount : '',
-                        credit_card: method === 'credit_card' ? currentAmount : '',
+                        cash: method === 'cash' ? capped : '',
+                        qrpay: method === 'qrpay' ? capped : '',
+                        credit_card: method === 'credit_card' ? capped : '',
+                        customer_balance: method === 'customer_balance' ? capped : '',
                       })
                     }}
                     className={[
                       'rounded-lg border px-3 py-1.5 text-xs font-semibold',
-                      paymentMethod === method && !showSplitFields
-                        ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
-                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+                      walletDisabled
+                        ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
+                        : paymentMethod === method && !showSplitFields
+                          ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
+                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
                     ].join(' ')}
                   >
                     {label}
                   </button>
-                ))}
+                  )
+                })}
               </div>
             ) : null}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                const walletDisabled = method === 'customer_balance' && !memberId
+                return (
                 <div key={method}>
                   <label className="mb-1 block text-[11px] font-medium text-gray-500">{label}</label>
                   <div className="relative">
@@ -498,17 +588,31 @@ export default function PosAppointmentDepositCreditSection({
                       type="text"
                       inputMode="decimal"
                       value={splitPayments[method]}
+                      disabled={walletDisabled}
                       onChange={(e) => {
                         onError?.(null)
-                        setSplitPayments((prev) => ({ ...prev, [method]: e.target.value }))
+                        const raw = e.target.value
+                        if (method !== 'customer_balance') {
+                          setSplitPayments((prev) => ({ ...prev, [method]: raw }))
+                          return
+                        }
+                        const capped = Math.min(Number(raw || 0), maxCustomerBalance)
+                        setSplitPayments((prev) => ({
+                          ...prev,
+                          customer_balance: raw === '' ? '' : String(Number.isFinite(capped) ? capped : 0),
+                        }))
                       }}
                       onFocus={(e) => e.currentTarget.select()}
-                      className="w-full rounded-lg border border-gray-300 py-1.5 pl-8 pr-2 text-xs tabular-nums"
+                      className="w-full rounded-lg border border-gray-300 py-1.5 pl-8 pr-2 text-xs tabular-nums disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
                       placeholder="0.00"
                     />
                   </div>
+                  {method === 'customer_balance' && memberId ? (
+                    <p className="mt-1 text-[11px] font-semibold text-emerald-700">Editable up to RM {maxCustomerBalance.toFixed(2)}</p>
+                  ) : null}
                 </div>
-              ))}
+                )
+              })}
             </div>
             <p className="text-[11px] text-gray-500">Enter amount in one or more payment methods above.</p>
           </div>
