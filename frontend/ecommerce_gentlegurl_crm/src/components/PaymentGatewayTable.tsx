@@ -58,10 +58,11 @@ export default function PaymentGatewayTable({
   const [deleteTarget, setDeleteTarget] = useState<PaymentGatewayRowData | null>(null)
   const [movingPaymentGatewayId, setMovingPaymentGatewayId] = useState<number | null>(null)
 
-  const canCreate = permissions.includes('ecommerce.payment-gateways.create')
-  const canUpdate = permissions.includes('ecommerce.payment-gateways.update')
-  const canDelete = permissions.includes('ecommerce.payment-gateways.delete')
-  const canMove = permissions.includes('ecommerce.payment-gateways.update')
+  const permissionPrefix = workspaceType === 'booking' ? 'booking' : 'ecommerce'
+  const canCreate = permissions.includes(`${permissionPrefix}.payment-gateways.create`)
+  const canUpdate = permissions.includes(`${permissionPrefix}.payment-gateways.update`)
+  const canDelete = permissions.includes(`${permissionPrefix}.payment-gateways.delete`)
+  const canMove = canUpdate
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -243,7 +244,7 @@ export default function PaymentGatewayTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 6 : 5
+  const colCount = showActions ? 7 : 6
 
   const totalPages = meta.last_page || 1
 
@@ -554,7 +555,8 @@ export default function PaymentGatewayTable({
                   { key: 'key', label: 'Key' },
                   { key: 'name', label: 'Name' },
                   { key: 'isActive', label: t('common.status') },
-                  { key: 'isDefault', label: 'Default' },
+                  { key: 'allowCheckout', label: 'Available For' },
+                  { key: 'isDefault', label: 'Default Checkout' },
                   { key: 'sort_order', label: 'Sort Order' },
                 ] as const
               ).map(({ key, label }) => (
@@ -668,4 +670,3 @@ export default function PaymentGatewayTable({
     </div>
   )
 }
-

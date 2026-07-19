@@ -6,6 +6,8 @@ export type PaymentGatewayApiItem = {
   name?: string | null
   is_active?: boolean | number | string | null
   is_default?: boolean | number | string | null
+  allow_checkout?: boolean | number | string | null
+  allow_wallet_topup?: boolean | number | string | null
   sort_order?: number | string | null
   config?: unknown | null
   created_at?: string | null
@@ -33,6 +35,8 @@ export const mapPaymentGatewayApiItemToRow = (item: PaymentGatewayApiItem): Paym
     isDefaultValue === '1' ||
     isDefaultValue === 1
 
+  const toBoolean = (value: unknown) => value === true || value === 'true' || value === '1' || value === 1
+
   const sortOrderValue = item.sort_order
   let normalizedSortOrder: number | null = null
   if (typeof sortOrderValue === 'number') {
@@ -48,6 +52,8 @@ export const mapPaymentGatewayApiItemToRow = (item: PaymentGatewayApiItem): Paym
     name: item.name ?? '',
     isActive,
     isDefault,
+    allowCheckout: toBoolean(item.allow_checkout ?? true),
+    allowWalletTopup: toBoolean(item.allow_wallet_topup),
     sort_order: normalizedSortOrder,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',

@@ -9,6 +9,8 @@ export interface PaymentGatewayRowData {
   name: string
   isActive: boolean
   isDefault: boolean
+  allowCheckout: boolean
+  allowWalletTopup: boolean
   sort_order: number | null
   createdAt: string
   updatedAt: string
@@ -52,6 +54,12 @@ export default function PaymentGatewayRow({
           status={paymentGateway.isActive ? 'active' : 'inactive'}
           label={paymentGateway.isActive ? t('common.active') : t('common.inactive')}
         />
+      </td>
+      <td className="px-4 py-2 border border-gray-200">
+        <div className="space-y-1 text-xs">
+          <div>Checkout: {paymentGateway.allowCheckout ? 'Enabled' : 'Disabled'}</div>
+          <div>Wallet Top Up: {paymentGateway.allowWalletTopup ? 'Enabled' : 'Disabled'}</div>
+        </div>
       </td>
       <td className="px-4 py-2 border border-gray-200">
         {paymentGateway.isDefault ? (

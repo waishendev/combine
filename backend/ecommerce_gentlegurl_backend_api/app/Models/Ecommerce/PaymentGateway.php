@@ -14,6 +14,8 @@ class PaymentGateway extends Model
         'key',
         'name',
         'is_active',
+        'allow_checkout',
+        'allow_wallet_topup',
         'is_default',
         'sort_order',
         'config',
@@ -23,6 +25,8 @@ class PaymentGateway extends Model
     {
         return [
             'is_active' => 'boolean',
+            'allow_checkout' => 'boolean',
+            'allow_wallet_topup' => 'boolean',
             'is_default' => 'boolean',
             'config' => 'array',
         ];

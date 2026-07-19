@@ -8,6 +8,7 @@ use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class PaymentGatewayController extends Controller
 {
@@ -159,6 +160,8 @@ class PaymentGatewayController extends Controller
             ],
             'name' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:150'],
             'is_active' => ['sometimes', 'boolean'],
+            'allow_checkout' => ['sometimes', 'boolean'],
+            'allow_wallet_topup' => ['sometimes', 'boolean'],
             'is_default' => ['sometimes', 'boolean'],
             'config' => ['nullable', 'array'],
         ];
@@ -167,7 +170,17 @@ class PaymentGatewayController extends Controller
             $rules['sort_order'] = ['sometimes', 'integer'];
         }
 
-        return $request->validate($rules);
+        $validated = $request->validate($rules);
+        $allowCheckout = $validated['allow_checkout'] ?? $paymentGateway?->allow_checkout ?? true;
+        $isDefault = $validated['is_default'] ?? $paymentGateway?->is_default ?? false;
+
+        if ($isDefault && ! $allowCheckout) {
+            throw ValidationException::withMessages([
+                'is_default' => [__('A default checkout gateway must allow checkout.')],
+            ]);
+        }
+
+        return $validated;
     }
 
     protected function unsetOtherDefaults(int $paymentGatewayId, string $type): void

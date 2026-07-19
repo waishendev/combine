@@ -54,6 +54,7 @@ class PublicCustomerWalletController extends Controller
         $gateways = PaymentGateway::query()
             ->where('type', $workspace)
             ->where('is_active', true)
+            ->where('allow_wallet_topup', true)
             ->orderByDesc('is_default')
             ->orderBy('sort_order')
             ->orderBy('id')
@@ -66,6 +67,7 @@ class PublicCustomerWalletController extends Controller
                 'type' => $gateway->type,
                 'is_active' => (bool) $gateway->is_active,
                 'is_default' => (bool) $gateway->is_default,
+                'allow_wallet_topup' => (bool) $gateway->allow_wallet_topup,
                 'requires_proof' => $this->normalizeGatewayKey($gateway->key) === 'manual_transfer',
                 'provider' => str_starts_with($gateway->key, 'billplz') ? 'billplz' : 'manual',
                 'config' => [],
@@ -116,7 +118,16 @@ class PublicCustomerWalletController extends Controller
             ->where('type', $validated['workspace_type'])
             ->where('key', $gatewayKey)
             ->where('is_active', true)
-            ->firstOrFail();
+            ->where('allow_wallet_topup', true)
+            ->first();
+
+        if (! $gateway) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Selected payment gateway is not available for wallet top up.',
+                'errors' => ['payment_gateway_key' => ['Selected payment gateway is not available for wallet top up.']],
+            ], 422);
+        }
 
         $bankAccount = null;
         if ($this->normalizeGatewayKey($gateway->key) === 'manual_transfer') {
