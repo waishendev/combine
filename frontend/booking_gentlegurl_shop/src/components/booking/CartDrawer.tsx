@@ -472,6 +472,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         });
       }
 
+      if (selectedPaymentMethod === "customer_balance" && String(checkoutResponse?.payment_status ?? "").toLowerCase() === "paid") {
+        // The header owns the wallet query and will revalidate from the backend.
+        window.dispatchEvent(new CustomEvent("walletBalanceUpdated"));
+      }
+
       if (checkoutResponse?.payment_url) {
         window.location.href = checkoutResponse.payment_url;
         return;

@@ -857,6 +857,11 @@ export default function CheckoutForm() {
       setVoucherCode("");
       setSelectedVoucherId(null);
 
+      if (paymentMethod === "customer_balance" && String(order.payment_status ?? "").toLowerCase() === "paid") {
+        // Revalidate the header's existing authoritative wallet query after backend settlement.
+        window.dispatchEvent(new CustomEvent("walletBalanceUpdated"));
+      }
+
       const isBillplzMethod = String(order.payment_method || "").startsWith("billplz_");
       const paymentUrl = order.payment_url ?? order.payment?.billplz_url;
 
