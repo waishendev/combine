@@ -39,6 +39,8 @@ export type PublicBookingBankAccount = {
 export type PublicBookingPaymentGateway = {
   id: number;
   key: string;
+  category?: "external_gateway" | "manual" | "internal_wallet";
+  wallet_balance?: string | number;
   name: string;
   is_active?: boolean;
   is_default?: boolean;
@@ -311,7 +313,7 @@ export async function checkoutCart(payload?: {
   billing_name?: string;
   billing_phone?: string;
   billing_email?: string;
-  payment_method?: "manual_transfer" | "billplz_online_banking" | "billplz_credit_card";
+  payment_method?: "manual_transfer" | "billplz_online_banking" | "billplz_credit_card" | "customer_balance";
   bank_account_id?: number;
   billplz_gateway_option_id?: number;
 }, options?: { authenticated?: boolean }) {
@@ -416,7 +418,7 @@ export async function getBookingPaymentGateways() {
 }
 
 export async function payBooking(bookingId: string | number, payload?: {
-  payment_method?: "manual_transfer" | "billplz_online_banking" | "billplz_credit_card";
+  payment_method?: "manual_transfer" | "billplz_online_banking" | "billplz_credit_card" | "customer_balance";
   bank_account_id?: number;
   billplz_gateway_option_id?: number;
 }) {

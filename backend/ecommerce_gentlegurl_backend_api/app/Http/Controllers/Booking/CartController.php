@@ -17,12 +17,14 @@ use App\Models\BillplzBill;
 use App\Models\BillplzPaymentGatewayOption;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\PaymentGateway;
 use App\Services\BillplzService;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Ecommerce\OrderReserveService;
+use App\Services\Ecommerce\CustomerWalletService;
 use App\Services\SettingService;
 use App\Support\WorkspaceType;
 use Carbon\Carbon;
@@ -43,6 +45,7 @@ class CartController extends Controller
         private readonly CustomerServicePackageService $customerServicePackageService,
         private readonly BillplzService $billplzService,
         private readonly OrderPaymentService $orderPaymentService,
+        private readonly CustomerWalletService $customerWalletService,
     ) {}
 
     public function add(Request $request)
@@ -456,7 +459,7 @@ class CartController extends Controller
             'billing_name' => ['nullable', 'string', 'max:255'],
             'billing_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
             'billing_email' => ['nullable', 'email', 'max:255'],
-            'payment_method' => ['nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card,billplz_online_banking,billplz_credit_card'],
+            'payment_method' => ['nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card,billplz_online_banking,billplz_credit_card,customer_balance'],
             'bank_account_id' => ['nullable', 'integer', 'exists:bank_accounts,id'],
             'billplz_gateway_option_id' => ['nullable', 'integer', 'exists:billplz_payment_gateway_options,id'],
         ]);
@@ -507,6 +510,14 @@ class CartController extends Controller
             $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
             $activeItemIds = $activeItems->pluck('id')->all();
             $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
+            $gatewayKey = $paymentMethod === 'customer_balance' ? 'customer_balance' : ($paymentMethod === 'billplz_online_banking' ? 'billplz_fpx' : ($paymentMethod === 'billplz_credit_card' ? 'billplz_card' : 'manual_transfer'));
+            $gatewayAvailable = PaymentGateway::query()->where('type', WorkspaceType::BOOKING)->where('key', $gatewayKey)->where('is_active', true)->where('allow_checkout', true)->exists();
+            if (! $gatewayAvailable) {
+                return $this->respondError('Selected payment gateway is not available for checkout.', 422);
+            }
+            if ($paymentMethod === 'customer_balance' && (! $customer || ! $customer->is_active)) {
+                return $this->respondError('Customer Balance is available to active signed-in customers only.', 422);
+            }
             $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $paymentMethod);
             if ($paymentMethod === 'billplz_online_banking' && ! $selectedGatewayOption && $this->hasActiveBillplzOptions('online_banking')) {
                 return $this->respondError('Selected online banking option is not available.', 422);
@@ -547,7 +558,7 @@ class CartController extends Controller
                 'payment_status' => 'unpaid',
                 'payment_method' => $paymentMethod,
                 'requested_payment_method' => $paymentMethod,
-                'payment_provider' => str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual',
+                'payment_provider' => $paymentMethod === 'customer_balance' ? 'internal_wallet' : (str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual'),
                 'selected_gateway_code' => $selectedGatewayOption?->code,
                 'selected_gateway_name' => $selectedGatewayOption?->name,
                 'billplz_gateway_option_id' => $selectedGatewayOption?->id,
@@ -742,6 +753,15 @@ class CartController extends Controller
             }
 
             $cart->update(['status' => 'converted']);
+
+            if ($order && $paymentMethod === 'customer_balance' && (float) $order->grand_total > 0) {
+                $this->customerWalletService->payForCheckout($customer, WorkspaceType::BOOKING, $order->id, $order->order_number, (string) $order->grand_total);
+                $order->forceFill(['status' => 'confirmed', 'payment_status' => 'paid', 'paid_at' => now()])->save();
+                $this->orderPaymentService->handlePaid($order->fresh(['items', 'customer']));
+                if (! empty($bookingIds)) {
+                    Booking::query()->whereIn('id', $bookingIds)->update(['status' => 'CONFIRMED', 'payment_status' => 'PAID', 'hold_expires_at' => null, 'updated_at' => now()]);
+                }
+            }
 
             if ($order && (float) $order->grand_total <= 0) {
                 $order->status = 'confirmed';

@@ -159,6 +159,7 @@ class PaymentGatewayController extends Controller
                     ->ignore($paymentGateway?->id),
             ],
             'name' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:150'],
+            'category' => ['sometimes', Rule::in(['external_gateway', 'manual', 'internal_wallet'])],
             'is_active' => ['sometimes', 'boolean'],
             'allow_checkout' => ['sometimes', 'boolean'],
             'allow_wallet_topup' => ['sometimes', 'boolean'],

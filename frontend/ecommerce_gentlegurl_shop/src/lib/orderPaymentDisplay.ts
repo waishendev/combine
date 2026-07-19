@@ -18,6 +18,7 @@ export function formatOrderPaymentMethod(method?: string | null): string {
   if (key === "cash") return "Cash";
   if (key === "qrpay") return "QRPay";
   if (key === "manual_transfer") return "Manual Transfer";
+  if (key === "customer_balance") return "Customer Balance";
   if (key === "billplz_online_banking") return "Online Banking";
   if (key === "billplz_credit_card" || key === "credit_card") return "Credit Card";
   if (key === "split") return "Split";

@@ -1697,7 +1697,9 @@ export default function CheckoutForm() {
               ) : paymentGateways.length === 0 ? (
                 <p className="text-xs text-[var(--foreground)]/70">No payment methods available.</p>
               ) : (
-                paymentGateways.map((gateway) => (
+                paymentGateways.map((gateway) => {
+                  const walletUnavailable = gateway.key === "customer_balance" && Number(gateway.wallet_balance ?? 0) < Number(shippingPreview?.grand_total ?? totals.grand_total ?? 0);
+                  return (
                   <div key={gateway.id} className="space-y-2">
                     <label className="flex items-center gap-2">
                       <input
@@ -1706,8 +1708,9 @@ export default function CheckoutForm() {
                         value={gateway.key}
                         checked={paymentMethod === gateway.key}
                         onChange={() => setPaymentMethod(gateway.key)}
+                        disabled={walletUnavailable}
                       />
-                      <span>{gateway.name}</span>
+                      <span>{gateway.name}{walletUnavailable ? " (Insufficient balance)" : ""}</span>
                     </label>
 
                     {gateway.key === "manual_transfer" && paymentMethod === "manual_transfer" && (
@@ -1817,7 +1820,8 @@ export default function CheckoutForm() {
                       </div>
                     )}
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

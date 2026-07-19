@@ -33,6 +33,7 @@ class PaymentGatewaySeeder extends Seeder
                 ['type' => $type, 'key' => 'manual_transfer'],
                 [
                     'name' => 'Manual Bank Transfer',
+                    'category' => 'manual',
                     'is_active' => true,
                     'is_default' => true,
                     'sort_order' => 1,
@@ -43,6 +44,7 @@ class PaymentGatewaySeeder extends Seeder
                 ['type' => $type, 'key' => 'billplz_fpx'],
                 [
                     'name' => 'Online Banking (Billplz FPX)',
+                    'category' => 'external_gateway',
                     'is_active' => true,
                     'is_default' => false,
                     'sort_order' => 2,
@@ -54,10 +56,25 @@ class PaymentGatewaySeeder extends Seeder
                 ['type' => $type, 'key' => 'billplz_card'],
                 [
                     'name' => 'Credit Card (Billplz)',
+                    'category' => 'external_gateway',
                     'is_active' => true,
                     'is_default' => false,
                     'sort_order' => 3,
                     'config' => $this->billplzConfig($type),
+                ]
+            );
+
+            // firstOrCreate preserves the business's post-deployment enablement choice.
+            PaymentGateway::firstOrCreate(
+                ['type' => $type, 'key' => 'customer_balance'],
+                [
+                    'name' => 'Customer Balance',
+                    'category' => 'internal_wallet',
+                    'is_active' => false,
+                    'allow_checkout' => true,
+                    'allow_wallet_topup' => false,
+                    'is_default' => false,
+                    'sort_order' => 4,
                 ]
             );
         }

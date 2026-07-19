@@ -192,6 +192,50 @@ class CustomerWalletService
     }
 
 
+    /** Deduct an order payable amount once; source_type/source_id provide idempotency. */
+    public function payForCheckout(Customer $customer, string $workspaceType, int $orderId, string $referenceNo, string $amount): CustomerWalletTransaction
+    {
+        $amount = $this->normalizeAmount($amount);
+
+        return DB::transaction(function () use ($customer, $workspaceType, $orderId, $referenceNo, $amount) {
+            $existing = CustomerWalletTransaction::query()
+                ->where('source_type', 'checkout_order')
+                ->where('source_id', (string) $orderId)
+                ->lockForUpdate()
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+
+            $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
+            $before = $this->normalizeAmount($locked->wallet_balance ?? 0);
+            $after = bcsub($before, $amount, 2);
+            if (bccomp($after, '0.00', 2) < 0) {
+                throw ValidationException::withMessages(['payment_method' => 'Customer Balance is insufficient for this payment.']);
+            }
+
+            $locked->forceFill(['wallet_balance' => $after])->save();
+            return CustomerWalletTransaction::query()->create([
+                'customer_id' => $locked->id,
+                'transaction_no' => $this->newTransactionNo('WTX'),
+                'type' => 'checkout_payment',
+                'direction' => 'debit',
+                'amount' => $amount,
+                'balance_before' => $before,
+                'balance_after' => $after,
+                'workspace_type' => $workspaceType,
+                'payment_gateway_key' => 'customer_balance',
+                'payment_method_label' => 'Customer Balance',
+                'source_type' => 'checkout_order',
+                'source_id' => (string) $orderId,
+                'reference_no' => $referenceNo,
+                'status' => CustomerWalletTransaction::STATUS_COMPLETED,
+                'remark' => 'Customer Balance checkout payment.',
+                'completed_at' => now(),
+            ]);
+        });
+    }
+
     private function initialTopupStatus(array $data): string
     {
         $metadata = $data['metadata'] ?? [];

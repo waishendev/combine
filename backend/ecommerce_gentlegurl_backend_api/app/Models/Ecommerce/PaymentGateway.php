@@ -12,6 +12,7 @@ class PaymentGateway extends Model
     protected $fillable = [
         'type',
         'key',
+        'category',
         'name',
         'is_active',
         'allow_checkout',

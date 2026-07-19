@@ -208,6 +208,7 @@ class PublicHomepageController extends Controller
                 ->get([
                     'id',
                     'key',
+                    'category',
                     'name',
                     'is_active',
                     'allow_checkout',
@@ -253,6 +254,17 @@ class PublicHomepageController extends Controller
         $data['new_products'] = $this->mapProductsWithWishlistStatus($data['new_products'], $wishlistLookup, $realSoldCounts);
         $data['best_sellers'] = $this->mapProductsWithWishlistStatus($data['best_sellers'], $wishlistLookup, $realSoldCounts);
         $data['featured_products'] = $this->mapProductsWithWishlistStatus($data['featured_products'], $wishlistLookup, $realSoldCounts);
+
+        // Wallet eligibility is customer-specific, so it must be applied after the shared homepage cache.
+        $customer = $this->currentCustomer();
+        $data['payment_gateways'] = collect($data['payment_gateways'] ?? [])
+            ->reject(fn ($gateway) => data_get($gateway, 'category') === 'internal_wallet' && (! $customer || ! $customer->is_active))
+            ->map(function ($gateway) use ($customer) {
+                if (data_get($gateway, 'category') === 'internal_wallet') {
+                    $gateway['wallet_balance'] = $customer?->wallet_balance ?? '0.00';
+                }
+                return $gateway;
+            })->values();
 
         return response()->json([
             'data' => $data,

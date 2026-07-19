@@ -146,7 +146,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [claimedPackageNames, setClaimedPackageNames] = useState<Record<number, string>>({});
   const [gateways, setGateways] = useState<PublicBookingPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBookingBankAccount[]>([]);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"manual_transfer" | "billplz_online_banking" | "billplz_credit_card">("manual_transfer");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"manual_transfer" | "billplz_online_banking" | "billplz_credit_card" | "customer_balance">("manual_transfer");
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
   const [onlineBankingOptions, setOnlineBankingOptions] = useState<BillplzPaymentGatewayOption[]>([]);
   const [selectedBillplzGatewayOptionId, setSelectedBillplzGatewayOptionId] = useState<number | null>(null);
@@ -234,7 +234,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           setOnlineBankingOptions(onlineOptions);
           setSelectedBillplzGatewayOptionId(onlineOptions.find((o) => o.is_default)?.id ?? onlineOptions[0]?.id ?? null);
 
-          const firstMethod = (normalizedGateways.find((g) => g.key === "manual_transfer")?.key || normalizedGateways[0]?.key || "manual_transfer") as "manual_transfer" | "billplz_online_banking" | "billplz_credit_card";
+          const firstMethod = (normalizedGateways.find((g) => g.key === "manual_transfer")?.key || normalizedGateways[0]?.key || "manual_transfer") as "manual_transfer" | "billplz_online_banking" | "billplz_credit_card" | "customer_balance";
           setSelectedPaymentMethod(firstMethod);
 
           const defaultBank = (bankData || []).find((b) => b.is_default) || (bankData || [])[0] || null;
@@ -500,7 +500,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           return;
         }
 
-        if (selectedPaymentMethod !== "manual_transfer") {
+        if (selectedPaymentMethod !== "manual_transfer" && selectedPaymentMethod !== "customer_balance") {
           const payResponse = await payPublicOrder(orderId, {
             payment_method: selectedPaymentMethod,
             billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
@@ -516,7 +516,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         const nextParams = new URLSearchParams({
           order_id: String(orderId),
           payment_method: selectedPaymentMethod,
-          provider: selectedPaymentMethod === "manual_transfer" ? "manual" : "billplz",
+          provider: selectedPaymentMethod === "customer_balance" ? "internal_wallet" : (selectedPaymentMethod === "manual_transfer" ? "manual" : "billplz"),
         });
         if (orderNo) {
           nextParams.set("order_no", orderNo);
@@ -608,8 +608,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   }, [isOpen]);
 
   const paymentOptions = gateways
-    .filter((gateway) => ["manual_transfer", "billplz_online_banking", "billplz_credit_card"].includes(gateway.key))
-    .map((gateway) => ({ key: gateway.key as "manual_transfer" | "billplz_online_banking" | "billplz_credit_card", name: gateway.name }));
+    .filter((gateway) => ["manual_transfer", "billplz_online_banking", "billplz_credit_card", "customer_balance"].includes(gateway.key))
+    .map((gateway) => ({ key: gateway.key as "manual_transfer" | "billplz_online_banking" | "billplz_credit_card" | "customer_balance", name: gateway.name, disabled: gateway.key === "customer_balance" && Number(gateway.wallet_balance ?? 0) < Number(cart?.cart_total ?? 0) }));
 
   const itemCount = (cart?.items?.length || 0) + (cart?.package_items?.length || 0);
   const hasItems = itemCount > 0;
@@ -1489,8 +1489,9 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                           className="h-4 w-4 accent-[var(--accent-strong)]"
                           checked={selectedPaymentMethod === option.key}
                           onChange={() => setSelectedPaymentMethod(option.key)}
+                          disabled={option.disabled}
                         />
-                        <span className="text-[var(--foreground)]">{option.name}</span>
+                        <span className="text-[var(--foreground)]">{option.name}{option.disabled ? " (Insufficient balance)" : ""}</span>
                       </label>
                     ))}
                   </div>
