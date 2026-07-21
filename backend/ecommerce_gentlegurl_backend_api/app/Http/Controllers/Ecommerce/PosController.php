@@ -88,6 +88,7 @@ class PosController extends Controller
         protected BookingOrderConfirmationService $bookingOrderConfirmationService,
         protected BookingAddonQuantityService $addonQuantityService,
         protected AppointmentActivityLogService $appointmentActivityLogService,
+        protected CustomerWalletService $customerWalletService,
     ) {}
 
     public function memberSearch(Request $request)
@@ -2342,19 +2343,29 @@ class PosController extends Controller
                 'handled_later' => 'handled_later',
                 default => (string) $validated['refund_method'],
             };
-            BookingRefund::query()->create([
-                'booking_id' => (int) $booking->id,
-                'order_id' => null,
-                'refund_no' => 'REF-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
-                'amount' => $refundAmount,
-                'method' => $method,
-                'channel' => $method === 'customer_credit' ? 'online' : 'offline',
-                'reason' => $refundAction === 'handled_later' ? 'Overpaid deposit marked handled later' : 'Package claim overpayment',
-                'status' => $refundAction === 'handled_later' ? 'pending' : 'completed',
-                'processed_by' => (int) $request->user()->id,
-                'processed_at' => now(),
-                'remark' => $remark !== '' ? $remark : null,
-            ]);
+            if ($method === 'customer_credit' && (! $booking->customer || ! $booking->customer->is_active)) {
+                return $this->respondError(__('Customer Credit requires a valid active member.'), 422);
+            }
+            DB::transaction(function () use ($booking, $method, $refundAmount, $refundAction, $remark, $request) {
+                $lockedBooking = Booking::query()->with('customer')->lockForUpdate()->findOrFail($booking->id);
+                if ($method === 'customer_credit' && (! $lockedBooking->customer || ! $lockedBooking->customer->is_active)) {
+                    throw ValidationException::withMessages(['refund_action' => 'Customer Credit requires a valid active member.']);
+                }
+                $refund = BookingRefund::query()->create([
+                    'booking_id' => (int) $lockedBooking->id,
+                    'order_id' => null,
+                    'refund_no' => 'REF-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                    'amount' => $refundAmount,
+                    'method' => $method,
+                    'channel' => $method === 'customer_credit' ? 'online' : 'offline',
+                    'reason' => $refundAction === 'handled_later' ? 'Overpaid deposit marked handled later' : 'Package claim overpayment',
+                    'status' => $refundAction === 'handled_later' ? 'pending' : 'completed',
+                    'processed_by' => (int) $request->user()->id,
+                    'processed_at' => now(),
+                    'remark' => $remark !== '' ? $remark : null,
+                ]);
+                if ($method === 'customer_credit') $this->customerWalletService->applyPosRefundCustomerCreditDelta($lockedBooking->customer, (int) $refund->id, (string) $refund->refund_no, '0.00', number_format($refundAmount, 2, '.', ''), (int) $request->user()->id);
+            });
             $summary = $this->resolveAppointmentFinancialSummary($booking->fresh(['service', 'customer']));
         }
 
@@ -2610,6 +2621,7 @@ class PosController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'],
             'method' => ['required', 'string', 'in:cash,customer_credit'],
             'remark' => ['nullable', 'string', 'max:1000'],
+            'mutation_key' => ['nullable', 'string', 'max:64'],
         ]);
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
@@ -2627,10 +2639,22 @@ class PosController extends Controller
         $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
         $remark = $remark !== '' ? $remark : null;
 
-        BookingRefund::query()->create([
+        if ($method === 'customer_credit' && (! $booking->customer || ! $booking->customer->is_active)) {
+            return $this->respondError(__('Customer Credit requires a valid active member.'), 422);
+        }
+
+        $mutationKey = trim((string) ($validated['mutation_key'] ?? '')) ?: null;
+        $refund = DB::transaction(function () use ($booking, $method, $amount, $remark, $mutationKey, $request) {
+            $lockedBooking = Booking::query()->with('customer')->lockForUpdate()->findOrFail($booking->id);
+            if ($mutationKey && ($existing = BookingRefund::query()->where('mutation_key', $mutationKey)->lockForUpdate()->first())) return $existing;
+            if ($method === 'customer_credit' && (! $lockedBooking->customer || ! $lockedBooking->customer->is_active)) {
+                throw ValidationException::withMessages(['method' => 'Customer Credit requires a valid active member.']);
+            }
+            $refund = BookingRefund::query()->create([
             'booking_id' => (int) $booking->id,
             'order_id' => null,
             'refund_no' => 'REF-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+            'mutation_key' => $mutationKey,
             'amount' => $amount,
             'method' => $method,
             'channel' => $method === 'customer_credit' ? 'online' : 'offline',
@@ -2639,7 +2663,10 @@ class PosController extends Controller
             'processed_by' => (int) $request->user()->id,
             'processed_at' => now(),
             'remark' => $remark,
-        ]);
+            ]);
+            if ($method === 'customer_credit') $this->customerWalletService->applyPosRefundCustomerCreditDelta($lockedBooking->customer, (int) $refund->id, (string) $refund->refund_no, '0.00', (string) $amount, (int) $request->user()->id);
+            return $refund;
+        });
 
         return $this->respondAppointmentRefundMutation(
             $booking->fresh(['customer', 'service', 'staff']),
@@ -2687,14 +2714,28 @@ class PosController extends Controller
         $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
         $remark = $remark !== '' ? $remark : null;
 
-        $refund->update([
+        if ($method === 'customer_credit' && (! $booking->customer || ! $booking->customer->is_active)) {
+            return $this->respondError(__('Customer Credit requires a valid active member.'), 422);
+        }
+
+        DB::transaction(function () use ($booking, $refund, $method, $amount, $remark, $request) {
+            $lockedRefund = BookingRefund::query()->lockForUpdate()->findOrFail($refund->id);
+            $lockedBooking = Booking::query()->with('customer')->lockForUpdate()->findOrFail($booking->id);
+            $previousCredit = $lockedRefund->method === 'customer_credit' ? (string) $lockedRefund->amount : '0.00';
+            $newCredit = $method === 'customer_credit' ? number_format($amount, 2, '.', '') : '0.00';
+            if (bccomp($previousCredit, $newCredit, 2) !== 0 && (! $lockedBooking->customer || ! $lockedBooking->customer->is_active)) {
+                throw ValidationException::withMessages(['method' => 'Customer Credit requires a valid active member.']);
+            }
+            if ($lockedBooking->customer) $this->customerWalletService->applyPosRefundCustomerCreditDelta($lockedBooking->customer, (int) $lockedRefund->id, (string) $lockedRefund->refund_no, $previousCredit, $newCredit, (int) $request->user()->id);
+            $lockedRefund->update([
             'amount' => $amount,
             'method' => $method,
             'channel' => $method === 'customer_credit' ? 'online' : 'offline',
             'remark' => $remark,
             'processed_by' => (int) $request->user()->id,
             'processed_at' => now(),
-        ]);
+            ]);
+        });
 
         return $this->respondAppointmentRefundMutation(
             $booking->fresh(['customer', 'service', 'staff']),
@@ -2709,7 +2750,7 @@ class PosController extends Controller
         ]);
 
         $refund = BookingRefund::query()
-            ->with('booking')
+            ->with('booking.customer')
             ->where('id', $id)
             ->where('status', 'completed')
             ->firstOrFail();
@@ -2721,12 +2762,20 @@ class PosController extends Controller
             ? $existingRemark . "\n" . $voidNote
             : $voidNote;
 
-        $refund->update([
-            'status' => 'voided',
-            'remark' => $combinedRemark,
-            'processed_by' => (int) $request->user()->id,
-            'processed_at' => now(),
-        ]);
+        DB::transaction(function () use ($refund, $combinedRemark, $request) {
+            $lockedRefund = BookingRefund::query()->lockForUpdate()->findOrFail($refund->id);
+            $booking = Booking::query()->with('customer')->lockForUpdate()->findOrFail($lockedRefund->booking_id);
+            if ($lockedRefund->method === 'customer_credit') {
+                if (! $booking->customer) throw ValidationException::withMessages(['method' => 'Cannot reverse Customer Credit without its linked member.']);
+                $this->customerWalletService->applyPosRefundCustomerCreditDelta($booking->customer, (int) $lockedRefund->id, (string) $lockedRefund->refund_no, (string) $lockedRefund->amount, '0.00', (int) $request->user()->id);
+            }
+            $lockedRefund->update([
+                'status' => 'voided',
+                'remark' => $combinedRemark,
+                'processed_by' => (int) $request->user()->id,
+                'processed_at' => now(),
+            ]);
+        });
 
         $booking = $refund->booking;
         if (! $booking) {

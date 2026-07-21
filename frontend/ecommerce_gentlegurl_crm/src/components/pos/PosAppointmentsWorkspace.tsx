@@ -7747,6 +7747,7 @@ export default function PosAppointmentsWorkspace({
                   {canEditAppointmentSettlement ? (
                   <PosAppointmentRefundCreditSection
                     bookingId={appointmentDetail.id}
+                    member={appointmentDetail.customer ? { id: appointmentDetail.customer.id, name: appointmentDetail.customer.name } : null}
                     refundNeeded={appointmentRefundNeededAmount}
                     initialTransactions={appointmentDetail.refund_transactions}
                     onError={reportEditSettlementError}
