@@ -9,24 +9,22 @@ type AdjustAction = 'add' | 'reduce'
 
 type Props = {
   customer: CustomerRowData
-  action: AdjustAction
   onClose: () => void
   onSuccess: (availablePoints: number) => void
 }
 
 export default function CustomerAdjustPointsModal({
   customer,
-  action,
   onClose,
   onSuccess,
 }: Props) {
+  const [action, setAction] = useState<AdjustAction>('add')
   const [points, setPoints] = useState('')
   const [remark, setRemark] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const isAdd = action === 'add'
-  const title = isAdd ? 'Add Member Points' : 'Reduce Member Points'
 
   const handleSubmit = async () => {
     const parsedPoints = Number(points)
@@ -77,7 +75,7 @@ export default function CustomerAdjustPointsModal({
 
   return (
     <CrmFormModalShell
-      title={title}
+      title="Adjust Member Points"
       onClose={onClose}
       closeDisabled={submitting}
       footer={
@@ -98,7 +96,7 @@ export default function CustomerAdjustPointsModal({
             onClick={() => void handleSubmit()}
             disabled={submitting}
           >
-            {submitting ? 'Saving...' : isAdd ? 'Add Points' : 'Reduce Points'}
+            {submitting ? 'Saving...' : isAdd ? 'Add Points' : 'Deduct Points'}
           </button>
         </>
       }
@@ -119,6 +117,46 @@ export default function CustomerAdjustPointsModal({
             {error}
           </div>
         )}
+
+        <div>
+          <p className="mb-2 block text-sm font-medium text-gray-700">
+            Adjustment type <span className="text-red-500">*</span>
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                setAction('add')
+                setError(null)
+              }}
+              className={`rounded border px-3 py-2 text-sm font-semibold transition ${
+                isAdd
+                  ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <i className="fa-solid fa-plus mr-1.5" aria-hidden="true" />
+              Add
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                setAction('reduce')
+                setError(null)
+              }}
+              className={`rounded border px-3 py-2 text-sm font-semibold transition ${
+                !isAdd
+                  ? 'border-rose-600 bg-rose-50 text-rose-800'
+                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <i className="fa-solid fa-minus mr-1.5" aria-hidden="true" />
+              Deduct
+            </button>
+          </div>
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700">
