@@ -10688,6 +10688,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   {cartEditSettlementBookingId ? (
                     <PosAppointmentRefundCreditSection
                       bookingId={cartEditSettlementBookingId}
+                      member={cartEditSettlementItem?.customer_id ? { id: cartEditSettlementItem.customer_id, name: cartEditSettlementItem.customer_name } : null}
                       refundNeeded={Number(cartEditSettlementItem?.refund_needed ?? cartEditSettlementItem?.overpaid_amount ?? 0)}
                       initialTransactions={cartEditSettlementItem?.refund_transactions}
                       onError={reportCartEditSettlementError}

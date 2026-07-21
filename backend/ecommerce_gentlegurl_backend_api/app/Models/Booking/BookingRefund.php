@@ -15,6 +15,7 @@ class BookingRefund extends Model
         'order_id',
         'return_request_id',
         'refund_no',
+        'mutation_key',
         'amount',
         'method',
         'channel',

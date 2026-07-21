@@ -114,6 +114,42 @@ class CustomerWalletService
         });
     }
 
+    /** Apply the effective Customer Credit amount for one POS refund exactly once. */
+    public function applyPosRefundCustomerCreditDelta(Customer $customer, int $refundId, string $referenceNo, string $previousCredit, string $newCredit, ?int $userId = null): ?CustomerWalletTransaction
+    {
+        $previous = $this->normalizeAmount($previousCredit);
+        $new = $this->normalizeAmount($newCredit);
+        $delta = bcsub($new, $previous, 2);
+        if (bccomp($delta, '0.00', 2) === 0) return null;
+
+        return DB::transaction(function () use ($customer, $refundId, $referenceNo, $previous, $new, $delta, $userId) {
+            $sourceId = $refundId.':'.$previous.':'.$new;
+            $existing = CustomerWalletTransaction::query()->where('source_type', 'pos_refund_customer_credit')->where('source_id', $sourceId)->lockForUpdate()->first();
+            if ($existing) return $existing;
+
+            $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
+            if (! $locked->is_active) throw ValidationException::withMessages(['method' => 'Customer Credit requires an active member.']);
+            $before = $this->normalizeAmount($locked->wallet_balance ?? 0);
+            $isCredit = bccomp($delta, '0.00', 2) > 0;
+            $amount = $isCredit ? $delta : bcmul($delta, '-1', 2);
+            $after = $isCredit ? bcadd($before, $amount, 2) : bcsub($before, $amount, 2);
+            if (! $isCredit && bccomp($after, '0.00', 2) < 0) throw ValidationException::withMessages(['amount' => 'Customer Balance is insufficient to reverse this Customer Credit.']);
+
+            $locked->forceFill(['wallet_balance' => $after])->save();
+            return CustomerWalletTransaction::query()->create([
+                'customer_id' => $locked->id, 'transaction_no' => $this->newTransactionNo('WTX'),
+                'type' => 'refund_credit', 'direction' => $isCredit ? 'credit' : 'debit', 'amount' => $amount,
+                'balance_before' => $before, 'balance_after' => $after, 'workspace_type' => 'crm',
+                'payment_gateway_key' => 'customer_credit', 'payment_method_label' => 'Customer Credit',
+                'source_type' => 'pos_refund_customer_credit', 'source_id' => $sourceId, 'reference_no' => $referenceNo,
+                'status' => CustomerWalletTransaction::STATUS_COMPLETED,
+                'remark' => $isCredit ? 'POS refund credited to Customer Balance.' : 'POS Customer Credit refund adjustment reversed.',
+                'created_by' => $userId, 'completed_at' => now(),
+                'metadata' => ['booking_refund_id' => $refundId, 'previous_customer_credit' => $previous, 'new_customer_credit' => $new],
+            ]);
+        });
+    }
+
 
     public function markFailed(CustomerWalletTransaction $transaction, string $remark, ?int $userId = null, string $status = 'failed'): CustomerWalletTransaction
     {
