@@ -304,6 +304,90 @@ class CustomerWalletService
         });
     }
 
+    /**
+     * Apply only the difference between previous and new CRM Customer Credit refund amounts.
+     * Credits increase Customer Balance; reductions debit it back. Unchanged amounts write nothing.
+     */
+    public function applyCrmRefundCreditDelta(
+        Customer $customer,
+        int $refundId,
+        string $referenceNo,
+        string $previousCredited,
+        string $newCredited,
+        ?int $userId = null,
+    ): ?CustomerWalletTransaction {
+        $previous = $this->normalizeAmount($previousCredited);
+        $new = $this->normalizeAmount($newCredited);
+        if (bccomp($previous, '0.00', 2) < 0 || bccomp($new, '0.00', 2) < 0) {
+            throw ValidationException::withMessages(['method' => 'Customer Credit amount cannot be negative.']);
+        }
+
+        $delta = bcsub($new, $previous, 2);
+        if (bccomp($delta, '0.00', 2) === 0) {
+            return null;
+        }
+
+        if (bccomp($new, '0.00', 2) > 0 && ! $customer->is_active) {
+            throw ValidationException::withMessages(['method' => 'Customer Credit requires an active member.']);
+        }
+
+        $sourceId = (string) $refundId.':'.$previous.':'.$new;
+
+        return DB::transaction(function () use ($customer, $refundId, $referenceNo, $previous, $new, $delta, $sourceId, $userId) {
+            $existing = CustomerWalletTransaction::query()
+                ->where('source_type', 'crm_booking_refund_credit')
+                ->where('source_id', $sourceId)
+                ->lockForUpdate()
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+
+            $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
+            if (bccomp($new, '0.00', 2) > 0 && ! $locked->is_active) {
+                throw ValidationException::withMessages(['method' => 'Customer Credit requires an active member.']);
+            }
+
+            $before = $this->normalizeAmount($locked->wallet_balance ?? 0);
+            $isIncrease = bccomp($delta, '0.00', 2) > 0;
+            $amount = $isIncrease ? $delta : bcmul($delta, '-1', 2);
+            $after = $isIncrease ? bcadd($before, $amount, 2) : bcsub($before, $amount, 2);
+
+            if (! $isIncrease && bccomp($after, '0.00', 2) < 0) {
+                throw ValidationException::withMessages(['method' => 'Customer Balance is insufficient to reverse this Customer Credit.']);
+            }
+
+            $locked->forceFill(['wallet_balance' => $after])->save();
+
+            return CustomerWalletTransaction::query()->create([
+                'customer_id' => $locked->id,
+                'transaction_no' => $this->newTransactionNo('WTX'),
+                'type' => 'refund_credit',
+                'direction' => $isIncrease ? 'credit' : 'debit',
+                'amount' => $amount,
+                'balance_before' => $before,
+                'balance_after' => $after,
+                'workspace_type' => 'crm',
+                'payment_gateway_key' => 'customer_balance',
+                'payment_method_label' => 'Customer Credit',
+                'source_type' => 'crm_booking_refund_credit',
+                'source_id' => $sourceId,
+                'reference_no' => $referenceNo,
+                'status' => CustomerWalletTransaction::STATUS_COMPLETED,
+                'remark' => $isIncrease
+                    ? 'CRM Customer Credit refund to Customer Balance.'
+                    : 'CRM Customer Credit refund adjustment (decrease).',
+                'created_by' => $userId,
+                'completed_at' => now(),
+                'metadata' => [
+                    'booking_refund_id' => $refundId,
+                    'previous_credited' => $previous,
+                    'new_credited' => $new,
+                ],
+            ]);
+        });
+    }
+
     /** Deduct an order payable amount once; source_type/source_id provide idempotency. */
     public function payForCheckout(Customer $customer, string $workspaceType, int $orderId, string $referenceNo, string $amount): CustomerWalletTransaction
     {

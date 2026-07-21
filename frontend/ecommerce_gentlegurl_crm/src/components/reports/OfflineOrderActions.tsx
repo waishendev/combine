@@ -404,8 +404,10 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   }
 
   const isOffline = useMemo(() => channel.trim().toLowerCase() === 'offline', [channel])
-  if (!isOffline) return null
-  const canShowStaffAction = !hideStaffAction && canEditStaffSplit !== false
+  const canShowStaffAction = isOffline && !hideStaffAction && canEditStaffSplit !== false
+  const canShowOfflineEdits = isOffline
+  const canShowActionsMenu = canShowStaffAction || canShowOfflineEdits || Boolean(canVoid)
+  if (!canShowActionsMenu) return null
   const staffActionButtonLabel = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Sales Person'
   const staffActionModalTitle = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Item Staff Split'
 
@@ -590,8 +592,12 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
             {canShowStaffAction ? (
               <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={() => { setModal('sales_person'); setMenuOpen(false) }}>{staffActionButtonLabel}</button>
             ) : null}
-            <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openPaymentModal}>Edit Payment Method</button>
-            <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openBillDateModal}>Edit Bill Date</button>
+            {canShowOfflineEdits ? (
+              <>
+                <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openPaymentModal}>Edit Payment Method</button>
+                <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openBillDateModal}>Edit Bill Date</button>
+              </>
+            ) : null}
             {canVoid ? (
               <button type="button" className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50" onClick={openVoidModal}>Void Order</button>
             ) : null}
@@ -812,7 +818,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                     <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-left text-sm leading-relaxed text-red-700">
                       {voidPreview?.has_active_settlement
                         ? 'This appointment already has a settlement recorded. To proceed, the entire appointment must be voided. All linked deposit receipts and settlement orders will be voided, and the appointment status will be updated to Voided.'
-                        : `This will void the offline order${voidPreview?.linked_bookings?.length ? ' and the linked appointment' : ''} and cancel the related payment records.`}
+                        : `This will void the order${voidPreview?.linked_bookings?.length ? ' and the linked appointment' : ''} and cancel the related payment records.`}
                     </p>
                   )}
                 </div>

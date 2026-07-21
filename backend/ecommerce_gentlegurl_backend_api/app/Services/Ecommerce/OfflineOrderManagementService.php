@@ -928,7 +928,7 @@ class OfflineOrderManagementService
 
     public function buildVoidOrderPreview(Order $order): array
     {
-        $this->ensureOfflineOrder($order);
+        $this->ensureVoidableOrder($order);
 
         if ($order->status === 'voided') {
             throw new RuntimeException('This order is already voided.');
@@ -996,7 +996,7 @@ class OfflineOrderManagementService
 
     public function voidOrder(Order $order, string $remark, ?int $actorId, ?string $voidScope = null): Order
     {
-        $this->ensureOfflineOrder($order);
+        $this->ensureVoidableOrder($order);
 
         if ($order->status === 'voided') {
             throw new RuntimeException('This order is already voided.');
@@ -1585,6 +1585,13 @@ class OfflineOrderManagementService
             throw new RuntimeException('This action is only available for offline/POS orders.');
         }
 
+        if (in_array((string) $order->status, ['cancelled', 'draft'], true)) {
+            throw new RuntimeException('Order is not in a valid state for this action.');
+        }
+    }
+
+    private function ensureVoidableOrder(Order $order): void
+    {
         if (in_array((string) $order->status, ['cancelled', 'draft'], true)) {
             throw new RuntimeException('Order is not in a valid state for this action.');
         }
