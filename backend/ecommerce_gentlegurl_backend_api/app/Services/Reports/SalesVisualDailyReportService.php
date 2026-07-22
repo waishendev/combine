@@ -1129,6 +1129,7 @@ class SalesVisualDailyReportService
             $base = DB::table('booking_refunds')
                 ->where('status', 'completed')
                 ->where('method', $method)
+                ->whereRaw("COALESCE(reason, '') <> ?", [\App\Services\Ecommerce\VoidRefundService::REASON])
                 ->whereBetween(DB::raw('COALESCE(processed_at, created_at)'), [$start, $end]);
             $online = (clone $base)->where('channel', 'online')->sum('amount');
             $offline = (clone $base)->where('channel', 'offline')->sum('amount');

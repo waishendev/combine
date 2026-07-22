@@ -57,6 +57,7 @@ use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OfflineOrderManagementService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Ecommerce\CustomerWalletService;
+use App\Services\Ecommerce\VoidRefundService;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
 use App\Support\BookingNotes;
@@ -2876,11 +2877,16 @@ class PosController extends Controller
         $validated = $request->validate([
             'status' => ['required', 'in:COMPLETED,CANCELLED,LATE_CANCELLATION,NO_SHOW,NOTIFIED_CANCELLATION'],
             'void_deposit' => ['sometimes', 'boolean'],
+            'void_refund_to_balance' => ['sometimes', 'boolean'],
+            'void_refund_amount' => ['nullable', 'numeric', 'gt:0'],
         ]);
 
         $booking = Booking::query()->with(['customer', 'service', 'staff'])->findOrFail($id);
         $targetStatus = (string) $validated['status'];
         $voidDeposit = (bool) ($validated['void_deposit'] ?? false);
+        $voidRefundToBalance = (bool) ($validated['void_refund_to_balance'] ?? false);
+        $voidRefundAmount = round((float) ($validated['void_refund_amount'] ?? 0), 2);
+
         if ((string) $booking->status !== 'CONFIRMED') {
             return $this->respondError(__('Only CONFIRMED appointment can be updated from POS settlement.'), 422);
         }
@@ -2889,7 +2895,30 @@ class PosController extends Controller
             return $this->markAppointmentCompleted($request, $id);
         }
 
-        DB::transaction(function () use ($booking, $targetStatus, $voidDeposit, $request) {
+        if ($voidRefundToBalance && ! $voidDeposit) {
+            return $this->respondError(__('VOID REFUND to Customer Balance is only available when voiding deposit receipt(s).'), 422);
+        }
+        if ($voidRefundToBalance && $voidRefundAmount <= 0.0001) {
+            return $this->respondError(__('VOID REFUND amount is required when refunding to Customer Balance.'), 422);
+        }
+        if ($voidRefundToBalance && ! $booking->customer_id) {
+            return $this->respondError(__('Customer Balance VOID REFUND requires a linked member.'), 422);
+        }
+
+        $depositCollectedBeforeVoid = 0.0;
+        if ($voidDeposit && $voidRefundToBalance) {
+            $depositCollectedBeforeVoid = round((float) ($this->resolveAppointmentFinancialSummary($booking)['deposit_previously_collected_amount'] ?? 0), 2);
+            if ($depositCollectedBeforeVoid <= 0.0001) {
+                return $this->respondError(__('No deposit amount available for VOID REFUND.'), 422);
+            }
+            if ($voidRefundAmount > $depositCollectedBeforeVoid + 0.0001) {
+                return $this->respondError(__('VOID REFUND amount cannot exceed the deposit collected (RM :amount).', [
+                    'amount' => number_format($depositCollectedBeforeVoid, 2),
+                ]), 422);
+            }
+        }
+
+        DB::transaction(function () use ($booking, $targetStatus, $voidDeposit, $voidRefundToBalance, $voidRefundAmount, $request) {
             $booking->status = $targetStatus;
             if (in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION'], true)) {
                 $booking->cancelled_at = now();
@@ -2907,12 +2936,24 @@ class PosController extends Controller
                     "Deposit voided — appointment marked {$targetStatus} from POS",
                     optional($request->user())->id,
                 );
+
+                if ($voidRefundToBalance) {
+                    app(VoidRefundService::class)->createCustomerBalanceRefund(
+                        $voidRefundAmount,
+                        optional($request->user())->id,
+                        "VOID REFUND — appointment {$targetStatus}",
+                        null,
+                        $booking->fresh(['customer']),
+                    );
+                }
             }
         });
 
         $message = __('Appointment status updated.');
         if ($voidDeposit && in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW'], true)) {
-            $message = __('Appointment status updated and deposit receipt(s) voided.');
+            $message = $voidRefundToBalance
+                ? __('Appointment status updated, deposit receipt(s) voided, and VOID REFUND credited to Customer Balance.')
+                : __('Appointment status updated and deposit receipt(s) voided.');
         }
 
         $freshBooking = $booking->fresh(['customer', 'service', 'staff']);
@@ -8567,13 +8608,18 @@ class PosController extends Controller
             ->get()
             ->map(function (BookingRefund $refund) use ($methodLabels) {
                 $method = (string) $refund->method;
+                $isVoidRefund = VoidRefundService::isVoidRefundReason($refund->reason);
 
                 return [
                     'id' => (int) $refund->id,
                     'refund_no' => (string) $refund->refund_no,
                     'amount' => round((float) $refund->amount, 2),
                     'method' => $method,
-                    'method_label' => $methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method)),
+                    'method_label' => $isVoidRefund
+                        ? 'VOID REFUND'
+                        : ($methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method))),
+                    'reason' => (string) ($refund->reason ?? ''),
+                    'is_void_refund' => $isVoidRefund,
                     'channel' => (string) ($refund->channel ?? 'offline'),
                     'processed_at' => optional($refund->processed_at)?->toIso8601String(),
                     'created_at' => optional($refund->created_at)?->toIso8601String(),
@@ -12005,6 +12051,7 @@ class PosController extends Controller
         $refundRows = BookingRefund::query()
             ->where('booking_id', (int) $booking->id)
             ->whereIn('status', ['completed', 'pending'])
+            ->whereRaw("COALESCE(reason, '') <> ?", [VoidRefundService::REASON])
             ->get();
         $refundHandledAmount = round((float) $refundRows->where('status', 'completed')->sum('amount'), 2);
         $refundPendingAmount = round((float) $refundRows->where('status', 'pending')->sum('amount'), 2);

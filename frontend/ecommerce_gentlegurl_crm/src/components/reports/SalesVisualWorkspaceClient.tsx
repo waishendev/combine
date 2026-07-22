@@ -36,6 +36,9 @@ export default function SalesVisualWorkspaceClient({
   const searchParams = useSearchParams()
   const didInit = useRef(false)
   const [visualRefreshKey, setVisualRefreshKey] = useState(0)
+  /** Sibling-only refresh keys for All workspace (void that touches both channels). */
+  const [ecommerceTableRefreshKey, setEcommerceTableRefreshKey] = useState(0)
+  const [bookingTableRefreshKey, setBookingTableRefreshKey] = useState(0)
 
   const modeParam = searchParams.get('mode')
   const mode: 'ecommerce' | 'booking' | 'all' =
@@ -101,6 +104,20 @@ export default function SalesVisualWorkspaceClient({
 
   const refreshVisualSummary = () => setVisualRefreshKey((prev) => prev + 1)
 
+  const refreshAfterDataChanged = (meta?: {
+    sourceMode?: 'ecommerce' | 'booking'
+    refreshTables?: Array<'ecommerce' | 'booking'>
+  }) => {
+    refreshVisualSummary()
+    if (mode !== 'all' || !meta?.refreshTables?.length) return
+    // Source table already refreshed itself; only fetch the sibling when void actually touched it.
+    for (const table of meta.refreshTables) {
+      if (table === meta.sourceMode) continue
+      if (table === 'ecommerce') setEcommerceTableRefreshKey((prev) => prev + 1)
+      if (table === 'booking') setBookingTableRefreshKey((prev) => prev + 1)
+    }
+  }
+
   const subtitle =
     mode === 'ecommerce'
       ? 'Product orders and channel split — daily cards and transaction table.'
@@ -147,12 +164,12 @@ export default function SalesVisualWorkspaceClient({
               Product-line orders only. Booking deposits and other booking lines appear under Booking below (same as POS rows with
               booking line types).
             </p>
-            <SalesChannelReportPage mode="ecommerce" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} includeVoid={includeVoid} />
+            <SalesChannelReportPage mode="ecommerce" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshAfterDataChanged} externalRefreshKey={ecommerceTableRefreshKey} includeVoid={includeVoid} />
           </section>
           <section>
             <h4 className="text-base font-semibold text-slate-800">Booking</h4>
             <p className="mb-3 text-xs text-slate-500">Deposits, settlement, add-ons, and packages — grouped to one row per order; line details remain in View Details.</p>
-            <SalesChannelReportPage mode="booking" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} includeVoid={includeVoid} />
+            <SalesChannelReportPage mode="booking" canExport={canExport} canUpdateOrder={canUpdateOrder} canVoidRefund={canVoidRefund} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshAfterDataChanged} externalRefreshKey={bookingTableRefreshKey} includeVoid={includeVoid} />
           </section>
         </div>
       ) : (

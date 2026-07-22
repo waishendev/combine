@@ -367,6 +367,19 @@ export type PublicAccountOrder = {
   created_at?: string | null;
   reserve_expires_at?: string | null;
   receipt_public_url?: string | null;
+  refunds?: Array<{
+    id: number;
+    refund_no: string;
+    amount: number;
+    method?: string | null;
+    method_label?: string | null;
+    reason?: string | null;
+    is_void_refund?: boolean;
+    processed_at?: string | null;
+    created_at?: string | null;
+    remark?: string | null;
+    receipt_public_url?: string | null;
+  }>;
   items?: Array<{
     id: number;
     line_type?: string | null;

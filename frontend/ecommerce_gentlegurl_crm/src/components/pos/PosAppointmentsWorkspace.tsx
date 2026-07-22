@@ -606,6 +606,8 @@ export default function PosAppointmentsWorkspace({
   const [appointmentStatusConfirmOpen, setAppointmentStatusConfirmOpen] = useState(false)
   const [appointmentStatusConfirmTarget, setAppointmentStatusConfirmTarget] = useState<AppointmentTerminalStatusAction | null>(null)
   const [appointmentStatusVoidDeposit, setAppointmentStatusVoidDeposit] = useState(false)
+  const [appointmentStatusVoidRefundToBalance, setAppointmentStatusVoidRefundToBalance] = useState(false)
+  const [appointmentStatusVoidRefundAmount, setAppointmentStatusVoidRefundAmount] = useState('')
 
   const [editSettlementOpen, setEditSettlementOpen] = useState(false)
   const [editSettlementLoading, setEditSettlementLoading] = useState(false)
@@ -3607,14 +3609,23 @@ export default function PosAppointmentsWorkspace({
   }, [appointmentDetail, showMsg])
 
   const updateAppointmentStatus = useCallback(
-    async (status: AppointmentTerminalStatusAction, voidDeposit = false) => {
+    async (
+      status: AppointmentTerminalStatusAction,
+      voidDeposit = false,
+      voidRefund?: { toBalance: boolean; amount: number },
+    ) => {
       if (!appointmentDetail?.id) return
       setAppointmentActionLoading(true)
       try {
         const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status, void_deposit: voidDeposit }),
+          body: JSON.stringify({
+            status,
+            void_deposit: voidDeposit,
+            void_refund_to_balance: voidRefund?.toBalance || undefined,
+            void_refund_amount: voidRefund?.toBalance ? voidRefund.amount : undefined,
+          }),
         })
         const json = await res.json().catch(() => null)
         if (!res.ok) {
@@ -3632,6 +3643,8 @@ export default function PosAppointmentsWorkspace({
         setAppointmentStatusConfirmOpen(false)
         setAppointmentStatusConfirmTarget(null)
         setAppointmentStatusVoidDeposit(false)
+        setAppointmentStatusVoidRefundToBalance(false)
+        setAppointmentStatusVoidRefundAmount('')
         await fetchAppointments({ silent: true })
         await refreshOpenedAppointmentDetail()
       } finally {
@@ -3643,11 +3656,13 @@ export default function PosAppointmentsWorkspace({
 
   const requestAppointmentStatusUpdate = useCallback(
     (status: AppointmentTerminalStatusAction) => {
-      const hasActiveDeposit = (appointmentDetail?.deposit_transactions ?? []).some(
-        (tx) => Number(tx.amount ?? 0) > 0.0001,
-      )
+      const depositRows = appointmentDetail?.deposit_transactions ?? []
+      const hasActiveDeposit = depositRows.some((tx) => Number(tx.amount ?? 0) > 0.0001)
+      const depositTotal = depositRows.reduce((sum, tx) => sum + Number(tx.amount ?? 0), 0)
       if (hasActiveDeposit) {
         setAppointmentStatusVoidDeposit(false)
+        setAppointmentStatusVoidRefundToBalance(false)
+        setAppointmentStatusVoidRefundAmount(depositTotal > 0 ? depositTotal.toFixed(2) : '')
         setAppointmentStatusConfirmTarget(status)
         setAppointmentStatusConfirmOpen(true)
         return
@@ -7014,6 +7029,54 @@ export default function PosAppointmentsWorkspace({
                   </span>
                 </label>
               </div>
+
+              {appointmentStatusVoidDeposit && appointmentDetail.customer?.id ? (
+                <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-3">
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={appointmentStatusVoidRefundToBalance}
+                      disabled={appointmentActionLoading}
+                      onChange={(e) => {
+                        setAppointmentStatusVoidRefundToBalance(e.target.checked)
+                        if (e.target.checked && !appointmentStatusVoidRefundAmount && appointmentActiveDepositTotal > 0) {
+                          setAppointmentStatusVoidRefundAmount(appointmentActiveDepositTotal.toFixed(2))
+                        }
+                      }}
+                      className="mt-1"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-emerald-950">Refund to Customer Balance (VOID REFUND)</span>
+                      <span className="mt-0.5 block text-xs text-emerald-900/80">
+                        Optional. Credits the member wallet and creates a VOID REFUND receipt.
+                      </span>
+                    </span>
+                  </label>
+                  <p className="text-xs font-semibold text-emerald-900">
+                    Member · {appointmentDetail.customer.name || `Member #${appointmentDetail.customer.id}`}
+                  </p>
+                  {appointmentStatusVoidRefundToBalance ? (
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-emerald-900">VOID REFUND amount</label>
+                      <div className="relative max-w-xs">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-slate-500">RM</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={appointmentStatusVoidRefundAmount}
+                          disabled={appointmentActionLoading}
+                          onChange={(e) => setAppointmentStatusVoidRefundAmount(e.target.value)}
+                          className="w-full rounded-lg border border-emerald-300 bg-white py-1.5 pl-8 pr-2 text-sm tabular-nums"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-emerald-900/80">
+                        Maximum deposit collected: RM {appointmentActiveDepositTotal.toFixed(2)}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
               <button
@@ -7023,6 +7086,8 @@ export default function PosAppointmentsWorkspace({
                   setAppointmentStatusConfirmOpen(false)
                   setAppointmentStatusConfirmTarget(null)
                   setAppointmentStatusVoidDeposit(false)
+                  setAppointmentStatusVoidRefundToBalance(false)
+                  setAppointmentStatusVoidRefundAmount('')
                 }}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
               >
@@ -7030,8 +7095,25 @@ export default function PosAppointmentsWorkspace({
               </button>
               <button
                 type="button"
-                disabled={appointmentActionLoading}
-                onClick={() => void updateAppointmentStatus(appointmentStatusConfirmTarget, appointmentStatusVoidDeposit)}
+                disabled={
+                  appointmentActionLoading
+                  || (
+                    appointmentStatusVoidDeposit
+                    && appointmentStatusVoidRefundToBalance
+                    && (
+                      !appointmentDetail.customer?.id
+                      || !(Number(appointmentStatusVoidRefundAmount || 0) > 0)
+                      || Number(appointmentStatusVoidRefundAmount || 0) > appointmentActiveDepositTotal + 0.009
+                    )
+                  )
+                }
+                onClick={() => void updateAppointmentStatus(
+                  appointmentStatusConfirmTarget,
+                  appointmentStatusVoidDeposit,
+                  appointmentStatusVoidDeposit && appointmentStatusVoidRefundToBalance
+                    ? { toBalance: true, amount: Number(appointmentStatusVoidRefundAmount || 0) }
+                    : undefined,
+                )}
                 className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {appointmentActionLoading

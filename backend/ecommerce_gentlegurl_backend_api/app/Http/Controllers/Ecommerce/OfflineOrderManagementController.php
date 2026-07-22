@@ -165,19 +165,35 @@ class OfflineOrderManagementController extends Controller
         $validated = $request->validate([
             'remark' => ['required', 'string', 'min:3', 'max:2000'],
             'void_scope' => ['nullable', 'string', 'in:order_only,order_and_appointment'],
+            'void_refund_to_balance' => ['sometimes', 'boolean'],
+            'void_refund_amount' => ['nullable', 'numeric', 'gt:0'],
         ]);
 
+        $refundEnabled = (bool) ($validated['void_refund_to_balance'] ?? false);
+        if ($refundEnabled && ! isset($validated['void_refund_amount'])) {
+            return $this->respondError('VOID REFUND amount is required when refunding to Customer Balance.', 422);
+        }
+
         try {
-            $updated = $this->service->voidOrder(
+            $result = $this->service->voidOrder(
                 $order,
                 trim((string) $validated['remark']),
                 $request->user()?->id,
                 isset($validated['void_scope']) ? (string) $validated['void_scope'] : null,
+                $refundEnabled
+                    ? [
+                        'enabled' => true,
+                        'amount' => (float) $validated['void_refund_amount'],
+                    ]
+                    : null,
             );
         } catch (RuntimeException $e) {
             return $this->respondError($e->getMessage(), 422);
         }
 
-        return $this->respond($updated, 'Order voided successfully.');
+        return $this->respond([
+            'order' => $result['order'],
+            'refresh_report_channels' => $result['refresh_report_channels'],
+        ], 'Order voided successfully.');
     }
 }

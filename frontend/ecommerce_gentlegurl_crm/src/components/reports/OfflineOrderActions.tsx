@@ -26,6 +26,13 @@ type VoidPreview = {
     other_active_non_deposit_order_count?: number
   }>
   message?: string | null
+  void_refund?: {
+    can_refund_to_customer_balance?: boolean
+    customer?: { id: number; name: string; wallet_balance?: number } | null
+    max_amount_order_only?: number
+    max_amount_order_and_appointment?: number
+    suggested_amount?: number
+  } | null
 }
 
 type SplitRow = {
@@ -61,7 +68,7 @@ type OfflineOrderActionsProps = {
   canEditStaffSplit?: boolean
   /** When false, hides Void Order (needs ecommerce.orders.update | pos.checkout | pos.appointments.manage). */
   canVoid?: boolean
-  onDone: () => void
+  onDone: (meta?: { refreshTables?: Array<'ecommerce' | 'booking'> }) => void
 }
 
 const PAYMENT_METHODS: Array<{ method: PaymentMethodKey; label: string }> = [
@@ -155,6 +162,8 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   const [voidPreview, setVoidPreview] = useState<VoidPreview | null>(null)
   const [voidScope, setVoidScope] = useState<VoidScope>('order_and_appointment')
   const [voidPreviewLoading, setVoidPreviewLoading] = useState(false)
+  const [voidRefundToBalance, setVoidRefundToBalance] = useState(false)
+  const [voidRefundAmount, setVoidRefundAmount] = useState('')
   const [autoBalanceByItem, setAutoBalanceByItem] = useState<Record<string, boolean>>({})
 
 
@@ -268,6 +277,8 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     setError(null)
     setVoidPreview(null)
     setVoidScope('order_and_appointment')
+    setVoidRefundToBalance(false)
+    setVoidRefundAmount('')
     setModal('void')
     setMenuOpen(false)
     void loadVoidPreview()
@@ -291,6 +302,9 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
 
       setVoidPreview(preview)
       setVoidScope(preview.default_void_scope ?? 'order_and_appointment')
+      const suggested = Number(preview.void_refund?.suggested_amount ?? 0)
+      setVoidRefundToBalance(false)
+      setVoidRefundAmount(suggested > 0 ? suggested.toFixed(2) : '')
     } catch {
       setError('Unable to load void options.')
     } finally {
@@ -407,9 +421,26 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   const canShowStaffAction = isOffline && !hideStaffAction && canEditStaffSplit !== false
   const canShowOfflineEdits = isOffline
   const canShowActionsMenu = canShowStaffAction || canShowOfflineEdits || Boolean(canVoid)
-  if (!canShowActionsMenu) return null
   const staffActionButtonLabel = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Sales Person'
   const staffActionModalTitle = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Item Staff Split'
+
+  const voidRefundMaxAmount = useMemo(() => {
+    if (!voidPreview?.void_refund) return 0
+    return voidScope === 'order_only'
+      ? Number(voidPreview.void_refund.max_amount_order_only ?? 0)
+      : Number(voidPreview.void_refund.max_amount_order_and_appointment ?? 0)
+  }, [voidPreview, voidScope])
+
+  const canVoidRefundToBalance = Boolean(voidPreview?.void_refund?.can_refund_to_customer_balance)
+
+  useEffect(() => {
+    if (!voidRefundToBalance || !canVoidRefundToBalance) return
+    if (Number(voidRefundAmount || 0) > voidRefundMaxAmount + 0.0001) {
+      setVoidRefundAmount(voidRefundMaxAmount > 0 ? voidRefundMaxAmount.toFixed(2) : '')
+    }
+  }, [canVoidRefundToBalance, voidRefundAmount, voidRefundMaxAmount, voidRefundToBalance])
+
+  if (!canShowActionsMenu) return null
 
   const closeModal = () => {
     setModal(null)
@@ -420,6 +451,8 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     setVoidPreview(null)
     setVoidScope('order_and_appointment')
     setVoidPreviewLoading(false)
+    setVoidRefundToBalance(false)
+    setVoidRefundAmount('')
     setPaymentMember(null)
     setPaymentWalletBalance(null)
     setPaymentWalletLoading(false)
@@ -510,10 +543,30 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
           setSubmitting(false)
           return
         }
+        if (voidRefundToBalance) {
+          if (!canVoidRefundToBalance) {
+            setError('Customer Balance VOID REFUND requires a linked member.')
+            setSubmitting(false)
+            return
+          }
+          const amount = Number(voidRefundAmount || 0)
+          if (!(amount > 0)) {
+            setError('Enter a VOID REFUND amount for Customer Balance.')
+            setSubmitting(false)
+            return
+          }
+          if (amount > voidRefundMaxAmount + 0.009) {
+            setError(`VOID REFUND amount cannot exceed RM ${money(voidRefundMaxAmount)}.`)
+            setSubmitting(false)
+            return
+          }
+        }
         endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/void`
         payload = {
           remark: remark.trim(),
           void_scope: voidPreview?.requires_void_scope_choice ? voidScope : undefined,
+          void_refund_to_balance: voidRefundToBalance || undefined,
+          void_refund_amount: voidRefundToBalance ? Number(voidRefundAmount || 0) : undefined,
         }
       }
 
@@ -532,7 +585,11 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
 
       setToast({ type: 'success', text: typeof json?.message === 'string' ? json.message : 'Action completed.' })
       closeModal()
-      onDone()
+      const refreshTables = modal === 'void' && Array.isArray(json?.data?.refresh_report_channels)
+        ? (json.data.refresh_report_channels as unknown[])
+            .filter((value): value is 'ecommerce' | 'booking' => value === 'ecommerce' || value === 'booking')
+        : undefined
+      onDone(refreshTables?.length ? { refreshTables } : undefined)
     } catch {
       setError('Unable to process this request.')
       setSubmitting(false)
@@ -821,6 +878,57 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                         : `This will void the order${voidPreview?.linked_bookings?.length ? ' and the linked appointment' : ''} and cancel the related payment records.`}
                     </p>
                   )}
+
+                  {canVoidRefundToBalance ? (
+                    <div className="space-y-2 rounded border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-left">
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={voidRefundToBalance}
+                          onChange={(e) => {
+                            setError(null)
+                            setVoidRefundToBalance(e.target.checked)
+                            if (e.target.checked && !voidRefundAmount && voidRefundMaxAmount > 0) {
+                              setVoidRefundAmount(voidRefundMaxAmount.toFixed(2))
+                            }
+                          }}
+                          className="mt-1"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-emerald-950">Refund to Customer Balance (VOID REFUND)</span>
+                          <span className="mt-0.5 block text-xs text-emerald-900/80">
+                            Optional. Credits the member wallet and creates a VOID REFUND receipt. Does not process a gateway refund.
+                          </span>
+                        </span>
+                      </label>
+                      {voidPreview?.void_refund?.customer ? (
+                        <p className="text-xs font-semibold text-emerald-900">
+                          Member · {voidPreview.void_refund.customer.name}
+                          {' · '}Available RM {money(Number(voidPreview.void_refund.customer.wallet_balance ?? 0))}
+                        </p>
+                      ) : null}
+                      {voidRefundToBalance ? (
+                        <div>
+                          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-emerald-900">VOID REFUND amount</label>
+                          <div className="relative max-w-xs">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-slate-500">RM</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={voidRefundAmount}
+                              onChange={(e) => {
+                                setError(null)
+                                setVoidRefundAmount(e.target.value)
+                              }}
+                              className="w-full rounded border border-emerald-300 bg-white py-1.5 pl-8 pr-2 text-sm tabular-nums"
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <p className="mt-1 text-[11px] text-emerald-900/80">Maximum for selected scope: RM {money(voidRefundMaxAmount)}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

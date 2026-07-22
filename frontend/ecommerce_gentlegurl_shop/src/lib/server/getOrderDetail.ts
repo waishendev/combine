@@ -45,6 +45,19 @@ export type OrderDetail = {
     status: string;
     tracking_no?: string | null;
   }[];
+  refunds?: Array<{
+    id: number;
+    refund_no: string;
+    amount: number | string;
+    method?: string | null;
+    method_label?: string | null;
+    reason?: string | null;
+    is_void_refund?: boolean;
+    processed_at?: string | null;
+    created_at?: string | null;
+    remark?: string | null;
+    receipt_public_url?: string | null;
+  }>;
   shipping_address?: {
     name?: string | null;
     phone?: string | null;

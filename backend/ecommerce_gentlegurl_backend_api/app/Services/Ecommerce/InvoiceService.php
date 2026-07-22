@@ -883,16 +883,25 @@ class InvoiceService
 
         $returnRequest = $refund->returnRequest;
         $isEcommerceReturn = $returnRequest !== null;
+        $isVoidRefund = \App\Services\Ecommerce\VoidRefundService::isVoidRefundReason($refund->reason);
         $refundLines = [];
         $booking = $refund->booking;
         $order = $refund->order ?? $returnRequest?->order;
 
-        if ($isEcommerceReturn) {
+        if ($isVoidRefund) {
+            $customerName = (string) ($booking?->customer?->name ?? $order?->customer?->name ?? $booking?->guest_name ?? $order?->shipping_name ?? '');
+            $customerPhone = (string) ($booking?->customer?->phone ?? $order?->customer?->phone ?? $booking?->guest_phone ?? $order?->shipping_phone ?? '');
+            $customerEmail = (string) ($booking?->customer?->email ?? $order?->customer?->email ?? $booking?->guest_email ?? $order?->shipping_email ?? '');
+            $itemDescription = 'VOID REFUND';
+            $referenceLabel = (string) ($booking?->booking_code ?: $order?->order_number ?: '');
+            $methodLabel = 'VOID REFUND · Customer Balance';
+        } elseif ($isEcommerceReturn) {
             $customerName = (string) ($order?->customer?->name ?? $order?->shipping_name ?? '');
             $customerPhone = (string) ($order?->customer?->phone ?? $order?->shipping_phone ?? '');
             $customerEmail = (string) ($order?->customer?->email ?? $order?->shipping_email ?? '');
             $itemDescription = 'Ecommerce return refund';
             $referenceLabel = (string) ($order?->order_number ?? '');
+            $methodLabel = $methodLabels[(string) $refund->method] ?? ucfirst(str_replace('_', ' ', (string) $refund->method));
             $refundLines = $this->buildEcommerceReturnRefundLines($returnRequest, (float) $refund->amount);
         } elseif ($booking) {
             $customerName = (string) ($booking->customer?->name ?? $booking->guest_name ?? '');
@@ -900,18 +909,21 @@ class InvoiceService
             $customerEmail = (string) ($booking->customer?->email ?? $booking->guest_email ?? '');
             $itemDescription = 'Overpaid deposit refund';
             $referenceLabel = (string) ($booking->booking_code ?? '');
+            $methodLabel = $methodLabels[(string) $refund->method] ?? ucfirst(str_replace('_', ' ', (string) $refund->method));
         } elseif ($order) {
             $customerName = (string) ($order->customer?->name ?? '');
             $customerPhone = (string) ($order->customer?->phone ?? '');
             $customerEmail = (string) ($order->customer?->email ?? '');
             $itemDescription = 'Ecommerce return refund';
             $referenceLabel = (string) ($order->order_number ?? '');
+            $methodLabel = $methodLabels[(string) $refund->method] ?? ucfirst(str_replace('_', ' ', (string) $refund->method));
         } else {
             $customerName = '';
             $customerPhone = '';
             $customerEmail = '';
             $itemDescription = 'Refund';
             $referenceLabel = '';
+            $methodLabel = $methodLabels[(string) $refund->method] ?? ucfirst(str_replace('_', ' ', (string) $refund->method));
         }
 
         return app('snappy.pdf.wrapper')->loadView('invoices.refund', [
@@ -921,7 +933,7 @@ class InvoiceService
             'customerName' => $customerName !== '' ? $customerName : 'Walk-in / Guest',
             'customerPhone' => $customerPhone,
             'customerEmail' => $customerEmail,
-            'methodLabel' => $methodLabels[(string) $refund->method] ?? ucfirst(str_replace('_', ' ', (string) $refund->method)),
+            'methodLabel' => $methodLabel,
             'itemDescription' => $itemDescription,
             'isEcommerceReturn' => $isEcommerceReturn,
             'refundLines' => $refundLines,

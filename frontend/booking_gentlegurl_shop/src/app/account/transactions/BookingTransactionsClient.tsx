@@ -16,11 +16,13 @@ import { resolveReceiptViewUrl } from "@/lib/bookingReceiptLinks";
 
 type RefundEntry = {
   id: number;
-  booking_id: number;
-  booking_code: string;
+  booking_id: number | null;
+  booking_code: string | null;
+  order_no?: string | null;
   refund_no: string;
   amount: number;
   method_label: string;
+  is_void_refund?: boolean;
   processed_at?: string | null;
   created_at?: string | null;
   remark?: string | null;
@@ -40,6 +42,7 @@ function signedMoney(amount: number) {
 function formatRefundMethodLabel(label?: string | null) {
   const trimmed = String(label ?? "").trim();
   if (!trimmed) return "Refund";
+  if (/^void\s*refund$/i.test(trimmed)) return "VOID REFUND";
   return trimmed.replace(/\s*refund$/i, "");
 }
 
@@ -162,22 +165,52 @@ export function BookingTransactionsClient() {
         ]);
         if (!cancelled) {
           setOrders(rows ?? []);
-          const refundEntries: RefundEntry[] = (bookings ?? []).flatMap((booking) =>
-            (booking.refunds ?? [])
-              .filter((refund) => Number(refund.amount ?? 0) > 0)
-              .map((refund) => ({
+          const refundById = new Map<number, RefundEntry>();
+
+          for (const booking of bookings ?? []) {
+            for (const refund of booking.refunds ?? []) {
+              if (!(Number(refund.amount ?? 0) > 0)) continue;
+              refundById.set(refund.id, {
                 id: refund.id,
                 booking_id: booking.id,
                 booking_code: booking.booking_code || `BOOKING-${booking.id}`,
+                order_no: null,
                 refund_no: refund.refund_no,
                 amount: Number(refund.amount ?? 0),
                 method_label: refund.method_label,
+                is_void_refund: Boolean((refund as { is_void_refund?: boolean }).is_void_refund)
+                  || /^void\s*refund$/i.test(String(refund.method_label ?? "")),
                 processed_at: refund.processed_at,
                 created_at: refund.created_at,
                 remark: refund.remark,
                 receipt_public_url: refund.receipt_public_url,
-              })),
-          );
+              });
+            }
+          }
+
+          for (const order of rows ?? []) {
+            for (const refund of order.refunds ?? []) {
+              if (!(Number(refund.amount ?? 0) > 0)) continue;
+              if (refundById.has(refund.id)) continue;
+              refundById.set(refund.id, {
+                id: refund.id,
+                booking_id: null,
+                booking_code: null,
+                order_no: order.order_no,
+                refund_no: refund.refund_no,
+                amount: Number(refund.amount ?? 0),
+                method_label: refund.method_label || (refund.is_void_refund ? "VOID REFUND" : "Refund"),
+                is_void_refund: Boolean(refund.is_void_refund)
+                  || /^void\s*refund$/i.test(String(refund.method_label ?? "")),
+                processed_at: refund.processed_at,
+                created_at: refund.created_at,
+                remark: refund.remark,
+                receipt_public_url: refund.receipt_public_url,
+              });
+            }
+          }
+
+          const refundEntries = Array.from(refundById.values());
           refundEntries.sort((a, b) => {
             const at = new Date(a.processed_at ?? a.created_at ?? 0).getTime();
             const bt = new Date(b.processed_at ?? b.created_at ?? 0).getTime();
@@ -331,7 +364,9 @@ export function BookingTransactionsClient() {
                     <p className="truncate text-sm tracking-[0.08em] text-[var(--foreground)]/60">{refund.refund_no}</p>
                   </div>
                   <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700">
-                    Refunded
+                    {refund.is_void_refund || /^void\s*refund$/i.test(String(refund.method_label ?? ""))
+                      ? "VOID REFUND"
+                      : "Refunded"}
                   </span>
                 </div>
 
@@ -344,7 +379,13 @@ export function BookingTransactionsClient() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Refund Method</p>
                     <div className="text-base font-medium text-[var(--foreground)]">
                       <p>{formatRefundMethodLabel(refund.method_label)}</p>
-                      <p className="mt-1 text-xs text-[var(--foreground)]/70">Booking: {refund.booking_code}</p>
+                      <p className="mt-1 text-xs text-[var(--foreground)]/70">
+                        {refund.booking_code
+                          ? `Booking: ${refund.booking_code}`
+                          : refund.order_no
+                            ? `Order: ${refund.order_no}`
+                            : null}
+                      </p>
                     </div>
                   </div>
                   <div>
@@ -405,7 +446,9 @@ export function BookingTransactionsClient() {
               : null;
 
           let displayStatus: string;
-          if (statusKey === "cancelled" || isPendingUnpaidExpired) {
+          if (statusKey === "voided") {
+            displayStatus = "Voided";
+          } else if (statusKey === "cancelled" || isPendingUnpaidExpired) {
             displayStatus = "Cancelled";
           } else if (paymentStatusKey === "failed") {
             displayStatus = "Payment Failed";
@@ -427,6 +470,7 @@ export function BookingTransactionsClient() {
 
           let badgeStyle: string;
           if (
+            statusKey === "voided" ||
             statusKey === "cancelled" ||
             isPendingUnpaidExpired ||
             paymentStatusKey === "failed" ||

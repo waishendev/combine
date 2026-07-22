@@ -24,6 +24,7 @@ class OfflineOrderManagementService
     public function __construct(
         private StaffCommissionService $staffCommissionService,
         private CustomerWalletService $customerWalletService,
+        private VoidRefundService $voidRefundService,
     ) {
     }
 
@@ -976,6 +977,10 @@ class OfflineOrderManagementService
 
         $defaultVoidScope = $requiresVoidScopeChoice ? 'order_only' : 'order_and_appointment';
 
+        $orderOnlyIds = $this->resolveOrdersToVoidForScope($order, 'order_only');
+        $appointmentIds = $this->resolveOrdersToVoidForScope($order, 'order_and_appointment');
+        $customer = $this->voidRefundService->resolveCustomerForOrder($order);
+
         return [
             'order_id' => (int) $order->id,
             'order_number' => (string) $order->order_number,
@@ -991,10 +996,27 @@ class OfflineOrderManagementService
                 : ($requiresVoidScopeChoice
                     ? 'Select how this void should be applied.'
                     : null),
+            'void_refund' => [
+                'can_refund_to_customer_balance' => (bool) ($customer && $customer->is_active),
+                'customer' => $customer ? [
+                    'id' => (int) $customer->id,
+                    'name' => (string) ($customer->name ?? ''),
+                    'wallet_balance' => round((float) ($customer->wallet_balance ?? 0), 2),
+                ] : null,
+                'max_amount_order_only' => $this->voidRefundService->maxRefundableForOrders($orderOnlyIds),
+                'max_amount_order_and_appointment' => $this->voidRefundService->maxRefundableForOrders($appointmentIds),
+                'suggested_amount' => $this->voidRefundService->maxRefundableForOrders(
+                    $defaultVoidScope === 'order_only' ? $orderOnlyIds : $appointmentIds
+                ),
+            ],
         ];
     }
 
-    public function voidOrder(Order $order, string $remark, ?int $actorId, ?string $voidScope = null): Order
+    /**
+     * @param  array{enabled?: bool, amount?: float|int|string}|null  $voidRefund
+     * @return array{order: Order, refresh_report_channels: list<'ecommerce'|'booking'>}
+     */
+    public function voidOrder(Order $order, string $remark, ?int $actorId, ?string $voidScope = null, ?array $voidRefund = null): array
     {
         $this->ensureVoidableOrder($order);
 
@@ -1020,7 +1042,18 @@ class OfflineOrderManagementService
         $ordersToVoid = $this->resolveOrdersToVoidForScope($order, $resolvedVoidScope);
         $bookingRecalculateTargets = [];
 
-        DB::transaction(function () use ($order, $ordersToVoid, $remark, $actorId, $voidAppointment, $resolvedVoidScope, &$bookingRecalculateTargets) {
+        $refundEnabled = (bool) ($voidRefund['enabled'] ?? false);
+        $refundAmount = round((float) ($voidRefund['amount'] ?? 0), 2);
+        if ($refundEnabled) {
+            $maxAmount = $this->voidRefundService->maxRefundableForOrders($ordersToVoid);
+            $this->voidRefundService->assertAmountWithinMax($refundAmount, $maxAmount);
+            $customer = $this->voidRefundService->resolveCustomerForOrder($order);
+            if (! $customer || ! $customer->is_active) {
+                throw new RuntimeException('Customer Balance VOID REFUND requires an active member.');
+            }
+        }
+
+        DB::transaction(function () use ($order, $ordersToVoid, $remark, $actorId, $voidAppointment, $resolvedVoidScope, $refundEnabled, $refundAmount, &$bookingRecalculateTargets) {
             $voidedOrderIds = [];
 
             foreach ($ordersToVoid as $orderId) {
@@ -1122,6 +1155,19 @@ class OfflineOrderManagementService
                     ], $remark, $actorId);
                 }
             }
+
+            if ($refundEnabled) {
+                $linkedBooking = ! empty($bookingIds)
+                    ? Booking::query()->find((int) $bookingIds[0])
+                    : null;
+                $this->voidRefundService->createCustomerBalanceRefund(
+                    $refundAmount,
+                    $actorId,
+                    $remark,
+                    $order,
+                    $linkedBooking,
+                );
+            }
         });
 
         foreach ($ordersToVoid as $voidedOrderId) {
@@ -1135,7 +1181,50 @@ class OfflineOrderManagementService
 
         $this->recalculateBookingCommissionsForTargets($bookingRecalculateTargets, $order, 'void_order', $remark, $actorId);
 
-        return $order->fresh();
+        return [
+            'order' => $order->fresh(),
+            'refresh_report_channels' => $this->reportChannelsForOrderIds($ordersToVoid),
+        ];
+    }
+
+    /**
+     * Which Sales Visual tables contain the voided order(s).
+     * Ecommerce = product lines; Booking = booking/deposit/settlement/package lines.
+     *
+     * @param  list<int>  $orderIds
+     * @return list<'ecommerce'|'booking'>
+     */
+    private function reportChannelsForOrderIds(array $orderIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $orderIds))));
+        if ($ids === []) {
+            return [];
+        }
+
+        $lineTypes = DB::table('order_items')
+            ->whereIn('order_id', $ids)
+            ->distinct()
+            ->pluck('line_type')
+            ->map(fn ($type) => (string) $type)
+            ->all();
+
+        $bookingLineTypes = [
+            'booking_deposit',
+            'booking_settlement',
+            'booking_addon',
+            'booking_product',
+            'service_package',
+        ];
+
+        $channels = [];
+        if (in_array('product', $lineTypes, true)) {
+            $channels[] = 'ecommerce';
+        }
+        if (collect($lineTypes)->contains(fn (string $type) => in_array($type, $bookingLineTypes, true))) {
+            $channels[] = 'booking';
+        }
+
+        return $channels;
     }
 
     private function voidSingleOrderRecord(Order $order, string $remark, ?int $actorId): void

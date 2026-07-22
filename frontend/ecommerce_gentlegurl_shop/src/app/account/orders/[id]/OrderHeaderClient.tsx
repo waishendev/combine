@@ -44,6 +44,9 @@ export function OrderHeaderClient({
   const isExpired = remainingSeconds !== null && remainingSeconds === 0;
 
   const displayStatus = useMemo(() => {
+    if (statusKey === "voided") {
+      return "Voided";
+    }
     if (statusKey === "cancelled" || (statusKey === "pending" && paymentStatusKey === "unpaid" && isExpired)) {
       return "Cancelled";
     }
@@ -79,6 +82,7 @@ export function OrderHeaderClient({
 
   const badgeStyle = useMemo(() => {
     if (
+      statusKey === "voided" ||
       statusKey === "cancelled" ||
       (statusKey === "pending" && paymentStatusKey === "unpaid" && isExpired) ||
       paymentStatusKey === "failed" ||

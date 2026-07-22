@@ -21,7 +21,9 @@ use App\Services\Booking\BookingAddonQuantityService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\BookingServiceBlocksResolver;
 use App\Services\Ecommerce\InvoiceService;
+use App\Support\FrontendUrlResolver;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -219,13 +221,25 @@ class MyBookingController extends Controller
             ];
         })->values();
 
-        $bookingProductRows = OrderItem::query()
+        $bookingProductItems = OrderItem::query()
             ->with(['order.payments'])
             ->where('line_type', 'booking_product')
             ->whereHas('order', fn ($query) => $query->where('customer_id', $customer->id))
             ->latest('id')
-            ->get()
-            ->map(function (OrderItem $item) {
+            ->get();
+
+        $bookingProductOrderIds = $bookingProductItems
+            ->pluck('order_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $refundsByOrderId = $this->resolveOrderRefundsGroupedByOrderId($bookingProductOrderIds);
+
+        $bookingProductRows = $bookingProductItems
+            ->map(function (OrderItem $item) use ($refundsByOrderId) {
                 $order = $item->order;
                 $quantity = max(1, (int) ($item->quantity ?? 1));
                 $lineTotal = (float) ($item->line_total_after_discount ?? $item->effective_line_total ?? $item->line_total ?? 0);
@@ -234,6 +248,7 @@ class MyBookingController extends Controller
                     ->sum(fn ($option) => (float) ($option['extra_price'] ?? 0) * $quantity);
                 $baseTotal = max(0, $lineTotal - $optionTotal);
                 $isPaid = strtolower((string) ($order?->payment_status ?? '')) === 'paid';
+                $orderId = (int) ($order?->id ?? $item->order_id ?? 0);
 
                 return [
                     'id' => -1 * (int) $item->id,
@@ -281,6 +296,7 @@ class MyBookingController extends Controller
                         'paid_at' => $order->paid_at?->toIso8601String(),
                         'receipt_public_url' => $this->resolveReceiptUrl((int) $order->id),
                     ]] : [],
+                    'refunds' => $orderId > 0 ? ($refundsByOrderId[$orderId] ?? []) : [],
                 ];
             })
             ->values();
@@ -693,34 +709,93 @@ class MyBookingController extends Controller
 
     private function resolveBookingRefunds(int $bookingId): array
     {
+        $linkedOrderIds = DB::table('order_items')
+            ->where('booking_id', $bookingId)
+            ->distinct()
+            ->pluck('order_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->values()
+            ->all();
+
+        $byBooking = BookingRefund::query()
+            ->where('status', 'completed')
+            ->where(function ($query) use ($bookingId, $linkedOrderIds) {
+                $query->where('booking_id', $bookingId);
+                if ($linkedOrderIds !== []) {
+                    $query->orWhereIn('order_id', $linkedOrderIds);
+                }
+            })
+            ->orderBy('id')
+            ->get();
+
+        return $this->mapRefundRows($byBooking);
+    }
+
+    /**
+     * @param  list<int>  $orderIds
+     * @return array<int, list<array<string, mixed>>>
+     */
+    private function resolveOrderRefundsGroupedByOrderId(array $orderIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $orderIds))));
+        if ($ids === []) {
+            return [];
+        }
+
+        $grouped = [];
+        BookingRefund::query()
+            ->whereIn('order_id', $ids)
+            ->where('status', 'completed')
+            ->orderBy('id')
+            ->get()
+            ->each(function (BookingRefund $refund) use (&$grouped) {
+                $orderId = (int) $refund->order_id;
+                $grouped[$orderId] ??= [];
+                $grouped[$orderId][] = $this->mapRefundRow($refund);
+            });
+
+        return $grouped;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, BookingRefund>|\Illuminate\Database\Eloquent\Collection<int, BookingRefund>  $refunds
+     * @return list<array<string, mixed>>
+     */
+    private function mapRefundRows($refunds): array
+    {
+        return collect($refunds)
+            ->unique('id')
+            ->map(fn (BookingRefund $refund) => $this->mapRefundRow($refund))
+            ->values()
+            ->all();
+    }
+
+    private function mapRefundRow(BookingRefund $refund): array
+    {
         $methodLabels = [
             'cash' => 'Cash Refund',
             'customer_credit' => 'Customer Credit',
         ];
+        $method = (string) $refund->method;
+        $isVoidRefund = \App\Services\Ecommerce\VoidRefundService::isVoidRefundReason($refund->reason);
 
-        return BookingRefund::query()
-            ->where('booking_id', $bookingId)
-            ->where('status', 'completed')
-            ->orderBy('id')
-            ->get()
-            ->map(function (BookingRefund $refund) use ($methodLabels) {
-                $method = (string) $refund->method;
-
-                return [
-                    'id' => (int) $refund->id,
-                    'refund_no' => (string) $refund->refund_no,
-                    'amount' => round((float) $refund->amount, 2),
-                    'method' => $method,
-                    'method_label' => $methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method)),
-                    'channel' => (string) ($refund->channel ?? 'offline'),
-                    'processed_at' => optional($refund->processed_at)?->toIso8601String(),
-                    'created_at' => optional($refund->created_at)?->toIso8601String(),
-                    'remark' => $refund->remark,
-                    'receipt_public_url' => $this->resolveRefundReceiptUrl((int) $refund->id),
-                ];
-            })
-            ->values()
-            ->all();
+        return [
+            'id' => (int) $refund->id,
+            'refund_no' => (string) $refund->refund_no,
+            'amount' => round((float) $refund->amount, 2),
+            'method' => $method,
+            'method_label' => $isVoidRefund
+                ? 'VOID REFUND'
+                : ($methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method))),
+            'reason' => (string) ($refund->reason ?? ''),
+            'is_void_refund' => $isVoidRefund,
+            'channel' => (string) ($refund->channel ?? 'offline'),
+            'processed_at' => optional($refund->processed_at)?->toIso8601String(),
+            'created_at' => optional($refund->created_at)?->toIso8601String(),
+            'remark' => $refund->remark,
+            'receipt_public_url' => $this->resolveRefundReceiptUrl((int) $refund->id),
+        ];
     }
 
     private function resolveRefundReceiptUrl(int $refundId): ?string
@@ -738,7 +813,7 @@ class MyBookingController extends Controller
             ]);
         }
 
-        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
+        $frontendUrl = rtrim((string) FrontendUrlResolver::resolveBaseUrl(), '/');
 
         return $frontendUrl . '/api/proxy/public/refund-receipt/' . $token->token . '/invoice';
     }
