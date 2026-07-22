@@ -38,7 +38,6 @@ class DatabaseSeeder extends Seeder
             ServicesMenuAndPagesSeeder::class,
             CustomerTypeSeeder::class,
             ExpenseCategorySeeder::class,
-            ExpensePermissionSeeder::class,
             BookingSettingsSeeder::class,
             PaymentProofNotificationSettingSeeder::class,
             EnsurePromotionPermissionsForSuperAdminSeeder::class,
