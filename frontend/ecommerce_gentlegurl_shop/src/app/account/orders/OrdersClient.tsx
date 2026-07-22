@@ -288,7 +288,9 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         
         // New status display logic based on the requirements
         let displayStatus: string;
-        if (statusKey === "cancelled" || isPendingUnpaidExpired) {
+        if (statusKey === "voided") {
+          displayStatus = "Voided";
+        } else if (statusKey === "cancelled" || isPendingUnpaidExpired) {
           displayStatus = "Cancelled";
         } else if (paymentStatusKey === "failed") {
           displayStatus = "Payment Failed";
@@ -315,6 +317,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
         // Badge style based on status
         let badgeStyle: string;
         if (
+          statusKey === "voided" ||
           statusKey === "cancelled" ||
           isPendingUnpaidExpired ||
           paymentStatusKey === "failed" ||

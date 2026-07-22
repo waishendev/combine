@@ -33,8 +33,7 @@ interface CustomerRowProps {
   onDelete?: (customer: CustomerRowData) => void
   onView?: (customer: CustomerRowData) => void
   onToggleDepositWaiver?: (customer: CustomerRowData) => void
-  onAddPoints?: (customer: CustomerRowData) => void
-  onReducePoints?: (customer: CustomerRowData) => void
+  onAdjustPoints?: (customer: CustomerRowData) => void
   onManageBalance?: (customer: CustomerRowData) => void
   canManageBalance?: boolean
 }
@@ -51,8 +50,7 @@ export default function CustomerRow({
   onEdit,
   onDelete,
   onToggleDepositWaiver,
-  onAddPoints,
-  onReducePoints,
+  onAdjustPoints,
   onManageBalance,
   canManageBalance = false,
 }: CustomerRowProps) {
@@ -118,23 +116,13 @@ export default function CustomerRow({
             {canUpdate && (
               <button
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={() => onAddPoints?.(customer)}
-                title="Add Member Points"
-                aria-label="Add Member Points"
+                className="inline-flex h-8 items-center gap-1 rounded bg-indigo-600 px-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                onClick={() => onAdjustPoints?.(customer)}
+                title="Adjust Member Points"
+                aria-label={`Adjust Member Points for ${customer.name}`}
               >
-                <i className="fa-solid fa-plus" />
-              </button>
-            )}
-            {canUpdate && (
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded bg-rose-600 text-white hover:bg-rose-700"
-                onClick={() => onReducePoints?.(customer)}
-                title="Reduce Member Points"
-                aria-label="Reduce Member Points"
-              >
-                <i className="fa-solid fa-minus" />
+                <i className="fa-solid fa-coins" aria-hidden="true" />
+                Points
               </button>
             )}
             {canUpdate && (

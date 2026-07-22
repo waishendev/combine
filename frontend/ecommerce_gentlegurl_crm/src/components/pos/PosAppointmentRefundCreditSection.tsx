@@ -8,9 +8,9 @@ import type { PosRefundTransaction } from './posAppointmentTypes'
 
 type RefundMethod = 'cash' | 'customer_credit'
 
-const REFUND_METHODS: Array<{ method: RefundMethod; label: string }> = [
+const REFUND_METHODS: Array<{ method: RefundMethod; label: string; hint?: string }> = [
   { method: 'cash', label: 'Cash Refund' },
-  { method: 'customer_credit', label: 'Customer Credit' },
+  { method: 'customer_credit', label: 'Customer Credit', hint: 'Refund to Customer Balance' },
 ]
 
 type RefundFormMode =
@@ -20,6 +20,8 @@ type RefundFormMode =
 
 type PosAppointmentRefundCreditSectionProps = {
   bookingId: number
+  memberId?: number | null
+  memberName?: string | null
   refundNeeded?: number
   initialTransactions?: PosRefundTransaction[]
   onAppointmentUpdated?: (payload: {
@@ -39,6 +41,8 @@ type PosAppointmentRefundCreditSectionProps = {
 
 export default function PosAppointmentRefundCreditSection({
   bookingId,
+  memberId = null,
+  memberName = null,
   refundNeeded = 0,
   initialTransactions,
   onAppointmentUpdated,
@@ -49,6 +53,7 @@ export default function PosAppointmentRefundCreditSection({
   const [transactions, setTransactions] = useState<PosRefundTransaction[]>(() => initialTransactions ?? [])
   const [pendingRefund, setPendingRefund] = useState(() => Math.max(0, Number(refundNeeded ?? 0)))
   const [loading, setLoading] = useState(() => initialTransactions === undefined && bookingId > 0)
+  const [memberWalletBalance, setMemberWalletBalance] = useState<number | null>(null)
   const onAppointmentUpdatedRef = useRef(onAppointmentUpdated)
   const onErrorRef = useRef(onError)
 
@@ -65,6 +70,34 @@ export default function PosAppointmentRefundCreditSection({
   const [remarkDraft, setRemarkDraft] = useState('')
   const [refundMethod, setRefundMethod] = useState<RefundMethod>('cash')
   const [amountDraft, setAmountDraft] = useState('')
+
+  const refreshMemberWallet = useCallback(async () => {
+    if (!memberId) {
+      setMemberWalletBalance(null)
+      return
+    }
+    try {
+      const res = await fetch(`/api/proxy/admin/customers/${memberId}/wallet`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        setMemberWalletBalance(null)
+        return
+      }
+      setMemberWalletBalance(Number(json?.data?.wallet_balance ?? 0))
+    } catch {
+      setMemberWalletBalance(null)
+    }
+  }, [memberId])
+
+  useEffect(() => {
+    void refreshMemberWallet()
+  }, [refreshMemberWallet])
+
+  useEffect(() => {
+    if (!memberId && refundMethod === 'customer_credit' && formMode.type === 'add') {
+      setRefundMethod('cash')
+    }
+  }, [formMode.type, memberId, refundMethod])
 
   useEffect(() => {
     if (initialTransactions !== undefined) {
@@ -171,6 +204,10 @@ export default function PosAppointmentRefundCreditSection({
       onError?.(`Amount cannot exceed RM ${maxEditableAmount.toFixed(2)}.`)
       return
     }
+    if (refundMethod === 'customer_credit' && !memberId) {
+      onError?.('Customer Credit is only available for Members.')
+      return
+    }
 
     setSaving(true)
     try {
@@ -190,15 +227,21 @@ export default function PosAppointmentRefundCreditSection({
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         onError?.(json?.message ?? 'Failed to save refund.')
+        if (memberId) {
+          void refreshMemberWallet()
+        }
         return
       }
       applyAppointmentDetailResponse((json?.data ?? null) as Record<string, unknown> | null)
       resetForm()
+      if (memberId) {
+        void refreshMemberWallet()
+      }
       showMsg?.(formMode.type === 'add' ? 'Refund recorded.' : 'Refund updated.', 'success')
     } finally {
       setSaving(false)
     }
-  }, [amountDraft, applyAppointmentDetailResponse, bookingId, editingTransaction?.id, formMode.type, maxEditableAmount, onError, refundMethod, remarkDraft, resetForm, showMsg])
+  }, [amountDraft, applyAppointmentDetailResponse, bookingId, editingTransaction?.id, formMode.type, maxEditableAmount, memberId, onError, refreshMemberWallet, refundMethod, remarkDraft, resetForm, showMsg])
 
   const showSection = pendingRefund > 0.0001 || transactions.length > 0 || formMode.type !== 'idle'
   if (!showSection) {
@@ -323,26 +366,49 @@ export default function PosAppointmentRefundCreditSection({
 
           <div className="space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">Refund option</p>
+            {memberId ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-[11px] text-emerald-900">
+                <p><span className="font-semibold">Member</span> · {memberName || `Member #${memberId}`}</p>
+                <p className="mt-0.5">
+                  <span className="font-semibold">Customer Balance</span> · Available RM {(memberWalletBalance ?? 0).toFixed(2)}
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-gray-500">Customer Credit is only available for Members.</p>
+            )}
             <div className="flex flex-wrap gap-2">
-              {REFUND_METHODS.map(({ method, label }) => (
-                <button
-                  key={method}
-                  type="button"
-                  onClick={() => {
-                    onError?.(null)
-                    setRefundMethod(method)
-                  }}
-                  className={[
-                    'rounded-lg border px-3 py-1.5 text-xs font-semibold',
-                    refundMethod === method
-                      ? 'border-rose-500 bg-rose-50 text-rose-800'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
-                  ].join(' ')}
-                >
-                  {label}
-                </button>
-              ))}
+              {REFUND_METHODS.map(({ method, label, hint }) => {
+                const creditDisabled = method === 'customer_credit' && !memberId
+                return (
+                  <button
+                    key={method}
+                    type="button"
+                    disabled={creditDisabled}
+                    onClick={() => {
+                      if (creditDisabled) return
+                      onError?.(null)
+                      setRefundMethod(method)
+                    }}
+                    className={[
+                      'rounded-lg border px-3 py-1.5 text-xs font-semibold',
+                      creditDisabled
+                        ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
+                        : refundMethod === method
+                          ? 'border-rose-500 bg-rose-50 text-rose-800'
+                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+                    ].join(' ')}
+                  >
+                    <span className="block">{label}</span>
+                    {hint ? <span className="mt-0.5 block text-[10px] font-medium opacity-80">{hint}</span> : null}
+                  </button>
+                )
+              })}
             </div>
+            {refundMethod === 'customer_credit' && memberId ? (
+              <p className="text-[11px] font-semibold text-emerald-700">
+                This amount will be added to Customer Balance.
+              </p>
+            ) : null}
             <div>
               <label className="mb-1 block text-[11px] font-medium text-gray-500">Amount</label>
               <div className="relative max-w-xs">
@@ -391,7 +457,7 @@ export default function PosAppointmentRefundCreditSection({
             </button>
             <button
               type="button"
-              disabled={saving || disabled || Number(amountDraft || 0) <= 0}
+              disabled={saving || disabled || Number(amountDraft || 0) <= 0 || (refundMethod === 'customer_credit' && !memberId)}
               onClick={() => void saveRefund()}
               className="flex-1 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
             >

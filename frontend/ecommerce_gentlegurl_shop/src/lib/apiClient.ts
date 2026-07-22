@@ -271,6 +271,8 @@ export type PublicBankAccount = {
 export type PublicPaymentGateway = {
   id: number;
   key: string;
+  category?: "external_gateway" | "manual" | "internal_wallet";
+  wallet_balance?: string | number;
   name: string;
   is_active: boolean;
   is_default: boolean;

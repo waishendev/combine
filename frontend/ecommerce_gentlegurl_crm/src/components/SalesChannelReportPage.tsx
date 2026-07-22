@@ -328,6 +328,7 @@ const PAYMENT_METHOD_TABLE_LABELS: Record<string, string> = {
   billplz_fpx: 'Online Banking (Billplz)',
   billplz_credit_card: 'Credit Card (Billplz)',
   billplz_card: 'Credit Card (Billplz)',
+  customer_balance: 'Customer Balance',
 }
 
 const paymentMethodDisplayLabel = (raw: string) => {
@@ -492,6 +493,7 @@ export default function SalesChannelReportPage({
   isAllWorkspace = false,
   showDateInputsInFilterModal = true,
   onDataChanged,
+  externalRefreshKey = 0,
   includeVoid = false,
 }: {
   mode: Mode
@@ -505,7 +507,12 @@ export default function SalesChannelReportPage({
   isAllWorkspace?: boolean
   /** Sales Visual manages date elsewhere; hide date inputs in modal. */
   showDateInputsInFilterModal?: boolean
-  onDataChanged?: () => void
+  onDataChanged?: (meta?: {
+    sourceMode: Mode
+    refreshTables?: Array<'ecommerce' | 'booking'>
+  }) => void
+  /** Sibling refresh key from All workspace — only bumps when a void actually touches this table. */
+  externalRefreshKey?: number
   includeVoid?: boolean
 }) {
   const router = useRouter()
@@ -606,7 +613,7 @@ export default function SalesChannelReportPage({
 
     void fetchData()
     return () => controller.abort()
-  }, [includeVoid, mode, resolved, refreshKey])
+  }, [includeVoid, mode, resolved, refreshKey, externalRefreshKey])
 
   const updateQuery = (patch: Record<string, string>) => {
     const next = new URLSearchParams(searchParams.toString())
@@ -986,7 +993,7 @@ export default function SalesChannelReportPage({
                               canVoid={false}
                               onDone={() => {
                                 setRefreshKey((prev) => prev + 1)
-                                onDataChanged?.()
+                                onDataChanged?.({ sourceMode: mode })
                               }}
                             />
                           ) : null
@@ -1003,9 +1010,9 @@ export default function SalesChannelReportPage({
                               paymentBreakdown={row.payments}
                               canEditStaffSplit={canUpdateOrder}
                               canVoid={canVoidRefund}
-                              onDone={() => {
+                              onDone={(meta) => {
                                 setRefreshKey((prev) => prev + 1)
-                                onDataChanged?.()
+                                onDataChanged?.({ sourceMode: mode, refreshTables: meta?.refreshTables })
                               }}
                             />
                           </>
@@ -1045,7 +1052,7 @@ export default function SalesChannelReportPage({
                             canVoid={canVoidRefund}
                             onDone={() => {
                               setRefreshKey((prev) => prev + 1)
-                              onDataChanged?.()
+                              onDataChanged?.({ sourceMode: mode })
                             }}
                           />
                         ) : null
@@ -1064,9 +1071,9 @@ export default function SalesChannelReportPage({
                       hideStaffAction={isBookingDepositType(row.type)}
                       canEditStaffSplit={canUpdateOrder}
                       canVoid={canVoidRefund}
-                      onDone={() => {
+                      onDone={(meta) => {
                         setRefreshKey((prev) => prev + 1)
-                        onDataChanged?.()
+                        onDataChanged?.({ sourceMode: mode, refreshTables: meta?.refreshTables })
                       }}
                     />
                         </>

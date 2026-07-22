@@ -88,11 +88,13 @@ class SalesVisualDailyReportService
                 'booking_count' => 0,
                 'ecommerce_sales' => 0.0,
                 'booking_sales' => 0.0,
+                'refund' => 0.0,
                 'total_sales' => 0.0,
             ];
         }
 
         $bucketExpression = 'EXTRACT(YEAR FROM ' . $this->orderBillAtSql() . ')::int';
+        $refundBucketExpression = 'EXTRACT(YEAR FROM COALESCE(processed_at, created_at))::int';
 
         foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (int) $row->bucket;
@@ -110,6 +112,14 @@ class SalesVisualDailyReportService
             }
             $rows[$key]['booking_count'] = (int) $row->booking_count;
             $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
+        }
+
+        foreach ($this->refundSummaryRows($start, $end, $refundBucketExpression) as $row) {
+            $key = (int) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['refund'] = round((float) $row->refund, 2);
         }
 
         $payload = $this->salesSummaryPayload($yearFrom, null, array_values($rows));
@@ -149,12 +159,14 @@ class SalesVisualDailyReportService
                 'booking_count' => 0,
                 'ecommerce_sales' => 0.0,
                 'booking_sales' => 0.0,
+                'refund' => 0.0,
                 'total_sales' => 0.0,
             ];
             $cursor->addDay();
         }
 
         $bucketExpression = 'DATE(' . $this->orderBillAtSql() . ')';
+        $refundBucketExpression = 'DATE(COALESCE(processed_at, created_at))';
 
         foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (string) $row->bucket;
@@ -172,6 +184,14 @@ class SalesVisualDailyReportService
             }
             $rows[$key]['booking_count'] = (int) $row->booking_count;
             $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
+        }
+
+        foreach ($this->refundSummaryRows($start, $end, $refundBucketExpression) as $row) {
+            $key = (string) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['refund'] = round((float) $row->refund, 2);
         }
 
         $payload = $this->salesSummaryPayload($year, $monthFrom, array_values($rows));
@@ -196,11 +216,13 @@ class SalesVisualDailyReportService
                 'booking_count' => 0,
                 'ecommerce_sales' => 0.0,
                 'booking_sales' => 0.0,
+                'refund' => 0.0,
                 'total_sales' => 0.0,
             ];
         }
 
         $bucketExpression = 'EXTRACT(MONTH FROM ' . $this->orderBillAtSql() . ')::int';
+        $refundBucketExpression = 'EXTRACT(MONTH FROM COALESCE(processed_at, created_at))::int';
 
         foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (int) $row->bucket;
@@ -218,6 +240,14 @@ class SalesVisualDailyReportService
             }
             $rows[$key]['booking_count'] = (int) $row->booking_count;
             $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
+        }
+
+        foreach ($this->refundSummaryRows($start, $end, $refundBucketExpression) as $row) {
+            $key = (int) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['refund'] = round((float) $row->refund, 2);
         }
 
         return $this->salesSummaryPayload($year, null, array_values($rows));
@@ -239,11 +269,13 @@ class SalesVisualDailyReportService
                 'booking_count' => 0,
                 'ecommerce_sales' => 0.0,
                 'booking_sales' => 0.0,
+                'refund' => 0.0,
                 'total_sales' => 0.0,
             ];
         }
 
         $bucketExpression = 'DATE(' . $this->orderBillAtSql() . ')';
+        $refundBucketExpression = 'DATE(COALESCE(processed_at, created_at))';
 
         foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (string) $row->bucket;
@@ -261,6 +293,14 @@ class SalesVisualDailyReportService
             }
             $rows[$key]['booking_count'] = (int) $row->booking_count;
             $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
+        }
+
+        foreach ($this->refundSummaryRows($start, $end, $refundBucketExpression) as $row) {
+            $key = (string) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['refund'] = round((float) $row->refund, 2);
         }
 
         $payload = $this->salesSummaryPayload($year, $month, array_values($rows));
@@ -307,13 +347,29 @@ class SalesVisualDailyReportService
             ->get();
     }
 
+    /**
+     * Completed refunds for the period (excludes VOID REFUND), bucketed like sales rows.
+     */
+    private function refundSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
+    {
+        return DB::table('booking_refunds')
+            ->where('status', 'completed')
+            ->whereRaw("COALESCE(reason, '') <> ?", [\App\Services\Ecommerce\VoidRefundService::REASON])
+            ->whereBetween(DB::raw('COALESCE(processed_at, created_at)'), [$start, $end])
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('COALESCE(SUM(amount), 0) as refund')
+            ->groupByRaw($bucketExpression)
+            ->get();
+    }
+
     private function salesSummaryPayload(int $year, ?int $month, array $rows): array
     {
         $rows = array_map(function (array $row) {
             $row['ecommerce_sales'] = round((float) ($row['ecommerce_sales'] ?? 0), 2);
             $row['booking_sales'] = round((float) ($row['booking_sales'] ?? 0), 2);
+            $row['refund'] = round((float) ($row['refund'] ?? 0), 2);
             $row['booking_count'] = (int) ($row['booking_count'] ?? 0);
-            $row['total_sales'] = round($row['ecommerce_sales'] + $row['booking_sales'], 2);
+            $row['total_sales'] = round($row['ecommerce_sales'] + $row['booking_sales'] - $row['refund'], 2);
             $row['ecommerce_orders'] = (int) ($row['ecommerce_orders'] ?? 0);
 
             return $row;
@@ -326,6 +382,7 @@ class SalesVisualDailyReportService
             'summary' => [
                 'ecommerce_sales' => round(array_sum(array_column($rows, 'ecommerce_sales')), 2),
                 'booking_sales' => round(array_sum(array_column($rows, 'booking_sales')), 2),
+                'refund' => round(array_sum(array_column($rows, 'refund')), 2),
                 'total_sales' => round(array_sum(array_column($rows, 'total_sales')), 2),
                 'total_orders' =>
                     (int) array_sum(array_column($rows, 'ecommerce_orders')) +
@@ -1129,6 +1186,7 @@ class SalesVisualDailyReportService
             $base = DB::table('booking_refunds')
                 ->where('status', 'completed')
                 ->where('method', $method)
+                ->whereRaw("COALESCE(reason, '') <> ?", [\App\Services\Ecommerce\VoidRefundService::REASON])
                 ->whereBetween(DB::raw('COALESCE(processed_at, created_at)'), [$start, $end]);
             $online = (clone $base)->where('channel', 'online')->sum('amount');
             $offline = (clone $base)->where('channel', 'offline')->sum('amount');

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 type StaffOption = { id: number; name: string }
-type PaymentMethodKey = 'cash' | 'qrpay' | 'credit_card'
+type PaymentMethodKey = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
 type PaymentBreakdownRow = { method?: string | null; payment_method?: string | null; amount?: number | string | null }
 
 type VoidScope = 'order_only' | 'order_and_appointment'
@@ -26,6 +26,13 @@ type VoidPreview = {
     other_active_non_deposit_order_count?: number
   }>
   message?: string | null
+  void_refund?: {
+    can_refund_to_customer_balance?: boolean
+    customer?: { id: number; name: string; wallet_balance?: number } | null
+    max_amount_order_only?: number
+    max_amount_order_and_appointment?: number
+    suggested_amount?: number
+  } | null
 }
 
 type SplitRow = {
@@ -61,22 +68,24 @@ type OfflineOrderActionsProps = {
   canEditStaffSplit?: boolean
   /** When false, hides Void Order (needs ecommerce.orders.update | pos.checkout | pos.appointments.manage). */
   canVoid?: boolean
-  onDone: () => void
+  onDone: (meta?: { refreshTables?: Array<'ecommerce' | 'booking'> }) => void
 }
 
 const PAYMENT_METHODS: Array<{ method: PaymentMethodKey; label: string }> = [
   { method: 'cash', label: 'Cash' },
   { method: 'qrpay', label: 'QRPay' },
   { method: 'credit_card', label: 'Credit Card' },
+  { method: 'customer_balance', label: 'Customer Balance' },
 ]
 
-const emptyPaymentAmounts = (): Record<PaymentMethodKey, string> => ({ cash: '', qrpay: '', credit_card: '' })
+const emptyPaymentAmounts = (): Record<PaymentMethodKey, string> => ({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
 
 const normalizePaymentEditorMethod = (value?: string | null): PaymentMethodKey | null => {
   const key = String(value ?? '').trim().toLowerCase()
   if (key === 'cash') return 'cash'
   if (key === 'qrpay' || key === 'qr_pay' || key === 'qr pay') return 'qrpay'
   if (['credit_card', 'billplz_credit_card', 'billplz_card', 'card', 'credit-card', 'credit card'].includes(key)) return 'credit_card'
+  if (key === 'customer_balance' || key === 'customer balance' || key === 'wallet') return 'customer_balance'
   return null
 }
 
@@ -145,11 +154,16 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   const [draftItems, setDraftItems] = useState<ItemSplitDraft[]>([])
   const [editingDraftKey, setEditingDraftKey] = useState<string | null>(null)
   const [paymentAmounts, setPaymentAmounts] = useState<Record<PaymentMethodKey, string>>(emptyPaymentAmounts)
+  const [paymentMember, setPaymentMember] = useState<{ id: number; name: string } | null>(null)
+  const [paymentWalletBalance, setPaymentWalletBalance] = useState<number | null>(null)
+  const [paymentWalletLoading, setPaymentWalletLoading] = useState(false)
   const [billDateInput, setBillDateInput] = useState('')
   const [remark, setRemark] = useState('')
   const [voidPreview, setVoidPreview] = useState<VoidPreview | null>(null)
   const [voidScope, setVoidScope] = useState<VoidScope>('order_and_appointment')
   const [voidPreviewLoading, setVoidPreviewLoading] = useState(false)
+  const [voidRefundToBalance, setVoidRefundToBalance] = useState(false)
+  const [voidRefundAmount, setVoidRefundAmount] = useState('')
   const [autoBalanceByItem, setAutoBalanceByItem] = useState<Record<string, boolean>>({})
 
 
@@ -161,6 +175,26 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   const assignedAmount = assignedCents / 100
   const balanceCents = orderTotalCents - assignedCents
   const paymentTotalMatches = balanceCents === 0 && paymentRows.length > 0
+  const existingCustomerBalanceAllocation = useMemo(() => {
+    const rows = Array.isArray(paymentBreakdown) ? paymentBreakdown : []
+    return rows.reduce((sum, row) => {
+      const method = normalizePaymentEditorMethod(row.method ?? row.payment_method)
+      if (method !== 'customer_balance') return sum
+      const amount = Number(row.amount ?? 0)
+      return Number.isFinite(amount) && amount > 0 ? sum + amount : sum
+    }, 0)
+  }, [paymentBreakdown])
+  const customerBalanceCents = useMemo(() => Math.round(Number(paymentAmounts.customer_balance || 0) * 100), [paymentAmounts.customer_balance])
+  const maxCustomerBalanceCents = useMemo(() => {
+    if (!paymentMember) return 0
+    const availableCents = Math.round(Number(paymentWalletBalance ?? 0) * 100)
+    const existingCents = Math.round(existingCustomerBalanceAllocation * 100)
+    return Math.max(0, availableCents + existingCents)
+  }, [existingCustomerBalanceAllocation, paymentMember, paymentWalletBalance])
+  const customerBalanceWithinLimit = customerBalanceCents <= maxCustomerBalanceCents
+  const canSavePaymentMethod = paymentTotalMatches
+    && customerBalanceWithinLimit
+    && (customerBalanceCents === 0 || Boolean(paymentMember))
 
   const buildInitialPaymentAmounts = () => {
     const next = emptyPaymentAmounts()
@@ -185,12 +219,49 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     return next
   }
 
+  const loadPaymentMemberContext = async () => {
+    setPaymentWalletLoading(true)
+    setPaymentMember(null)
+    setPaymentWalletBalance(null)
+    try {
+      const orderRes = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      })
+      const orderJson = await orderRes.json().catch(() => ({}))
+      const customer = orderJson?.data?.customer as { id?: number; name?: string; is_active?: boolean } | null | undefined
+      const customerId = Number(customer?.id ?? 0)
+      if (!orderRes.ok || !customerId || customer?.is_active === false) {
+        setPaymentAmounts((prev) => (prev.customer_balance ? { ...prev, customer_balance: '' } : prev))
+        return
+      }
+
+      const member = { id: customerId, name: String(customer?.name ?? `Member #${customerId}`) }
+      setPaymentMember(member)
+
+      const walletRes = await fetch(`/api/proxy/admin/customers/${customerId}/wallet`, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      })
+      const walletJson = await walletRes.json().catch(() => ({}))
+      if (walletRes.ok) {
+        setPaymentWalletBalance(Number(walletJson?.data?.wallet_balance ?? 0))
+      }
+    } catch {
+      setPaymentMember(null)
+      setPaymentWalletBalance(null)
+    } finally {
+      setPaymentWalletLoading(false)
+    }
+  }
+
   const openPaymentModal = () => {
     setPaymentAmounts(buildInitialPaymentAmounts())
     setRemark('')
     setError(null)
     setModal('payment_method')
     setMenuOpen(false)
+    void loadPaymentMemberContext()
   }
 
   const openBillDateModal = () => {
@@ -206,6 +277,8 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     setError(null)
     setVoidPreview(null)
     setVoidScope('order_and_appointment')
+    setVoidRefundToBalance(false)
+    setVoidRefundAmount('')
     setModal('void')
     setMenuOpen(false)
     void loadVoidPreview()
@@ -229,6 +302,9 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
 
       setVoidPreview(preview)
       setVoidScope(preview.default_void_scope ?? 'order_and_appointment')
+      const suggested = Number(preview.void_refund?.suggested_amount ?? 0)
+      setVoidRefundToBalance(false)
+      setVoidRefundAmount(suggested > 0 ? suggested.toFixed(2) : '')
     } catch {
       setError('Unable to load void options.')
     } finally {
@@ -342,10 +418,29 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   }
 
   const isOffline = useMemo(() => channel.trim().toLowerCase() === 'offline', [channel])
-  if (!isOffline) return null
-  const canShowStaffAction = !hideStaffAction && canEditStaffSplit !== false
+  const canShowStaffAction = isOffline && !hideStaffAction && canEditStaffSplit !== false
+  const canShowOfflineEdits = isOffline
+  const canShowActionsMenu = canShowStaffAction || canShowOfflineEdits || Boolean(canVoid)
   const staffActionButtonLabel = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Sales Person'
   const staffActionModalTitle = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Item Staff Split'
+
+  const voidRefundMaxAmount = useMemo(() => {
+    if (!voidPreview?.void_refund) return 0
+    return voidScope === 'order_only'
+      ? Number(voidPreview.void_refund.max_amount_order_only ?? 0)
+      : Number(voidPreview.void_refund.max_amount_order_and_appointment ?? 0)
+  }, [voidPreview, voidScope])
+
+  const canVoidRefundToBalance = Boolean(voidPreview?.void_refund?.can_refund_to_customer_balance)
+
+  useEffect(() => {
+    if (!voidRefundToBalance || !canVoidRefundToBalance) return
+    if (Number(voidRefundAmount || 0) > voidRefundMaxAmount + 0.0001) {
+      setVoidRefundAmount(voidRefundMaxAmount > 0 ? voidRefundMaxAmount.toFixed(2) : '')
+    }
+  }, [canVoidRefundToBalance, voidRefundAmount, voidRefundMaxAmount, voidRefundToBalance])
+
+  if (!canShowActionsMenu) return null
 
   const closeModal = () => {
     setModal(null)
@@ -356,6 +451,11 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     setVoidPreview(null)
     setVoidScope('order_and_appointment')
     setVoidPreviewLoading(false)
+    setVoidRefundToBalance(false)
+    setVoidRefundAmount('')
+    setPaymentMember(null)
+    setPaymentWalletBalance(null)
+    setPaymentWalletLoading(false)
   }
 
   const validateItem = (item: ItemSplitDraft): string | null => {
@@ -411,6 +511,16 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
           setSubmitting(false)
           return
         }
+        if (customerBalanceCents > 0 && !paymentMember) {
+          setError('Customer Balance is only available for member transactions.')
+          setSubmitting(false)
+          return
+        }
+        if (!customerBalanceWithinLimit) {
+          setError(`Customer Balance cannot exceed RM ${money(maxCustomerBalanceCents / 100)}.`)
+          setSubmitting(false)
+          return
+        }
         endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/payment-method`
         payload = { payments: paymentRows, remark: remark.trim() || null, remarks: remark.trim() || null }
       } else if (modal === 'bill_date') {
@@ -433,10 +543,30 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
           setSubmitting(false)
           return
         }
+        if (voidRefundToBalance) {
+          if (!canVoidRefundToBalance) {
+            setError('Customer Balance VOID REFUND requires a linked member.')
+            setSubmitting(false)
+            return
+          }
+          const amount = Number(voidRefundAmount || 0)
+          if (!(amount > 0)) {
+            setError('Enter a VOID REFUND amount for Customer Balance.')
+            setSubmitting(false)
+            return
+          }
+          if (amount > voidRefundMaxAmount + 0.009) {
+            setError(`VOID REFUND amount cannot exceed RM ${money(voidRefundMaxAmount)}.`)
+            setSubmitting(false)
+            return
+          }
+        }
         endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/void`
         payload = {
           remark: remark.trim(),
           void_scope: voidPreview?.requires_void_scope_choice ? voidScope : undefined,
+          void_refund_to_balance: voidRefundToBalance || undefined,
+          void_refund_amount: voidRefundToBalance ? Number(voidRefundAmount || 0) : undefined,
         }
       }
 
@@ -455,7 +585,11 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
 
       setToast({ type: 'success', text: typeof json?.message === 'string' ? json.message : 'Action completed.' })
       closeModal()
-      onDone()
+      const refreshTables = modal === 'void' && Array.isArray(json?.data?.refresh_report_channels)
+        ? (json.data.refresh_report_channels as unknown[])
+            .filter((value): value is 'ecommerce' | 'booking' => value === 'ecommerce' || value === 'booking')
+        : undefined
+      onDone(refreshTables?.length ? { refreshTables } : undefined)
     } catch {
       setError('Unable to process this request.')
       setSubmitting(false)
@@ -515,8 +649,12 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
             {canShowStaffAction ? (
               <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={() => { setModal('sales_person'); setMenuOpen(false) }}>{staffActionButtonLabel}</button>
             ) : null}
-            <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openPaymentModal}>Edit Payment Method</button>
-            <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openBillDateModal}>Edit Bill Date</button>
+            {canShowOfflineEdits ? (
+              <>
+                <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openPaymentModal}>Edit Payment Method</button>
+                <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openBillDateModal}>Edit Bill Date</button>
+              </>
+            ) : null}
             {canVoid ? (
               <button type="button" className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50" onClick={openVoidModal}>Void Order</button>
             ) : null}
@@ -590,24 +728,60 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                     <span className="text-base font-bold text-slate-900">RM {money(orderTotalCents / 100)}</span>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {PAYMENT_METHODS.map(({ method, label }) => (
-                      <div key={method}>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">{label} Amount</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={paymentAmounts[method]}
-                          onChange={(event) => {
-                            setError(null)
-                            setPaymentAmounts((prev) => ({ ...prev, [method]: event.target.value }))
-                          }}
-                          className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none"
-                          placeholder="0.00"
-                        />
-                      </div>
-                    ))}
+                  {paymentWalletLoading ? (
+                    <p className="text-xs text-slate-500">Loading member balance…</p>
+                  ) : paymentMember ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
+                      <p><span className="font-semibold">Member</span> · {paymentMember.name}</p>
+                      <p className="mt-1"><span className="font-semibold">Customer Balance</span> · Available RM {money(Number(paymentWalletBalance ?? 0))}</p>
+                      {existingCustomerBalanceAllocation > 0 ? (
+                        <p className="mt-1"><span className="font-semibold">Existing Customer Balance Allocation</span> · RM {money(existingCustomerBalanceAllocation)}</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                      Guest / walk-in transactions cannot use Customer Balance.
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {PAYMENT_METHODS.map(({ method, label }) => {
+                      const isWallet = method === 'customer_balance'
+                      const walletDisabled = isWallet && !paymentMember
+                      return (
+                        <div key={method}>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">{label} Amount</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            max={isWallet && paymentMember ? (maxCustomerBalanceCents / 100).toFixed(2) : undefined}
+                            value={paymentAmounts[method]}
+                            disabled={walletDisabled}
+                            onChange={(event) => {
+                              setError(null)
+                              const raw = event.target.value
+                              if (!isWallet) {
+                                setPaymentAmounts((prev) => ({ ...prev, [method]: raw }))
+                                return
+                              }
+                              const capped = Math.min(Number(raw || 0), maxCustomerBalanceCents / 100)
+                              setPaymentAmounts((prev) => ({
+                                ...prev,
+                                customer_balance: raw === '' ? '' : String(Number.isFinite(capped) ? capped : 0),
+                              }))
+                            }}
+                            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                            placeholder="0.00"
+                          />
+                          {isWallet && paymentMember ? (
+                            <p className="mt-1 text-[11px] font-semibold text-emerald-700">
+                              Editable up to RM {money(maxCustomerBalanceCents / 100)}
+                            </p>
+                          ) : null}
+                        </div>
+                      )
+                    })}
                   </div>
 
                   <div className="grid grid-cols-1 gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 sm:grid-cols-3">
@@ -701,9 +875,60 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                     <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-left text-sm leading-relaxed text-red-700">
                       {voidPreview?.has_active_settlement
                         ? 'This appointment already has a settlement recorded. To proceed, the entire appointment must be voided. All linked deposit receipts and settlement orders will be voided, and the appointment status will be updated to Voided.'
-                        : `This will void the offline order${voidPreview?.linked_bookings?.length ? ' and the linked appointment' : ''} and cancel the related payment records.`}
+                        : `This will void the order${voidPreview?.linked_bookings?.length ? ' and the linked appointment' : ''} and cancel the related payment records.`}
                     </p>
                   )}
+
+                  {canVoidRefundToBalance ? (
+                    <div className="space-y-2 rounded border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-left">
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={voidRefundToBalance}
+                          onChange={(e) => {
+                            setError(null)
+                            setVoidRefundToBalance(e.target.checked)
+                            if (e.target.checked && !voidRefundAmount && voidRefundMaxAmount > 0) {
+                              setVoidRefundAmount(voidRefundMaxAmount.toFixed(2))
+                            }
+                          }}
+                          className="mt-1"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-emerald-950">Refund to Customer Balance (VOID REFUND)</span>
+                          <span className="mt-0.5 block text-xs text-emerald-900/80">
+                            Optional. Credits the member wallet and creates a VOID REFUND receipt. Does not process a gateway refund.
+                          </span>
+                        </span>
+                      </label>
+                      {voidPreview?.void_refund?.customer ? (
+                        <p className="text-xs font-semibold text-emerald-900">
+                          Member · {voidPreview.void_refund.customer.name}
+                          {' · '}Available RM {money(Number(voidPreview.void_refund.customer.wallet_balance ?? 0))}
+                        </p>
+                      ) : null}
+                      {voidRefundToBalance ? (
+                        <div>
+                          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-emerald-900">VOID REFUND amount</label>
+                          <div className="relative max-w-xs">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-slate-500">RM</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={voidRefundAmount}
+                              onChange={(e) => {
+                                setError(null)
+                                setVoidRefundAmount(e.target.value)
+                              }}
+                              className="w-full rounded border border-emerald-300 bg-white py-1.5 pl-8 pr-2 text-sm tabular-nums"
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <p className="mt-1 text-[11px] text-emerald-900/80">Maximum for selected scope: RM {money(voidRefundMaxAmount)}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -720,7 +945,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                 disabled={
                   submitting
                   || (modal === 'void' && voidPreviewLoading)
-                  || (modal === 'payment_method' && !paymentTotalMatches)
+                  || (modal === 'payment_method' && !canSavePaymentMethod)
                   || (modal === 'bill_date' && !billDateInput.trim())
                   || (modal === 'sales_person' && (canEditStaffSplit === false || draftItems.length === 0))
                 }

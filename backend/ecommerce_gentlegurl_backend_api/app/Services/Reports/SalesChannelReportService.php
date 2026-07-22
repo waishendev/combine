@@ -1159,6 +1159,7 @@ class SalesChannelReportService
             ->leftJoin('customers as c', 'c.id', '=', 'b.customer_id')
             ->whereNull('br.return_request_id')
             ->where('br.status', 'completed')
+            ->whereRaw("COALESCE(br.reason, '') <> ?", [\App\Services\Ecommerce\VoidRefundService::REASON])
             ->whereBetween(DB::raw('COALESCE(br.processed_at, br.created_at)'), [$start, $end]);
 
         if ($channel === self::CHANNEL_ONLINE) {

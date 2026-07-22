@@ -25,6 +25,8 @@ use App\Models\Ecommerce\PaymentGateway;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
 use App\Services\Ecommerce\OrderReserveService;
+use App\Services\Ecommerce\CustomerWalletService;
+use App\Services\Ecommerce\OrderPaymentService;
 use Carbon\Carbon;
 use App\Support\Pricing\ProductPricing;
 use App\Support\WorkspaceType;
@@ -52,6 +54,8 @@ class PublicCheckoutController extends Controller
         protected CartService $cartService,
         protected OrderReserveService $orderReserveService,
         protected ShippingService $shippingService,
+        protected CustomerWalletService $customerWalletService,
+        protected OrderPaymentService $orderPaymentService,
     )
     {
     }
@@ -175,6 +179,7 @@ class PublicCheckoutController extends Controller
         $gatewayKey = match ($paymentMethod) {
             'billplz_credit_card' => 'billplz_card',
             'billplz_online_banking' => 'billplz_fpx',
+            'customer_balance' => 'customer_balance',
             default => 'manual_transfer',
         };
         $checkoutGatewayAvailable = PaymentGateway::query()
@@ -185,6 +190,9 @@ class PublicCheckoutController extends Controller
             ->exists();
         if (! $checkoutGatewayAvailable) {
             return $this->respondError(__('Selected payment gateway is not available for checkout.'), 422);
+        }
+        if ($paymentMethod === 'customer_balance' && (! $customer || ! $customer->is_active)) {
+            return $this->respondError(__('Customer Balance is available to active signed-in customers only.'), 422);
         }
         $selectedGatewayOption = $this->resolveBillplzGatewayOption($validated, $type, $paymentMethod);
         if (
@@ -237,7 +245,7 @@ class PublicCheckoutController extends Controller
             $billingCountry = $validated['billing_country'] ?? 'MY';
         }
 
-        $paymentProvider = str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual';
+        $paymentProvider = $paymentMethod === 'customer_balance' ? 'internal_wallet' : (str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual');
         $billplzUrl = null;
         $billplzId = null;
 
@@ -359,6 +367,12 @@ class PublicCheckoutController extends Controller
                 }
 
                 $this->removeOrderedCartItems($customer, $validated['session_token'] ?? null, $calculation['items']);
+
+                if ($paymentMethod === 'customer_balance' && (float) $order->grand_total > 0) {
+                    $this->customerWalletService->payForCheckout($customer, $type, $order->id, $order->order_number, (string) $order->grand_total);
+                    $order->forceFill(['status' => 'processing', 'payment_status' => 'paid', 'paid_at' => now()])->save();
+                    $this->orderPaymentService->handlePaid($order->fresh(['items', 'customer']));
+                }
 
                 $billplzUrl = null;
                 $billplzId = null;
@@ -711,7 +725,7 @@ class PublicCheckoutController extends Controller
                 'string',
             ],
             'session_token' => ['nullable', 'string', 'max:100'],
-            'payment_method' => [$requirePaymentMethod ? 'required' : 'nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card,billplz_online_banking,billplz_credit_card'],
+            'payment_method' => [$requirePaymentMethod ? 'required' : 'nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card,billplz_online_banking,billplz_credit_card,customer_balance'],
             'bank_account_id' => [
                 $requirePaymentMethod ? 'required_if:payment_method,manual_transfer' : 'nullable',
                 'nullable',

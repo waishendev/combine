@@ -286,6 +286,8 @@ export type BookingRecord = {
     amount: number;
     method: string;
     method_label: string;
+    reason?: string | null;
+    is_void_refund?: boolean;
     channel?: string | null;
     processed_at?: string | null;
     created_at?: string | null;

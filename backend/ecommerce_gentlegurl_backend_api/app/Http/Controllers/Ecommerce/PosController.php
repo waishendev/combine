@@ -56,6 +56,8 @@ use App\Models\Ecommerce\PointsEarnBatch;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OfflineOrderManagementService;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\Ecommerce\CustomerWalletService;
+use App\Services\Ecommerce\VoidRefundService;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
 use App\Support\BookingNotes;
@@ -1276,9 +1278,9 @@ class PosController extends Controller
         $validated = $request->validate(array_merge([
             'payment_method' => $hasPaymentsPayload
                 ? ['nullable', 'string', 'max:50']
-                : ['required', 'in:cash,qrpay,billplz_credit_card,credit_card'],
+                : ['required', 'in:cash,qrpay,billplz_credit_card,credit_card,customer_balance'],
             'payments' => ['nullable', 'array'],
-            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
             'qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'discount_type' => ['nullable', 'in:percentage,fixed'],
@@ -1622,6 +1624,7 @@ class PosController extends Controller
             }
 
             $this->replaceOrderPayments($order, $paymentRows, 'pos_appointment_settlement');
+            $this->settleCustomerBalancePayment($order, $booking->customer_id ? (int) $booking->customer_id : null, $paymentRows, (int) $request->user()->id);
             if ($request->hasFile('qr_payment_proof')) {
                 OrderUpload::query()->create([
                     'order_id' => (int) $order->id,
@@ -2378,9 +2381,9 @@ class PosController extends Controller
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'gt:0'],
-            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments' => ['nullable', 'array'],
-            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
             'remark' => ['nullable', 'string', 'max:255'],
         ]);
@@ -2449,6 +2452,7 @@ class PosController extends Controller
             }
 
             $this->replaceOrderPayments($order, $paymentRows, 'pos_add_appointment_deposit');
+            $this->settleCustomerBalancePayment($order, $booking->customer_id ? (int) $booking->customer_id : null, $paymentRows, $userId);
             $this->orderPaymentService->handlePaid($order->fresh(['items']));
             $this->syncBookingDepositAmountFromOrderItems($booking->fresh(['service']));
             $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
@@ -2478,9 +2482,9 @@ class PosController extends Controller
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:0'],
-            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments' => ['nullable', 'array'],
-            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
             'remark' => ['nullable', 'string', 'max:255'],
         ]);
@@ -2560,14 +2564,29 @@ class PosController extends Controller
                 }
             }
 
-            $order = Order::query()->find((int) $depositItem->order_id);
+            $order = Order::query()->lockForUpdate()->find((int) $depositItem->order_id);
             if ($order) {
+                $order->loadMissing('payments');
                 $this->refreshOrderTotalsFromItems($order);
+                $previousWalletAmount = round((float) collect($order->payments ?? [])
+                    ->filter(fn ($payment) => $this->normalizePosPaymentMethod((string) ($payment->payment_method ?? '')) === 'customer_balance')
+                    ->sum(fn ($payment) => (float) ($payment->amount ?? 0)), 2);
+                $newWalletAmount = round((float) collect($paymentRows)
+                    ->where('method', 'customer_balance')
+                    ->sum('amount'), 2);
+
                 if ($newAmount > 0.0001 && ($hasPaymentUpdate || abs($newAmount - $previousAmount) > 0.0001)) {
                     $order->update([
                         'payment_method' => $this->orderPaymentMethodForRows($paymentRows),
                     ]);
                     $this->replaceOrderPayments($order, $paymentRows, 'pos_edit_appointment_deposit');
+                    $this->syncCustomerBalancePaymentDelta(
+                        $order,
+                        $booking->customer_id ? (int) $booking->customer_id : null,
+                        $previousWalletAmount,
+                        $newWalletAmount,
+                        $userId,
+                    );
                 }
             }
 
@@ -2608,20 +2627,37 @@ class PosController extends Controller
         $method = (string) $validated['method'];
         $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
         $remark = $remark !== '' ? $remark : null;
+        $userId = (int) $request->user()->id;
 
-        BookingRefund::query()->create([
-            'booking_id' => (int) $booking->id,
-            'order_id' => null,
-            'refund_no' => 'REF-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
-            'amount' => $amount,
-            'method' => $method,
-            'channel' => $method === 'customer_credit' ? 'online' : 'offline',
-            'reason' => 'Overpaid deposit refund',
-            'status' => 'completed',
-            'processed_by' => (int) $request->user()->id,
-            'processed_at' => now(),
-            'remark' => $remark,
-        ]);
+        if ($method === 'customer_credit' && ! $booking->customer_id) {
+            return $this->respondError(__('Customer Credit requires a selected member.'), 422);
+        }
+
+        DB::transaction(function () use ($booking, $amount, $method, $remark, $userId) {
+            $refund = BookingRefund::query()->create([
+                'booking_id' => (int) $booking->id,
+                'order_id' => null,
+                'refund_no' => 'REF-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                'amount' => $amount,
+                'method' => $method,
+                'channel' => $method === 'customer_credit' ? 'online' : 'offline',
+                'reason' => 'Overpaid deposit refund',
+                'status' => 'completed',
+                'processed_by' => $userId,
+                'processed_at' => now(),
+                'remark' => $remark,
+            ]);
+
+            $this->syncRefundCustomerCredit(
+                $booking,
+                $refund,
+                'cash',
+                0.0,
+                $method,
+                $amount,
+                $userId,
+            );
+        });
 
         return $this->respondAppointmentRefundMutation(
             $booking->fresh(['customer', 'service', 'staff']),
@@ -2668,15 +2704,36 @@ class PosController extends Controller
         $method = (string) $validated['method'];
         $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
         $remark = $remark !== '' ? $remark : null;
+        $userId = (int) $request->user()->id;
 
-        $refund->update([
-            'amount' => $amount,
-            'method' => $method,
-            'channel' => $method === 'customer_credit' ? 'online' : 'offline',
-            'remark' => $remark,
-            'processed_by' => (int) $request->user()->id,
-            'processed_at' => now(),
-        ]);
+        if ($method === 'customer_credit' && ! $booking->customer_id) {
+            return $this->respondError(__('Customer Credit requires a selected member.'), 422);
+        }
+
+        DB::transaction(function () use ($booking, $refund, $amount, $method, $remark, $userId) {
+            $lockedRefund = BookingRefund::query()->lockForUpdate()->findOrFail($refund->id);
+            $previousMethod = (string) $lockedRefund->method;
+            $previousAmount = round((float) $lockedRefund->amount, 2);
+
+            $lockedRefund->update([
+                'amount' => $amount,
+                'method' => $method,
+                'channel' => $method === 'customer_credit' ? 'online' : 'offline',
+                'remark' => $remark,
+                'processed_by' => $userId,
+                'processed_at' => now(),
+            ]);
+
+            $this->syncRefundCustomerCredit(
+                $booking,
+                $lockedRefund->fresh(),
+                $previousMethod,
+                $previousAmount,
+                $method,
+                $amount,
+                $userId,
+            );
+        });
 
         return $this->respondAppointmentRefundMutation(
             $booking->fresh(['customer', 'service', 'staff']),
@@ -2691,7 +2748,7 @@ class PosController extends Controller
         ]);
 
         $refund = BookingRefund::query()
-            ->with('booking')
+            ->with('booking.customer')
             ->where('id', $id)
             ->where('status', 'completed')
             ->firstOrFail();
@@ -2702,13 +2759,33 @@ class PosController extends Controller
         $combinedRemark = $existingRemark !== ''
             ? $existingRemark . "\n" . $voidNote
             : $voidNote;
+        $userId = (int) $request->user()->id;
 
-        $refund->update([
-            'status' => 'voided',
-            'remark' => $combinedRemark,
-            'processed_by' => (int) $request->user()->id,
-            'processed_at' => now(),
-        ]);
+        DB::transaction(function () use ($refund, $combinedRemark, $userId) {
+            $lockedRefund = BookingRefund::query()->lockForUpdate()->findOrFail($refund->id);
+            $previousMethod = (string) $lockedRefund->method;
+            $previousAmount = round((float) $lockedRefund->amount, 2);
+            $booking = $lockedRefund->booking ?? $refund->booking;
+
+            $lockedRefund->update([
+                'status' => 'voided',
+                'remark' => $combinedRemark,
+                'processed_by' => $userId,
+                'processed_at' => now(),
+            ]);
+
+            if ($booking) {
+                $this->syncRefundCustomerCredit(
+                    $booking,
+                    $lockedRefund,
+                    $previousMethod,
+                    $previousAmount,
+                    'cash',
+                    0.0,
+                    $userId,
+                );
+            }
+        });
 
         $booking = $refund->booking;
         if (! $booking) {
@@ -2800,11 +2877,16 @@ class PosController extends Controller
         $validated = $request->validate([
             'status' => ['required', 'in:COMPLETED,CANCELLED,LATE_CANCELLATION,NO_SHOW,NOTIFIED_CANCELLATION'],
             'void_deposit' => ['sometimes', 'boolean'],
+            'void_refund_to_balance' => ['sometimes', 'boolean'],
+            'void_refund_amount' => ['nullable', 'numeric', 'gt:0'],
         ]);
 
         $booking = Booking::query()->with(['customer', 'service', 'staff'])->findOrFail($id);
         $targetStatus = (string) $validated['status'];
         $voidDeposit = (bool) ($validated['void_deposit'] ?? false);
+        $voidRefundToBalance = (bool) ($validated['void_refund_to_balance'] ?? false);
+        $voidRefundAmount = round((float) ($validated['void_refund_amount'] ?? 0), 2);
+
         if ((string) $booking->status !== 'CONFIRMED') {
             return $this->respondError(__('Only CONFIRMED appointment can be updated from POS settlement.'), 422);
         }
@@ -2813,7 +2895,30 @@ class PosController extends Controller
             return $this->markAppointmentCompleted($request, $id);
         }
 
-        DB::transaction(function () use ($booking, $targetStatus, $voidDeposit, $request) {
+        if ($voidRefundToBalance && ! $voidDeposit) {
+            return $this->respondError(__('VOID REFUND to Customer Balance is only available when voiding deposit receipt(s).'), 422);
+        }
+        if ($voidRefundToBalance && $voidRefundAmount <= 0.0001) {
+            return $this->respondError(__('VOID REFUND amount is required when refunding to Customer Balance.'), 422);
+        }
+        if ($voidRefundToBalance && ! $booking->customer_id) {
+            return $this->respondError(__('Customer Balance VOID REFUND requires a linked member.'), 422);
+        }
+
+        $depositCollectedBeforeVoid = 0.0;
+        if ($voidDeposit && $voidRefundToBalance) {
+            $depositCollectedBeforeVoid = round((float) ($this->resolveAppointmentFinancialSummary($booking)['deposit_previously_collected_amount'] ?? 0), 2);
+            if ($depositCollectedBeforeVoid <= 0.0001) {
+                return $this->respondError(__('No deposit amount available for VOID REFUND.'), 422);
+            }
+            if ($voidRefundAmount > $depositCollectedBeforeVoid + 0.0001) {
+                return $this->respondError(__('VOID REFUND amount cannot exceed the deposit collected (RM :amount).', [
+                    'amount' => number_format($depositCollectedBeforeVoid, 2),
+                ]), 422);
+            }
+        }
+
+        DB::transaction(function () use ($booking, $targetStatus, $voidDeposit, $voidRefundToBalance, $voidRefundAmount, $request) {
             $booking->status = $targetStatus;
             if (in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION'], true)) {
                 $booking->cancelled_at = now();
@@ -2831,12 +2936,24 @@ class PosController extends Controller
                     "Deposit voided — appointment marked {$targetStatus} from POS",
                     optional($request->user())->id,
                 );
+
+                if ($voidRefundToBalance) {
+                    app(VoidRefundService::class)->createCustomerBalanceRefund(
+                        $voidRefundAmount,
+                        optional($request->user())->id,
+                        "VOID REFUND — appointment {$targetStatus}",
+                        null,
+                        $booking->fresh(['customer']),
+                    );
+                }
             }
         });
 
         $message = __('Appointment status updated.');
         if ($voidDeposit && in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW'], true)) {
-            $message = __('Appointment status updated and deposit receipt(s) voided.');
+            $message = $voidRefundToBalance
+                ? __('Appointment status updated, deposit receipt(s) voided, and VOID REFUND credited to Customer Balance.')
+                : __('Appointment status updated and deposit receipt(s) voided.');
         }
 
         $freshBooking = $booking->fresh(['customer', 'service', 'staff']);
@@ -3886,7 +4003,7 @@ class PosController extends Controller
             'addon_staff_splits.*.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
             'deposit_amount' => ['nullable', 'numeric', 'min:0'],
             'deposit_payments' => ['nullable', 'array'],
-            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
             'availability_override' => ['nullable', 'boolean'],
             'availability_override_reason' => ['nullable', 'string', 'max:1000'],
@@ -4301,7 +4418,7 @@ class PosController extends Controller
             'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
             'deposit_amount' => ['nullable', 'numeric', 'min:0'],
             'deposit_payments' => ['nullable', 'array'],
-            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
             'deposit_qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'availability_override' => ['nullable', 'boolean'],
@@ -4689,6 +4806,7 @@ class PosController extends Controller
                 }
 
                 $this->replaceOrderPayments($depositOrder, $depositPayments, 'pos_create_appointment_deposit');
+                $this->settleCustomerBalancePayment($depositOrder, $booking->customer_id ? (int) $booking->customer_id : null, $depositPayments, (int) $request->user()->id);
 
                 if ($depositProofPath) {
                     OrderUpload::query()->create([
@@ -6740,9 +6858,9 @@ class PosController extends Controller
         $validated = $request->validate(array_merge([
             'payment_method' => $hasPaymentsPayload
                 ? ['nullable', 'string', 'max:50']
-                : ['nullable', 'in:cash,qrpay,billplz_credit_card,credit_card'],
+                : ['nullable', 'in:cash,qrpay,billplz_credit_card,credit_card,customer_balance'],
             'payments' => ['nullable', 'array'],
-            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card,customer_balance'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
             'qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
@@ -8066,6 +8184,7 @@ class PosController extends Controller
 
             $this->deductPosCheckoutStock($cart, (int) $request->user()->id);
             $this->replaceOrderPayments($order, $paymentRows, 'pos_checkout');
+            $this->settleCustomerBalancePayment($order, $customerId ? (int) $customerId : null, $paymentRows, (int) $request->user()->id);
             if ($request->hasFile('qr_payment_proof')) {
                 OrderUpload::query()->create([
                     'order_id' => (int) $order->id,
@@ -8176,7 +8295,7 @@ class PosController extends Controller
             ]]);
         }
 
-        $allowed = ['cash', 'qrpay', 'credit_card'];
+        $allowed = ['cash', 'qrpay', 'credit_card', 'customer_balance'];
         foreach ($rows as $row) {
             if (! in_array((string) $row['method'], $allowed, true)) {
                 throw ValidationException::withMessages(['payments' => __('Unsupported payment method.')]);
@@ -8489,13 +8608,18 @@ class PosController extends Controller
             ->get()
             ->map(function (BookingRefund $refund) use ($methodLabels) {
                 $method = (string) $refund->method;
+                $isVoidRefund = VoidRefundService::isVoidRefundReason($refund->reason);
 
                 return [
                     'id' => (int) $refund->id,
                     'refund_no' => (string) $refund->refund_no,
                     'amount' => round((float) $refund->amount, 2),
                     'method' => $method,
-                    'method_label' => $methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method)),
+                    'method_label' => $isVoidRefund
+                        ? 'VOID REFUND'
+                        : ($methodLabels[$method] ?? ucfirst(str_replace('_', ' ', $method))),
+                    'reason' => (string) ($refund->reason ?? ''),
+                    'is_void_refund' => $isVoidRefund,
                     'channel' => (string) ($refund->channel ?? 'offline'),
                     'processed_at' => optional($refund->processed_at)?->toIso8601String(),
                     'created_at' => optional($refund->created_at)?->toIso8601String(),
@@ -8575,6 +8699,80 @@ class PosController extends Controller
         }
 
         return count($paymentRows) === 1 ? (string) $paymentRows[0]['method'] : 'split';
+    }
+
+    private function settleCustomerBalancePayment(Order $order, ?int $customerId, array $paymentRows, ?int $userId): void
+    {
+        $walletAmount = round((float) collect($paymentRows)->where('method', 'customer_balance')->sum('amount'), 2);
+        if ($walletAmount <= 0) return;
+        if (! $customerId) throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        if ($walletAmount > (float) $order->grand_total + 0.0001) throw ValidationException::withMessages(['payments' => 'Customer Balance cannot exceed the amount payable.']);
+        $customer = Customer::query()->findOrFail($customerId);
+        app(CustomerWalletService::class)->payForCrmOrder($customer, (int) $order->id, (string) $order->order_number, (string) $walletAmount, $userId);
+    }
+
+    private function syncCustomerBalancePaymentDelta(Order $order, ?int $customerId, float $previousWalletAmount, float $newWalletAmount, ?int $userId): void
+    {
+        if (abs($previousWalletAmount - $newWalletAmount) < 0.0001) {
+            return;
+        }
+        if ($newWalletAmount > 0.0001 && ! $customerId) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        }
+        if (! $customerId) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        }
+        if ($newWalletAmount > (float) $order->grand_total + 0.0001) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance cannot exceed the amount payable.']);
+        }
+        $customer = Customer::query()->findOrFail($customerId);
+        app(CustomerWalletService::class)->applyCrmOrderPaymentDelta(
+            $customer,
+            (int) $order->id,
+            (string) $order->order_number,
+            (string) $previousWalletAmount,
+            (string) $newWalletAmount,
+            $userId,
+        );
+    }
+
+    private function syncRefundCustomerCredit(
+        Booking $booking,
+        BookingRefund $refund,
+        string $previousMethod,
+        float $previousAmount,
+        string $newMethod,
+        float $newAmount,
+        ?int $userId,
+    ): void {
+        $previousCredit = strtolower(trim($previousMethod)) === 'customer_credit'
+            ? round(max(0.0, $previousAmount), 2)
+            : 0.0;
+        $newCredit = strtolower(trim($newMethod)) === 'customer_credit'
+            ? round(max(0.0, $newAmount), 2)
+            : 0.0;
+
+        if (abs($previousCredit - $newCredit) < 0.0001) {
+            return;
+        }
+
+        $customerId = (int) ($booking->customer_id ?? 0);
+        if ($newCredit > 0.0001 && $customerId <= 0) {
+            throw ValidationException::withMessages(['method' => 'Customer Credit requires a selected member.']);
+        }
+        if ($customerId <= 0) {
+            throw ValidationException::withMessages(['method' => 'Customer Credit requires a selected member.']);
+        }
+
+        $customer = Customer::query()->findOrFail($customerId);
+        app(CustomerWalletService::class)->applyCrmRefundCreditDelta(
+            $customer,
+            (int) $refund->id,
+            (string) $refund->refund_no,
+            (string) $previousCredit,
+            (string) $newCredit,
+            $userId,
+        );
     }
 
     private function replaceOrderPayments(Order $order, array $paymentRows, string $source): void
@@ -11853,6 +12051,7 @@ class PosController extends Controller
         $refundRows = BookingRefund::query()
             ->where('booking_id', (int) $booking->id)
             ->whereIn('status', ['completed', 'pending'])
+            ->whereRaw("COALESCE(reason, '') <> ?", [VoidRefundService::REASON])
             ->get();
         $refundHandledAmount = round((float) $refundRows->where('status', 'completed')->sum('amount'), 2);
         $refundPendingAmount = round((float) $refundRows->where('status', 'pending')->sum('amount'), 2);

@@ -7,20 +7,25 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPayment;
 use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageUsage;
+use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Staff;
 use App\Services\Booking\StaffCommissionService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class OfflineOrderManagementService
 {
     private const ALLOWED_VOID_STATUSES = ['paid', 'completed', 'confirmed', 'packed', 'shipped', 'ready_for_pickup'];
 
-    public function __construct(private StaffCommissionService $staffCommissionService)
-    {
+    public function __construct(
+        private StaffCommissionService $staffCommissionService,
+        private CustomerWalletService $customerWalletService,
+        private VoidRefundService $voidRefundService,
+    ) {
     }
 
     public function getSalesPersonDraft(Order $order): array
@@ -791,28 +796,41 @@ class OfflineOrderManagementService
     {
         $this->ensureOfflineOrder($order);
 
-        $before = [
-            'payment_method' => $order->payment_method,
-        ];
+        return DB::transaction(function () use ($order, $paymentMethod, $remark, $actorId, $payments) {
+            $lockedOrder = Order::query()->lockForUpdate()->findOrFail($order->id);
+            $lockedOrder->load('payments');
 
-        $paymentRows = $this->normalizePaymentRows($payments, (float) $order->grand_total, $paymentMethod);
+            $before = [
+                'payment_method' => $lockedOrder->payment_method,
+            ];
 
-        $order->payment_method = count($paymentRows) > 1 ? 'split' : (string) ($paymentRows[0]['method'] ?? trim($paymentMethod));
-        $order->save();
-        $order->payments()->delete();
-        foreach ($paymentRows as $row) {
-            $order->payments()->create([
-                'payment_method' => (string) $row['method'],
-                'amount' => round((float) $row['amount'], 2),
-                'meta' => ['source' => 'edit_payment_method'],
-            ]);
-        }
+            $paymentRows = $this->normalizePaymentRows($payments, (float) $lockedOrder->grand_total, $paymentMethod);
+            $previousWallet = $this->sumCustomerBalanceAmount(
+                $lockedOrder->payments->map(fn ($payment) => [
+                    'method' => (string) ($payment->payment_method ?? ''),
+                    'amount' => (float) ($payment->amount ?? 0),
+                ])->all()
+            );
+            $newWallet = $this->sumCustomerBalanceAmount($paymentRows);
+            $this->syncCustomerBalanceAllocation($lockedOrder, $previousWallet, $newWallet, $actorId);
 
-        $this->log('order', (int) $order->id, 'edit_payment_method', $before, [
-            'payment_method' => $order->payment_method,
-        ], $remark, $actorId);
+            $lockedOrder->payment_method = count($paymentRows) > 1 ? 'split' : (string) ($paymentRows[0]['method'] ?? trim($paymentMethod));
+            $lockedOrder->save();
+            $lockedOrder->payments()->delete();
+            foreach ($paymentRows as $row) {
+                $lockedOrder->payments()->create([
+                    'payment_method' => (string) $row['method'],
+                    'amount' => round((float) $row['amount'], 2),
+                    'meta' => ['source' => 'edit_payment_method'],
+                ]);
+            }
 
-        return $order->fresh();
+            $this->log('order', (int) $lockedOrder->id, 'edit_payment_method', $before, [
+                'payment_method' => $lockedOrder->payment_method,
+            ], $remark, $actorId);
+
+            return $lockedOrder->fresh();
+        });
     }
 
     public function updateBillDate(Order $order, Carbon $billDate, ?string $remark, ?int $actorId): Order
@@ -836,7 +854,7 @@ class OfflineOrderManagementService
 
     private function normalizePaymentRows(?array $payments, float $expectedTotal, string $fallbackMethod): array
     {
-        $allowed = ['cash', 'qrpay', 'credit_card'];
+        $allowed = ['cash', 'qrpay', 'credit_card', 'customer_balance'];
         $rows = collect($payments ?? [])
             ->map(function (array $row) {
                 $method = strtolower(trim((string) ($row['method'] ?? '')));
@@ -874,9 +892,44 @@ class OfflineOrderManagementService
         return $rows->all();
     }
 
+    /**
+     * @param  array<int, array{method?: string, amount?: float|int|string}>  $paymentRows
+     */
+    private function sumCustomerBalanceAmount(array $paymentRows): float
+    {
+        return round((float) collect($paymentRows)
+            ->filter(fn (array $row) => strtolower(trim((string) ($row['method'] ?? ''))) === 'customer_balance')
+            ->sum(fn (array $row) => (float) ($row['amount'] ?? 0)), 2);
+    }
+
+    private function syncCustomerBalanceAllocation(Order $order, float $previousWallet, float $newWallet, ?int $actorId): void
+    {
+        if (abs($previousWallet - $newWallet) < 0.0001) {
+            return;
+        }
+
+        $customerId = (int) ($order->customer_id ?? 0);
+        if ($newWallet > 0.0001 && $customerId <= 0) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        }
+        if ($customerId <= 0) {
+            throw ValidationException::withMessages(['payments' => 'Customer Balance requires a selected member.']);
+        }
+
+        $customer = Customer::query()->findOrFail($customerId);
+        $this->customerWalletService->applyCrmOrderPaymentDelta(
+            $customer,
+            (int) $order->id,
+            (string) $order->order_number,
+            (string) $previousWallet,
+            (string) $newWallet,
+            $actorId,
+        );
+    }
+
     public function buildVoidOrderPreview(Order $order): array
     {
-        $this->ensureOfflineOrder($order);
+        $this->ensureVoidableOrder($order);
 
         if ($order->status === 'voided') {
             throw new RuntimeException('This order is already voided.');
@@ -924,6 +977,10 @@ class OfflineOrderManagementService
 
         $defaultVoidScope = $requiresVoidScopeChoice ? 'order_only' : 'order_and_appointment';
 
+        $orderOnlyIds = $this->resolveOrdersToVoidForScope($order, 'order_only');
+        $appointmentIds = $this->resolveOrdersToVoidForScope($order, 'order_and_appointment');
+        $customer = $this->voidRefundService->resolveCustomerForOrder($order);
+
         return [
             'order_id' => (int) $order->id,
             'order_number' => (string) $order->order_number,
@@ -939,12 +996,29 @@ class OfflineOrderManagementService
                 : ($requiresVoidScopeChoice
                     ? 'Select how this void should be applied.'
                     : null),
+            'void_refund' => [
+                'can_refund_to_customer_balance' => (bool) ($customer && $customer->is_active),
+                'customer' => $customer ? [
+                    'id' => (int) $customer->id,
+                    'name' => (string) ($customer->name ?? ''),
+                    'wallet_balance' => round((float) ($customer->wallet_balance ?? 0), 2),
+                ] : null,
+                'max_amount_order_only' => $this->voidRefundService->maxRefundableForOrders($orderOnlyIds),
+                'max_amount_order_and_appointment' => $this->voidRefundService->maxRefundableForOrders($appointmentIds),
+                'suggested_amount' => $this->voidRefundService->maxRefundableForOrders(
+                    $defaultVoidScope === 'order_only' ? $orderOnlyIds : $appointmentIds
+                ),
+            ],
         ];
     }
 
-    public function voidOrder(Order $order, string $remark, ?int $actorId, ?string $voidScope = null): Order
+    /**
+     * @param  array{enabled?: bool, amount?: float|int|string}|null  $voidRefund
+     * @return array{order: Order, refresh_report_channels: list<'ecommerce'|'booking'>}
+     */
+    public function voidOrder(Order $order, string $remark, ?int $actorId, ?string $voidScope = null, ?array $voidRefund = null): array
     {
-        $this->ensureOfflineOrder($order);
+        $this->ensureVoidableOrder($order);
 
         if ($order->status === 'voided') {
             throw new RuntimeException('This order is already voided.');
@@ -968,7 +1042,18 @@ class OfflineOrderManagementService
         $ordersToVoid = $this->resolveOrdersToVoidForScope($order, $resolvedVoidScope);
         $bookingRecalculateTargets = [];
 
-        DB::transaction(function () use ($order, $ordersToVoid, $remark, $actorId, $voidAppointment, $resolvedVoidScope, &$bookingRecalculateTargets) {
+        $refundEnabled = (bool) ($voidRefund['enabled'] ?? false);
+        $refundAmount = round((float) ($voidRefund['amount'] ?? 0), 2);
+        if ($refundEnabled) {
+            $maxAmount = $this->voidRefundService->maxRefundableForOrders($ordersToVoid);
+            $this->voidRefundService->assertAmountWithinMax($refundAmount, $maxAmount);
+            $customer = $this->voidRefundService->resolveCustomerForOrder($order);
+            if (! $customer || ! $customer->is_active) {
+                throw new RuntimeException('Customer Balance VOID REFUND requires an active member.');
+            }
+        }
+
+        DB::transaction(function () use ($order, $ordersToVoid, $remark, $actorId, $voidAppointment, $resolvedVoidScope, $refundEnabled, $refundAmount, &$bookingRecalculateTargets) {
             $voidedOrderIds = [];
 
             foreach ($ordersToVoid as $orderId) {
@@ -1070,6 +1155,19 @@ class OfflineOrderManagementService
                     ], $remark, $actorId);
                 }
             }
+
+            if ($refundEnabled) {
+                $linkedBooking = ! empty($bookingIds)
+                    ? Booking::query()->find((int) $bookingIds[0])
+                    : null;
+                $this->voidRefundService->createCustomerBalanceRefund(
+                    $refundAmount,
+                    $actorId,
+                    $remark,
+                    $order,
+                    $linkedBooking,
+                );
+            }
         });
 
         foreach ($ordersToVoid as $voidedOrderId) {
@@ -1083,7 +1181,50 @@ class OfflineOrderManagementService
 
         $this->recalculateBookingCommissionsForTargets($bookingRecalculateTargets, $order, 'void_order', $remark, $actorId);
 
-        return $order->fresh();
+        return [
+            'order' => $order->fresh(),
+            'refresh_report_channels' => $this->reportChannelsForOrderIds($ordersToVoid),
+        ];
+    }
+
+    /**
+     * Which Sales Visual tables contain the voided order(s).
+     * Ecommerce = product lines; Booking = booking/deposit/settlement/package lines.
+     *
+     * @param  list<int>  $orderIds
+     * @return list<'ecommerce'|'booking'>
+     */
+    private function reportChannelsForOrderIds(array $orderIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $orderIds))));
+        if ($ids === []) {
+            return [];
+        }
+
+        $lineTypes = DB::table('order_items')
+            ->whereIn('order_id', $ids)
+            ->distinct()
+            ->pluck('line_type')
+            ->map(fn ($type) => (string) $type)
+            ->all();
+
+        $bookingLineTypes = [
+            'booking_deposit',
+            'booking_settlement',
+            'booking_addon',
+            'booking_product',
+            'service_package',
+        ];
+
+        $channels = [];
+        if (in_array('product', $lineTypes, true)) {
+            $channels[] = 'ecommerce';
+        }
+        if (collect($lineTypes)->contains(fn (string $type) => in_array($type, $bookingLineTypes, true))) {
+            $channels[] = 'booking';
+        }
+
+        return $channels;
     }
 
     private function voidSingleOrderRecord(Order $order, string $remark, ?int $actorId): void
@@ -1533,6 +1674,13 @@ class OfflineOrderManagementService
             throw new RuntimeException('This action is only available for offline/POS orders.');
         }
 
+        if (in_array((string) $order->status, ['cancelled', 'draft'], true)) {
+            throw new RuntimeException('Order is not in a valid state for this action.');
+        }
+    }
+
+    private function ensureVoidableOrder(Order $order): void
+    {
         if (in_array((string) $order->status, ['cancelled', 'draft'], true)) {
             throw new RuntimeException('Order is not in a valid state for this action.');
         }

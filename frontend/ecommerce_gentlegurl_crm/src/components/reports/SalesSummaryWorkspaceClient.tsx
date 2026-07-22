@@ -8,6 +8,7 @@ import SalesVisualPeriodDashboard from '@/components/reports/SalesVisualPeriodDa
 type SummaryTotals = {
   ecommerce_sales: number
   booking_sales: number
+  refund: number
   total_sales: number
   total_orders: number
 }
@@ -20,6 +21,7 @@ type MonthlyRow = {
   booking_count: number
   ecommerce_sales: number
   booking_sales: number
+  refund: number
   total_sales: number
 }
 
@@ -30,6 +32,7 @@ type DailyRow = {
   booking_count: number
   ecommerce_sales: number
   booking_sales: number
+  refund: number
   total_sales: number
 }
 
@@ -328,9 +331,10 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
         booking_count: acc.booking_count + row.booking_count,
         ecommerce_sales: acc.ecommerce_sales + row.ecommerce_sales,
         booking_sales: acc.booking_sales + row.booking_sales,
+        refund: acc.refund + (Number(row.refund) || 0),
         total_sales: acc.total_sales + row.total_sales,
       }),
-      { ecommerce_orders: 0, booking_count: 0, ecommerce_sales: 0, booking_sales: 0, total_sales: 0 },
+      { ecommerce_orders: 0, booking_count: 0, ecommerce_sales: 0, booking_sales: 0, refund: 0, total_sales: 0 },
     )
   }, [rows])
 
@@ -470,32 +474,46 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
         <div className="border-b border-slate-200 px-5 py-4">
           <h3 className="text-lg font-semibold text-slate-900">{tableHeading}</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Ecommerce sales count product lines only. Booking count and sales use the same booking line buckets as the Daily Sales visual report.
+            Ecommerce and Booking sales exclude refunded orders. Refund is completed refund amount for the period
+            (VOID REFUND excluded). Total Sales = Ecommerce Sales + Booking Sales − Refund.
           </p>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-5 py-3">{firstColumnLabel}</th>
                 <th className="px-5 py-3 text-right">Ecommerce Order Count</th>
                 <th className="px-5 py-3 text-right">Booking Count</th>
-                <th className="px-5 py-3 text-right">Ecommerce Sales</th>
-                <th className="px-5 py-3 text-right">Booking Sales</th>
-                <th className="px-5 py-3 text-right">Total Sales</th>
+                <th className="px-5 py-3 text-right">
+                  Ecommerce Sales
+                  <br />
+                  <span className="font-medium normal-case tracking-normal text-slate-400">(Exclude Refund)</span>
+                </th>
+                <th className="px-5 py-3 text-right">
+                  Booking Sales
+                  <br />
+                  <span className="font-medium normal-case tracking-normal text-slate-400">(Exclude Refund)</span>
+                </th>
+                <th className="px-5 py-3 text-right text-rose-600">Refund</th>
+                <th className="px-5 py-3 text-right text-indigo-700">
+                  Total Sales
+                  <br />
+                  <span className="font-medium normal-case tracking-normal text-indigo-500">(Incl. Refund)</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
+                  <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
                     Loading sales summary…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
+                  <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
                     No sales rows found.
                   </td>
                 </tr>
@@ -513,6 +531,7 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
                     : isYearlyRows
                       ? `Open yearly summary for ${row.month_name}`
                       : `Open daily summary for ${row.month_name}`
+                  const refund = Number(row.refund) || 0
 
                   return (
                     <tr key={key} className="hover:bg-blue-50/50">
@@ -525,7 +544,10 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
                       <td className="px-5 py-3 text-right font-medium text-slate-900">{fmtInt(row.booking_count)}</td>
                       <td className="px-5 py-3 text-right text-slate-700">{fmtRm(row.ecommerce_sales)}</td>
                       <td className="px-5 py-3 text-right text-slate-700">{fmtRm(row.booking_sales)}</td>
-                      <td className="px-5 py-3 text-right font-semibold text-slate-900">{fmtRm(row.total_sales)}</td>
+                      <td className={`px-5 py-3 text-right font-medium ${refund > 0 ? 'text-rose-700' : 'text-slate-500'}`}>
+                        {refund > 0 ? fmtRm(-Math.abs(refund)) : fmtRm(0)}
+                      </td>
+                      <td className="px-5 py-3 text-right font-bold text-indigo-700">{fmtRm(row.total_sales)}</td>
                     </tr>
                   )
                 })
@@ -539,7 +561,10 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
                   <td className="px-5 py-3 text-right">{fmtInt(tableTotals.booking_count)}</td>
                   <td className="px-5 py-3 text-right">{fmtRm(tableTotals.ecommerce_sales)}</td>
                   <td className="px-5 py-3 text-right">{fmtRm(tableTotals.booking_sales)}</td>
-                  <td className="px-5 py-3 text-right">{fmtRm(tableTotals.total_sales)}</td>
+                  <td className={`px-5 py-3 text-right ${tableTotals.refund > 0 ? 'text-rose-800' : 'text-slate-600'}`}>
+                    {tableTotals.refund > 0 ? fmtRm(-Math.abs(tableTotals.refund)) : fmtRm(0)}
+                  </td>
+                  <td className="px-5 py-3 text-right text-indigo-800">{fmtRm(tableTotals.total_sales)}</td>
                 </tr>
               </tfoot>
             ) : null}

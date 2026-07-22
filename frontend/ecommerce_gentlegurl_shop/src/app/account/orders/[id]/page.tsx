@@ -94,6 +94,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   const hasReturnRequest = (order.returns?.length ?? 0) > 0;
   const returnRequestId = order.returns?.[0]?.id;
   const canRequestReturn = isCompleted && isWithinReturnWindow(order.completed_at, returnWindowDays);
+  const refundRows = (order.refunds ?? []).filter((row) => Number(row.amount ?? 0) > 0);
 
   return (
     <div className="space-y-6">
@@ -365,6 +366,46 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           </div>
         )}
       </div>
+
+      {refundRows.length > 0 ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-rose-800">Refunds</h3>
+          <div className="mt-3 space-y-2">
+            {refundRows.map((refund) => {
+              const refundUrl = refund.receipt_public_url || null;
+              const label = refund.method_label || (refund.is_void_refund ? "VOID REFUND" : "Refund");
+              return (
+                <div
+                  key={`refund-${refund.id}`}
+                  className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-rose-700">
+                      {label} · -RM {Number(refund.amount ?? 0).toFixed(2)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[var(--foreground)]/60">
+                      {[refund.refund_no, formatDateTime(refund.processed_at ?? refund.created_at)].filter(Boolean).join(" · ")}
+                    </p>
+                    {refund.remark ? (
+                      <p className="mt-0.5 text-xs text-[var(--foreground)]/60">{refund.remark}</p>
+                    ) : null}
+                  </div>
+                  {refundUrl ? (
+                    <a
+                      href={refundUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-rose-300 px-4 py-2 text-xs font-semibold uppercase text-rose-700 transition hover:border-rose-500 hover:text-rose-800"
+                    >
+                      View Receipt
+                    </a>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

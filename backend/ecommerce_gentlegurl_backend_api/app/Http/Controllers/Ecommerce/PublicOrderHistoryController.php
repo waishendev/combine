@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
-use App\Models\Booking\BookingServicePhoto;
+use App\Models\Booking\BookingRefund;
+use App\Models\Booking\BookingRefundReceiptToken;
+use App\Services\Ecommerce\VoidRefundService;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\OrderPaymentService;
@@ -102,6 +104,9 @@ class PublicOrderHistoryController extends Controller
         $reviewsEnabled = (bool) ($reviewSettings['enabled'] ?? false);
         $reviewWindowDays = (int) ($reviewSettings['review_window_days'] ?? 30);
 
+        $pageOrderIds = collect($orders->items())->pluck('id')->map(fn ($id) => (int) $id)->filter()->values()->all();
+        $refundsByOrderId = $this->resolveOrderRefundsGroupedByOrderId($pageOrderIds);
+
         $data = [
             'orders' => collect($orders->items())->map(fn(Order $order) => [
                 'id' => $order->id,
@@ -114,6 +119,7 @@ class PublicOrderHistoryController extends Controller
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'receipt_public_url' => $this->resolveReceiptUrl($order, $request),
+                'refunds' => $refundsByOrderId[(int) $order->id] ?? [],
                 'items' => $order->items
                     ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
                     ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled, $packageNameByServiceId, $packageUsages) {
@@ -409,6 +415,7 @@ class PublicOrderHistoryController extends Controller
                     'status' => $returnRequest->status,
                     'tracking_no' => $returnRequest->return_tracking_no,
                 ]),
+                'refunds' => $this->resolveOrderRefundsForCustomer((int) $order->id),
                 'shipping_address' => [
                     'name' => $order->shipping_name,
                     'phone' => $order->shipping_phone,
@@ -718,5 +725,72 @@ class PublicOrderHistoryController extends Controller
         return $this->respond([
             'redirect_url' => $billplzUrl,
         ]);
+    }
+
+    private function resolveOrderRefundsForCustomer(int $orderId): array
+    {
+        return $this->resolveOrderRefundsGroupedByOrderId([$orderId])[$orderId] ?? [];
+    }
+
+    /**
+     * @param  list<int>  $orderIds
+     * @return array<int, list<array<string, mixed>>>
+     */
+    private function resolveOrderRefundsGroupedByOrderId(array $orderIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $orderIds))));
+        if ($ids === []) {
+            return [];
+        }
+
+        $grouped = [];
+        BookingRefund::query()
+            ->whereIn('order_id', $ids)
+            ->where('status', 'completed')
+            ->orderBy('id')
+            ->get()
+            ->each(function (BookingRefund $refund) use (&$grouped) {
+                $orderId = (int) $refund->order_id;
+                $isVoidRefund = VoidRefundService::isVoidRefundReason($refund->reason);
+                $method = (string) $refund->method;
+
+                $grouped[$orderId][] = [
+                    'id' => (int) $refund->id,
+                    'refund_no' => (string) $refund->refund_no,
+                    'amount' => round((float) $refund->amount, 2),
+                    'method' => $method,
+                    'method_label' => $isVoidRefund
+                        ? 'VOID REFUND'
+                        : ($method === 'customer_credit' ? 'Customer Credit' : ($method === 'cash' ? 'Cash Refund' : ucfirst(str_replace('_', ' ', $method)))),
+                    'reason' => (string) ($refund->reason ?? ''),
+                    'is_void_refund' => $isVoidRefund,
+                    'processed_at' => optional($refund->processed_at)?->toIso8601String(),
+                    'created_at' => optional($refund->created_at)?->toIso8601String(),
+                    'remark' => $refund->remark,
+                    'receipt_public_url' => $this->resolveRefundReceiptPublicUrl((int) $refund->id),
+                ];
+            });
+
+        return $grouped;
+    }
+
+    private function resolveRefundReceiptPublicUrl(int $refundId): ?string
+    {
+        $token = BookingRefundReceiptToken::query()
+            ->where('booking_refund_id', $refundId)
+            ->latest('id')
+            ->first();
+
+        if (! $token) {
+            $token = BookingRefundReceiptToken::create([
+                'booking_refund_id' => $refundId,
+                'token' => Str::random(64),
+                'expires_at' => null,
+            ]);
+        }
+
+        $frontendUrl = rtrim((string) FrontendUrlResolver::resolveBaseUrl(), '/');
+
+        return $frontendUrl.'/api/proxy/public/refund-receipt/'.$token->token.'/invoice';
     }
 }
