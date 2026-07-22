@@ -22,6 +22,9 @@ class StoreLocation extends Model
         'phone',
         'is_active',
         'opening_hours',
+        'email',
+        'is_default',
+        'sort_order',
     ];
 
     protected function casts(): array
@@ -29,6 +32,8 @@ class StoreLocation extends Model
         return [
             'is_active' => 'boolean',
             'opening_hours' => 'array',
+            'is_default' => 'boolean',
+            'sort_order' => 'integer',
         ];
     }
 

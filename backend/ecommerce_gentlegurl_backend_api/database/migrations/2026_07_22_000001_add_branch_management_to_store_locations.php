@@ -1,0 +1,3 @@
+<?php
+use Illuminate\Database\Migrations\Migration; use Illuminate\Database\Schema\Blueprint; use Illuminate\Support\Facades\Schema;
+return new class extends Migration { public function up(): void { Schema::table('store_locations', function (Blueprint $table) { $table->string('email')->nullable()->after('phone'); $table->boolean('is_default')->default(false)->after('is_active'); $table->unsignedInteger('sort_order')->default(0)->after('is_default'); $table->index(['is_active','is_default']); }); } public function down(): void { Schema::table('store_locations', function (Blueprint $table) { $table->dropIndex(['is_active','is_default']); $table->dropColumn(['email','is_default','sort_order']); }); } };

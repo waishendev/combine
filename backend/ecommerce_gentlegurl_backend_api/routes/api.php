@@ -82,6 +82,9 @@ use App\Http\Controllers\ShopMenuItemController;
 use App\Http\Controllers\ServicesMenuItemController;
 use App\Http\Controllers\ServicesPageController;
 use App\Http\Controllers\StoreLocationController;
+use App\Http\Controllers\Expense\BranchController;
+use App\Http\Controllers\Expense\ExpenseCategoryController;
+use App\Http\Controllers\Expense\ExpenseController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\ServicePackageRedeemController;
 use App\Http\Controllers\CustomerServicePackageController;
@@ -788,6 +791,24 @@ $protectedRoutes = function () {
 
         Route::delete('/services-pages/{servicesMenuItem}', [ServicesPageController::class, 'destroy'])
             ->middleware('permission:ecommerce.services-pages.delete');
+
+        // Reusable operational branches (backed by existing store_locations).
+        Route::get('/branches', [BranchController::class, 'index'])->middleware('permission:branches.view');
+        Route::get('/branches/active', [BranchController::class, 'active'])->middleware('permission:expenses.view|branches.view');
+        Route::post('/branches', [BranchController::class, 'store'])->middleware('permission:branches.create');
+        Route::put('/branches/{branch}', [BranchController::class, 'update'])->middleware('permission:branches.update');
+        Route::delete('/branches/{branch}', [BranchController::class, 'destroy'])->middleware('permission:branches.delete');
+        Route::get('/expense-categories', [ExpenseCategoryController::class, 'index'])->middleware('permission:expense-categories.view|expenses.view');
+        Route::post('/expense-categories', [ExpenseCategoryController::class, 'store'])->middleware('permission:expense-categories.create');
+        Route::put('/expense-categories/{expenseCategory}', [ExpenseCategoryController::class, 'update'])->middleware('permission:expense-categories.update');
+        Route::delete('/expense-categories/{expenseCategory}', [ExpenseCategoryController::class, 'destroy'])->middleware('permission:expense-categories.delete');
+        Route::get('/expenses/export', [ExpenseController::class, 'export'])->middleware('permission:expenses.export');
+        Route::get('/expenses', [ExpenseController::class, 'index'])->middleware('permission:expenses.view');
+        Route::post('/expenses', [ExpenseController::class, 'store'])->middleware('permission:expenses.create');
+        Route::get('/expenses/{expense}', [ExpenseController::class, 'show'])->middleware('permission:expenses.view');
+        Route::post('/expenses/{expense}', [ExpenseController::class, 'update'])->middleware('permission:expenses.update');
+        Route::put('/expenses/{expense}', [ExpenseController::class, 'update'])->middleware('permission:expenses.update');
+        Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->middleware('permission:expenses.delete');
 
         // Store Locations
         Route::get('/store-locations', [StoreLocationController::class, 'index'])
