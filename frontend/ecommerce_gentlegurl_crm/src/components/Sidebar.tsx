@@ -294,6 +294,7 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
       // ======================
       // Customers & Loyalty
       // ======================
+      { key: 'expenses', label: 'Expenses', icon: 'fa-solid fa-receipt', href: '/expenses', requiredPermission: 'expenses.view' },
       {
         key: 'customers-loyalty',
         label: 'Customers & Loyalty',
