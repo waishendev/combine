@@ -107,6 +107,7 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
         icon: 'fa-solid fa-gauge',
         href: '/dashboard',
       },
+      { key: 'expenses', label: 'Expenses', icon: 'fa-solid fa-wallet', href: '/expenses', requiredPermission: 'expenses.view' },
       {
         key: 'reports',
         label: 'Reports',
@@ -552,6 +553,7 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
 
   const bookingMenuItems: MenuItem[] = useMemo(
     () => [
+      { key: 'expenses', label: 'Expenses', icon: 'fa-solid fa-wallet', href: '/expenses', requiredPermission: 'expenses.view' },
       {
         key: 'reports',
         label: 'Reports',
