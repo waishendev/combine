@@ -107,7 +107,25 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
         icon: 'fa-solid fa-gauge',
         href: '/dashboard',
       },
-      { key: 'expenses', label: 'Expenses', icon: 'fa-solid fa-wallet', href: '/expenses', requiredPermission: 'expenses.view' },
+      {
+        key: 'expenses',
+        label: 'Expenses',
+        icon: 'fa-solid fa-wallet',
+        children: [
+          {
+            key: 'expenses-list',
+            label: 'Expense',
+            href: '/expenses',
+            requiredPermission: 'expenses.view',
+          },
+          {
+            key: 'expense-categories',
+            label: 'Expense Category',
+            href: '/expense-categories',
+            requiredPermission: 'expense_categories.view',
+          },
+        ],
+      },
       {
         key: 'reports',
         label: 'Reports',
@@ -553,7 +571,25 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
 
   const bookingMenuItems: MenuItem[] = useMemo(
     () => [
-      { key: 'expenses', label: 'Expenses', icon: 'fa-solid fa-wallet', href: '/expenses', requiredPermission: 'expenses.view' },
+      {
+        key: 'expenses',
+        label: 'Expenses',
+        icon: 'fa-solid fa-wallet',
+        children: [
+          {
+            key: 'expenses-list',
+            label: 'Expense',
+            href: '/expenses',
+            requiredPermission: 'expenses.view',
+          },
+          {
+            key: 'expense-categories',
+            label: 'Expense Category',
+            href: '/expense-categories',
+            requiredPermission: 'expense_categories.view',
+          },
+        ],
+      },
       {
         key: 'reports',
         label: 'Reports',

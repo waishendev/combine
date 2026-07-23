@@ -389,6 +389,8 @@ $protectedRoutes = function () {
     Route::get('/expense-categories', [ExpenseCategoryController::class, 'index'])->middleware('permission:expense_categories.view|expenses.create|expenses.update');
     Route::post('/expense-categories', [ExpenseCategoryController::class, 'store'])->middleware('permission:expense_categories.create');
     Route::put('/expense-categories/{expenseCategory}', [ExpenseCategoryController::class, 'update'])->middleware('permission:expense_categories.update');
+    Route::post('/expense-categories/{expenseCategory}/move-up', [ExpenseCategoryController::class, 'moveUp'])->middleware('permission:expense_categories.update');
+    Route::post('/expense-categories/{expenseCategory}/move-down', [ExpenseCategoryController::class, 'moveDown'])->middleware('permission:expense_categories.update');
     Route::delete('/expense-categories/{expenseCategory}', [ExpenseCategoryController::class, 'destroy'])->middleware('permission:expense_categories.delete');
     Route::get('/expenses/export', [ExpenseController::class, 'export'])->middleware('permission:expenses.export');
     Route::get('/expenses', [ExpenseController::class, 'index'])->middleware('permission:expenses.view');
