@@ -37,6 +37,8 @@ class DatabaseSeeder extends Seeder
             FooterWidgetSeederReal::class,
             ServicesMenuAndPagesSeeder::class,
             CustomerTypeSeeder::class,
+            ExpenseCategorySeeder::class,
+            ExpenseDemoSeeder::class,
             BookingSettingsSeeder::class,
             PaymentProofNotificationSettingSeeder::class,
             EnsurePromotionPermissionsForSuperAdminSeeder::class,
