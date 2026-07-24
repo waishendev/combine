@@ -84,7 +84,6 @@ export default function SalesVisualSummaryCards({
   const staffSvc = data?.staff?.service_activity ?? []
   const oo = data?.online_offline
 
-  const periodWord = periodScope === 'day' ? 'day' : 'period'
   const workspaceLabel = mode === 'ecommerce' ? 'ecommerce' : mode === 'booking' ? 'booking' : 'ecommerce + booking merged'
 
   return (
@@ -185,7 +184,11 @@ export default function SalesVisualSummaryCards({
             <p className="mt-1 text-xs text-slate-500">Counts only product / service / service_package lines. Booking lines are excluded here.</p>
           ) : mode === 'all' ? (
             <p className="mt-1 text-xs text-slate-500">
-              Product and catalog lines plus booking buckets (deposit, settlement, add-on, package) combined for this {periodWord}.
+              Booking Service counts deposit + settlement + add-on only after settlement (same day rule as Staff). Booking products count by bill date.
+            </p>
+          ) : mode === 'booking' ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Service counts deposit + settlement + add-on only after settlement (same day rule as Staff). Deposit alone does not enter sales yet.
             </p>
           ) : null}
           {loading || !itemTypes ? (
