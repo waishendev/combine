@@ -225,7 +225,11 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
             <p className="mt-1 text-xs text-slate-500">Counts only product / service / service_package lines. Booking lines are excluded here.</p>
           ) : mode === 'all' ? (
             <p className="mt-1 text-xs text-slate-500">
-              Product and catalog lines plus booking buckets (deposit, settlement, add-on, package) combined for this day.
+              Booking Service counts deposit + settlement + add-on only after settlement (same day rule as Staff). Booking products count by bill date.
+            </p>
+          ) : mode === 'booking' ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Service counts deposit + settlement + add-on only after settlement (same day rule as Staff). Deposit alone does not enter sales yet.
             </p>
           ) : null}
           {loading || !itemTypes ? (

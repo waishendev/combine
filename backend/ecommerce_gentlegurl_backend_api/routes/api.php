@@ -65,6 +65,7 @@ use App\Http\Controllers\Ecommerce\Reports\PosSummaryReportController;
 use App\Http\Controllers\Ecommerce\Reports\SalesChannelReportController;
 use App\Http\Controllers\Ecommerce\Reports\WishlistReportController;
 use App\Http\Controllers\Ecommerce\Reports\ProductProfitReportController;
+use App\Http\Controllers\Ecommerce\Reports\ProfitLossReportController;
 use App\Http\Controllers\Ecommerce\Reports\CustomerSalesDomainReportController;
 use App\Http\Controllers\Ecommerce\LoyaltyAdminController;
 use App\Http\Controllers\Ecommerce\LoyaltyRewardController;
@@ -647,6 +648,9 @@ $protectedRoutes = function () {
 
     Route::get('/admin/reports/product-profit', [ProductProfitReportController::class, 'index'])
         ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+
+    Route::get('/admin/reports/profit-loss', [ProfitLossReportController::class, 'index'])
+        ->middleware('permission:ecommerce.reports.profit-loss.view');
 
     Route::get('/admin/reports/sales-summary', [SalesChannelReportController::class, 'salesSummary'])
         ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');

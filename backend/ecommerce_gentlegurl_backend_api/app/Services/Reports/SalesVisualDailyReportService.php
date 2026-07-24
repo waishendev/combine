@@ -310,6 +310,31 @@ class SalesVisualDailyReportService
         return $payload;
     }
 
+    /**
+     * Historical product cost snapshots for the same ecommerce-sale scope as salesSummary().
+     *
+     * @return array<int, float> keyed by calendar month
+     */
+    public function ecommerceCostingByMonth(int $year): array
+    {
+        $start = Carbon::create($year, 1, 1)->startOfDay();
+        $end = $start->copy()->endOfYear()->endOfDay();
+        $bucketExpression = 'EXTRACT(MONTH FROM ' . $this->orderBillAtSql() . ')::int';
+
+        return $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
+        )
+            ->where('oi.line_type', 'product')
+            ->selectRaw("{$bucketExpression} as month")
+            ->selectRaw('COALESCE(SUM(COALESCE(oi.cost_amount_snapshot, 0)), 0) as ecommerce_costing')
+            ->groupByRaw($bucketExpression)
+            ->pluck('ecommerce_costing', 'month')
+            ->map(fn ($amount) => round((float) $amount, 2))
+            ->all();
+    }
+
     private function ecommerceSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
     {
         $lineTotal = $this->lineNetAmountSql('oi');
@@ -482,23 +507,13 @@ class SalesVisualDailyReportService
 
         $lineTotal = $this->lineNetAmountSql('oi');
 
-        $bookingSub = $this->applyOrderScope(
+        $bookingPackageSub = $this->applyOrderScope(
             DB::table('orders as o')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
-                ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
-                ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
-                ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
-            ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
-            ->selectRaw('o.payment_method')
-            ->selectRaw("$lineTotal as net_amount")
-            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' WHEN 'booking_product' THEN 'booking_product' ELSE 'package_purchase' END as line_kind")
-            ->selectRaw('oi.booking_id');
-
-        $itemAgg = DB::query()->fromSub($bookingSub, 'r')
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
+            ->where('oi.line_type', 'service_package')
+            ->selectRaw("COALESCE(SUM($lineTotal), 0) as multi_package")
             ->first();
 
         $roster = $this->allStaffRoster();
@@ -530,8 +545,8 @@ class SalesVisualDailyReportService
             'item_types' => [
                 'estimate' => true,
                 'product' => 0.0,
-                'service' => round((float) ($itemAgg->service_bucket ?? 0), 2),
-                'multi_package' => round((float) ($itemAgg->multi_package ?? 0), 2),
+                'service' => $this->bookingServiceItemTypeAmount($start, $end),
+                'multi_package' => round((float) ($bookingPackageSub->multi_package ?? 0), 2),
                 'package_redemption' => $packageRedemption,
                 'unlimited_plan' => 0.0,
                 'other' => 0.0,
@@ -616,23 +631,13 @@ class SalesVisualDailyReportService
             ->selectRaw("0 as multi_package")
             ->first();
 
-        $bookingSub = $this->applyOrderScope(
+        $bookingPackageSub = $this->applyOrderScope(
             DB::table('orders as o')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
-                ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
-                ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
-                ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
-            ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
-            ->selectRaw('o.payment_method')
-            ->selectRaw("$lineTotal as net_amount")
-            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' WHEN 'booking_product' THEN 'booking_product' ELSE 'package_purchase' END as line_kind")
-            ->selectRaw('oi.booking_id');
-
-        $itemBooking = DB::query()->fromSub($bookingSub, 'r')
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
+            ->where('oi.line_type', 'service_package')
+            ->selectRaw("COALESCE(SUM($lineTotal), 0) as multi_package")
             ->first();
 
         $roster = $this->allStaffRoster();
@@ -660,13 +665,11 @@ class SalesVisualDailyReportService
             ],
             'payment_methods' => $paymentBlock['rows'],
             'refunds' => $this->refundRows($start, $end),
-            'refunds' => $this->refundRows($start, $end),
-            'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
                 'product' => round((float) ($itemEcommerce->product ?? 0), 2),
-                'service' => round((float) ($itemEcommerce->service ?? 0) + (float) ($itemBooking->service_bucket ?? 0), 2),
-                'multi_package' => round((float) ($itemEcommerce->multi_package ?? 0) + (float) ($itemBooking->multi_package ?? 0), 2),
+                'service' => round((float) ($itemEcommerce->service ?? 0) + $this->bookingServiceItemTypeAmount($start, $end), 2),
+                'multi_package' => round((float) ($itemEcommerce->multi_package ?? 0) + (float) ($bookingPackageSub->multi_package ?? 0), 2),
                 'package_redemption' => $packageRedemption,
                 'unlimited_plan' => 0.0,
                 'other' => 0.0,
@@ -688,6 +691,55 @@ class SalesVisualDailyReportService
                 'service_activity_amount_total' => round(array_sum(array_column($staffService, 'service_amount')), 2),
             ],
         ];
+    }
+
+    /**
+     * Item type "Service" for booking lines — same settlement-day rule as Staff service sales:
+     * deposit is not counted on pay day; once a booking settles in this period, deposit +
+     * settlement + addon are attributed together. Booking products still count by bill date.
+     */
+    private function bookingServiceItemTypeAmount(Carbon $start, Carbon $end): float
+    {
+        $lineTotal = $this->lineNetAmountSql('oi');
+
+        $settledBookingIds = $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->where('oi.line_type', 'booking_settlement')
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
+                ->whereNotNull('oi.booking_id')
+        )
+            ->pluck('oi.booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $settledAmount = 0.0;
+        if ($settledBookingIds !== []) {
+            $settledQuery = $this->applyOrderScope(
+                DB::table('order_items as oi')
+                    ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                    ->whereIn('oi.booking_id', $settledBookingIds)
+                    ->whereIn('oi.line_type', self::BOOKING_STAFF_SALES_LINE_TYPES)
+            );
+            $this->excludePackageRefundedBookingDeposits($settledQuery, 'oi');
+            $settledAmount = (float) $settledQuery
+                ->selectRaw("COALESCE(SUM($lineTotal), 0) as v")
+                ->value('v');
+        }
+
+        $bookingProductAmount = (float) $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
+                ->where('oi.line_type', 'booking_product')
+        )
+            ->selectRaw("COALESCE(SUM($lineTotal), 0) as v")
+            ->value('v');
+
+        return round($settledAmount + $bookingProductAmount, 2);
     }
 
     private function packageRedemptionValue(Carbon $start, Carbon $end): float

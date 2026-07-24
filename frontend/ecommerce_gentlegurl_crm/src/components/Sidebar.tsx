@@ -138,6 +138,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             requiredPermission: 'ecommerce.reports.sales.view',
           },
           {
+            key: 'profit-loss',
+            label: 'Profit & Loss',
+            href: '/reports/profit-loss',
+            requiredPermission: 'ecommerce.reports.profit-loss.view',
+          },
+          {
             key: 'sales-visual-with-void',
             label: 'Sales Report (Including Void)',
             href: '/reports/sales/visual-with-void',

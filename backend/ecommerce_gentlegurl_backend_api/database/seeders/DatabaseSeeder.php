@@ -38,6 +38,7 @@ class DatabaseSeeder extends Seeder
             ServicesMenuAndPagesSeeder::class,
             CustomerTypeSeeder::class,
             ExpenseCategorySeeder::class,
+            ProfitLossReportPermissionSeeder::class,
             ExpenseDemoSeeder::class,
             BookingSettingsSeeder::class,
             PaymentProofNotificationSettingSeeder::class,
