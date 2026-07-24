@@ -310,6 +310,31 @@ class SalesVisualDailyReportService
         return $payload;
     }
 
+    /**
+     * Historical product cost snapshots for the same ecommerce-sale scope as salesSummary().
+     *
+     * @return array<int, float> keyed by calendar month
+     */
+    public function ecommerceCostingByMonth(int $year): array
+    {
+        $start = Carbon::create($year, 1, 1)->startOfDay();
+        $end = $start->copy()->endOfYear()->endOfDay();
+        $bucketExpression = 'EXTRACT(MONTH FROM ' . $this->orderBillAtSql() . ')::int';
+
+        return $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
+        )
+            ->where('oi.line_type', 'product')
+            ->selectRaw("{$bucketExpression} as month")
+            ->selectRaw('COALESCE(SUM(COALESCE(oi.cost_amount_snapshot, 0)), 0) as ecommerce_costing')
+            ->groupByRaw($bucketExpression)
+            ->pluck('ecommerce_costing', 'month')
+            ->map(fn ($amount) => round((float) $amount, 2))
+            ->all();
+    }
+
     private function ecommerceSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
     {
         $lineTotal = $this->lineNetAmountSql('oi');
