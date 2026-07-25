@@ -372,10 +372,10 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--accent-stronger)]">My Account</h1>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <h1 className="text-xl font-semibold tracking-tight text-[var(--accent-stronger)] sm:text-2xl">My Account</h1>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
           <button
             type="button"
             onClick={() => {
@@ -383,14 +383,14 @@ export default function AccountPage() {
               setError(null);
               setChangePasswordModalOpen(true);
             }}
-            className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)] shadow-sm transition hover:bg-[var(--background-soft)] sm:w-auto"
+            className="min-h-[44px] rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2.5 text-xs font-semibold text-[var(--accent-strong)] shadow-sm transition hover:bg-[var(--background-soft)] sm:min-h-0 sm:w-auto sm:px-4 sm:py-2 sm:text-sm"
           >
             Change Password
           </button>
           <button
             type="button"
             onClick={() => setProfileModalOpen(true)}
-            className="w-full rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] sm:w-auto"
+            className="min-h-[44px] rounded-lg bg-[var(--accent)] px-3 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] sm:min-h-0 sm:w-auto sm:px-4 sm:py-2 sm:text-sm"
           >
             Edit Profile
           </button>
@@ -411,10 +411,10 @@ export default function AccountPage() {
 
       <WalletBalanceSection workspaceType="booking" />
 
-      <div className="grid gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)]">
-        <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="h-16 w-16 overflow-hidden rounded-full bg-[var(--background-soft)] ring-2 ring-[var(--muted)]">
+      <div className="grid gap-4 sm:gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)]">
+        <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-4 shadow-sm sm:p-6">
+          <div className="flex items-start gap-3 sm:items-center sm:gap-4">
+            <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-[var(--background-soft)] ring-2 ring-[var(--muted)] sm:h-16 sm:w-16">
               <Image
                 src={avatarUrl}
                 alt={profile.name}
@@ -423,43 +423,41 @@ export default function AccountPage() {
                 className="h-full w-full object-cover"
               />
             </div>
-            <div className="min-w-0 space-y-2">
-              <div className="inline-flex items-center gap-2">
-                <h2 className="break-words text-lg font-semibold text-[var(--accent-stronger)]">{profile.name}</h2>
-              </div>
+            <div className="min-w-0 flex-1 space-y-1 sm:space-y-2">
+              <h2 className="break-words text-base font-semibold text-[var(--accent-stronger)] sm:text-lg">{profile.name}</h2>
               <p className="break-words text-sm text-[color:var(--text-muted)]">{profile.email}</p>
               {profile.phone && <p className="break-words text-sm text-[color:var(--text-muted)]">{profile.phone}</p>}
             </div>
           </div>
 
-          <div className="mt-6 grid gap-3 text-sm text-[color:var(--text-muted)]">
-            <div className="flex justify-between">
+          <div className="mt-4 space-y-2 text-sm text-[color:var(--text-muted)] sm:mt-6">
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-[var(--background-soft)] px-3 py-2.5">
               <span>Gender</span>
-              <span className="font-medium">{formatGenderLabel(profile.gender)}</span>
+              <span className="font-medium text-[var(--foreground)]">{formatGenderLabel(profile.gender)}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-[var(--background-soft)] px-3 py-2.5">
               <span>Date of Birth</span>
-              <span className="font-medium">{formatDateOfBirth(profile.date_of_birth)}</span>
+              <span className="font-medium text-[var(--foreground)]">{formatDateOfBirth(profile.date_of_birth)}</span>
             </div>
           </div>
         </section>
 
-        <section className="flex flex-col gap-4 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
+        <section className="hidden flex-col gap-4 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm md:flex">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Account Information</h2>
           <p className="text-sm text-[color:var(--text-muted)]">Manage your profile and account settings.</p>
         </section>
       </div>
 
-      <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-6 shadow-sm">
+      <section className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)]/70 p-4 shadow-sm sm:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Address Book</h2>
-            <p className="text-xs text-[color:var(--text-muted)]">Manage your shipping and billing details.</p>
+            <p className="mt-0.5 text-xs text-[color:var(--text-muted)]">Manage your shipping and billing details.</p>
           </div>
           <button
             type="button"
             onClick={() => openAddressModal()}
-            className="w-full rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)] transition hover:bg-[var(--muted)] sm:w-auto"
+            className="min-h-[44px] w-full rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-2.5 text-sm font-semibold text-[var(--accent-strong)] transition hover:bg-[var(--muted)] sm:min-h-0 sm:w-auto sm:py-2"
           >
             Add Address
           </button>
@@ -468,14 +466,14 @@ export default function AccountPage() {
         {profile.addresses.length === 0 ? (
           <p className="text-sm text-[color:var(--text-muted)]">You have not added any address yet.</p>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {profile.addresses.map((addr) => (
               <div
                 key={addr.id}
-                className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] p-4 text-sm text-[color:var(--text-muted)] shadow-sm"
+                className="rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] p-3.5 text-sm text-[color:var(--text-muted)] shadow-sm sm:p-4"
               >
-                <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+                <div className="mb-2 flex flex-col gap-3 sm:mb-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <div className="font-medium text-[var(--accent-stronger)]">{addr.label || "Address"}</div>
                     {addr.is_default && (
                       <span className="rounded-full bg-[var(--accent-stronger)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
@@ -483,18 +481,18 @@ export default function AccountPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                     <button
                       type="button"
                       onClick={() => openAddressModal(addr)}
-                      className="rounded-md border border-[var(--muted)] px-3 py-1 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--muted)]"
+                      className="min-h-[40px] rounded-md border border-[var(--muted)] px-3 py-2 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--muted)] sm:min-h-0 sm:py-1"
                     >
                       Edit
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDeleteAddress(addr.id)}
-                      className="rounded-md border border-[var(--status-error-border)] px-3 py-1 text-xs font-semibold text-[var(--status-error)] hover:bg-[var(--status-error-bg)]"
+                      className="min-h-[40px] rounded-md border border-[var(--status-error-border)] px-3 py-2 text-xs font-semibold text-[var(--status-error)] hover:bg-[var(--status-error-bg)] sm:min-h-0 sm:py-1"
                     >
                       Delete
                     </button>
@@ -502,7 +500,7 @@ export default function AccountPage() {
                       <button
                         type="button"
                         onClick={() => handleMakeDefault(addr.id)}
-                        className="rounded-md border border-[var(--status-success-border)] px-3 py-1 text-xs font-semibold text-[color:var(--status-success)] hover:bg-[var(--status-success-bg)]"
+                        className="col-span-2 min-h-[40px] rounded-md border border-[var(--status-success-border)] px-3 py-2 text-xs font-semibold text-[color:var(--status-success)] hover:bg-[var(--status-success-bg)] sm:col-span-1 sm:min-h-0 sm:py-1"
                       >
                         Make Default
                       </button>
@@ -511,7 +509,7 @@ export default function AccountPage() {
                 </div>
                 <div className="font-semibold text-[var(--accent-stronger)]">{addr.name}</div>
                 <div className="text-sm text-[color:var(--text-muted)]">{addr.phone}</div>
-                <div className="mt-1 text-sm text-[color:var(--text-muted)]">
+                <div className="mt-1 text-sm leading-relaxed text-[color:var(--text-muted)]">
                   {addr.line1}
                   {addr.line2 && `, ${addr.line2}`}
                 </div>

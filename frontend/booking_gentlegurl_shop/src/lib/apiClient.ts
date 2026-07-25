@@ -1026,10 +1026,49 @@ export async function getCustomerWallet(): Promise<CustomerWallet> {
   return response.data ?? { balance: "0.00", wallet_balance: "0.00", customer_id: 0 };
 }
 
-export async function getCustomerWalletTransactions(status: string = "completed") {
-  const response = await request<{ data?: { transactions?: { data?: CustomerWalletTransaction[] } | CustomerWalletTransaction[] } }>(`/public/shop/customer/wallet/transactions?status=${encodeURIComponent(status)}`);
+export async function getCustomerWalletTransactions(options: {
+  status?: string;
+  page?: number;
+  perPage?: number;
+} = {}) {
+  const status = options.status ?? "all";
+  const page = options.page ?? 1;
+  const perPage = options.perPage ?? 10;
+  const response = await request<{
+    data?: {
+      transactions?: {
+        data?: CustomerWalletTransaction[];
+        current_page?: number;
+        last_page?: number;
+        per_page?: number;
+        total?: number;
+      } | CustomerWalletTransaction[];
+    };
+  }>(
+    `/public/shop/customer/wallet/transactions?status=${encodeURIComponent(status)}&page=${page}&per_page=${perPage}`,
+  );
   const tx = response.data?.transactions;
-  return Array.isArray(tx) ? tx : tx?.data ?? [];
+  if (Array.isArray(tx)) {
+    return {
+      transactions: tx,
+      pagination: {
+        current_page: 1,
+        last_page: 1,
+        per_page: tx.length,
+        total: tx.length,
+      },
+    };
+  }
+
+  return {
+    transactions: tx?.data ?? [],
+    pagination: {
+      current_page: Number(tx?.current_page ?? 1),
+      last_page: Math.max(1, Number(tx?.last_page ?? 1)),
+      per_page: Number(tx?.per_page ?? perPage),
+      total: Number(tx?.total ?? 0),
+    },
+  };
 }
 
 export type CustomerWalletGateway = { key: string; name: string; config?: unknown; requires_proof?: boolean; gateway_key?: string; provider?: string };

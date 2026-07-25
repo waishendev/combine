@@ -46,12 +46,12 @@ export default function WalletBalanceSection({ workspaceType }: Props) {
               "radial-gradient(ellipse at top right, rgba(var(--accent-rgb), 0.16), transparent 55%), radial-gradient(ellipse at bottom left, rgba(var(--background-soft-rgb), 0.85), transparent 50%)",
           }}
         />
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-strong)]">
               Customer Balance
             </p>
-            <p className="mt-1.5 text-3xl font-semibold tracking-tight text-[var(--accent-stronger)] tabular-nums sm:text-[2rem]">
+            <p className="mt-1.5 text-2xl font-semibold tracking-tight text-[var(--accent-stronger)] tabular-nums sm:text-[2rem]">
               {loading ? "…" : walletMoney(balance)}
             </p>
           </div>
@@ -61,7 +61,7 @@ export default function WalletBalanceSection({ workspaceType }: Props) {
               setError(null);
               setTopupOpen(true);
             }}
-            className="w-full rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] sm:w-auto"
+            className="min-h-[44px] shrink-0 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] sm:min-h-0 sm:px-5"
           >
             Top Up
           </button>

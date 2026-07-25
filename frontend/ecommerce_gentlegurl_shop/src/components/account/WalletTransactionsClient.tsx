@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   cancelCustomerWalletTopup,
   getCustomerWallet,
@@ -17,7 +17,6 @@ import {
   canReuploadWalletProof,
   hasUploadedWalletProof,
   isWalletTopupReserveExpired,
-  WALLET_PENDING_STATUSES,
   walletBillplzUrl,
   walletMoney,
   walletStatusClass,
@@ -30,11 +29,27 @@ import WalletSuccessModal, { type WalletSuccessState } from "@/components/accoun
 
 type Filter = "all" | "pending" | "completed";
 
+type PaginationState = {
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+};
+
+const PER_PAGE = 10;
+
 const filterOptions: Array<{ key: Filter; label: string }> = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
   { key: "completed", label: "Completed" },
 ];
+
+const defaultPagination: PaginationState = {
+  current_page: 1,
+  last_page: 1,
+  per_page: PER_PAGE,
+  total: 0,
+};
 
 function metaString(tx: CustomerWalletTransaction, key: string) {
   const value = tx.metadata?.[key];
@@ -64,6 +79,8 @@ export default function WalletTransactionsClient() {
   const [balance, setBalance] = useState("0.00");
   const [transactions, setTransactions] = useState<CustomerWalletTransaction[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationState>(defaultPagination);
   const [topupOpen, setTopupOpen] = useState(false);
   const [success, setSuccess] = useState<WalletSuccessState | null>(null);
   const [proofTx, setProofTx] = useState<CustomerWalletTransaction | null>(null);
@@ -79,23 +96,31 @@ export default function WalletTransactionsClient() {
   const [now, setNow] = useState(() => Date.now());
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const filteredTransactions = useMemo(() => {
-    if (filter === "pending") return transactions.filter((tx) => WALLET_PENDING_STATUSES.has(tx.status));
-    if (filter === "completed") return transactions.filter((tx) => tx.status === "completed");
-    return transactions;
-  }, [filter, transactions]);
-
-  const refresh = useCallback(async () => {
-    const [wallet, txRows] = await Promise.all([getCustomerWallet(), getCustomerWalletTransactions("all")]);
+  const refreshBalance = useCallback(async () => {
+    const wallet = await getCustomerWallet();
     setBalance(wallet.wallet_balance ?? wallet.balance ?? "0.00");
-    setTransactions(txRows);
     window.dispatchEvent(new CustomEvent("walletBalanceUpdated"));
   }, []);
+
+  const loadTransactions = useCallback(async (nextPage: number, nextFilter: Filter) => {
+    const result = await getCustomerWalletTransactions({
+      status: nextFilter,
+      page: nextPage,
+      perPage: PER_PAGE,
+    });
+    setTransactions(result.transactions);
+    setPagination(result.pagination);
+    setPage(result.pagination.current_page);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshBalance(), loadTransactions(page, filter)]);
+  }, [refreshBalance, loadTransactions, page, filter]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    refresh()
+    Promise.all([refreshBalance(), loadTransactions(page, filter)])
       .catch(() => {
         if (!cancelled) setError("Unable to load wallet activity. Please try again.");
       })
@@ -105,7 +130,7 @@ export default function WalletTransactionsClient() {
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [refreshBalance, loadTransactions, page, filter]);
 
   useEffect(() => {
     const hasActiveCountdown = transactions.some((tx) => {
@@ -137,6 +162,17 @@ export default function WalletTransactionsClient() {
     const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
     window.history.replaceState({}, "", next);
   }, [refresh]);
+
+  const handleFilterChange = (nextFilter: Filter) => {
+    if (nextFilter === filter) return;
+    setFilter(nextFilter);
+    setPage(1);
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > pagination.last_page || loading || nextPage === page) return;
+    setPage(nextPage);
+  };
 
   const clearProofState = () => {
     setProofFile(null);
@@ -312,8 +348,14 @@ export default function WalletTransactionsClient() {
       <div className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-[var(--text-muted)]">
-            <span className="font-medium text-[var(--foreground)]">{filteredTransactions.length}</span>
+            <span className="font-medium text-[var(--foreground)]">{pagination.total}</span>
             {filter === "all" ? " transactions" : ` ${filter} transactions`}
+            {pagination.last_page > 1 ? (
+              <span className="text-[var(--text-muted)]">
+                {" "}
+                · Page {pagination.current_page} of {pagination.last_page}
+              </span>
+            ) : null}
           </p>
           <div
             role="tablist"
@@ -326,7 +368,7 @@ export default function WalletTransactionsClient() {
                 type="button"
                 role="tab"
                 aria-selected={filter === option.key}
-                onClick={() => setFilter(option.key)}
+                onClick={() => handleFilterChange(option.key)}
                 className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
                   filter === option.key
                     ? "bg-[var(--card)] text-[var(--accent-stronger)] shadow-sm"
@@ -348,7 +390,7 @@ export default function WalletTransactionsClient() {
               />
             ))}
           </div>
-        ) : filteredTransactions.length === 0 ? (
+        ) : transactions.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--input-border)] px-6 py-14 text-center">
             <p className="text-base font-semibold text-[var(--accent-stronger)]">
               {filter === "all" ? "No activity yet" : `No ${filter} activity`}
@@ -361,7 +403,7 @@ export default function WalletTransactionsClient() {
             {filter !== "all" ? (
               <button
                 type="button"
-                onClick={() => setFilter("all")}
+                onClick={() => handleFilterChange("all")}
                 className="mt-4 text-sm font-semibold text-[var(--accent-strong)] underline underline-offset-2"
               >
                 Show all activity
@@ -397,7 +439,7 @@ export default function WalletTransactionsClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTransactions.map((tx) => {
+                  {transactions.map((tx) => {
                     const isCredit = tx.direction === "credit";
                     const expired = isWalletTopupReserveExpired(tx, now);
                     const remainingLabel = walletTopupRemainingLabel(tx, now);
@@ -485,6 +527,31 @@ export default function WalletTransactionsClient() {
                   })}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--input-border)] bg-[var(--background-soft)]/40 px-4 py-3 text-sm text-[var(--text-muted)] sm:px-5">
+              <p>
+                Page {pagination.current_page} of {pagination.last_page}
+                <span className="mx-1.5 text-[var(--input-border)]">·</span>
+                {pagination.total} records
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(pagination.current_page - 1)}
+                  disabled={pagination.current_page <= 1 || loading}
+                  className="rounded-lg border border-[var(--input-border)] bg-[var(--card)] px-3 py-1.5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(pagination.current_page + 1)}
+                  disabled={pagination.current_page >= pagination.last_page || loading}
+                  className="rounded-lg border border-[var(--input-border)] bg-[var(--card)] px-3 py-1.5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         )}

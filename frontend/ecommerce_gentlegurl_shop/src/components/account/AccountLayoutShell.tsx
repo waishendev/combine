@@ -21,6 +21,18 @@ type AccountLayoutShellProps = {
   children: ReactNode;
 };
 
+function isNavActive(pathname: string, href: string) {
+  const isExactMatch = pathname === href;
+  const isPrefixMatch = pathname.startsWith(`${href}/`);
+  const hasBetterMatch = navItems.some(
+    (other) =>
+      other.href !== href &&
+      other.href.length > href.length &&
+      (pathname === other.href || pathname.startsWith(`${other.href}/`)),
+  );
+  return isExactMatch || (isPrefixMatch && !hasBetterMatch);
+}
+
 export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -30,8 +42,6 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
   const overview = customer ?? user;
   const profile = overview?.profile;
 
-  const initial = profile?.name ? profile.name.trim().charAt(0).toUpperCase() : "?";
-
   const handleLogout = async () => {
     await logout();
     await resetAfterLogout();
@@ -40,35 +50,30 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-      <aside className="h-fit rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm">
+    <div className="grid gap-4 lg:grid-cols-[260px_1fr] lg:gap-6">
+      {/* Desktop only — mobile uses header account sheet */}
+      <aside className="hidden h-fit rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-5 lg:block lg:p-6">
         <div className="mb-6 flex items-center gap-3">
           <div className="relative h-12 w-12 flex-none overflow-hidden rounded-full border border-[var(--muted)] bg-[var(--muted)]/40">
             <Image
               src={profile?.avatar || "/images/default_user_image.jpg"}
-              alt={profile.name}
+              alt={profile?.name || "User"}
               fill
               sizes="48px"
               className="rounded-full object-cover"
             />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-base font-semibold text-[var(--foreground)]">{profile?.name}</div>
+            <div className="truncate text-base font-semibold text-[var(--foreground)]">
+              {profile?.name}
+            </div>
             <div className="truncate text-sm text-[var(--foreground)]/70">{profile?.email}</div>
           </div>
         </div>
 
-        <nav className="space-y-1 text-sm">
+        <nav aria-label="Account" className="space-y-1 text-sm">
           {navItems.map((item) => {
-            // Only highlight exact match, or if pathname starts with this href but no other nav item is a better match
-            const isExactMatch = pathname === item.href;
-            const isPrefixMatch = pathname.startsWith(`${item.href}/`);
-            const hasBetterMatch = navItems.some(other => 
-              other.href !== item.href && 
-              other.href.length > item.href.length &&
-              (pathname === other.href || pathname.startsWith(`${other.href}/`))
-            );
-            const isActive = isExactMatch || (isPrefixMatch && !hasBetterMatch);
+            const isActive = isNavActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
@@ -80,7 +85,7 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
                 }`}
               >
                 <span>{item.label}</span>
-                {isActive && <span className="h-2 w-2 rounded-full bg-[var(--accent-strong)]" />}
+                {isActive ? <span className="h-2 w-2 rounded-full bg-[var(--accent-strong)]" /> : null}
               </Link>
             );
           })}
@@ -97,6 +102,7 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
               strokeWidth="1.5"
               stroke="currentColor"
               className="h-4 w-4"
+              aria-hidden
             >
               <path
                 strokeLinecap="round"
@@ -109,7 +115,7 @@ export function AccountLayoutShell({ user, children }: AccountLayoutShellProps) 
         </nav>
       </aside>
 
-      <section className="min-w-0 space-y-6 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-sm">
+      <section className="min-w-0 space-y-5 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:space-y-6 sm:p-5 lg:p-6">
         {children}
       </section>
     </div>

@@ -42,17 +42,24 @@ class PublicCustomerWalletController extends Controller
     {
         /** @var Customer $customer */
         $customer = auth('customer')->user();
-        $status = (string) $request->query('status', 'all');
+        $status = strtolower((string) $request->query('status', 'all'));
         $direction = (string) $request->query('direction', 'all');
+        $perPage = max(1, min(50, (int) $request->query('per_page', 10)));
         $query = $customer->walletTransactions()->with('creator:id,name')->latest();
-        if ($status !== 'all') {
+
+        if ($status === 'pending') {
+            $query->whereIn('status', CustomerWalletTransaction::PENDING_REVIEW_STATUSES);
+        } elseif ($status === 'completed') {
+            $query->where('status', CustomerWalletTransaction::STATUS_COMPLETED);
+        } elseif ($status !== 'all' && $status !== '') {
             $query->where('status', $status);
         }
+
         if (in_array($direction, ['credit', 'debit'], true)) {
             $query->where('direction', $direction);
         }
 
-        $paginator = $query->paginate((int) $request->query('per_page', 20));
+        $paginator = $query->paginate($perPage);
         $paginator->getCollection()->transform(fn (CustomerWalletTransaction $tx) => $this->decorateTopup($tx));
 
         return response()->json(['success' => true, 'data' => ['transactions' => $paginator]]);

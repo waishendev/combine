@@ -164,6 +164,11 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   }, [useDrawerNav]);
 
   useEffect(() => {
+    if (useDrawerNav) return;
+    setMobileUserMenuOpen(false);
+  }, [useDrawerNav]);
+
+  useEffect(() => {
     if (showInlineNav && mobileMenuOpen) {
       setMobileMenuOpen(false);
     }
@@ -202,9 +207,9 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
     };
   }, []);
 
-  // Prevent body scroll when mobile menu is open
+  // Prevent body scroll when mobile menu / account sheet is open
   useEffect(() => {
-    if (mobileMenuOpen) {
+    if (mobileMenuOpen || mobileUserMenuOpen) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
@@ -212,7 +217,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
     return () => {
       document.body.style.overflow = "";
     };
-  }, [mobileMenuOpen]);
+  }, [mobileMenuOpen, mobileUserMenuOpen]);
 
   const overview = customer ?? null;
   const profile = overview?.profile;
@@ -397,7 +402,13 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
               </svg>
             </button>
 
-            <Link ref={logoRef} href="/" className="flex h-8 w-[96px] shrink-0 items-center sm:w-[120px] md:h-9 lg:w-[130px]">
+            <Link
+              ref={logoRef}
+              href="/"
+              className={`flex h-8 min-w-0 items-center md:h-9 lg:w-[130px] ${
+                useDrawerNav ? "w-[68px] shrink sm:w-[96px]" : "w-[96px] shrink-0 sm:w-[120px]"
+              }`}
+            >
               <Image
                 src={resolvedLogoUrl}
                 alt="Gentlegurl Shop"
@@ -443,7 +454,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                     <div className="absolute left-0 z-20 mt-2 w-56 rounded-md border border-[var(--muted)] bg-[var(--background)] shadow-lg">
                       <Link
                         href="/shop"
-                        className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/60"
+                        className="block px-4 py-2 text-sm font-medium text-[var(--foreground)]/85 hover:bg-[var(--muted)]/60"
                         onClick={() => setShopOpen(false)}
                       >
                         All Products
@@ -458,7 +469,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                           <Link
                             key={item.id}
                             href={`/shop/${item.slug}`}
-                            className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/60"
+                            className="block px-4 py-2 text-sm font-medium text-[var(--foreground)]/85 hover:bg-[var(--muted)]/60"
                             onClick={() => setShopOpen(false)}
                           >
                             {item.label}
@@ -470,7 +481,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
               ) : (
                 <Link
                   href="/shop"
-                  className="flex items-center gap-1 transition-colors hover:text-[var(--accent-strong)]"
+                  className="whitespace-nowrap rounded-lg px-2.5 py-2 font-medium transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                 >
                   Shop
                 </Link>
@@ -500,7 +511,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                       <Link
                         key={item.id}
                         href={`/services/${item.slug}`}
-                        className="block px-4 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]/60"
+                        className="block px-4 py-2 text-sm font-medium text-[var(--foreground)]/85 transition hover:bg-[var(--muted)]/60"
                         onClick={() => setServicesOpen(false)}
                       >
                         {item.label}
@@ -532,14 +543,14 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                 <div className="absolute left-0 z-20 mt-2 w-56 rounded-md border border-[var(--muted)] bg-[var(--background)] shadow-lg">
                   <Link
                     href="/membership"
-                    className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/60"
+                    className="block px-4 py-2 text-sm font-medium text-[var(--foreground)]/85 hover:bg-[var(--muted)]/60"
                     onClick={() => setMembershipOpen(false)}
                   >
                     Membership Tiers
                   </Link>
                   <Link
                     href="/rewards"
-                    className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/60"
+                    className="block px-4 py-2 text-sm font-medium text-[var(--foreground)]/85 hover:bg-[var(--muted)]/60"
                     onClick={() => setMembershipOpen(false)}
                   >
                     Rewards Center
@@ -562,7 +573,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
           </nav>
         </div>
 
-          <div ref={actionsRef} className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
+          <div ref={actionsRef} className="flex shrink-0 items-center gap-0.5 sm:gap-2 md:gap-3">
             {isLoading ? (
               <div className="h-8 w-24 animate-pulse rounded bg-[var(--muted)]/50" />
             ) : profile ? (
@@ -571,22 +582,31 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                 <button
                   type="button"
                   onClick={() => setMobileUserMenuOpen((prev) => !prev)}
-                  className="h-11 w-11 overflow-hidden rounded-full border-2 border-[var(--muted)] touch-manipulation transition-colors hover:border-[var(--accent-strong)]"
+                  className="flex max-w-[7.25rem] touch-manipulation items-center gap-1 rounded-lg border border-[var(--card-border)]/60 bg-[var(--card)]/50 px-1.5 py-1 transition-colors hover:border-[var(--accent-strong)]/50 hover:bg-[var(--muted)]/30"
+                  aria-expanded={mobileUserMenuOpen}
+                  aria-label="Account menu"
                 >
-                  <Image src={avatarUrl} alt={profile?.name ?? "User avatar"} width={44} height={44} className="h-full w-full object-cover" />
-                </button>
-                {mobileUserMenuOpen ? (
-                  <div className="absolute right-0 z-50 mt-2 w-60 rounded-2xl border border-[var(--card-border)]/60 bg-[var(--card)]/98 p-2 shadow-xl backdrop-blur-md">
-                    <div className="mb-2 border-b border-[var(--muted)]/50 px-3 py-2">
-                      <div className="text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
-                      {walletBalance !== null && <div className="mt-1 text-xs font-semibold text-[var(--accent-strong)]">Balance RM {Number(walletBalance).toFixed(2)}</div>}
-                    </div>
-                    <Link href="/account" className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm hover:bg-[var(--muted)]/50" onClick={() => setMobileUserMenuOpen(false)}>My Account</Link>
-                    <Link href="/account/orders" className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm hover:bg-[var(--muted)]/50" onClick={() => setMobileUserMenuOpen(false)}>My Orders</Link>
-                    <Link href="/account/returns" className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm hover:bg-[var(--muted)]/50" onClick={() => setMobileUserMenuOpen(false)}>My Returns</Link>
-                    <button type="button" onClick={() => { void handleLogout(); setMobileUserMenuOpen(false); }} className="mt-1 flex min-h-[44px] w-full items-center rounded-xl px-4 py-2.5 text-left text-sm text-[var(--accent-strong)] hover:bg-[var(--muted)]/50">Logout</button>
+                  <div className="h-6 w-6 shrink-0 overflow-hidden rounded-full border border-[var(--muted)] bg-[var(--muted)]/30">
+                    <Image src={avatarUrl} alt={profile?.name ?? "User avatar"} width={24} height={24} className="h-full w-full object-cover" />
                   </div>
-                ) : null}
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block truncate text-[11px] font-medium leading-tight text-[var(--foreground)]/80">{profile?.name}</span>
+                    {walletBalance !== null && (
+                      <span className="block truncate text-[9px] font-semibold leading-tight text-[var(--accent-strong)]">
+                        Balance RM {Number(walletBalance).toFixed(2)}
+                      </span>
+                    )}
+                  </span>
+                  <svg
+                    className={`h-2.5 w-2.5 shrink-0 transition-transform ${mobileUserMenuOpen ? "rotate-180" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
               </div>
               <div className={`relative ${showInlineNav ? "block" : "hidden"}`} data-menu>
                 <button
@@ -633,6 +653,13 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                     onClick={() => setUserMenuOpen(false)}
                   >
                     My Account
+                  </Link>
+                  <Link
+                    href="/account/wallet"
+                    className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                    onClick={() => setUserMenuOpen(false)}
+                  >
+                    Wallet Activity
                   </Link>
                   <Link
                     href="/account/orders"
@@ -923,7 +950,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                     <button
                       type="button"
                       onClick={() => setShopOpen((prev) => !prev)}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                      className="flex min-h-[48px] w-full touch-manipulation items-center justify-between rounded-xl px-4 py-3 text-base font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)] active:bg-[var(--muted)]/70"
                     >
                       <span>Shop</span>
                       <svg
@@ -940,7 +967,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                       <div className="ml-4 mt-1 space-y-1 border-l border-[var(--muted)]/50 pl-4">
                         <Link
                           href="/shop"
-                          className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                          className="flex min-h-[44px] touch-manipulation items-center rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                           onClick={() => {
                             setShopOpen(false);
                             setMobileMenuOpen(false);
@@ -955,7 +982,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                             <Link
                               key={item.id}
                               href={`/shop/${item.slug}`}
-                              className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                              className="flex min-h-[44px] touch-manipulation items-center rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                               onClick={() => {
                                 setShopOpen(false);
                                 setMobileMenuOpen(false);
@@ -997,7 +1024,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                         <Link
                           key={`mobile-${item.id}`}
                           href={`/services/${item.slug}`}
-                          className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                          className="flex min-h-[44px] touch-manipulation items-center rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                           onClick={() => {
                             setServicesOpen(false);
                             setMobileMenuOpen(false);
@@ -1016,7 +1043,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                 <button
                   type="button"
                   onClick={() => setMembershipOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  className="flex min-h-[48px] w-full touch-manipulation items-center justify-between rounded-xl px-4 py-3 text-base font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)] active:bg-[var(--muted)]/70"
                 >
                   <span>Membership</span>
                   <svg className={`h-3 w-3 transition-transform ${membershipOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -1027,7 +1054,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                   <div className="ml-4 mt-1 space-y-1 border-l border-[var(--muted)]/50 pl-4">
                     <Link
                       href="/membership"
-                      className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                      className="flex min-h-[44px] touch-manipulation items-center rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                       onClick={() => {
                         setMembershipOpen(false);
                         setMobileMenuOpen(false);
@@ -1037,7 +1064,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                     </Link>
                     <Link
                       href="/rewards"
-                      className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                      className="flex min-h-[44px] touch-manipulation items-center rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                       onClick={() => {
                         setMembershipOpen(false);
                         setMobileMenuOpen(false);
@@ -1077,6 +1104,97 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
           </div>
         </>
       )}
+
+      {mobileUserMenuOpen && profile ? (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+            onClick={() => setMobileUserMenuOpen(false)}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Account menu"
+            data-mobile-user-menu
+            className="fixed inset-x-0 bottom-0 z-[51] max-h-[min(78vh,560px)] overflow-hidden rounded-t-2xl border border-[var(--card-border)]/60 bg-[var(--card)] shadow-2xl"
+            style={{ animation: "account-sheet-up 0.22s ease-out" }}
+          >
+            <div className="flex justify-center pt-2.5">
+              <div className="h-1 w-10 rounded-full bg-[var(--muted)]" />
+            </div>
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--muted)]/50 px-4 pb-3 pt-2">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full border border-[var(--muted)] bg-[var(--muted)]/30">
+                  <Image src={avatarUrl} alt={profile?.name ?? "User avatar"} width={44} height={44} className="h-full w-full object-cover" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-[var(--foreground)]">{profile?.name}</div>
+                  {walletBalance !== null && (
+                    <div className="mt-1 text-xs font-semibold text-[var(--accent-strong)]">
+                      Balance RM {Number(walletBalance).toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileUserMenuOpen(false)}
+                className="inline-flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/60"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto overscroll-contain px-3 py-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <nav className="space-y-1">
+                <Link
+                  href="/account"
+                  className="flex min-h-[48px] touch-manipulation items-center rounded-xl px-4 py-3 text-base font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  onClick={() => setMobileUserMenuOpen(false)}
+                >
+                  My Account
+                </Link>
+                <Link
+                  href="/account/wallet"
+                  className="flex min-h-[48px] touch-manipulation items-center rounded-xl px-4 py-3 text-base font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  onClick={() => setMobileUserMenuOpen(false)}
+                >
+                  Wallet Activity
+                </Link>
+                <Link
+                  href="/account/orders"
+                  className="flex min-h-[48px] touch-manipulation items-center rounded-xl px-4 py-3 text-base font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  onClick={() => setMobileUserMenuOpen(false)}
+                >
+                  My Orders
+                </Link>
+                <Link
+                  href="/account/returns"
+                  className="flex min-h-[48px] touch-manipulation items-center rounded-xl px-4 py-3 text-base font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  onClick={() => setMobileUserMenuOpen(false)}
+                >
+                  My Returns
+                </Link>
+                <div className="my-1 border-t border-[var(--muted)]/50" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleLogout();
+                    setMobileUserMenuOpen(false);
+                  }}
+                  className="flex min-h-[48px] w-full touch-manipulation items-center rounded-xl px-4 py-3 text-left text-base font-medium text-[var(--accent-strong)] transition-colors hover:bg-[var(--muted)]/50"
+                >
+                  Logout
+                </button>
+              </nav>
+            </div>
+          </div>
+          <style>{`@keyframes account-sheet-up{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+        </>
+      ) : null}
     </>
   );
 }
