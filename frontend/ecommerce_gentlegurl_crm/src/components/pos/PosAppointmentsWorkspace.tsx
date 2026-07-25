@@ -2122,10 +2122,52 @@ export default function PosAppointmentsWorkspace({
         printAppointmentReceipt(createAppointmentAutoPrint, {
           order_number: depositOrderNumber,
           payment_method: depositPaymentMethod,
+          payments: createAppointmentDepositRows
+            .map((row) => ({ method: row.method, amount: row.amount }))
+            .filter((row) => Number(row.amount ?? 0) > 0.0001),
+          customer_name:
+            createAppointmentIdentityMode === 'member'
+              ? (createAppointmentMemberSummary?.name?.trim() || 'GUEST')
+              : (createAppointmentGuestName.trim() || 'GUEST'),
+          customer_phone:
+            createAppointmentIdentityMode === 'member'
+              ? (createAppointmentMemberSummary?.phone?.trim() || '-')
+              : (normalizeInternationalPhone(createAppointmentGuestPhone) || createAppointmentGuestPhone.trim() || '-'),
           total: createAppointmentDepositValue,
+          subtotal: createAppointmentDepositValue,
           paid_amount: createAppointmentDepositValue,
           change_amount: 0,
-          items: [{ name: `Appointment deposit - ${createAppointmentServiceDraft.name}`, qty: 1, amount: createAppointmentDepositValue }],
+          qr_url: depositReceiptUrl,
+          items: [
+            {
+              section: 'service',
+              name: createAppointmentServiceDraft.name,
+              cn_name: createAppointmentServiceDraft.cn_name ?? null,
+              qty: 1,
+              amount: createAppointmentDepositValue,
+              stage: 'deposit',
+              addons: [
+                ...createAppointmentSelectedOptions.map((option) => ({
+                  name: option.label,
+                  cn_name: option.cn_label ?? option.cn_name ?? null,
+                })),
+                ...createAppointmentExtraServiceBlocks.flatMap((block) => {
+                  if (!block.service) return [] as Array<{ name: string; cn_name?: string | null }>
+                  const nested = block.questions
+                    .flatMap((question) => question.options)
+                    .filter((option) => isAddonSelected(block.addonQuantities, option.id))
+                    .map((option) => ({
+                      name: option.label,
+                      cn_name: option.cn_label ?? option.cn_name ?? null,
+                    }))
+                  return [
+                    { name: block.service.name, cn_name: block.service.cn_name ?? null },
+                    ...nested,
+                  ]
+                }),
+              ],
+            },
+          ],
         })
       }
 
@@ -2513,10 +2555,67 @@ export default function PosAppointmentsWorkspace({
       printAppointmentReceipt(appointmentCheckoutAutoPrint, {
         order_number: String(json?.data?.order_number ?? appointmentDetail.booking_code),
         payment_method: settlementReceiptPaymentMethod,
+        payments: paymentRows
+          .map((row) => ({ method: row.method, amount: row.amount }))
+          .filter((row) => Number(row.amount ?? 0) > 0.0001),
+        customer_name: formatAppointmentCustomerDisplayName(appointmentDetail).replace(/\s*\(GUEST\)\s*$/, '') || 'GUEST',
+        customer_phone:
+          appointmentDetail.customer?.phone?.trim()
+          || appointmentDetail.customer_phone?.trim()
+          || appointmentDetail.guest_phone?.trim()
+          || '-',
         total: isZeroBalanceFinalize ? 0 : dueAmount,
+        subtotal: isZeroBalanceFinalize ? 0 : dueAmount,
+        package_covered: Number(appointmentDetail.package_offset ?? appointmentDetail.total_covered ?? 0) || undefined,
         paid_amount: isZeroBalanceFinalize ? 0 : settlementTotalPaid,
         change_amount: isZeroBalanceFinalize ? 0 : settlementChange,
-        items: [{ name: `Appointment settlement - ${appointmentDetail.booking_code}`, qty: 1, amount: isZeroBalanceFinalize ? 0 : dueAmount }],
+        qr_url: json?.data?.receipt_public_url ?? null,
+        items: (() => {
+          const mains = (appointmentDetail.main_service_settlement_items ?? []).filter((row) => String(row.name ?? '').trim() !== '')
+          const addonRows = (appointmentDetail.addon_settlement_items ?? appointmentDetail.add_ons ?? []).map((addon) => {
+            const addonRef = addon as { linked_booking_service_id?: number | null; id?: number | null }
+            const addonServiceId = Number(addonRef.linked_booking_service_id ?? addonRef.id ?? 0)
+            const claim = findPackageClaimForService(appointmentDetail.package_claims, addonServiceId)
+            return {
+              name: String(addon.name ?? 'Add-on'),
+              cn_name: addon.cn_name ?? null,
+              amount: Number(
+                ('balance_due' in addon ? addon.balance_due : null)
+                ?? ('gross_amount' in addon ? addon.gross_amount : null)
+                ?? addon.extra_price
+                ?? 0,
+              ) || null,
+              package_claim: claim ? (String(claim.package_name ?? '').trim() || '') : undefined,
+            }
+          })
+          if (mains.length > 0) {
+            return mains.map((main, idx) => {
+              const claim = findPackageClaimForService(
+                appointmentDetail.package_claims,
+                Number(main.linked_booking_service_id ?? 0),
+              )
+              return {
+                section: 'service' as const,
+                name: main.name,
+                cn_name: main.cn_name ?? null,
+                qty: 1,
+                amount: Number(main.balance_due ?? main.extra_price ?? 0),
+                stage: 'settlement' as const,
+                addons: idx === 0 && addonRows.length ? addonRows : undefined,
+                package_claim: claim ? (String(claim.package_name ?? '').trim() || '') : undefined,
+              }
+            })
+          }
+          return [{
+            section: 'service' as const,
+            name: appointmentDetail.service?.name ?? appointmentDetail.booking_code,
+            cn_name: appointmentDetail.service?.cn_name ?? null,
+            qty: 1,
+            amount: isZeroBalanceFinalize ? 0 : dueAmount,
+            stage: 'settlement' as const,
+            addons: addonRows.length ? addonRows : undefined,
+          }]
+        })(),
       })
       setAppointmentReceiptEmail(formatAppointmentReceiptDefaultEmail(appointmentDetail))
       setAppointmentReceiptEmailError(null)

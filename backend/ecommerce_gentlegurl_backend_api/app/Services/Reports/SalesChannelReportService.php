@@ -84,7 +84,7 @@ class SalesChannelReportService
     {
         $order = Order::query()
             ->with([
-                'customer:id,name,email',
+                'customer:id,name,email,phone',
                 'payments:id,order_id,payment_method,amount,reference_no',
                 'uploads:id,order_id,type,file_path,note,status,created_at,updated_at',
                 'items' => fn ($query) => $query->orderBy('id'),
@@ -162,6 +162,7 @@ class SalesChannelReportService
                 'placed_at' => optional($order->placed_at)?->toIso8601String(),
                 'created_at' => optional($order->created_at)?->toIso8601String(),
                 'customer' => $this->resolveOrderCustomerDisplayName($order),
+                'customer_phone' => $this->resolveOrderCustomerPhone($order),
                 'payment_method' => (string) ($order->payment_method ?: 'unknown'),
                 'payments' => $payments->all(),
                 'type' => $lineTypes->isEmpty() ? 'Order' : $lineTypes->implode(', '),
@@ -1479,6 +1480,33 @@ class SalesChannelReportService
             $order->billing_name,
             $this->resolveBookingGuestDisplayName($order),
         );
+    }
+
+    private function resolveOrderCustomerPhone(Order $order): ?string
+    {
+        $customerPhone = trim((string) ($order->customer?->phone ?? ''));
+        if ($customerPhone !== '') {
+            return $customerPhone;
+        }
+
+        $shippingPhone = trim((string) ($order->shipping_phone ?? ''));
+        if ($shippingPhone !== '') {
+            return $shippingPhone;
+        }
+
+        $billingPhone = trim((string) ($order->billing_phone ?? ''));
+        if ($billingPhone !== '') {
+            return $billingPhone;
+        }
+
+        foreach ($order->items ?? [] as $item) {
+            $guestPhone = trim((string) ($item->booking?->guest_phone ?? ''));
+            if ($guestPhone !== '') {
+                return $guestPhone;
+            }
+        }
+
+        return null;
     }
 
     private function resolveBookingGuestDisplayName(Order $order): ?string

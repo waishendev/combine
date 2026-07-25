@@ -126,6 +126,7 @@ import type { CustomerRowData } from './CustomerRow'
 import {
   printReceipt,
   printThermalReceiptCopies,
+  type ReceiptData,
   type ReceiptLineItem,
 } from '@/utils/printReceipt'
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
@@ -7045,28 +7046,255 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       return
     }
 
-    const receiptLineItems: ReceiptLineItem[] = [
-      ...cartItems.map((item) => ({
-        name: item.product_name ?? item.variant_name ?? 'Product',
+    const receiptLineItems: ReceiptLineItem[] = []
+    let packageCoveredTotal = 0
+
+    const markClaim = (packageName: string | null | undefined, coveredAmount: number) => {
+      const amount = Math.max(0, Number(coveredAmount || 0))
+      if (amount > 0.0001) packageCoveredTotal += amount
+      return String(packageName ?? '').trim() || ''
+    }
+
+    for (const item of cartItems) {
+      const isBookingProduct = item.item_type === 'BOOKING_PRODUCT'
+      const name = item.product_name ?? item.variant_name ?? (isBookingProduct ? 'Item' : 'Product')
+      const amount = Number(item.line_total_after_discount ?? item.line_total ?? 0)
+      const options = getBookingProductSelectedOptions(item)
+      if (isBookingProduct) {
+        receiptLineItems.push({
+          section: 'service',
+          name,
+          cn_name: item.product_cn_name ?? item.variant_cn_name ?? null,
+          qty: item.qty,
+          amount,
+          children: options.map((opt) => ({
+            name: String(opt.label ?? 'Option'),
+            cn_name: opt.cn_label ?? null,
+            qty: item.qty,
+            amount: getBookingProductOptionNetLineTotal(item, opt),
+          })),
+        })
+        continue
+      }
+      receiptLineItems.push({
+        section: 'product',
+        name,
+        cn_name: item.product_cn_name ?? item.variant_cn_name ?? null,
         qty: item.qty,
-        amount: item.line_total,
-      })),
-      ...(cart.service_items ?? []).map((item) => ({
-        name: item.service_name ?? 'Service',
-        qty: item.qty,
-        amount: item.line_total,
-      })),
-      ...(cart.package_items ?? []).map((item) => ({
+        amount,
+      })
+    }
+
+    for (const item of cart.service_items ?? []) {
+      const blocks = getPosServiceDepositBlocks(item)
+      if (blocks.length > 0) {
+        for (const block of blocks) {
+          const displayAmount = Number(
+            block.covered_by_package
+              ? (block.reference_deposit ?? block.deposit ?? item.unit_price ?? item.line_total ?? 0)
+              : (block.deposit ?? item.line_total ?? 0),
+          )
+          const mainClaimName = block.covered_by_package
+            ? markClaim(
+                findPackageClaimForService(
+                  item.package_claims,
+                  Number(block.linked_booking_service_id ?? block.id ?? 0),
+                )?.package_name ?? item.package_claim_name,
+                displayAmount,
+              )
+            : undefined
+
+          const addonNodes = (block.add_ons ?? []).map((addon) => {
+            const addonAmount = Number(
+              addon.covered_by_package
+                ? (addon.reference_deposit ?? addon.line_gross_amount ?? addon.extra_price ?? 0)
+                : (addon.line_gross_amount ?? addon.extra_price ?? 0),
+            )
+            const addonClaimName = addon.covered_by_package
+              ? markClaim(
+                  findPackageClaimForService(
+                    item.package_claims,
+                    Number(addon.linked_booking_service_id ?? addon.id ?? 0),
+                  )?.package_name ?? item.package_claim_name,
+                  addonAmount,
+                )
+              : undefined
+            return {
+              name: addon.name,
+              cn_name: addon.cn_name ?? null,
+              qty: Number(addon.quantity ?? 1) || 1,
+              amount: addonAmount || null,
+              package_claim: addonClaimName,
+            }
+          })
+
+          receiptLineItems.push({
+            section: 'service',
+            name: block.name,
+            cn_name: block.cn_name ?? null,
+            qty: 1,
+            amount: displayAmount,
+            stage: 'deposit',
+            addons: addonNodes.length ? addonNodes : undefined,
+            package_claim: mainClaimName,
+          })
+        }
+      } else {
+        const covered = Boolean(item.claimed_by_package || (item.package_claims ?? []).length > 0)
+        const displayAmount = Number(item.line_total ?? item.unit_price ?? 0)
+        receiptLineItems.push({
+          section: 'service',
+          name: item.service_name ?? 'Service',
+          cn_name: item.service_cn_name ?? null,
+          qty: item.qty,
+          amount: displayAmount,
+          stage: 'deposit',
+          package_claim: covered
+            ? markClaim(item.package_claim_name ?? item.package_claims?.[0]?.package_name, displayAmount)
+            : undefined,
+        })
+      }
+    }
+
+    for (const item of cart.appointment_settlement_items ?? []) {
+      const mainLines = (item.main_service_settlement_items ?? []).filter((row) => String(row.name ?? '').trim() !== '')
+      const addonSource = item.addon_settlement_items ?? []
+
+      if (mainLines.length > 0) {
+        mainLines.forEach((main, idx) => {
+          const mainService = (item.main_services ?? []).find((svc) => String(svc.name) === String(main.name))
+            ?? (item.main_services ?? [])[idx]
+          const covered = settlementMainLineCoveredByPackage(item, mainService ?? { name: main.name, extra_price: main.extra_price }, idx)
+          const displayAmount = Number(
+            main.gross_amount
+            ?? main.extra_price
+            ?? main.line_total_after_discount
+            ?? main.balance_due
+            ?? 0,
+          )
+          const mainClaim = covered
+            ? markClaim(
+                findPackageClaimForService(
+                  item.package_claims,
+                  Number(main.linked_booking_service_id ?? mainService?.linked_booking_service_id ?? 0),
+                )?.package_name ?? item.package_claims?.[0]?.package_name,
+                displayAmount,
+              )
+            : undefined
+
+          const nestedAddons =
+            idx === 0
+              ? addonSource.map((addon) => {
+                  const coveredAddon = settlementAddonLineCoveredByPackage(item, addon, 0)
+                  const addonAmount = Number(addon.gross_amount ?? addon.extra_price ?? addon.balance_due ?? 0)
+                  return {
+                    name: addon.name,
+                    cn_name: addon.cn_name ?? null,
+                    qty: Number(addon.quantity ?? 1) || 1,
+                    amount: addonAmount || null,
+                    package_claim: coveredAddon
+                      ? markClaim(
+                          findPackageClaimForService(
+                            item.package_claims,
+                            Number(addon.linked_booking_service_id ?? addon.id ?? 0),
+                          )?.package_name ?? item.package_claims?.[0]?.package_name,
+                          addonAmount,
+                        )
+                      : undefined,
+                  }
+                })
+              : (mainService?.add_ons ?? []).map((addon) => ({
+                  name: addon.name,
+                  cn_name: addon.cn_name ?? null,
+                  qty: Number(addon.quantity ?? 1) || 1,
+                  amount: Number(addon.line_gross_amount ?? addon.extra_price ?? 0) || null,
+                }))
+
+          receiptLineItems.push({
+            section: 'service',
+            name: main.name,
+            cn_name: main.cn_name ?? null,
+            qty: 1,
+            amount: displayAmount,
+            stage: 'settlement',
+            addons: nestedAddons.length ? nestedAddons : undefined,
+            package_claim: mainClaim,
+          })
+        })
+      } else {
+        const covered = Number(item.package_offset ?? item.total_covered ?? 0)
+        const displayAmount = Number(item.service_total ?? item.amount_due_now ?? item.balance_due ?? 0)
+        if (covered > 0.0001) {
+          markClaim(item.package_claims?.[0]?.package_name, covered)
+        }
+        receiptLineItems.push({
+          section: 'service',
+          name: item.service_name ?? item.booking_code,
+          cn_name: item.service_cn_name ?? null,
+          qty: 1,
+          amount: displayAmount,
+          stage: 'settlement',
+          addons: addonSource.map((addon) => ({
+            name: addon.name,
+            cn_name: addon.cn_name ?? null,
+            qty: Number(addon.quantity ?? 1) || 1,
+            amount: Number(addon.gross_amount ?? addon.balance_due ?? 0) || null,
+          })),
+          package_claim: covered > 0.0001
+            ? (String(item.package_claims?.[0]?.package_name ?? '').trim() || '')
+            : undefined,
+        })
+      }
+    }
+
+    for (const item of cart.package_items ?? []) {
+      receiptLineItems.push({
+        section: 'package',
         name: item.package_name ?? 'Package',
         qty: item.qty,
-        amount: item.line_total,
-      })),
-      ...(cart.appointment_settlement_items ?? []).map((item) => ({
-        name: item.service_name ?? `Booking ${item.booking_code}`,
-        qty: 1,
-        amount: item.balance_due,
-      })),
-    ]
+        amount: Number(item.line_total_after_discount ?? item.line_total ?? 0),
+      })
+    }
+
+    const receiptCustomerName =
+      selectedMember?.name?.trim() ||
+      (checkoutIdentityMode === 'guest'
+        ? (checkoutGuestIsUnknown ? 'UNKNOWN' : guestContactCache.name.trim())
+        : '') ||
+      'GUEST'
+    const receiptCustomerPhone =
+      selectedMember?.phone?.trim() ||
+      (checkoutIdentityMode === 'guest' && !checkoutGuestIsUnknown
+        ? normalizeInternationalPhone(guestContactCache.phone) || guestContactCache.phone.trim()
+        : '') ||
+      '-'
+    const receiptPayments = checkoutPaymentRows
+      .map((row) => ({ method: row.method, amount: row.amount }))
+      .filter((row) => Number(row.amount ?? 0) > 0.0001)
+    const receiptPaymentMethod =
+      receiptPayments.length > 1
+        ? 'split'
+        : receiptPayments[0]?.method === 'credit_card'
+          ? 'billplz_credit_card'
+          : (receiptPayments[0]?.method ?? paymentMethod)
+    const receiptDiscount = Number(cart.voucher?.discount_amount ?? voucherDiscount ?? 0)
+    const receiptSubtotal = Number(cart.subtotal ?? 0)
+    const receiptPayload: ReceiptData = {
+      order_number: json.data.order.order_number,
+      payment_method: receiptPaymentMethod,
+      payments: receiptPayments,
+      customer_name: receiptCustomerName,
+      customer_phone: receiptCustomerPhone,
+      total: Number(json.data.order.grand_total ?? 0),
+      subtotal: receiptSubtotal > 0 ? receiptSubtotal : undefined,
+      discount: receiptDiscount > 0 ? receiptDiscount : undefined,
+      package_covered: packageCoveredTotal > 0.0001 ? packageCoveredTotal : undefined,
+      paid_amount: meta.paid_amount,
+      change_amount: meta.change_amount,
+      items: receiptLineItems,
+      qr_url: json.data.receipt_public_url ?? null,
+      paper_width: thermalPrinterSettings.paper_width,
+    }
 
     const clearedCartId = cart.id
     setCheckoutResult({
@@ -7119,15 +7347,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setCheckingOut(false)
 
     if (autoPrint) {
-      const receiptPayload = {
-        order_number: json.data.order.order_number,
-        payment_method: paymentMethod,
-        total: Number(json.data.order.grand_total ?? 0),
-        paid_amount: meta.paid_amount,
-        change_amount: meta.change_amount,
-        items: receiptLineItems,
-        paper_width: thermalPrinterSettings.paper_width,
-      }
 
       if (!thermalPrinterSettings.is_enabled) {
         pushToast('warning', 'Payment completed. Thermal printer is disabled, so the receipt was not printed.')

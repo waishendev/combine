@@ -7,9 +7,9 @@ import {
   defaultThermalPrinterSettings,
   getThermalPrinterSettings,
   saveThermalPrinterSettings,
-  testThermalPrinter,
   type ThermalPrinterSettings,
 } from '@/lib/thermalPrinterSettings'
+import { testWifiPrinterConnection } from '@/utils/printReceipt'
 
 type TestStatus = 'not-tested' | 'testing' | 'sent' | 'failed'
 
@@ -61,9 +61,12 @@ export default function ThermalPrinterSettingsForm({ canEdit }: { canEdit: boole
     setTestMessage(null)
     setNotice(null)
     try {
-      const response = await testThermalPrinter(form)
+      if (form.connection_type !== 'network' || !form.ip_address?.trim() || !form.port) {
+        throw new Error('Configure a network printer IP and port before testing.')
+      }
+      await testWifiPrinterConnection(form.ip_address.trim(), form.port)
       setTestStatus('sent')
-      setTestMessage(response.message ?? 'Printer connected and test print sent.')
+      setTestMessage('Printer connected and test print sent (includes Chinese / Korean sample).')
     } catch (error) {
       setTestStatus('failed')
       setTestMessage(errorMessage(error, 'Printer test failed.'))
