@@ -1088,10 +1088,13 @@ $protectedRoutes = function () {
 
         // Shop Settings
         Route::get('/thermal-printer-settings', [ThermalPrinterSettingController::class, 'show'])
-            ->middleware('permission:ecommerce.thermal-printer-settings.view|ecommerce.thermal-printer-settings.update|pos.checkout');
+            ->middleware('permission:ecommerce.thermal-printer-settings.view|ecommerce.thermal-printer-settings.update|pos.checkout|pos.appointments.manage|pos.appointments.checkout');
 
         Route::put('/thermal-printer-settings', [ThermalPrinterSettingController::class, 'update'])
             ->middleware('permission:ecommerce.thermal-printer-settings.update');
+
+        Route::patch('/thermal-printer-settings/auto-print', [ThermalPrinterSettingController::class, 'updateAutoPrint'])
+            ->middleware('permission:ecommerce.thermal-printer-settings.update|pos.checkout|pos.appointments.manage|pos.appointments.checkout');
 
         Route::post('/thermal-printer-settings/test', [ThermalPrinterSettingController::class, 'test'])
             ->middleware('permission:ecommerce.thermal-printer-settings.update');

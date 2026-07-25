@@ -6561,6 +6561,9 @@ export default function PosAppointmentsWorkspace({
                       onCheckedChange={setCreateAppointmentAutoPrint}
                       settings={thermalPrinterSettings}
                       loading={thermalPrinterLoading}
+                      onSettingsChange={setThermalPrinterSettings}
+                      onPreferenceSaved={(message) => pushToast('success', message)}
+                      onPreferenceError={(message) => pushToast('error', message)}
                     />
                   </div>
                 </div>
@@ -8792,6 +8795,9 @@ export default function PosAppointmentsWorkspace({
                 onCheckedChange={setAppointmentCheckoutAutoPrint}
                 settings={thermalPrinterSettings}
                 loading={thermalPrinterLoading}
+                onSettingsChange={setThermalPrinterSettings}
+                onPreferenceSaved={(message) => pushToast('success', message)}
+                onPreferenceError={(message) => pushToast('error', message)}
               />
             </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-6 py-4">

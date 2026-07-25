@@ -26,6 +26,18 @@ class ThermalPrinterSettingController extends Controller
         return $this->respond($settings, 'Thermal printer settings updated successfully.');
     }
 
+    public function updateAutoPrint(Request $request)
+    {
+        $validated = $request->validate([
+            'auto_print_receipt' => ['required', 'boolean'],
+        ]);
+        $settings = $this->settings();
+        $settings['auto_print_receipt'] = (bool) $validated['auto_print_receipt'];
+        SettingService::set(self::SETTING_KEY, $settings, 'ecommerce');
+
+        return $this->respond($settings, 'Auto Print Receipt preference updated.');
+    }
+
     public function test(Request $request)
     {
         $settings = $this->validatedSettings($request);

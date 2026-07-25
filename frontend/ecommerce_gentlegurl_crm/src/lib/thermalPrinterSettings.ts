@@ -43,6 +43,13 @@ export async function saveThermalPrinterSettings(settings: ThermalPrinterSetting
   })
 }
 
+export async function saveThermalPrinterAutoPrint(autoPrintReceipt: boolean) {
+  return apiFetch<ApiResponse<ThermalPrinterSettings>>('/api/proxy/ecommerce/thermal-printer-settings/auto-print', {
+    method: 'PATCH',
+    body: JSON.stringify({ auto_print_receipt: autoPrintReceipt }),
+  })
+}
+
 export async function testThermalPrinter(settings: ThermalPrinterSettings) {
   return apiFetch<ApiResponse<{ status: 'sent'; address: string }>>('/api/proxy/ecommerce/thermal-printer-settings/test', {
     method: 'POST',

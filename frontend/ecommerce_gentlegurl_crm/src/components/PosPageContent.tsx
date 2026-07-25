@@ -12186,6 +12186,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   onCheckedChange={setAutoPrint}
                   settings={thermalPrinterSettings}
                   loading={thermalPrinterLoading}
+                  onSettingsChange={setThermalPrinterSettings}
+                  onPreferenceSaved={(message) => pushToast('success', message)}
+                  onPreferenceError={(message) => pushToast('error', message)}
                 />
               </div>
 
