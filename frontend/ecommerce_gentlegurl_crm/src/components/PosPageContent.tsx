@@ -1732,6 +1732,18 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const scanTimeoutRef = useRef<number | null>(null)
   const lastScanMessageTimeoutRef = useRef<number | null>(null)
   const addByBarcodeRef = useRef<(barcode: string, qty?: number) => Promise<boolean>>(async () => false)
+  const barcodeScanGateRef = useRef({
+    memberOpen: false,
+    checkoutConfirmationOpen: false,
+    bookingModalOpen: false,
+    packageModalOpen: false,
+    discountModalOpen: false,
+    productSelectModalOpen: false,
+    voucherModalOpen: false,
+    itemSplitEditorOpen: false,
+    hasCheckoutResult: false,
+    qrCodeFullscreen: false,
+  })
   const latestProductRequestRef = useRef(0)
   const previousCategoryIdRef = useRef<number | null>(null)
 
@@ -3040,8 +3052,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }
 
   /**
-   * Catalog card: show Out of stock only for simple products (no variants).
-   * If the API reports variants (rows or variants_count), OOS is shown only inside the picker modal.
+   * Catalog card: Out of stock for simple products (no variants),
+   * or when every loaded variant row is sold out (same as all options disabled in the picker).
    */
   const isPosSimpleProductOutOfStock = (item: ProductOption) => {
     const variantRows = item.variants?.length ?? 0
@@ -3056,6 +3068,18 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     if (q === null || q === undefined) return false
     return typeof q === 'number' && Number.isFinite(q) && q <= 0
   }
+
+  const isPosProductAllVariantsOutOfStock = (item: ProductOption) => {
+    const variants = item.variants ?? []
+    if (variants.length === 0) return false
+
+    const activeVariants = variants.filter((variant) => variant.is_active !== false)
+    const pool = activeVariants.length > 0 ? activeVariants : variants
+    return pool.every((variant) => !variantHasSellableStock(variant.track_stock, variant.stock))
+  }
+
+  const isPosCatalogProductOutOfStock = (item: ProductOption) =>
+    isPosSimpleProductOutOfStock(item) || isPosProductAllVariantsOutOfStock(item)
 
   const normalizeProductFromApi = (item: ProductApiItem): ProductOption | null => {
     const productId = Number(item.id)
@@ -6296,6 +6320,32 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
 
   useEffect(() => {
+    barcodeScanGateRef.current = {
+      memberOpen,
+      checkoutConfirmationOpen,
+      bookingModalOpen,
+      packageModalOpen,
+      discountModalOpen,
+      productSelectModalOpen,
+      voucherModalOpen,
+      itemSplitEditorOpen,
+      hasCheckoutResult: Boolean(checkoutResult),
+      qrCodeFullscreen,
+    }
+  }, [
+    bookingModalOpen,
+    checkoutConfirmationOpen,
+    checkoutResult,
+    discountModalOpen,
+    itemSplitEditorOpen,
+    memberOpen,
+    packageModalOpen,
+    productSelectModalOpen,
+    qrCodeFullscreen,
+    voucherModalOpen,
+  ])
+
+  useEffect(() => {
     const MIN_LEN_START = 3
     const MIN_LEN_SUBMIT = 0 
     const SCAN_KEY_INTERVAL_MS = 50
@@ -6353,17 +6403,35 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const isTypingElement =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        Boolean(target?.isContentEditable)
+
+      // Manual typing in Search Name / Search Barcode (and any other field) must stay native.
+      // Intercepting + later replaying the same key caused duplicate characters
+      // (preventDefault on key 1, then replay buffer+key without preventDefault on slow key 2).
+      if (isTypingElement) {
+        if (scanModeRef.current !== 'idle') {
+          resetScanState()
+        }
+        return
+      }
+
+      const gate = barcodeScanGateRef.current
       const hasOpenModal =
-        memberOpen ||
-        checkoutConfirmationOpen ||
-        bookingModalOpen ||
-        packageModalOpen ||
-        discountModalOpen ||
-        productSelectModalOpen ||
-        voucherModalOpen ||
-        itemSplitEditorOpen ||
-        Boolean(checkoutResult) ||
-        qrCodeFullscreen ||
+        gate.memberOpen ||
+        gate.checkoutConfirmationOpen ||
+        gate.bookingModalOpen ||
+        gate.packageModalOpen ||
+        gate.discountModalOpen ||
+        gate.productSelectModalOpen ||
+        gate.voucherModalOpen ||
+        gate.itemSplitEditorOpen ||
+        gate.hasCheckoutResult ||
+        gate.qrCodeFullscreen ||
         document.body.dataset.posCashShiftModalOpen === 'true'
 
       if (hasOpenModal) return
@@ -6490,18 +6558,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         window.clearTimeout(lastScanMessageTimeoutRef.current)
       }
     }
-  }, [
-    bookingModalOpen,
-    checkoutConfirmationOpen,
-    checkoutResult,
-    discountModalOpen,
-    itemSplitEditorOpen,
-    memberOpen,
-    packageModalOpen,
-    productSelectModalOpen,
-    qrCodeFullscreen,
-    voucherModalOpen,
-  ])
+  }, [])
 
   const onSelectProduct = (item: ProductOption, preferredVariantId?: number | null) => {
     const resolvedPreferredVariantId = Number(preferredVariantId)
@@ -8904,7 +8961,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
                 const variantsCount = item.variants_count ?? item.variants.length
                 const titleWithVariant = hit.matchedVariantName ? `${item.name} (${hit.matchedVariantName})` : item.name
-                const catalogCardOutOfStock = isPosSimpleProductOutOfStock(item)
+                const catalogCardOutOfStock = isPosCatalogProductOutOfStock(item)
                 const catalogCoverImageUrl = resolvePosCatalogCoverImageUrl(item)
                 const matchedVariantId = hit.matchedVariantId
                 const cartQty = matchedVariantId
