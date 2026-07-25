@@ -3,6 +3,7 @@
 import { useState } from 'react'
 
 import ReceiptSharePanel from './ReceiptSharePanel'
+import type { ReceiptData } from '@/utils/printReceipt'
 
 type OrderReceiptActionProps = {
   orderId: number
@@ -12,6 +13,7 @@ type OrderReceiptActionProps = {
 type ReceiptPayload = {
   receipt_public_url: string
   customer_email?: string | null
+  thermal_receipt: ReceiptData
 }
 
 export default function OrderReceiptAction({ orderId, orderNo }: OrderReceiptActionProps) {
@@ -29,7 +31,8 @@ export default function OrderReceiptAction({ orderId, orderNo }: OrderReceiptAct
     try {
       const response = await fetch(`/api/proxy/admin/reports/sales/${orderId}/details`, { cache: 'no-store' })
       const data = await response.json().catch(() => null) as {
-        order?: { receipt_public_url?: string | null; customer_email?: string | null }
+        order?: { id?: number; order_no?: string; receipt_public_url?: string | null; customer_email?: string | null; payment_method?: string; grand_total?: number; payments?: Array<{ amount?: number }> }
+        lines?: Array<{ name?: string; cn_name?: string | null; qty?: number; net_amount?: number }>
         message?: string
       } | null
 
@@ -44,9 +47,23 @@ export default function OrderReceiptAction({ orderId, orderNo }: OrderReceiptAct
         return
       }
 
+      const paymentTotal = (data?.order?.payments ?? []).reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0)
       setReceipt({
         receipt_public_url: receiptUrl,
         customer_email: data?.order?.customer_email ?? null,
+        thermal_receipt: {
+          order_number: String(data?.order?.order_no ?? `Order #${orderId}`),
+          payment_method: String(data?.order?.payment_method ?? 'unknown'),
+          total: Number(data?.order?.grand_total ?? 0),
+          paid_amount: paymentTotal > 0 ? paymentTotal : Number(data?.order?.grand_total ?? 0),
+          change_amount: 0,
+          items: (data?.lines ?? []).map((line) => ({
+            name: String(line.name ?? 'Line item'),
+            cn_name: line.cn_name ?? null,
+            qty: Number(line.qty ?? 1),
+            amount: Number(line.net_amount ?? 0),
+          })),
+        },
       })
     } catch {
       setError('Unable to load receipt.')
@@ -103,6 +120,7 @@ export default function OrderReceiptAction({ orderId, orderNo }: OrderReceiptAct
                   orderId={orderId}
                   receiptPublicUrl={receipt.receipt_public_url}
                   defaultEmail={receipt.customer_email}
+                  thermalReceipt={receipt.thermal_receipt}
                   compact
                 />
               ) : null}

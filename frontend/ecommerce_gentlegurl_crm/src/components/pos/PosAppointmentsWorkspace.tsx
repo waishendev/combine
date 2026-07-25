@@ -6555,18 +6555,19 @@ export default function PosAppointmentsWorkspace({
                       ) : null}
                     </div>
                   </div>
+                  <div className="mt-4">
+                    <ThermalPrinterCheckoutOption
+                      checked={createAppointmentAutoPrint}
+                      onCheckedChange={setCreateAppointmentAutoPrint}
+                      settings={thermalPrinterSettings}
+                      loading={thermalPrinterLoading}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="shrink-0 space-y-3 border-t border-gray-200 px-5 py-3">
-              <ThermalPrinterCheckoutOption
-                checked={createAppointmentAutoPrint}
-                onCheckedChange={setCreateAppointmentAutoPrint}
-                settings={thermalPrinterSettings}
-                loading={thermalPrinterLoading}
-              />
-              <div className="flex justify-end gap-2">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
               <button
                 type="button"
                 onClick={() => {
@@ -6586,7 +6587,6 @@ export default function PosAppointmentsWorkspace({
               >
                 {createAppointmentSubmitting ? 'Creating...' : 'Confirm'}
               </button>
-              </div>
             </div>
           </div>
         </div>

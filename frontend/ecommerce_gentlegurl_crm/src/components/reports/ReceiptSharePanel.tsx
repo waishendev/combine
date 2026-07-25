@@ -1,12 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { defaultThermalPrinterSettings, getThermalPrinterAvailability, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
+import { printThermalReceiptCopies, type ReceiptData } from '@/utils/printReceipt'
 
 type ReceiptSharePanelProps = {
   orderId?: number
   receiptPublicUrl: string
   defaultEmail?: string | null
   compact?: boolean
+  thermalReceipt?: ReceiptData
 }
 
 export default function ReceiptSharePanel({
@@ -14,6 +17,7 @@ export default function ReceiptSharePanel({
   receiptPublicUrl,
   defaultEmail = '',
   compact = false,
+  thermalReceipt,
 }: ReceiptSharePanelProps) {
   const [receiptEmail, setReceiptEmail] = useState(defaultEmail?.trim() ?? '')
   const [receiptEmailError, setReceiptEmailError] = useState<string | null>(null)
@@ -22,6 +26,11 @@ export default function ReceiptSharePanel({
   const [receiptQrLoaded, setReceiptQrLoaded] = useState(false)
   const [qrCodeFullscreen, setQrCodeFullscreen] = useState(false)
   const [sendSuccess, setSendSuccess] = useState(false)
+  const [printerSettings, setPrinterSettings] = useState<ThermalPrinterSettings>(defaultThermalPrinterSettings)
+  const [printerLoading, setPrinterLoading] = useState(Boolean(thermalReceipt))
+  const [printerLoadError, setPrinterLoadError] = useState<string | null>(null)
+  const [printing, setPrinting] = useState(false)
+  const [printToast, setPrintToast] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     setReceiptEmail(defaultEmail?.trim() ?? '')
@@ -29,6 +38,40 @@ export default function ReceiptSharePanel({
     setSendSuccess(false)
     setReceiptQrLoaded(false)
   }, [defaultEmail, orderId, receiptPublicUrl])
+
+  useEffect(() => {
+    if (!thermalReceipt) return
+    let active = true
+    setPrinterLoading(true)
+    setPrinterLoadError(null)
+    getThermalPrinterSettings()
+      .then((settings) => { if (active) setPrinterSettings(settings) })
+      .catch((error) => {
+        if (active) setPrinterLoadError(error instanceof Error ? error.message : 'Printer settings are unavailable.')
+      })
+      .finally(() => { if (active) setPrinterLoading(false) })
+    return () => { active = false }
+  }, [thermalReceipt, orderId])
+
+  useEffect(() => {
+    if (!printToast) return
+    const timer = window.setTimeout(() => setPrintToast(null), 4000)
+    return () => window.clearTimeout(timer)
+  }, [printToast])
+
+  const printReceipt = async () => {
+    if (!thermalReceipt || printing) return
+    setPrinting(true)
+    setPrintToast(null)
+    try {
+      await printThermalReceiptCopies(printerSettings, thermalReceipt)
+      setPrintToast({ tone: 'success', text: 'Receipt sent to printer.' })
+    } catch (error) {
+      setPrintToast({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to print receipt.' })
+    } finally {
+      setPrinting(false)
+    }
+  }
 
   const receiptQrImageUrl = useMemo(
     () => `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(receiptPublicUrl)}`,
@@ -41,6 +84,10 @@ export default function ReceiptSharePanel({
   )
 
   const receiptCooldownActive = receiptCooldownUntil > Date.now()
+  const printerAvailability = getThermalPrinterAvailability(printerSettings)
+  const printDisabled = printerLoading || printing || Boolean(printerLoadError) || !printerAvailability.available
+  const printerUnavailableMessage = printerLoadError
+    ?? (printerLoading ? 'Loading printer settings…' : printerAvailability.available ? null : printerAvailability.label)
 
   useEffect(() => {
     if (!receiptCooldownUntil) return
@@ -152,14 +199,29 @@ export default function ReceiptSharePanel({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => window.open(receiptPublicUrl, '_blank')}
-          className="w-full rounded-xl border-2 border-blue-500 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-100"
-        >
-          Open receipt
-        </button>
+        {thermalReceipt ? (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => void printReceipt()}
+              disabled={printDisabled}
+              className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {printing ? 'Printing…' : 'Print Receipt'}
+            </button>
+            {printerUnavailableMessage ? <p className="text-center text-xs font-medium text-amber-700">{printerUnavailableMessage}</p> : null}
+            {!printerAvailability.available || printerLoadError ? <p className="text-center"><a href="/settings/thermal-printer" className="text-xs font-semibold text-blue-600 hover:underline">Manage Printer Settings</a></p> : null}
+          </div>
+        ) : null}
+
+        <button type="button" onClick={() => window.open(receiptPublicUrl, '_blank')} className="w-full rounded-xl border-2 border-blue-500 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-100">Open receipt</button>
       </section>
+
+      {printToast ? (
+        <div className={`fixed bottom-5 right-5 z-[90] max-w-sm rounded-xl border px-4 py-3 text-sm font-semibold shadow-xl ${printToast.tone === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`} role="status">
+          {printToast.text}
+        </div>
+      ) : null}
 
       {qrCodeFullscreen ? (
         <div
