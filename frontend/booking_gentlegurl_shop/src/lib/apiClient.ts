@@ -998,9 +998,24 @@ export async function requestBookingCancellation(id: number, reason?: string) {
 }
 
 export type CustomerWalletTransaction = {
-  id: number; transaction_no: string; type: string; direction: "credit" | "debit" | string; amount: string;
-  balance_before: string; balance_after: string; workspace_type?: string | null; payment_method_label?: string | null;
-  reference_no?: string | null; source_id?: string | null; status: string; remark?: string | null; created_at: string; completed_at?: string | null;
+  id: number;
+  transaction_no: string;
+  type: string;
+  direction: "credit" | "debit" | string;
+  amount: string;
+  balance_before: string;
+  balance_after: string;
+  workspace_type?: string | null;
+  payment_gateway_key?: string | null;
+  payment_method_label?: string | null;
+  reference_no?: string | null;
+  source_id?: string | null;
+  status: string;
+  remark?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+  reserve_expires_at?: string | null;
+  is_reserve_expired?: boolean;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -1025,8 +1040,23 @@ export async function getCustomerWalletPaymentGateways(workspaceType: string = "
   return { payment_gateways: response.data?.payment_gateways ?? [], bank_accounts: response.data?.bank_accounts ?? [] };
 }
 
-export async function createCustomerWalletTopup(payload: { amount: number | string; payment_gateway_key: string; payment_method_label?: string; workspace_type?: string; bank_account_id?: number }) {
-  return request<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>("/public/shop/customer/wallet/topups", {
+export async function createCustomerWalletTopup(payload: {
+  amount: number | string;
+  payment_gateway_key: string;
+  payment_method_label?: string;
+  workspace_type?: string;
+  bank_account_id?: number;
+  billplz_gateway_option_id?: number;
+}) {
+  return request<{
+    success?: boolean;
+    message?: string;
+    data?: {
+      topup?: CustomerWalletTransaction;
+      payment_url?: string | null;
+      requires_proof?: boolean;
+    };
+  }>("/public/shop/customer/wallet/topups", {
     method: "POST",
     body: JSON.stringify({ ...payload, workspace_type: payload.workspace_type ?? "booking" }),
   });
@@ -1039,5 +1069,30 @@ export async function uploadCustomerWalletPaymentProof(topupId: number, file: Fi
   return request<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>(`/public/shop/customer/wallet/topups/${topupId}/payment-proof`, {
     method: "POST",
     body: formData,
+  });
+}
+
+export async function payCustomerWalletTopup(topupId: number) {
+  return request<{
+    success?: boolean;
+    message?: string;
+    data?: {
+      topup?: CustomerWalletTransaction;
+      payment_url?: string | null;
+    };
+  }>(`/public/shop/customer/wallet/topups/${topupId}/pay`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function cancelCustomerWalletTopup(topupId: number) {
+  return request<{
+    success?: boolean;
+    message?: string;
+    data?: { topup?: CustomerWalletTransaction };
+  }>(`/public/shop/customer/wallet/topups/${topupId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({}),
   });
 }

@@ -1320,9 +1320,24 @@ export async function mergeWishlist(payload?: { session_token?: string }) {
 }
 
 export type CustomerWalletTransaction = {
-  id: number; transaction_no: string; type: string; direction: "credit" | "debit" | string; amount: string;
-  balance_before: string; balance_after: string; workspace_type?: string | null; payment_method_label?: string | null;
-  reference_no?: string | null; source_id?: string | null; status: string; remark?: string | null; created_at: string; completed_at?: string | null;
+  id: number;
+  transaction_no: string;
+  type: string;
+  direction: "credit" | "debit" | string;
+  amount: string;
+  balance_before: string;
+  balance_after: string;
+  workspace_type?: string | null;
+  payment_gateway_key?: string | null;
+  payment_method_label?: string | null;
+  reference_no?: string | null;
+  source_id?: string | null;
+  status: string;
+  remark?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+  reserve_expires_at?: string | null;
+  is_reserve_expired?: boolean;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -1347,10 +1362,27 @@ export async function getCustomerWalletPaymentGateways(workspaceType: string = "
   return { payment_gateways: response.data?.payment_gateways ?? [], bank_accounts: response.data?.bank_accounts ?? [] };
 }
 
-export async function createCustomerWalletTopup(payload: { amount: number | string; payment_gateway_key: string; payment_method_label?: string; workspace_type?: string; bank_account_id?: number }) {
-  return post<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>("/public/shop/customer/wallet/topups", { ...payload, workspace_type: payload.workspace_type ?? "ecommerce" });
+export async function createCustomerWalletTopup(payload: {
+  amount: number | string;
+  payment_gateway_key: string;
+  payment_method_label?: string;
+  workspace_type?: string;
+  bank_account_id?: number;
+  billplz_gateway_option_id?: number;
+}) {
+  return post<{
+    success?: boolean;
+    message?: string;
+    data?: {
+      topup?: CustomerWalletTransaction;
+      payment_url?: string | null;
+      requires_proof?: boolean;
+    };
+  }>("/public/shop/customer/wallet/topups", {
+    ...payload,
+    workspace_type: payload.workspace_type ?? "ecommerce",
+  });
 }
-
 
 export async function uploadCustomerWalletPaymentProof(topupId: number, file: File) {
   const formData = new FormData();
@@ -1358,4 +1390,23 @@ export async function uploadCustomerWalletPaymentProof(topupId: number, file: Fi
   return apiRequest<{ success?: boolean; message?: string; data?: { topup?: CustomerWalletTransaction } }>(`/public/shop/customer/wallet/topups/${topupId}/payment-proof`, "POST", {
     body: formData,
   });
+}
+
+export async function payCustomerWalletTopup(topupId: number) {
+  return post<{
+    success?: boolean;
+    message?: string;
+    data?: {
+      topup?: CustomerWalletTransaction;
+      payment_url?: string | null;
+    };
+  }>(`/public/shop/customer/wallet/topups/${topupId}/pay`, {});
+}
+
+export async function cancelCustomerWalletTopup(topupId: number) {
+  return post<{
+    success?: boolean;
+    message?: string;
+    data?: { topup?: CustomerWalletTransaction };
+  }>(`/public/shop/customer/wallet/topups/${topupId}/cancel`, {});
 }

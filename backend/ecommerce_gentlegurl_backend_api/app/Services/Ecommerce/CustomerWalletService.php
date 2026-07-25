@@ -117,7 +117,12 @@ class CustomerWalletService
 
     public function markFailed(CustomerWalletTransaction $transaction, string $remark, ?int $userId = null, string $status = 'failed'): CustomerWalletTransaction
     {
-        if (! in_array($status, [CustomerWalletTransaction::STATUS_FAILED, CustomerWalletTransaction::STATUS_CANCELLED, CustomerWalletTransaction::STATUS_REJECTED], true)) {
+        if (! in_array($status, [
+            CustomerWalletTransaction::STATUS_FAILED,
+            CustomerWalletTransaction::STATUS_CANCELLED,
+            CustomerWalletTransaction::STATUS_EXPIRED,
+            CustomerWalletTransaction::STATUS_REJECTED,
+        ], true)) {
             $status = CustomerWalletTransaction::STATUS_FAILED;
         }
 

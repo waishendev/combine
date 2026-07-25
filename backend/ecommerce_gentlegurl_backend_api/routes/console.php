@@ -23,6 +23,11 @@ Schedule::command('ecommerce:expire-pending-orders')
     ->onOneServer()
     ->withoutOverlapping();
 
+Schedule::command('wallet:expire-pending-topups')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping();
+
 Schedule::command('ecommerce:expire-approved-returns')
     ->daily()
     ->onOneServer()

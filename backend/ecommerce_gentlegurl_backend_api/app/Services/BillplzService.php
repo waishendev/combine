@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\BillplzPaymentGatewayOption;
+use App\Models\Ecommerce\Customer;
+use App\Models\Ecommerce\CustomerWalletTransaction;
 use App\Models\Ecommerce\Order;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Support\WorkspaceType;
@@ -112,6 +115,103 @@ class BillplzService
             'billplz_original_url' => $originalUrl,
             'billplz_final_url' => data_get($responseData, 'url'),
             'fallback_to_generic' => ! $isDirectChannel,
+        ]);
+
+        return $responseData;
+    }
+
+    /**
+     * Create a Billplz bill for a customer wallet top-up (no order).
+     *
+     * @return array<string, mixed>
+     */
+    public function createBillForWalletTopup(
+        Customer $customer,
+        CustomerWalletTransaction $transaction,
+        string $workspaceType,
+        string $paymentMethod,
+        ?BillplzPaymentGatewayOption $selectedGatewayOption = null,
+    ): array {
+        $config = $this->configResolver->resolve($workspaceType, $paymentMethod);
+        $apiKey = $config['api_key'];
+        $collectionId = $config['collection_id'];
+        $baseUrl = $config['base_url'];
+        $frontendUrl = $config['frontend_url'];
+        $publicUrl = $config['public_url'];
+
+        if (! $apiKey || ! $collectionId) {
+            throw new RuntimeException('Billplz is not configured.');
+        }
+
+        $workspaceFrontend = rtrim((string) config("services.frontend_url_{$workspaceType}"), '/');
+        $redirectBase = $workspaceFrontend ?: $frontendUrl;
+
+        $callbackUrl = $publicUrl ? "{$publicUrl}/api/public/payments/billplz/callback" : null;
+        $redirectUrl = $redirectBase
+            ? $redirectBase.'/account/wallet?'.http_build_query([
+                'wallet_topup' => '1',
+                'tx' => $transaction->transaction_no,
+                'provider' => 'billplz',
+                'payment_method' => $paymentMethod,
+            ])
+            : null;
+
+        $mobile = $customer->phone;
+        $email = $customer->email;
+        if (! $mobile && ! $email) {
+            throw new RuntimeException('Please provide a contact phone or email for the payment.');
+        }
+
+        $isDirectChannel = in_array($paymentMethod, ['billplz_online_banking', 'billplz_credit_card'], true)
+            && ! empty($selectedGatewayOption?->code);
+
+        $payload = array_filter([
+            'collection_id' => $collectionId,
+            'email' => $email,
+            'mobile' => $mobile,
+            'name' => $customer->name ?: 'Customer',
+            'amount' => (int) round(((float) $transaction->amount) * 100),
+            'description' => 'Wallet Top Up '.$transaction->transaction_no,
+            'callback_url' => $callbackUrl,
+            'redirect_url' => $redirectUrl,
+            'reference_1_label' => $isDirectChannel ? 'Bank Code' : 'WalletTx',
+            'reference_1' => $isDirectChannel ? $selectedGatewayOption?->code : $transaction->transaction_no,
+            'reference_2_label' => $isDirectChannel ? 'WalletTx' : null,
+            'reference_2' => $isDirectChannel ? $transaction->transaction_no : null,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        $response = Http::asForm()
+            ->withBasicAuth($apiKey, '')
+            ->acceptJson()
+            ->post("{$baseUrl}/bills", $payload);
+
+        if (! $response->successful()) {
+            $errorBody = $response->json() ?? [];
+            $message = data_get($errorBody, 'error.message');
+            if (is_array($message)) {
+                $message = implode(', ', $message);
+            }
+            $message = $message ?: $response->body();
+
+            throw new RuntimeException('Failed to create Billplz bill: '.$message);
+        }
+
+        $responseData = (array) $response->json();
+        $originalUrl = (string) data_get($responseData, 'url', '');
+        $resolvedUrl = $this->resolvePaymentUrl($originalUrl, (bool) $isDirectChannel);
+        if ($resolvedUrl !== '' && $resolvedUrl !== $originalUrl) {
+            $responseData['url'] = $resolvedUrl;
+        }
+
+        Log::info('Billplz wallet top-up bill created', [
+            'wallet_transaction_id' => $transaction->id,
+            'transaction_no' => $transaction->transaction_no,
+            'customer_id' => $customer->id,
+            'payment_method' => $paymentMethod,
+            'billplz_gateway_option_id' => $selectedGatewayOption?->id,
+            'selected_gateway_code' => $selectedGatewayOption?->code,
+            'is_direct_channel' => $isDirectChannel,
+            'billplz_response' => $responseData,
         ]);
 
         return $responseData;

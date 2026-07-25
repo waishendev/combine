@@ -40,6 +40,7 @@ class ShopSettingController extends Controller
                 'booking_policy' => SettingService::get('booking_policy', $this->defaultBookingPolicySetting(), $type),
                 'booking_hold_minutes' => (int) SettingService::get('BOOKING_HOLD_MINUTES', 10, $type),
                 'booking_manual_transfer_hold_minutes' => (int) SettingService::get('BOOKING_MANUAL_TRANSFER_HOLD_MINUTES', 10, $type),
+                'wallet_topup_reserve_minutes' => (int) SettingService::get('booking.wallet_topup_reserve_minutes', 30, $type),
                 'booking_service_deposit_note' => SettingService::get('booking_service_deposit_note', null, $type),
                 'booking_reminder_email' => SettingService::get('booking_reminder_email', ['enabled' => true, 'send_at' => '10:00'], $type),
                 'booking_feedback_email' => SettingService::get('booking_feedback_email', ['enabled' => true, 'send_at' => '10:00'], $type),
@@ -85,6 +86,7 @@ class ShopSettingController extends Controller
             'return_window_days' => (int) SettingService::get('ecommerce.return_window_days', 7, $type),
             'return_tracking_submit_days' => (int) SettingService::get('ecommerce.return_tracking_submit_days', 7, $type),
             'order_reserve_minutes' => (int) SettingService::get('ecommerce.order_reserve_minutes', 30, $type),
+            'wallet_topup_reserve_minutes' => (int) SettingService::get('ecommerce.wallet_topup_reserve_minutes', 30, $type),
             'ecommerce_payment_proof_notification' => SettingService::get('ecommerce_payment_proof_notification', ['enabled' => true, 'email' => ''], $type),
         ];
 
@@ -141,6 +143,8 @@ class ShopSettingController extends Controller
             'ecommerce.return_window_days' => 7,
             'ecommerce.return_tracking_submit_days' => 7,
             'ecommerce.order_reserve_minutes' => 30,
+            'ecommerce.wallet_topup_reserve_minutes' => 30,
+            'booking.wallet_topup_reserve_minutes' => 30,
             'ecommerce_payment_proof_notification' => ['enabled' => true, 'email' => ''],
             'booking_policy' => $this->defaultBookingPolicySetting(),
             'BOOKING_HOLD_MINUTES' => 10,
@@ -229,6 +233,10 @@ class ShopSettingController extends Controller
                 $data = $this->validateReturnTrackingSubmitDays($request);
                 break;
             case 'ecommerce.order_reserve_minutes':
+                $data = $this->validateOrderReserveMinutes($request);
+                break;
+            case 'ecommerce.wallet_topup_reserve_minutes':
+            case 'booking.wallet_topup_reserve_minutes':
                 $data = $this->validateOrderReserveMinutes($request);
                 break;
             case 'booking_policy':
@@ -868,6 +876,7 @@ class ShopSettingController extends Controller
                 'booking_policy',
                 'BOOKING_HOLD_MINUTES',
                 'BOOKING_MANUAL_TRANSFER_HOLD_MINUTES',
+                'booking.wallet_topup_reserve_minutes',
                 'booking_service_deposit_note',
                 'booking_reminder_email',
                 'booking_feedback_email',
@@ -893,6 +902,7 @@ class ShopSettingController extends Controller
             'ecommerce.return_window_days',
             'ecommerce.return_tracking_submit_days',
             'ecommerce.order_reserve_minutes',
+            'ecommerce.wallet_topup_reserve_minutes',
             'ecommerce_payment_proof_notification',
         ];
     }

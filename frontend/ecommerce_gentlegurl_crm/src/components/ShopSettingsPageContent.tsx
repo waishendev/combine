@@ -105,6 +105,7 @@ type ShopSettingsResponse = {
     return_window_days?: number
     return_tracking_submit_days?: number
     order_reserve_minutes?: number
+    wallet_topup_reserve_minutes?: number
     booking_hold_minutes?: number
     booking_manual_transfer_hold_minutes?: number
   }
@@ -235,6 +236,10 @@ const defaultOrderReserveSettings = {
   order_reserve_minutes: 30,
 }
 
+const defaultWalletTopupReserveSettings = {
+  wallet_topup_reserve_minutes: 30,
+}
+
 const defaultBookingHoldSettings = {
   booking_hold_minutes: 10,
   booking_manual_transfer_hold_minutes: 10,
@@ -258,6 +263,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   const [productReviewsSettings, setProductReviewsSettings] = useState(defaultProductReviewsSettings)
   const [returnSettings, setReturnSettings] = useState(defaultReturnSettings)
   const [orderReserveSettings, setOrderReserveSettings] = useState(defaultOrderReserveSettings)
+  const [walletTopupReserveSettings, setWalletTopupReserveSettings] = useState(defaultWalletTopupReserveSettings)
   const [bookingHoldSettings, setBookingHoldSettings] = useState(defaultBookingHoldSettings)
 
   const [contactSaveState, setContactSaveState] = useState<SaveState>('idle')
@@ -269,6 +275,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   const [productReviewsSaveState, setProductReviewsSaveState] = useState<SaveState>('idle')
   const [returnSaveState, setReturnSaveState] = useState<SaveState>('idle')
   const [orderReserveSaveState, setOrderReserveSaveState] = useState<SaveState>('idle')
+  const [walletTopupReserveSaveState, setWalletTopupReserveSaveState] = useState<SaveState>('idle')
   const [bookingHoldSaveState, setBookingHoldSaveState] = useState<SaveState>('idle')
   const [contactFeedback, setContactFeedback] = useState<FeedbackState | null>(null)
   const [homepageFeedback, setHomepageFeedback] = useState<FeedbackState | null>(null)
@@ -279,6 +286,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   const [productReviewsFeedback, setProductReviewsFeedback] = useState<FeedbackState | null>(null)
   const [returnFeedback, setReturnFeedback] = useState<FeedbackState | null>(null)
   const [orderReserveFeedback, setOrderReserveFeedback] = useState<FeedbackState | null>(null)
+  const [walletTopupReserveFeedback, setWalletTopupReserveFeedback] = useState<FeedbackState | null>(null)
   const [bookingHoldFeedback, setBookingHoldFeedback] = useState<FeedbackState | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [workspaceType, setWorkspaceType] = useState<Workspace>(forcedWorkspace ?? 'ecommerce')
@@ -459,6 +467,12 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
         setOrderReserveSettings({
           order_reserve_minutes:
             payload.data?.order_reserve_minutes ?? defaultOrderReserveSettings.order_reserve_minutes,
+        })
+
+        setWalletTopupReserveSettings({
+          wallet_topup_reserve_minutes:
+            payload.data?.wallet_topup_reserve_minutes ??
+            defaultWalletTopupReserveSettings.wallet_topup_reserve_minutes,
         })
 
         setBookingHoldSettings({
@@ -947,6 +961,48 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
       })
     } finally {
       setTimeout(() => setOrderReserveSaveState('idle'), 2000)
+    }
+  }
+
+  const handleWalletTopupReserveSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!canEdit) return
+    setWalletTopupReserveSaveState('saving')
+    setError(null)
+    setWalletTopupReserveFeedback(null)
+
+    const settingKey = isBookingWorkspace
+      ? 'booking.wallet_topup_reserve_minutes'
+      : 'ecommerce.wallet_topup_reserve_minutes'
+
+    try {
+      const response = await fetch(withType(`/api/ecommerce/shop-settings/${settingKey}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: workspaceType,
+          value:
+            Number(walletTopupReserveSettings.wallet_topup_reserve_minutes) ||
+            defaultWalletTopupReserveSettings.wallet_topup_reserve_minutes,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save wallet top-up reserve minutes')
+      }
+
+      setWalletTopupReserveSaveState('saved')
+      setWalletTopupReserveFeedback({ type: 'success', message: 'Wallet top-up reserve minutes saved.' })
+    } catch (err) {
+      console.error(err)
+      setWalletTopupReserveSaveState('error')
+      setError('Unable to save wallet top-up reserve minutes.')
+      setWalletTopupReserveFeedback({
+        type: 'error',
+        message: 'Unable to save wallet top-up reserve minutes.',
+      })
+    } finally {
+      setTimeout(() => setWalletTopupReserveSaveState('idle'), 2000)
     }
   }
 
@@ -1952,6 +2008,72 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
           </form>
         </section>
       )}
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
+          <div>
+            <h3 className="text-2xl font-semibold text-slate-900 mt-1">Wallet Top Up Reserve</h3>
+            <p className="text-sm text-slate-500 mt-2 max-w-2xl">
+              How long customers have to complete Billplz payment or upload manual transfer proof for a wallet
+              top-up before it expires. Expired top-ups cannot be paid or proven — customers must create a new
+              top-up. This setting is separate for {isBookingWorkspace ? 'Booking' : 'Ecommerce'}.
+            </p>
+          </div>
+        </div>
+
+        <form className="mt-6 space-y-5" onSubmit={handleWalletTopupReserveSubmit}>
+          {walletTopupReserveFeedback && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                walletTopupReserveFeedback.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <div className="flex items-start">
+                <i
+                  className={`fa-solid ${
+                    walletTopupReserveFeedback.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'
+                  } mr-2 mt-[2px]`}
+                />
+                <p>{walletTopupReserveFeedback.message}</p>
+              </div>
+            </div>
+          )}
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="block text-sm font-medium text-slate-800">Payment Window (Minutes)</span>
+              <input
+                type="number"
+                min={1}
+                max={1440}
+                value={walletTopupReserveSettings.wallet_topup_reserve_minutes}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setWalletTopupReserveSettings((prev) => ({
+                    ...prev,
+                    wallet_topup_reserve_minutes: Number(event.target.value),
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+              <p className="text-xs text-slate-500">
+                Shown on Wallet Activity as a countdown; unpaid / unproven top-ups expire after this time.
+              </p>
+            </label>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={!canEdit || walletTopupReserveSaveState === 'saving'}
+              className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {renderSaveLabel(walletTopupReserveSaveState)}
+            </button>
+          </div>
+        </form>
+      </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">

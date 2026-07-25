@@ -4,18 +4,27 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\BankAccount;
+use App\Models\BillplzPaymentGatewayOption;
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\CustomerWalletTransaction;
 use App\Models\Ecommerce\PaymentGateway;
+use App\Services\BillplzService;
 use App\Services\Ecommerce\CustomerWalletService;
+use App\Services\Ecommerce\WalletTopupReserveService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use RuntimeException;
+use Throwable;
 
 class PublicCustomerWalletController extends Controller
 {
+    public function __construct(protected WalletTopupReserveService $walletTopupReserveService)
+    {
+    }
+
     public function show(): JsonResponse
     {
         /** @var Customer $customer */
@@ -43,7 +52,10 @@ class PublicCustomerWalletController extends Controller
             $query->where('direction', $direction);
         }
 
-        return response()->json(['success' => true, 'data' => ['transactions' => $query->paginate((int) $request->query('per_page', 20))]]);
+        $paginator = $query->paginate((int) $request->query('per_page', 20));
+        $paginator->getCollection()->transform(fn (CustomerWalletTransaction $tx) => $this->decorateTopup($tx));
+
+        return response()->json(['success' => true, 'data' => ['transactions' => $paginator]]);
     }
 
     public function gateways(Request $request): JsonResponse
@@ -102,7 +114,7 @@ class PublicCustomerWalletController extends Controller
         ]]);
     }
 
-    public function topup(Request $request, CustomerWalletService $wallet): JsonResponse
+    public function topup(Request $request, CustomerWalletService $wallet, BillplzService $billplzService): JsonResponse
     {
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:1', 'max:10000'],
@@ -111,8 +123,10 @@ class PublicCustomerWalletController extends Controller
             'payment_method_label' => ['nullable', 'string', 'max:255'],
             'reference_no' => ['nullable', 'string', 'max:255'],
             'bank_account_id' => ['nullable', 'integer', 'exists:bank_accounts,id'],
+            'billplz_gateway_option_id' => ['nullable', 'integer', 'exists:billplz_payment_gateway_options,id'],
         ]);
 
+        $normalizedKey = $this->normalizeGatewayKey($validated['payment_gateway_key']);
         $gatewayKey = $this->denormalizeGatewayKey($validated['payment_gateway_key']);
         $gateway = PaymentGateway::query()
             ->where('type', $validated['workspace_type'])
@@ -130,40 +144,287 @@ class PublicCustomerWalletController extends Controller
         }
 
         $bankAccount = null;
-        if ($this->normalizeGatewayKey($gateway->key) === 'manual_transfer') {
+        if ($normalizedKey === 'manual_transfer') {
             $bankAccount = BankAccount::query()
                 ->where('type', $validated['workspace_type'])
                 ->where('is_active', true)
                 ->findOrFail($validated['bank_account_id'] ?? 0);
         }
 
+        $selectedGatewayOption = null;
+        if ($normalizedKey === 'billplz_online_banking') {
+            $selectedGatewayOption = $this->resolveBillplzGatewayOption(
+                $validated['workspace_type'],
+                'online_banking',
+                (int) ($validated['billplz_gateway_option_id'] ?? 0),
+            );
+        }
+
         /** @var Customer $customer */
         $customer = auth('customer')->user();
+        $provider = str_starts_with($gateway->key, 'billplz') ? 'billplz' : 'manual';
+
         $transaction = $wallet->createPendingTopup($customer, array_merge($validated, [
-            'payment_gateway_key' => $this->normalizeGatewayKey($gateway->key),
+            'payment_gateway_key' => $normalizedKey,
             'payment_method_label' => $validated['payment_method_label'] ?? $gateway->name,
+            'remark' => $provider === 'billplz'
+                ? 'Balance top up pending Billplz payment.'
+                : 'Balance top up pending payment proof.',
             'metadata' => [
                 'gateway_key' => $gateway->key,
-                'provider' => str_starts_with($gateway->key, 'billplz') ? 'billplz' : 'manual',
+                'provider' => $provider,
                 'bank_account_id' => $bankAccount?->id,
                 'bank_name' => $bankAccount?->bank_name,
                 'bank_account_name' => $bankAccount?->account_name,
                 'bank_account_number' => $bankAccount?->account_number,
+                'bank_label' => $bankAccount?->label,
+                'bank_qr_image_url' => $bankAccount?->qr_image_url,
+                'bank_instructions' => $bankAccount?->instructions,
+                'billplz_gateway_option_id' => $selectedGatewayOption?->id,
+                'selected_gateway_code' => $selectedGatewayOption?->code,
             ],
         ]));
 
-        return response()->json(['success' => true, 'message' => 'Top-up request submitted. Your balance will be credited after payment is successfully verified.', 'data' => ['topup' => $transaction]], 201);
+        $paymentUrl = null;
+        if ($provider === 'billplz') {
+            try {
+                $bill = $billplzService->createBillForWalletTopup(
+                    $customer,
+                    $transaction,
+                    $validated['workspace_type'],
+                    $normalizedKey,
+                    $selectedGatewayOption,
+                );
+                $paymentUrl = data_get($bill, 'url');
+                $metadata = $transaction->metadata ?? [];
+                $metadata['billplz_id'] = data_get($bill, 'id');
+                $metadata['billplz_url'] = $paymentUrl;
+                $metadata['billplz_collection_id'] = data_get($bill, 'collection_id');
+                $transaction->forceFill([
+                    'metadata' => $metadata,
+                    'reference_no' => data_get($bill, 'id') ?: $transaction->reference_no,
+                ])->save();
+                $transaction = $transaction->refresh();
+            } catch (Throwable $e) {
+                $wallet->markFailed($transaction, 'Unable to create Billplz payment: '.$e->getMessage());
+                $message = $e instanceof RuntimeException
+                    ? $e->getMessage()
+                    : 'Unable to start Billplz payment. Please try again.';
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['payment_gateway_key' => [$message]],
+                ], 422);
+            }
+
+            if (! $paymentUrl) {
+                $wallet->markFailed($transaction, 'Billplz did not return a payment URL.');
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to start Billplz payment. Please try again.',
+                ], 422);
+            }
+        }
+
+        $message = $provider === 'billplz'
+            ? 'Redirecting to Billplz to complete your top up.'
+            : 'Top-up request created. Transfer the amount and upload your payment proof.';
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data' => [
+                'topup' => $this->decorateTopup($transaction),
+                'payment_url' => $paymentUrl,
+                'requires_proof' => $provider === 'manual',
+            ],
+        ], 201);
     }
 
     public function topupShow(CustomerWalletTransaction $topup): JsonResponse
     {
         abort_unless($topup->customer_id === auth('customer')->id(), 404);
-        return response()->json(['success' => true, 'data' => ['topup' => $topup->load('creator:id,name')]]);
+
+        return response()->json([
+            'success' => true,
+            'data' => ['topup' => $this->decorateTopup($topup->load('creator:id,name'))],
+        ]);
     }
 
-    public function uploadProof(Request $request, CustomerWalletTransaction $topup): JsonResponse
+    public function pay(CustomerWalletTransaction $topup, BillplzService $billplzService, CustomerWalletService $wallet): JsonResponse
     {
         abort_unless($topup->customer_id === auth('customer')->id(), 404);
+        abort_unless($topup->type === CustomerWalletTransaction::TYPE_TOPUP, 404);
+
+        if ($this->walletTopupReserveService->expireIfNeeded($topup->refresh(), $wallet)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This top-up has expired. Please create a new top-up.',
+                'data' => ['topup' => $this->decorateTopup($topup->refresh())],
+            ], 422);
+        }
+
+        if ($topup->status !== CustomerWalletTransaction::STATUS_PENDING_PAYMENT) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This top-up is not awaiting payment.',
+            ], 422);
+        }
+
+        $metadata = is_array($topup->metadata) ? $topup->metadata : [];
+        $provider = (string) ($metadata['provider'] ?? '');
+        $paymentMethod = $this->normalizeGatewayKey((string) ($topup->payment_gateway_key ?? ''));
+
+        if ($provider !== 'billplz' && ! str_starts_with($paymentMethod, 'billplz_')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only Billplz top-ups can be paid online.',
+            ], 422);
+        }
+
+        $existingUrl = (string) ($metadata['billplz_url'] ?? '');
+        if ($existingUrl !== '') {
+            return response()->json([
+                'success' => true,
+                'message' => 'Continue payment on Billplz.',
+                'data' => [
+                    'topup' => $this->decorateTopup($topup),
+                    'payment_url' => $existingUrl,
+                ],
+            ]);
+        }
+
+        $workspaceType = in_array((string) $topup->workspace_type, ['ecommerce', 'booking'], true)
+            ? (string) $topup->workspace_type
+            : 'booking';
+
+        $selectedGatewayOption = null;
+        $optionId = (int) ($metadata['billplz_gateway_option_id'] ?? 0);
+        if ($paymentMethod === 'billplz_online_banking' && $optionId > 0) {
+            $selectedGatewayOption = BillplzPaymentGatewayOption::query()
+                ->where('id', $optionId)
+                ->where('type', $workspaceType)
+                ->where('gateway_group', 'online_banking')
+                ->where('is_active', true)
+                ->first();
+        }
+
+        /** @var Customer $customer */
+        $customer = auth('customer')->user();
+
+        try {
+            $bill = $billplzService->createBillForWalletTopup(
+                $customer,
+                $topup,
+                $workspaceType,
+                $paymentMethod ?: 'billplz_online_banking',
+                $selectedGatewayOption,
+            );
+            $paymentUrl = (string) data_get($bill, 'url', '');
+            if ($paymentUrl === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to start Billplz payment. Please try again.',
+                ], 422);
+            }
+
+            $metadata['billplz_id'] = data_get($bill, 'id');
+            $metadata['billplz_url'] = $paymentUrl;
+            $metadata['billplz_collection_id'] = data_get($bill, 'collection_id');
+            $topup->forceFill([
+                'metadata' => $metadata,
+                'reference_no' => data_get($bill, 'id') ?: $topup->reference_no,
+            ])->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Redirecting to Billplz to complete your top up.',
+                'data' => [
+                    'topup' => $this->decorateTopup($topup->refresh()),
+                    'payment_url' => $paymentUrl,
+                ],
+            ]);
+        } catch (Throwable $e) {
+            $message = $e instanceof RuntimeException
+                ? $e->getMessage()
+                : 'Unable to start Billplz payment. Please try again.';
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], 422);
+        }
+    }
+
+    public function cancel(CustomerWalletTransaction $topup, CustomerWalletService $wallet): JsonResponse
+    {
+        abort_unless($topup->customer_id === auth('customer')->id(), 404);
+        abort_unless($topup->type === CustomerWalletTransaction::TYPE_TOPUP, 404);
+
+        if ($this->walletTopupReserveService->expireIfNeeded($topup->refresh(), $wallet)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This top-up has already expired.',
+                'data' => ['topup' => $this->decorateTopup($topup->refresh())],
+            ], 422);
+        }
+
+        $cancellable = [
+            CustomerWalletTransaction::STATUS_PENDING,
+            CustomerWalletTransaction::STATUS_PENDING_PAYMENT,
+            CustomerWalletTransaction::STATUS_PENDING_PROOF,
+        ];
+
+        if (! in_array($topup->status, $cancellable, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This top-up can no longer be cancelled.',
+            ], 422);
+        }
+
+        $cancelled = $wallet->markFailed(
+            $topup,
+            'Cancelled by customer.',
+            null,
+            CustomerWalletTransaction::STATUS_CANCELLED,
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Top-up cancelled.',
+            'data' => ['topup' => $this->decorateTopup($cancelled)],
+        ]);
+    }
+
+    public function uploadProof(Request $request, CustomerWalletTransaction $topup, CustomerWalletService $wallet): JsonResponse
+    {
+        abort_unless($topup->customer_id === auth('customer')->id(), 404);
+        abort_unless($topup->type === CustomerWalletTransaction::TYPE_TOPUP, 404);
+
+        if ($this->walletTopupReserveService->expireIfNeeded($topup->refresh(), $wallet)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This top-up has expired. Please create a new top-up to upload proof.',
+                'data' => ['topup' => $this->decorateTopup($topup->refresh())],
+            ], 422);
+        }
+
+        $allowedStatuses = [
+            CustomerWalletTransaction::STATUS_PENDING,
+            CustomerWalletTransaction::STATUS_PENDING_PROOF,
+            CustomerWalletTransaction::STATUS_WAITING_VERIFICATION,
+            CustomerWalletTransaction::STATUS_PROOF_SUBMITTED,
+        ];
+
+        if (! in_array($topup->status, $allowedStatuses, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This top-up can no longer accept payment proof.',
+            ], 422);
+        }
+
         $request->validate(['payment_proof' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120']]);
         $path = $request->file('payment_proof')->store('wallet-payment-proofs', 'public');
         $metadata = $topup->metadata ?? [];
@@ -175,7 +436,50 @@ class PublicCustomerWalletController extends Controller
             'status' => CustomerWalletTransaction::STATUS_WAITING_VERIFICATION,
             'remark' => 'Manual transfer proof uploaded. Pending verification.',
         ])->save();
-        return response()->json(['success' => true, 'message' => 'Payment proof submitted. Waiting for staff verification.', 'data' => ['topup' => $topup->refresh()]]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment proof submitted. Waiting for verification.',
+            'data' => ['topup' => $this->decorateTopup($topup->refresh())],
+        ]);
+    }
+
+    private function decorateTopup(CustomerWalletTransaction $topup): CustomerWalletTransaction
+    {
+        if ($this->walletTopupReserveService->isSubjectToReserve($topup)) {
+            $expiresAt = $this->walletTopupReserveService->getReserveExpiresAt($topup);
+            $topup->setAttribute('reserve_expires_at', $expiresAt->toDateTimeString());
+            $topup->setAttribute('is_reserve_expired', $expiresAt->isPast());
+        } else {
+            $topup->setAttribute('reserve_expires_at', null);
+            $topup->setAttribute('is_reserve_expired', false);
+        }
+
+        return $topup;
+    }
+
+    private function resolveBillplzGatewayOption(string $workspaceType, string $gatewayGroup, int $optionId): ?BillplzPaymentGatewayOption
+    {
+        if ($optionId <= 0) {
+            return null;
+        }
+
+        $option = BillplzPaymentGatewayOption::query()
+            ->where('id', $optionId)
+            ->where('type', $workspaceType)
+            ->where('gateway_group', $gatewayGroup)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $option) {
+            abort(response()->json([
+                'success' => false,
+                'message' => 'Selected online banking option is not available.',
+                'errors' => ['billplz_gateway_option_id' => ['Selected online banking option is not available.']],
+            ], 422));
+        }
+
+        return $option;
     }
 
     private function normalizeGatewayKey(string $key): string

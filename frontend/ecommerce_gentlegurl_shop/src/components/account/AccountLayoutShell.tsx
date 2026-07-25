@@ -10,6 +10,7 @@ import { useCart } from "@/contexts/CartContext";
 
 const navItems = [
   { label: "My Account", href: "/account" },
+  { label: "Wallet Activity", href: "/account/wallet" },
   { label: "My Orders", href: "/account/orders" },
   { label: "My Returns", href: "/account/returns" },
   // { label: "Points History", href: "/account/points/history" },

@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Mail\BookingConfirmationMail;
 use App\Models\BillplzBill;
 use App\Models\Booking\Booking;
+use App\Models\Ecommerce\CustomerWalletTransaction;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\Cart;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Services\Booking\BookingOrderConfirmationService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\Ecommerce\CustomerWalletService;
 use App\Services\SettingService;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
@@ -23,6 +25,7 @@ class BillplzCallbackController extends Controller
     public function __construct(
         protected BillplzConfigResolver $configResolver,
         protected BookingOrderConfirmationService $bookingOrderConfirmationService,
+        protected CustomerWalletService $customerWalletService,
     ) {
     }
 
@@ -33,6 +36,7 @@ class BillplzCallbackController extends Controller
 
         $billId = $billplzPayload['id'] ?? null;
         $referenceOrderNo = $billplzPayload['reference_1'] ?? $billplzPayload['order_no'] ?? null;
+        $reference2 = $billplzPayload['reference_2'] ?? null;
 
         if (!$billId && !$referenceOrderNo) {
             Log::warning('Billplz callback missing bill id and reference', $payload);
@@ -47,7 +51,12 @@ class BillplzCallbackController extends Controller
             $order = Order::where('order_number', $referenceOrderNo)->first();
         }
 
-        if (!$order) {
+        if (! $order) {
+            $walletTopup = $this->findWalletTopup($billId, $referenceOrderNo, $reference2);
+            if ($walletTopup) {
+                return $this->processWalletTopupCallback($walletTopup, $payload, $billplzPayload, (string) $billId);
+            }
+
             Log::warning('Billplz callback order not found', ['bill_id' => $billId, 'reference' => $referenceOrderNo, 'payload' => $payload]);
             return response('order not found', 404);
         }
@@ -136,12 +145,15 @@ class BillplzCallbackController extends Controller
     public function redirect(Request $request)
     {
         $billId = $request->query('billplz[id]') ?? $request->query('bill_id') ?? $request->query('id');
+        $billplzPayload = $request->query('billplz') ?? [];
+        if (! is_array($billplzPayload)) {
+            $billplzPayload = [];
+        }
 
         if ($billId) {
             $bill = BillplzBill::where('billplz_id', $billId)->first();
             if ($bill) {
                 $order = $bill->order;
-                $billplzPayload = $request->query('billplz') ?? [];
 
                 if (!empty($billplzPayload)) {
                     $workspaceType = $order->paymentGateway?->type ?? WorkspaceType::ECOMMERCE;
@@ -206,6 +218,26 @@ class BillplzCallbackController extends Controller
                     'payment_status' => $order->payment_status,
                     'status' => $order->status,
                 ]);
+            }
+
+            $walletTopup = $this->findWalletTopup((string) $billId, $billplzPayload['reference_1'] ?? null, $billplzPayload['reference_2'] ?? null);
+            if ($walletTopup) {
+                $this->processWalletTopupCallback($walletTopup, ['billplz' => $billplzPayload], $billplzPayload, (string) $billId);
+
+                $workspaceType = in_array((string) $walletTopup->workspace_type, ['ecommerce', 'booking'], true)
+                    ? (string) $walletTopup->workspace_type
+                    : WorkspaceType::BOOKING;
+                $resolvedConfig = $this->configResolver->resolve($workspaceType, $walletTopup->payment_gateway_key ?: 'billplz_fpx');
+                $workspaceFrontend = rtrim((string) config("services.frontend_url_{$workspaceType}"), '/');
+                $frontendUrl = $workspaceFrontend ?: rtrim((string) ($resolvedConfig['frontend_url'] ?? ''), '/');
+                if ($frontendUrl) {
+                    return redirect()->away($frontendUrl.'/account/wallet?'.http_build_query([
+                        'wallet_topup' => '1',
+                        'tx' => $walletTopup->transaction_no,
+                        'provider' => 'billplz',
+                        'payment_method' => $walletTopup->payment_gateway_key,
+                    ]));
+                }
             }
         }
 
@@ -440,5 +472,117 @@ class BillplzCallbackController extends Controller
 
             $cart->save();
         }
+    }
+
+    protected function findWalletTopup(?string $billId, mixed $reference1, mixed $reference2): ?CustomerWalletTransaction
+    {
+        if ($billId) {
+            $byBill = CustomerWalletTransaction::query()
+                ->where('type', CustomerWalletTransaction::TYPE_TOPUP)
+                ->where(function ($query) use ($billId) {
+                    $query->where('reference_no', $billId)
+                        ->orWhere('metadata->billplz_id', $billId);
+                })
+                ->latest('id')
+                ->first();
+            if ($byBill) {
+                return $byBill;
+            }
+        }
+
+        foreach ([$reference2, $reference1] as $reference) {
+            $ref = is_string($reference) ? trim($reference) : '';
+            if ($ref === '' || ! str_starts_with($ref, 'WTX')) {
+                continue;
+            }
+            $byTx = CustomerWalletTransaction::query()
+                ->where('type', CustomerWalletTransaction::TYPE_TOPUP)
+                ->where('transaction_no', $ref)
+                ->latest('id')
+                ->first();
+            if ($byTx) {
+                return $byTx;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $billplzPayload
+     */
+    protected function processWalletTopupCallback(
+        CustomerWalletTransaction $topup,
+        array $payload,
+        array $billplzPayload,
+        string $billId,
+    ) {
+        $workspaceType = in_array((string) $topup->workspace_type, ['ecommerce', 'booking'], true)
+            ? (string) $topup->workspace_type
+            : WorkspaceType::BOOKING;
+
+        $signatureValid = $this->verifySignature($payload, $workspaceType);
+        $paid = isset($billplzPayload['paid']) ? filter_var($billplzPayload['paid'], FILTER_VALIDATE_BOOLEAN) : false;
+        $state = $billplzPayload['state'] ?? null;
+        $transactionStatus = $billplzPayload['transaction_status'] ?? null;
+        $isPaymentConfirmed = $paid || $state === 'paid' || $transactionStatus === 'completed';
+
+        if (! $signatureValid && ! $isPaymentConfirmed) {
+            Log::warning('Billplz wallet top-up callback invalid signature', [
+                'bill_id' => $billId,
+                'wallet_transaction_id' => $topup->id,
+                'transaction_no' => $topup->transaction_no,
+            ]);
+
+            return response('invalid signature', 400);
+        }
+
+        $metadata = $topup->metadata ?? [];
+        $metadata['billplz_callback'] = $billplzPayload;
+        $metadata['billplz_id'] = $billId ?: ($metadata['billplz_id'] ?? null);
+        $topup->forceFill([
+            'metadata' => $metadata,
+            'reference_no' => $billId ?: $topup->reference_no,
+        ])->save();
+
+        if ($isPaymentConfirmed && $topup->status !== CustomerWalletTransaction::STATUS_COMPLETED) {
+            try {
+                $fresh = $topup->refresh();
+                // Late Billplz callback after reserve expiry: still credit if money was paid.
+                if (in_array($fresh->status, [
+                    CustomerWalletTransaction::STATUS_EXPIRED,
+                    CustomerWalletTransaction::STATUS_CANCELLED,
+                ], true)) {
+                    $fresh->forceFill([
+                        'status' => CustomerWalletTransaction::STATUS_PENDING_PAYMENT,
+                        'remark' => 'Billplz payment confirmed after reserve window; crediting balance.',
+                    ])->save();
+                }
+
+                $this->customerWalletService->complete(
+                    $fresh->refresh(),
+                    $billId ?: $topup->reference_no,
+                    null,
+                    'Billplz payment confirmed. Balance credited.',
+                );
+                Log::info('Billplz wallet top-up completed', [
+                    'wallet_transaction_id' => $topup->id,
+                    'transaction_no' => $topup->transaction_no,
+                    'bill_id' => $billId,
+                    'signature_valid' => $signatureValid,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Billplz wallet top-up completion failed', [
+                    'wallet_transaction_id' => $topup->id,
+                    'bill_id' => $billId,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response('wallet topup failed', 500);
+            }
+        }
+
+        return response('OK', 200);
     }
 }

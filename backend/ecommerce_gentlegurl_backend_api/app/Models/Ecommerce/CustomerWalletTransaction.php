@@ -20,6 +20,7 @@ class CustomerWalletTransaction extends Model
     public const STATUS_REJECTED = 'rejected';
     public const STATUS_FAILED = 'failed';
     public const STATUS_CANCELLED = 'cancelled';
+    public const STATUS_EXPIRED = 'expired';
     public const STATUS_REVERSED = 'reversed';
 
     public const PENDING_REVIEW_STATUSES = [
@@ -44,7 +45,7 @@ class CustomerWalletTransaction extends Model
     public function scopeTopUps(Builder $query): Builder { return $query->where('type', self::TYPE_TOPUP)->where('direction', self::DIRECTION_CREDIT); }
     public function scopePendingReview(Builder $query): Builder { return $query->topUps()->whereIn('status', self::PENDING_REVIEW_STATUSES); }
     public function scopeCompleted(Builder $query): Builder { return $query->where('status', self::STATUS_COMPLETED); }
-    public function scopeTerminal(Builder $query): Builder { return $query->whereIn('status', [self::STATUS_COMPLETED, self::STATUS_REJECTED, self::STATUS_FAILED, self::STATUS_CANCELLED, self::STATUS_REVERSED]); }
+    public function scopeTerminal(Builder $query): Builder { return $query->whereIn('status', [self::STATUS_COMPLETED, self::STATUS_REJECTED, self::STATUS_FAILED, self::STATUS_CANCELLED, self::STATUS_EXPIRED, self::STATUS_REVERSED]); }
 
     public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }

@@ -44,6 +44,16 @@ class SettingSeeder extends Seeder
         );
 
         Setting::updateOrCreate(
+            ['type' => 'ecommerce', 'key' => 'ecommerce.wallet_topup_reserve_minutes'],
+            ['value' => 30]
+        );
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'booking.wallet_topup_reserve_minutes'],
+            ['value' => 30]
+        );
+
+        Setting::updateOrCreate(
             ['type' => 'booking', 'key' => 'booking_policy'],
             ['value' => [
                 'reschedule' => [

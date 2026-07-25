@@ -226,6 +226,8 @@ Route::prefix('/public/shop')->group(function () {
         Route::get('/customer/wallet/payment-gateways', [PublicCustomerWalletController::class, 'gateways']);
         Route::post('/customer/wallet/topups', [PublicCustomerWalletController::class, 'topup']);
         Route::get('/customer/wallet/topups/{topup}', [PublicCustomerWalletController::class, 'topupShow']);
+        Route::post('/customer/wallet/topups/{topup}/pay', [PublicCustomerWalletController::class, 'pay']);
+        Route::post('/customer/wallet/topups/{topup}/cancel', [PublicCustomerWalletController::class, 'cancel']);
         Route::post('/customer/wallet/topups/{topup}/payment-proof', [PublicCustomerWalletController::class, 'uploadProof']);
 
         // Order History
