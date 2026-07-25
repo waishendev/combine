@@ -319,6 +319,16 @@ export async function printReceiptWifi(
   }
 }
 
+export async function printThermalReceiptCopies(
+  settings: { ip_address: string | null; port: number | null; paper_width: 58 | 80; copies: number },
+  data: ReceiptData,
+): Promise<void> {
+  if (!settings.ip_address || !settings.port) throw new Error('Network printer is not configured.')
+  for (let copy = 0; copy < settings.copies; copy += 1) {
+    await printReceiptWifi(settings.ip_address, settings.port, { ...data, paper_width: settings.paper_width })
+  }
+}
+
 export async function testWifiPrinterConnection(ip: string, port: number): Promise<void> {
   const testData: ReceiptData = {
     order_number: 'TEST-PRINT',

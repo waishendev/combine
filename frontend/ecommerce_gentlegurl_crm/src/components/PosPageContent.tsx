@@ -12,6 +12,7 @@ import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRe
 import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import type { PosDepositTransaction, PosRefundTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
+import ThermalPrinterCheckoutOption from '@/components/pos/ThermalPrinterCheckoutOption'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import {
   batchReleaseAppointmentPackageClaims,
@@ -118,13 +119,13 @@ import {
 import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
-import { defaultThermalPrinterSettings, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
+import { defaultThermalPrinterSettings, getThermalPrinterAvailability, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
 import OrderViewPanel from './OrderViewPanel'
 import CustomerCreateModal from './CustomerCreateModal'
 import type { CustomerRowData } from './CustomerRow'
 import {
   printReceipt,
-  printReceiptWifi,
+  printThermalReceiptCopies,
   type ReceiptLineItem,
 } from '@/utils/printReceipt'
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
@@ -7133,9 +7134,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       } else {
         void (async () => {
           try {
-            for (let copy = 0; copy < thermalPrinterSettings.copies; copy += 1) {
-              await printReceiptWifi(thermalPrinterSettings.ip_address!, thermalPrinterSettings.port!, receiptPayload)
-            }
+            await printThermalReceiptCopies(thermalPrinterSettings, receiptPayload)
             pushToast('success', `${thermalPrinterSettings.copies} receipt ${thermalPrinterSettings.copies === 1 ? 'copy' : 'copies'} sent to printer.`)
           } catch (error) {
             pushToast('error', `Payment completed, but printing failed: ${error instanceof Error ? error.message : 'Printer unavailable'}`)
@@ -8361,6 +8360,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
     setSplitPaymentAmounts(buildDefaultSplitForTotal(cartTotal))
     setPaymentMethod('qrpay')
+    setAutoPrint(
+      thermalPrinterSettings.auto_print_receipt && getThermalPrinterAvailability(thermalPrinterSettings).available,
+    )
     setCheckoutConfirmationOpen(true)
   }
 
@@ -12178,24 +12180,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ) : null}
                 </div>
 
-              <div className="mt-5 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 px-5 py-4 shadow-sm">
-                <label className="flex cursor-pointer items-center gap-3 select-none">
-                  <input
-                    type="checkbox"
-                    checked={autoPrint}
-                    disabled={thermalPrinterLoading || !thermalPrinterSettings.is_enabled}
-                    onChange={(event) => setAutoPrint(event.target.checked)}
-                    className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
-                  />
-                  <span className="text-sm font-semibold text-gray-700">Auto Print Receipt</span>
-                </label>
-                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-gray-200 pt-3 text-xs">
-                  <span className="text-gray-500">Printer</span><span className="text-right font-medium text-gray-800">{thermalPrinterLoading ? 'Loading…' : thermalPrinterSettings.printer_name || 'Not configured'}</span>
-                  <span className="text-gray-500">Connection</span><span className="text-right font-medium capitalize text-gray-800">{thermalPrinterSettings.connection_type}</span>
-                  {thermalPrinterSettings.connection_type === 'network' ? <><span className="text-gray-500">Address</span><span className="text-right font-medium text-gray-800">{thermalPrinterSettings.ip_address ? `${thermalPrinterSettings.ip_address}:${thermalPrinterSettings.port}` : 'Not configured'}</span></> : null}
-                  <span className="text-gray-500">Status</span><span className={`text-right font-semibold ${thermalPrinterSettings.is_enabled && thermalPrinterSettings.ip_address ? 'text-emerald-700' : 'text-amber-700'}`}>{thermalPrinterLoading ? 'Loading' : !thermalPrinterSettings.is_enabled ? 'Disabled' : thermalPrinterSettings.connection_type === 'network' && thermalPrinterSettings.ip_address ? 'Ready' : 'Not Configured'}</span>
-                </div>
-                <a href="/settings/thermal-printer" className="mt-3 inline-block text-xs font-semibold text-blue-600 hover:underline">Manage Printer Settings</a>
+              <div className="mt-5">
+                <ThermalPrinterCheckoutOption
+                  checked={autoPrint}
+                  onCheckedChange={setAutoPrint}
+                  settings={thermalPrinterSettings}
+                  loading={thermalPrinterLoading}
+                />
               </div>
 
               <div className="mt-8 flex gap-4 pt-2 flex-shrink-0">

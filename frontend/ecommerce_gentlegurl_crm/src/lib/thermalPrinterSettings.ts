@@ -24,6 +24,13 @@ export const defaultThermalPrinterSettings: ThermalPrinterSettings = {
   copies: 1,
 }
 
+export function getThermalPrinterAvailability(settings: ThermalPrinterSettings): { available: boolean; label: 'Ready' | 'Printer Disabled' | 'Unsupported' | 'Not Configured' } {
+  if (!settings.is_enabled) return { available: false, label: 'Printer Disabled' }
+  if (settings.connection_type !== 'network') return { available: false, label: 'Unsupported' }
+  if (!settings.ip_address?.trim() || !settings.port) return { available: false, label: 'Not Configured' }
+  return { available: true, label: 'Ready' }
+}
+
 export async function getThermalPrinterSettings() {
   const response = await apiFetch<ApiResponse<Partial<ThermalPrinterSettings>>>('/api/proxy/ecommerce/thermal-printer-settings')
   return { ...defaultThermalPrinterSettings, ...response.data }

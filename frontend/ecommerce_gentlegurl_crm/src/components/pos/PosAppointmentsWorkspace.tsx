@@ -93,6 +93,8 @@ import {
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
+import { defaultThermalPrinterSettings, getThermalPrinterAvailability, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
+import { printThermalReceiptCopies, type ReceiptData } from '@/utils/printReceipt'
 
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
 import { StaffSplitModeToggle } from '@/components/pos/PosStaffSplitEditorPanel'
@@ -101,6 +103,7 @@ import { SettlementRefundBreakdownRows } from '@/components/pos/SettlementCartPa
 import PosAppointmentPaymentLinksSection from '@/components/pos/PosAppointmentPaymentLinksSection'
 import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
+import ThermalPrinterCheckoutOption from '@/components/pos/ThermalPrinterCheckoutOption'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import {
   batchReleaseAppointmentPackageClaims,
@@ -447,6 +450,37 @@ export default function PosAppointmentsWorkspace({
     },
     [dismissToast],
   )
+  const [thermalPrinterSettings, setThermalPrinterSettings] = useState<ThermalPrinterSettings>(defaultThermalPrinterSettings)
+  const [thermalPrinterLoading, setThermalPrinterLoading] = useState(true)
+  const [createAppointmentAutoPrint, setCreateAppointmentAutoPrint] = useState(false)
+  const [appointmentCheckoutAutoPrint, setAppointmentCheckoutAutoPrint] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    getThermalPrinterSettings()
+      .then((settings) => {
+        if (active) setThermalPrinterSettings(settings)
+      })
+      .catch(() => {
+        if (active) pushToast('warning', 'Printer settings are unavailable. Appointments can continue without printing.')
+      })
+      .finally(() => {
+        if (active) setThermalPrinterLoading(false)
+      })
+    return () => { active = false }
+  }, [pushToast])
+
+  const printAppointmentReceipt = useCallback((enabled: boolean, receipt: ReceiptData) => {
+    if (!enabled) return
+    const availability = getThermalPrinterAvailability(thermalPrinterSettings)
+    if (!availability.available) {
+      pushToast('warning', `Appointment saved, but the receipt was not printed: ${availability.label}.`)
+      return
+    }
+    void printThermalReceiptCopies(thermalPrinterSettings, receipt)
+      .then(() => pushToast('success', `${thermalPrinterSettings.copies} receipt ${thermalPrinterSettings.copies === 1 ? 'copy' : 'copies'} sent to printer.`))
+      .catch((error) => pushToast('warning', `Appointment saved, but printing failed: ${error instanceof Error ? error.message : 'Printer unavailable'}`))
+  }, [pushToast, thermalPrinterSettings])
   const { hasOpenShift, cashShiftLoading, requireOpenShiftMessage } = usePosCashShift()
   const { isCompactLayout } = usePosWideLayout()
   const settlementColumnRef = useRef<HTMLDivElement>(null)
@@ -1575,12 +1609,15 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentGuestName('')
     setCreateAppointmentGuestPhone('')
     setCreateAppointmentGuestEmail('')
+    setCreateAppointmentAutoPrint(
+      thermalPrinterSettings.auto_print_receipt && getThermalPrinterAvailability(thermalPrinterSettings).available,
+    )
     setCreateAppointmentModalOpen(true)
     if (!createAppointmentServices.length) {
       void fetchCreateAppointmentServices()
     void fetchBookingServiceCategories()
     }
-  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchCreateAppointmentServices, requireOpenShiftMessage, showMsg])
+  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchCreateAppointmentServices, requireOpenShiftMessage, showMsg, thermalPrinterSettings])
 
   const closeCreateAppointmentMemberPicker = useCallback(() => {
     setCreateAppointmentMemberPickerOpen(false)
@@ -2067,11 +2104,12 @@ export default function PosAppointmentsWorkspace({
       const depositReceiptUrl = json?.data?.receipt_public_url ?? json?.data?.order?.receipt_public_url ?? null
       if (depositOrderId > 0 && depositOrderNumber) {
         const depositCashPaid = Number(createAppointmentDepositPayments.cash || 0)
+        const depositPaymentMethod = createAppointmentDepositRows.length > 1 ? 'split' : (createAppointmentDepositRows[0]?.method ?? 'cash')
         setAppointmentSettlementResult({
           order_id: depositOrderId,
           order_number: depositOrderNumber,
           receipt_public_url: depositReceiptUrl,
-          payment_method: createAppointmentDepositRows.length > 1 ? 'split' : (createAppointmentDepositRows[0]?.method ?? 'cash'),
+          payment_method: depositPaymentMethod,
           paid_amount: createAppointmentDepositValue,
           cash_received: depositCashPaid,
           change_amount: 0,
@@ -2081,6 +2119,14 @@ export default function PosAppointmentsWorkspace({
         setAppointmentReceiptCooldownUntil(0)
         setAppointmentQrCodeFullscreen(false)
         setAppointmentReceiptQrLoaded(false)
+        printAppointmentReceipt(createAppointmentAutoPrint, {
+          order_number: depositOrderNumber,
+          payment_method: depositPaymentMethod,
+          total: createAppointmentDepositValue,
+          paid_amount: createAppointmentDepositValue,
+          change_amount: 0,
+          items: [{ name: `Appointment deposit - ${createAppointmentServiceDraft.name}`, qty: 1, amount: createAppointmentDepositValue }],
+        })
       }
 
       await fetchAppointments({ silent: true })
@@ -2116,6 +2162,7 @@ export default function PosAppointmentsWorkspace({
   }, [
     activeStaffs,
     createAppointmentAssignedStaffId,
+    createAppointmentAutoPrint,
     appointmentQrProofFile,
     appointmentLineStaffSplits,
     appointmentQrProofPreviewUrl,
@@ -2141,6 +2188,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentSlotValue,
     closeCreateAppointmentMemberPicker,
     fetchAppointments,
+    printAppointmentReceipt,
     showMsg,
   ])
 
@@ -2450,16 +2498,25 @@ export default function PosAppointmentsWorkspace({
       showMsg(isZeroBalanceFinalize ? 'Appointment finalised.' : 'Appointment payment collected.', 'success')
       reportAppointmentCheckoutError(null)
       setAppointmentCheckoutConfirmationOpen(false)
+      const settlementReceiptPaymentMethod = paymentRows.length > 1 ? 'split' : (paymentRows[0]?.method ?? appointmentPaymentMethod)
       setAppointmentSettlementResult({
         order_id: Number(json?.data?.order_id ?? 0),
         order_number: String(json?.data?.order_number ?? '-'),
         receipt_public_url: json?.data?.receipt_public_url ?? null,
-        payment_method: paymentRows.length > 1 ? 'split' : (paymentRows[0]?.method ?? appointmentPaymentMethod),
+        payment_method: settlementReceiptPaymentMethod,
         paid_amount: isZeroBalanceFinalize ? 0 : dueAmount,
         cash_received: isZeroBalanceFinalize ? 0 : settlementTotalPaid,
         change_amount: isZeroBalanceFinalize ? 0 : settlementChange,
         refund_no: json?.data?.refund?.refund_no ?? null,
         refund_amount: Number(json?.data?.refund?.amount ?? 0),
+      })
+      printAppointmentReceipt(appointmentCheckoutAutoPrint, {
+        order_number: String(json?.data?.order_number ?? appointmentDetail.booking_code),
+        payment_method: settlementReceiptPaymentMethod,
+        total: isZeroBalanceFinalize ? 0 : dueAmount,
+        paid_amount: isZeroBalanceFinalize ? 0 : settlementTotalPaid,
+        change_amount: isZeroBalanceFinalize ? 0 : settlementChange,
+        items: [{ name: `Appointment settlement - ${appointmentDetail.booking_code}`, qty: 1, amount: isZeroBalanceFinalize ? 0 : dueAmount }],
       })
       setAppointmentReceiptEmail(formatAppointmentReceiptDefaultEmail(appointmentDetail))
       setAppointmentReceiptEmailError(null)
@@ -2480,6 +2537,7 @@ export default function PosAppointmentsWorkspace({
     }
   }, [
     appointmentDetail,
+    appointmentCheckoutAutoPrint,
     appointmentDiscountRemarkDraft,
     appointmentDiscountTypeDraft,
     appointmentDiscountValueDraft,
@@ -2488,6 +2546,7 @@ export default function PosAppointmentsWorkspace({
     appointmentQrProofPreviewUrl,
     appointmentSettlementPaymentAmounts,
     fetchAppointments,
+    printAppointmentReceipt,
     showMsg,
   ])
 
@@ -5640,6 +5699,9 @@ export default function PosAppointmentsWorkspace({
                               setAppointmentDiscountValueDraft('')
                               setAppointmentDiscountRemarkDraft('')
                               reportAppointmentCheckoutError(null)
+                              setAppointmentCheckoutAutoPrint(
+                                thermalPrinterSettings.auto_print_receipt && getThermalPrinterAvailability(thermalPrinterSettings).available,
+                              )
                               setAppointmentCheckoutConfirmationOpen(true)
                             }}
                             className="min-h-[44px] rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
@@ -6497,7 +6559,14 @@ export default function PosAppointmentsWorkspace({
               </div>
             </div>
 
-            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
+            <div className="shrink-0 space-y-3 border-t border-gray-200 px-5 py-3">
+              <ThermalPrinterCheckoutOption
+                checked={createAppointmentAutoPrint}
+                onCheckedChange={setCreateAppointmentAutoPrint}
+                settings={thermalPrinterSettings}
+                loading={thermalPrinterLoading}
+              />
+              <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -6517,6 +6586,7 @@ export default function PosAppointmentsWorkspace({
               >
                 {createAppointmentSubmitting ? 'Creating...' : 'Confirm'}
               </button>
+              </div>
             </div>
           </div>
         </div>
@@ -8717,6 +8787,12 @@ export default function PosAppointmentsWorkspace({
                     </div>
                   ) : null}
                 </div>
+              <ThermalPrinterCheckoutOption
+                checked={appointmentCheckoutAutoPrint}
+                onCheckedChange={setAppointmentCheckoutAutoPrint}
+                settings={thermalPrinterSettings}
+                loading={thermalPrinterLoading}
+              />
             </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-6 py-4">
                 <button

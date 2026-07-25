@@ -7,7 +7,7 @@ use App\Models\PermissionGroup;
 use App\Models\Role;
 use Illuminate\Database\Seeder;
 
-class ThermalPrinterSettingsPermissionSeeder extends Seeder
+class ThermalPrinterPermissionSeeder extends Seeder
 {
     public function run(): void
     {
@@ -16,8 +16,10 @@ class ThermalPrinterSettingsPermissionSeeder extends Seeder
             ['sort_order' => 99]
         );
 
+        $superAdmin = Role::where('name', 'infra_core_x1')->first();
+
         foreach (['view', 'update'] as $action) {
-            $permission = Permission::firstOrCreate(
+            $permission = Permission::updateOrCreate(
                 ['slug' => "ecommerce.thermal-printer-settings.{$action}"],
                 [
                     'name' => 'Thermal Printer Settings '.ucfirst($action),
@@ -26,7 +28,6 @@ class ThermalPrinterSettingsPermissionSeeder extends Seeder
                 ]
             );
 
-            $superAdmin = Role::where('name', 'infra_core_x1')->first();
             $superAdmin?->permissions()->syncWithoutDetaching([$permission->id]);
         }
     }
