@@ -62,6 +62,7 @@ import {
   type AddonSelectionMap,
 } from '@/components/pos/bookingAddonQuantity'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
+import CustomerAdjustBalanceModal, { type AdjustBalanceCustomer } from '@/components/CustomerAdjustBalanceModal'
 import CustomerCreateModal from '@/components/CustomerCreateModal'
 import type { CustomerRowData } from '@/components/CustomerRow'
 import OrderViewPanel from '@/components/OrderViewPanel'
@@ -426,6 +427,7 @@ export default function PosAppointmentsWorkspace({
   permissions?: string[]
 }) {
   const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
+  const canManageBalance = useMemo(() => permissions.includes('customer_wallet.adjust'), [permissions])
   const canPosCheckout = useMemo(() => permissions.includes('pos.checkout'), [permissions])
   const canManagePosAppointments = useMemo(() => permissions.includes('pos.appointments.manage'), [permissions])
   const canAppointmentCheckoutAndPackage = useMemo(
@@ -654,7 +656,18 @@ export default function PosAppointmentsWorkspace({
     name: string
     phone?: string | null
   } | null>(null)
+  const [editSettlementMemberWalletBalance, setEditSettlementMemberWalletBalance] = useState<number | null>(null)
+  useEffect(() => {
+    setEditSettlementMemberWalletBalance(null)
+    const memberId = editSettlementMemberSummary?.id
+    if (!memberId) return
+    void fetch(`/api/proxy/admin/customers/${memberId}/wallet`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => setEditSettlementMemberWalletBalance(Number(json?.data?.wallet_balance ?? 0)))
+      .catch(() => setEditSettlementMemberWalletBalance(null))
+  }, [editSettlementMemberSummary?.id])
   const [editSettlementGuestName, setEditSettlementGuestName] = useState('')
+  const [topupTarget, setTopupTarget] = useState<AdjustBalanceCustomer | null>(null)
   const [editSettlementGuestPhone, setEditSettlementGuestPhone] = useState('')
   const [editSettlementGuestEmail, setEditSettlementGuestEmail] = useState('')
   const [editSettlementDepositTotal, setEditSettlementDepositTotal] = useState(0)
@@ -897,6 +910,49 @@ export default function PosAppointmentsWorkspace({
       reportEditSettlementError,
     ],
   )
+
+  const openMemberTopup = useCallback(async (customer: { id: number; name: string; walletBalance?: number | null }) => {
+    if (!canManageBalance) {
+      showMsg('You do not have permission to top up customer balance.', 'error')
+      return
+    }
+    let balance = customer.walletBalance
+    if (balance == null || !Number.isFinite(Number(balance))) {
+      try {
+        const res = await fetch(`/api/proxy/admin/customers/${customer.id}/wallet`, { cache: 'no-store' })
+        const json = await res.json().catch(() => null)
+        balance = res.ok ? Number(json?.data?.wallet_balance ?? 0) : 0
+      } catch {
+        balance = 0
+      }
+    }
+    setTopupTarget({
+      id: customer.id,
+      name: customer.name,
+      walletBalance: Number(balance ?? 0),
+    })
+  }, [canManageBalance, showMsg])
+
+  const handleMemberTopupSuccess = useCallback((walletBalance: number) => {
+    const next = Number.isFinite(walletBalance) ? walletBalance : 0
+    const targetId = topupTarget?.id
+    if (targetId && createAppointmentMemberSummary?.id === targetId) {
+      setCreateAppointmentMemberWalletBalance(next)
+    }
+    if (targetId && editSettlementMemberSummary?.id === targetId) {
+      setEditSettlementMemberWalletBalance(next)
+    }
+    if (targetId && Number(appointmentDetail?.customer?.id ?? 0) === targetId) {
+      setAppointmentMemberWalletBalance(next)
+    }
+    showMsg(`Balance topped up. New balance: RM ${next.toFixed(2)}`, 'success')
+  }, [
+    appointmentDetail?.customer?.id,
+    createAppointmentMemberSummary?.id,
+    editSettlementMemberSummary?.id,
+    showMsg,
+    topupTarget?.id,
+  ])
 
   const appointmentReceiptQrImageUrl = useMemo(() => {
     if (!appointmentSettlementResult?.receipt_public_url) return null
@@ -6474,17 +6530,34 @@ export default function PosAppointmentsWorkspace({
                     <div>
                       <div className="flex items-center justify-between gap-2">
                         <label className="text-xs font-semibold text-gray-600">Member</label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCreateAppointmentMemberQuery('')
-                            setCreateAppointmentMemberResults([])
-                            setCreateAppointmentMemberPickerOpen(true)
-                          }}
-                          className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
-                        >
-                          {createAppointmentMemberSummary ? 'change member' : 'assign member'}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCreateAppointmentMemberQuery('')
+                              setCreateAppointmentMemberResults([])
+                              setCreateAppointmentMemberPickerOpen(true)
+                            }}
+                            className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
+                          >
+                            {createAppointmentMemberSummary ? 'change member' : 'assign member'}
+                          </button>
+                          {createAppointmentMemberSummary && canManageBalance ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openMemberTopup({
+                                  id: createAppointmentMemberSummary.id,
+                                  name: createAppointmentMemberSummary.name,
+                                  walletBalance: createAppointmentMemberWalletBalance,
+                                })
+                              }
+                              className="rounded-md border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                            >
+                              Top Up
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                         {createAppointmentMemberSummary
@@ -6492,6 +6565,11 @@ export default function PosAppointmentsWorkspace({
                               createAppointmentMemberSummary.phone ? ` (${createAppointmentMemberSummary.phone})` : ''
                             }`
                           : 'No member selected'}
+                        {createAppointmentMemberSummary ? (
+                          <p className="mt-1 text-xs font-semibold text-emerald-700">
+                            Balance: RM {(createAppointmentMemberWalletBalance ?? 0).toFixed(2)}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   ) : (
@@ -7899,7 +7977,7 @@ export default function PosAppointmentsWorkspace({
                       <div className="mt-3">
                         <div className="flex items-center justify-between gap-2">
                           <label className="text-xs font-semibold text-gray-600">Member</label>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             {canCreateMember ? (
                               <button
                                 type="button"
@@ -7930,6 +8008,21 @@ export default function PosAppointmentsWorkspace({
                             >
                               {editSettlementMemberSummary ? 'change member' : 'assign member'}
                             </button>
+                            {editSettlementMemberSummary && canManageBalance ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void openMemberTopup({
+                                    id: editSettlementMemberSummary.id,
+                                    name: editSettlementMemberSummary.name,
+                                    walletBalance: editSettlementMemberWalletBalance,
+                                  })
+                                }
+                                className="rounded-md border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                              >
+                                Top Up
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                         <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
@@ -7938,6 +8031,11 @@ export default function PosAppointmentsWorkspace({
                                 editSettlementMemberSummary.phone ? ` (${editSettlementMemberSummary.phone})` : ''
                               }`
                             : 'No member selected'}
+                          {editSettlementMemberSummary ? (
+                            <p className="mt-1 text-xs font-semibold text-emerald-700">
+                              Balance: RM {(editSettlementMemberWalletBalance ?? 0).toFixed(2)}
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     ) : (
@@ -8723,31 +8821,70 @@ export default function PosAppointmentsWorkspace({
                   {appointmentCheckoutError}
                 </div>
               ) : null}
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                <p className="font-semibold text-gray-900">{appointmentDetail.booking_code}</p>
-                <p className="text-xs text-gray-600">{formatAppointmentCustomerDisplayName(appointmentDetail)}</p>
-                <p className="text-xs text-gray-600">
-                  Amount Due:{' '}
-                  <span className="font-semibold text-emerald-700">RM {appointmentDueAmount.toFixed(2)}</span>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Booking</p>
+                    <p className="mt-0.5 text-base font-bold text-slate-900">{appointmentDetail.booking_code}</p>
+                    <p className="mt-0.5 text-sm text-slate-600">{formatAppointmentCustomerDisplayName(appointmentDetail)}</p>
+                    {appointmentDetail.customer?.id ? (
+                      <p className="mt-1 text-xs font-medium text-emerald-700">
+                        Wallet balance{' '}
+                        <span className="font-semibold tabular-nums">
+                          RM {(appointmentMemberWalletBalance ?? 0).toFixed(2)}
+                        </span>
+                      </p>
+                    ) : null}
+                  </div>
+                  {appointmentDetail.customer?.id && canManageBalance ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void openMemberTopup({
+                          id: Number(appointmentDetail.customer?.id),
+                          name:
+                            appointmentDetail.customer?.name?.trim()
+                            || appointmentDetail.customer_name?.trim()
+                            || formatAppointmentCustomerDisplayName(appointmentDetail)
+                            || 'Member',
+                          walletBalance: appointmentMemberWalletBalance,
+                        })
+                      }
+                      className="shrink-0 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                    >
+                      Top Up
+                    </button>
+                  ) : null}
+                </div>
+                <div className="bg-gradient-to-br from-slate-50 to-orange-50/60 px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    Amount Due
+                  </p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-orange-700">
+                    RM {(appointmentDiscountAmount > 0 ? appointmentDueAfterDiscount : appointmentDueAmount).toFixed(2)}
+                  </p>
+                  {appointmentDiscountAmount > 0 ? (
+                    <p className="mt-2 text-sm text-slate-600">
+                      <span className="tabular-nums text-slate-400 line-through">
+                        RM {appointmentDueAmount.toFixed(2)}
+                      </span>
+                      <span className="mx-1.5 text-slate-300">·</span>
+                      Discount{' '}
+                      <span className="font-semibold tabular-nums text-amber-700">
+                        − RM {appointmentDiscountAmount.toFixed(2)}
+                      </span>
+                    </p>
+                  ) : null}
                   {checkoutZeroBalanceSettlement ? (
-                    <span className="block pt-1 text-[11px] font-normal text-slate-500">
+                    <p className="mt-2 text-xs text-slate-500">
                       {packageReservedPendingRegister
                         ? 'Covered by package — RM 0 to collect at checkout.'
                         : Number(appointmentDetail.deposit_paid ?? 0) > 0.0001
                           ? 'Covered by deposit — RM 0 to collect at checkout.'
                           : 'RM 0 to collect at checkout.'}
-                    </span>
+                    </p>
                   ) : null}
-                </p>
-                {appointmentDiscountAmount > 0 ? (
-                  <p className="text-xs text-amber-700">
-                    Discount:{' '}
-                    <span className="font-semibold">
-                      − RM {appointmentDiscountAmount.toFixed(2)}
-                    </span>{' '}
-                    → Payable <span className="font-semibold text-emerald-700">RM {appointmentDueAfterDiscount.toFixed(2)}</span>
-                  </p>
-                ) : null}
+                </div>
               </div>
               {!checkoutZeroBalanceSettlement ? (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -9206,6 +9343,17 @@ export default function PosAppointmentsWorkspace({
           zIndexClass="z-[200]"
           onClose={() => setIsCreateMemberModalOpen(false)}
           onSuccess={handleMemberCreated}
+        />
+      ) : null}
+
+      {topupTarget ? (
+        <CustomerAdjustBalanceModal
+          customer={topupTarget}
+          canAdjust={canManageBalance}
+          depositOnly
+          rootClassName="pos-body-stack-modal-top flex items-end justify-center sm:items-center sm:overflow-y-auto sm:p-4"
+          onClose={() => setTopupTarget(null)}
+          onSuccess={handleMemberTopupSuccess}
         />
       ) : null}
 

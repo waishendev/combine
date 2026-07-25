@@ -121,6 +121,7 @@ import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import { defaultThermalPrinterSettings, getThermalPrinterAvailability, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
 import OrderViewPanel from './OrderViewPanel'
+import CustomerAdjustBalanceModal, { type AdjustBalanceCustomer } from './CustomerAdjustBalanceModal'
 import CustomerCreateModal from './CustomerCreateModal'
 import type { CustomerRowData } from './CustomerRow'
 import {
@@ -1395,6 +1396,7 @@ type MemberDetail = {
   total_spent?: number
   last_order_date?: string | null
   points_balance?: number
+  wallet_balance?: number
 }
 
 type MemberRecentOrdersMeta = {
@@ -1712,6 +1714,7 @@ type PosPageContentProps = {
 
 export default function PosPageContent({ currentUser, permissions = [] }: PosPageContentProps) {
   const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
+  const canManageBalance = useMemo(() => permissions.includes('customer_wallet.adjust'), [permissions])
   const { hasOpenShift, cashShiftLoading } = usePosCashShift()
   const { isCompactLayout } = usePosWideLayout()
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
@@ -1997,6 +2000,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [lookupMember, setLookupMember] = useState<Member | null>(null)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
   const [memberWalletBalance, setMemberWalletBalance] = useState<number | null>(null)
+  const [topupTarget, setTopupTarget] = useState<AdjustBalanceCustomer | null>(null)
   useEffect(() => {
     setMemberWalletBalance(null)
     setSplitPaymentAmounts((prev) => ({ ...prev, customer_balance: '' }))
@@ -7534,6 +7538,35 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setPackageMembers([])
   }
 
+  const openMemberTopup = useCallback(async (customer: { id: number; name: string; walletBalance?: number | null }) => {
+    if (!canManageBalance) {
+      showMsg('You do not have permission to top up customer balance.', 'error')
+      return
+    }
+    let balance = customer.walletBalance
+    if (balance == null || !Number.isFinite(Number(balance))) {
+      try {
+        const res = await fetch(`/api/proxy/admin/customers/${customer.id}/wallet`, { cache: 'no-store' })
+        const json = await res.json().catch(() => null)
+        balance = res.ok ? Number(json?.data?.wallet_balance ?? 0) : 0
+      } catch {
+        balance = 0
+      }
+    }
+    setTopupTarget({
+      id: customer.id,
+      name: customer.name,
+      walletBalance: Number(balance ?? 0),
+    })
+  }, [canManageBalance, showMsg])
+
+  const handleMemberTopupSuccess = useCallback((walletBalance: number) => {
+    const next = Number.isFinite(walletBalance) ? walletBalance : 0
+    setMemberDetail((prev) => (prev && topupTarget && prev.id === topupTarget.id ? { ...prev, wallet_balance: next } : prev))
+    setMemberWalletBalance((prev) => (selectedMember && topupTarget && selectedMember.id === topupTarget.id ? next : prev))
+    showMsg(`Balance topped up. New balance: RM ${next.toFixed(2)}`, 'success')
+  }, [selectedMember, showMsg, topupTarget])
+
   const onAssignMember = async (member: Member) => {
     const shouldRemoveCurrentVoucher = Boolean(appliedVoucher && !appliedVoucher.customer_voucher_id)
     if (shouldRemoveCurrentVoucher) {
@@ -10798,18 +10831,38 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             <div className="mt-3">
                               <div className="flex items-center justify-between gap-2">
                                 <label className="text-xs font-semibold text-gray-600">Member</label>
-                                <button
-                                  type="button"
-                                  disabled={cartEditSettlementPackageApplied}
-                                  title={cartEditSettlementPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
-                                  onClick={() => {
-                                    if (cartEditSettlementPackageApplied) return
-                                    openAssignMemberModal('cartEditSettlement')
-                                  }}
-                                  className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700"
-                                >
-                                  {cartEditSettlementMemberSummary ? 'change member' : 'assign member'}
-                                </button>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={cartEditSettlementPackageApplied}
+                                    title={cartEditSettlementPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
+                                    onClick={() => {
+                                      if (cartEditSettlementPackageApplied) return
+                                      openAssignMemberModal('cartEditSettlement')
+                                    }}
+                                    className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700"
+                                  >
+                                    {cartEditSettlementMemberSummary ? 'change member' : 'assign member'}
+                                  </button>
+                                  {cartEditSettlementMemberSummary && canManageBalance ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void openMemberTopup({
+                                          id: cartEditSettlementMemberSummary.id,
+                                          name: cartEditSettlementMemberSummary.name,
+                                          walletBalance:
+                                            selectedMember?.id === cartEditSettlementMemberSummary.id
+                                              ? memberWalletBalance
+                                              : undefined,
+                                        })
+                                      }
+                                      className="rounded-md border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                                    >
+                                      Top Up
+                                    </button>
+                                  ) : null}
+                                </div>
                               </div>
                               <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                                 {cartEditSettlementMemberSummary
@@ -12219,19 +12272,41 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     <div className="mt-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <label className="text-xs font-semibold text-gray-600">Member</label>
-                        <button
-                          type="button"
-                          disabled={hasCartAppointmentSettlements}
-                          onClick={() => openAssignMemberModal('checkout')}
-                          className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
-                        >
-                          {selectedMember ? 'change member' : 'assign member'}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={hasCartAppointmentSettlements}
+                            onClick={() => openAssignMemberModal('checkout')}
+                            className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
+                          >
+                            {selectedMember ? 'change member' : 'assign member'}
+                          </button>
+                          {selectedMember && canManageBalance ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openMemberTopup({
+                                  id: selectedMember.id,
+                                  name: selectedMember.name,
+                                  walletBalance: memberWalletBalance,
+                                })
+                              }
+                              className="shrink-0 rounded-xl border-2 border-emerald-400 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition-all hover:bg-emerald-50"
+                            >
+                              Top Up
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="mt-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800">
                         {selectedMember
                           ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
                           : 'No member selected yet'}
+                        {selectedMember ? (
+                          <p className="mt-1 text-xs font-semibold text-emerald-700">
+                            Balance: RM {(memberWalletBalance ?? 0).toFixed(2)}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   )}
@@ -12747,14 +12822,34 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               <div className="rounded-lg border border-gray-200 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <label className="block text-sm font-semibold text-gray-700">Member</label>
-                  <button
-                    type="button"
-                    disabled={hasCartAppointmentSettlements}
-                    onClick={() => openAssignMemberModal('package')}
-                    className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    {packageSelectedMember ? 'change member' : 'assign member'}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={hasCartAppointmentSettlements}
+                      onClick={() => openAssignMemberModal('package')}
+                      className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                      {packageSelectedMember ? 'change member' : 'assign member'}
+                    </button>
+                    {packageSelectedMember && canManageBalance ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void openMemberTopup({
+                            id: packageSelectedMember.id,
+                            name: packageSelectedMember.name,
+                            walletBalance:
+                              selectedMember?.id === packageSelectedMember.id
+                                ? memberWalletBalance
+                                : undefined,
+                          })
+                        }
+                        className="rounded-md border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                      >
+                        Top Up
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
@@ -13257,19 +13352,41 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   <div>
                     <div className="flex items-center justify-between gap-2">
                       <label className="text-xs font-semibold text-gray-600">Member</label>
-                      <button
-                        type="button"
-                        disabled={Boolean(settlementLockedIdentityMode)}
-                        onClick={() => openAssignMemberModal('service')}
-                        className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${settlementLockedIdentityMode ? 'cursor-not-allowed opacity-60' : ''}`}
-                      >
-                        {selectedMember ? 'change member' : 'assign member'}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={Boolean(settlementLockedIdentityMode)}
+                          onClick={() => openAssignMemberModal('service')}
+                          className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${settlementLockedIdentityMode ? 'cursor-not-allowed opacity-60' : ''}`}
+                        >
+                          {selectedMember ? 'change member' : 'assign member'}
+                        </button>
+                        {selectedMember && canManageBalance ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void openMemberTopup({
+                                id: selectedMember.id,
+                                name: selectedMember.name,
+                                walletBalance: memberWalletBalance,
+                              })
+                            }
+                            className="rounded-md border border-emerald-300 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                          >
+                            Top Up
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                       {selectedMember
                         ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
                         : 'No member selected'}
+                      {selectedMember ? (
+                        <p className="mt-1 text-xs font-semibold text-emerald-700">
+                          Balance: RM {(memberWalletBalance ?? 0).toFixed(2)}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 ) : (
@@ -13546,7 +13663,24 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ) : memberDetail ? (
                     <div className="space-y-5">
                       <section>
-                        <h5 className="text-sm font-bold text-gray-900">Overview</h5>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <h5 className="text-sm font-bold text-gray-900">Overview</h5>
+                          {canManageBalance ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openMemberTopup({
+                                  id: memberDetail.id,
+                                  name: memberDetail.name || lookupMember?.name || 'Member',
+                                  walletBalance: memberDetail.wallet_balance,
+                                })
+                              }
+                              className="rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                            >
+                              Top Up
+                            </button>
+                          ) : null}
+                        </div>
                         <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-gray-700">
                           <p><span className="font-semibold text-gray-900">Full Name:</span> {memberDetail.name || '—'}</p>
                           {/* <p><span className="font-semibold text-gray-900">Phone:</span> {memberDetail.phone || '—'}</p>
@@ -13557,6 +13691,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           <p><span className="font-semibold text-gray-900">Total Spent:</span> RM {Number(memberDetail.total_spent ?? 0).toFixed(2)}</p>
                           <p><span className="font-semibold text-gray-900">Last Order Date:</span> {memberDetail.last_order_date ? new Date(memberDetail.last_order_date).toLocaleString() : '—'}</p>
                           <p><span className="font-semibold text-gray-900">Member Points Balance:</span> {memberDetail.points_balance ?? 0}</p>
+                          <p>
+                            <span className="font-semibold text-gray-900">Customer Balance:</span>{' '}
+                            <span className="font-semibold text-emerald-700">
+                              RM {Number(memberDetail.wallet_balance ?? 0).toFixed(2)}
+                            </span>
+                          </p>
                         </div>
                       </section>
 
@@ -13691,6 +13831,17 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           orderId={memberOrderViewId}
           onClose={() => setMemberOrderViewId(null)}
           zIndexClassName="z-[170]"
+        />
+      ) : null}
+
+      {topupTarget ? (
+        <CustomerAdjustBalanceModal
+          customer={topupTarget}
+          canAdjust={canManageBalance}
+          depositOnly
+          rootClassName="fixed inset-0 z-[180] flex items-end justify-center sm:items-center sm:overflow-y-auto sm:p-4"
+          onClose={() => setTopupTarget(null)}
+          onSuccess={handleMemberTopupSuccess}
         />
       ) : null}
 
