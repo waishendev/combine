@@ -561,6 +561,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             href: '/crm-logo',
             requiredPermission: 'ecommerce.settings.view',
           },
+          {
+            key: 'thermal-printer-settings',
+            label: 'Thermal Printer',
+            href: '/settings/thermal-printer',
+            requiredPermission: 'ecommerce.thermal-printer-settings.view',
+          },
         ],
       },
 

@@ -53,6 +53,7 @@ export type ReceiptData = {
   paid_amount: number
   change_amount: number
   items?: ReceiptLineItem[]
+  paper_width?: 58 | 80
 }
 
 // ─── USB / iframe printing ────────────────────────────────────────────────────
@@ -182,8 +183,6 @@ export function disconnectBluetoothPrinter(): void {
 
 const ESC = 0x1b
 const GS = 0x1d
-const COLS = 32 // 58 mm paper
-
 const CMD_INIT = new Uint8Array([ESC, 0x40])
 const CMD_CENTER = new Uint8Array([ESC, 0x61, 0x01])
 const CMD_LEFT = new Uint8Array([ESC, 0x61, 0x00])
@@ -199,28 +198,29 @@ function textBytes(text: string): Uint8Array {
   return encoder.encode(text + '\n')
 }
 
-function divider(char = '-'): Uint8Array {
-  return textBytes(char.repeat(COLS))
+function divider(char = '-', cols = 32): Uint8Array {
+  return textBytes(char.repeat(cols))
 }
 
 function fmtMoney(n: number): string {
   return n.toFixed(2)
 }
 
-function itemLine(name: string, qty: number, amount: number): Uint8Array {
+function itemLine(name: string, qty: number, amount: number, cols: number): Uint8Array {
   const right = ` x${qty}  ${fmtMoney(amount)}`
-  const maxName = COLS - right.length
+  const maxName = cols - right.length
   const truncName = name.length > maxName ? name.slice(0, maxName) : name
-  const gap = Math.max(0, COLS - truncName.length - right.length)
+  const gap = Math.max(0, cols - truncName.length - right.length)
   return textBytes(truncName + ' '.repeat(gap) + right)
 }
 
-function summaryLine(label: string, value: string): Uint8Array {
-  const gap = Math.max(1, COLS - label.length - value.length)
+function summaryLine(label: string, value: string, cols: number): Uint8Array {
+  const gap = Math.max(1, cols - label.length - value.length)
   return textBytes(label + ' '.repeat(gap) + value)
 }
 
 function buildReceiptBytes(data: ReceiptData): Uint8Array {
+  const cols = data.paper_width === 80 ? 48 : 32
   const parts: Uint8Array[] = []
   const push = (...arrs: Uint8Array[]) => arrs.forEach((a) => parts.push(a))
 
@@ -232,29 +232,29 @@ function buildReceiptBytes(data: ReceiptData): Uint8Array {
   push(CMD_CENTER, CMD_BOLD_ON, CMD_DOUBLE)
   push(textBytes('RECEIPT'))
   push(CMD_NORMAL, CMD_BOLD_OFF)
-  push(divider('='))
+  push(divider('=', cols))
 
   push(CMD_LEFT)
   push(textBytes(`Order: ${data.order_number}`))
   push(textBytes(`Date:  ${dateStr}`))
   push(textBytes(`Pay:   ${data.payment_method.toUpperCase()}`))
-  push(divider())
+  push(divider('-', cols))
 
   if (data.items && data.items.length > 0) {
     for (const item of data.items) {
-      push(itemLine(item.cn_name ? `${item.name} / ${item.cn_name}` : item.name, item.qty, item.amount))
+      push(itemLine(item.cn_name ? `${item.name} / ${item.cn_name}` : item.name, item.qty, item.amount, cols))
     }
-    push(divider())
+    push(divider('-', cols))
   }
 
   push(CMD_BOLD_ON)
-  push(summaryLine('TOTAL', `RM ${fmtMoney(data.total)}`))
+  push(summaryLine('TOTAL', `RM ${fmtMoney(data.total)}`, cols))
   push(CMD_BOLD_OFF)
-  push(summaryLine('Paid', `RM ${fmtMoney(data.paid_amount)}`))
+  push(summaryLine('Paid', `RM ${fmtMoney(data.paid_amount)}`, cols))
   if (data.change_amount > 0) {
-    push(summaryLine('Change', `RM ${fmtMoney(data.change_amount)}`))
+    push(summaryLine('Change', `RM ${fmtMoney(data.change_amount)}`, cols))
   }
-  push(divider('='))
+  push(divider('=', cols))
 
   push(CMD_CENTER)
   push(textBytes('Thank you!'))

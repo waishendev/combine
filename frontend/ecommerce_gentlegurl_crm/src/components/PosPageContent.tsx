@@ -118,17 +118,13 @@ import {
 import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
+import { defaultThermalPrinterSettings, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
 import OrderViewPanel from './OrderViewPanel'
 import CustomerCreateModal from './CustomerCreateModal'
 import type { CustomerRowData } from './CustomerRow'
 import {
   printReceipt,
-  printReceiptBluetooth,
   printReceiptWifi,
-  testWifiPrinterConnection,
-  connectBluetoothPrinter,
-  disconnectBluetoothPrinter,
-  isBluetoothPrinterConnected,
   type ReceiptLineItem,
 } from '@/utils/printReceipt'
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
@@ -2089,13 +2085,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [receiptCooldownUntil, setReceiptCooldownUntil] = useState<number>(0)
   const [receiptQrLoaded, setReceiptQrLoaded] = useState(false)
   const [autoPrint, setAutoPrint] = useState(false)
-  const [printMode, setPrintMode] = useState<'usb' | 'bluetooth' | 'wifi'>('bluetooth')
-  const [btPrinterName, setBtPrinterName] = useState<string | null>(null)
-  const [btConnecting, setBtConnecting] = useState(false)
-  const [wifiPrinterIp, setWifiPrinterIp] = useState('')
-  const [wifiPrinterPort, setWifiPrinterPort] = useState('9100')
-  const [wifiTesting, setWifiTesting] = useState(false)
-  const [wifiTestOk, setWifiTestOk] = useState<boolean | null>(null)
+  const [thermalPrinterSettings, setThermalPrinterSettings] = useState<ThermalPrinterSettings>(defaultThermalPrinterSettings)
+  const [thermalPrinterLoading, setThermalPrinterLoading] = useState(true)
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
@@ -2509,6 +2500,23 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     window.setTimeout(() => dismissToast(id), 3200)
   }, [dismissToast])
 
+  useEffect(() => {
+    let active = true
+    getThermalPrinterSettings()
+      .then((settings) => {
+        if (!active) return
+        setThermalPrinterSettings(settings)
+        setAutoPrint(settings.is_enabled && settings.auto_print_receipt)
+      })
+      .catch(() => {
+        if (active) pushToast('warning', 'Printer settings are unavailable. Checkout can continue without printing.')
+      })
+      .finally(() => {
+        if (active) setThermalPrinterLoading(false)
+      })
+    return () => { active = false }
+  }, [pushToast])
+
   const bookingModalErrorRef = useRef<HTMLDivElement>(null)
   const packageModalErrorRef = useRef<HTMLDivElement>(null)
   const cartEditSettlementErrorRef = useRef<HTMLDivElement>(null)
@@ -2649,46 +2657,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       voucherModalOpen,
     ],
   )
-
-  const handleConnectBtPrinter = async () => {
-    setBtConnecting(true)
-    try {
-      const name = await connectBluetoothPrinter()
-      setBtPrinterName(name)
-      pushToast('success', `Connected: ${name}`)
-    } catch (err) {
-      pushToast('error', err instanceof Error ? err.message : 'Failed to connect printer')
-      setBtPrinterName(null)
-    } finally {
-      setBtConnecting(false)
-    }
-  }
-
-  const handleDisconnectBtPrinter = () => {
-    disconnectBluetoothPrinter()
-    setBtPrinterName(null)
-    pushToast('info', 'Printer disconnected')
-  }
-
-  const handleTestWifiPrinter = async () => {
-    const ip = wifiPrinterIp.trim()
-    if (!ip) {
-      pushToast('error', 'Please enter printer IP address')
-      return
-    }
-    setWifiTesting(true)
-    setWifiTestOk(null)
-    try {
-      await testWifiPrinterConnection(ip, Number(wifiPrinterPort) || 9100)
-      setWifiTestOk(true)
-      pushToast('success', `Test print sent to ${ip}`)
-    } catch (err) {
-      setWifiTestOk(false)
-      pushToast('error', err instanceof Error ? err.message : 'WiFi print test failed')
-    } finally {
-      setWifiTesting(false)
-    }
-  }
 
   const focusScanner = () => {
     try {
@@ -7153,15 +7121,26 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         paid_amount: meta.paid_amount,
         change_amount: meta.change_amount,
         items: receiptLineItems,
+        paper_width: thermalPrinterSettings.paper_width,
       }
 
-      if (printMode === 'bluetooth' && isBluetoothPrinterConnected()) {
-        printReceiptBluetooth(receiptPayload).catch(() => pushToast('error', 'Bluetooth print failed'))
-      } else if (printMode === 'wifi' && wifiPrinterIp.trim()) {
-        printReceiptWifi(wifiPrinterIp.trim(), Number(wifiPrinterPort) || 9100, receiptPayload)
-          .catch(() => pushToast('error', 'WiFi print failed'))
-      } else if (printMode === 'usb' && json.data.receipt_public_url) {
-        printReceipt(json.data.receipt_public_url)
+      if (!thermalPrinterSettings.is_enabled) {
+        pushToast('warning', 'Payment completed. Thermal printer is disabled, so the receipt was not printed.')
+      } else if (thermalPrinterSettings.connection_type !== 'network') {
+        pushToast('warning', `Payment completed. ${thermalPrinterSettings.connection_type} printing is not supported.`)
+      } else if (!thermalPrinterSettings.ip_address || !thermalPrinterSettings.port) {
+        pushToast('warning', 'Payment completed. Thermal printer is not configured, so the receipt was not printed.')
+      } else {
+        void (async () => {
+          try {
+            for (let copy = 0; copy < thermalPrinterSettings.copies; copy += 1) {
+              await printReceiptWifi(thermalPrinterSettings.ip_address!, thermalPrinterSettings.port!, receiptPayload)
+            }
+            pushToast('success', `${thermalPrinterSettings.copies} receipt ${thermalPrinterSettings.copies === 1 ? 'copy' : 'copies'} sent to printer.`)
+          } catch (error) {
+            pushToast('error', `Payment completed, but printing failed: ${error instanceof Error ? error.message : 'Printer unavailable'}`)
+          }
+        })()
       }
     }
 
@@ -12199,159 +12178,24 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ) : null}
                 </div>
 
-              <div className="mt-5 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 shadow-sm overflow-hidden">
-                <label className="flex cursor-pointer items-center gap-3 px-5 py-4 select-none">
+              <div className="mt-5 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 px-5 py-4 shadow-sm">
+                <label className="flex cursor-pointer items-center gap-3 select-none">
                   <input
                     type="checkbox"
                     checked={autoPrint}
-                    onChange={(e) => setAutoPrint(e.target.checked)}
-                    className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    disabled={thermalPrinterLoading || !thermalPrinterSettings.is_enabled}
+                    onChange={(event) => setAutoPrint(event.target.checked)}
+                    className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                   />
-                  <div className="flex items-center gap-2">
-                    <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                    </svg>
-                    <span className="text-sm font-semibold text-gray-700">Auto Print Receipt</span>
-                  </div>
+                  <span className="text-sm font-semibold text-gray-700">Auto Print Receipt</span>
                 </label>
-
-                {autoPrint && (
-                  <div className="border-t border-gray-200 px-5 py-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Print via</span>
-                      <div className="flex rounded-lg border border-gray-300 overflow-hidden text-xs font-semibold">
-                        <button
-                          type="button"
-                          onClick={() => setPrintMode('bluetooth')}
-                          className={`px-3 py-1.5 transition-all ${printMode === 'bluetooth' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                        >
-                          Bluetooth
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPrintMode('wifi')}
-                          className={`px-3 py-1.5 border-l border-gray-300 transition-all ${printMode === 'wifi' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                        >
-                          WiFi
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPrintMode('usb')}
-                          className={`px-3 py-1.5 border-l border-gray-300 transition-all ${printMode === 'usb' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                        >
-                          USB
-                        </button>
-                      </div>
-                    </div>
-
-                    {printMode === 'bluetooth' && (
-                      <div>
-                        {btPrinterName ? (
-                          <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2.5">
-                            <div className="flex items-center gap-2 text-sm font-medium text-green-800">
-                              <span className="relative flex h-2.5 w-2.5">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
-                              </span>
-                              {btPrinterName}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleDisconnectBtPrinter}
-                              className="text-xs font-semibold text-red-600 hover:text-red-700 underline transition-colors"
-                            >
-                              Disconnect
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void handleConnectBtPrinter()}
-                            disabled={btConnecting}
-                            className="w-full rounded-lg border-2 border-dashed border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {btConnecting ? (
-                              <span className="flex items-center justify-center gap-2">
-                                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                </svg>
-                                Connecting...
-                              </span>
-                            ) : (
-                              <span className="flex items-center justify-center gap-2">
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                </svg>
-                                Connect Bluetooth Printer
-                              </span>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {printMode === 'wifi' && (
-                      <div className="space-y-2">
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={wifiPrinterIp}
-                            onChange={(e) => { setWifiPrinterIp(e.target.value); setWifiTestOk(null) }}
-                            placeholder="Printer IP (e.g. 192.168.1.100)"
-                            className="h-9 flex-1 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-blue-500"
-                          />
-                          <input
-                            type="text"
-                            value={wifiPrinterPort}
-                            onChange={(e) => { setWifiPrinterPort(e.target.value); setWifiTestOk(null) }}
-                            placeholder="Port"
-                            className="h-9 w-20 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-blue-500"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void handleTestWifiPrinter()}
-                          disabled={wifiTesting || !wifiPrinterIp.trim()}
-                          className="w-full rounded-lg border-2 border-dashed border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-600 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {wifiTesting ? (
-                            <span className="flex items-center justify-center gap-2">
-                              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                              </svg>
-                              Testing...
-                            </span>
-                          ) : (
-                            <span className="flex items-center justify-center gap-2">
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                              </svg>
-                              Test Print
-                            </span>
-                          )}
-                        </button>
-                        {wifiTestOk === true && (
-                          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium text-green-800">
-                            <span className="relative flex h-2.5 w-2.5">
-                              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
-                            </span>
-                            Printer reachable — test receipt sent
-                          </div>
-                        )}
-                        {wifiTestOk === false && (
-                          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
-                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01" />
-                            </svg>
-                            Could not reach printer — check IP &amp; port
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-gray-200 pt-3 text-xs">
+                  <span className="text-gray-500">Printer</span><span className="text-right font-medium text-gray-800">{thermalPrinterLoading ? 'Loading…' : thermalPrinterSettings.printer_name || 'Not configured'}</span>
+                  <span className="text-gray-500">Connection</span><span className="text-right font-medium capitalize text-gray-800">{thermalPrinterSettings.connection_type}</span>
+                  {thermalPrinterSettings.connection_type === 'network' ? <><span className="text-gray-500">Address</span><span className="text-right font-medium text-gray-800">{thermalPrinterSettings.ip_address ? `${thermalPrinterSettings.ip_address}:${thermalPrinterSettings.port}` : 'Not configured'}</span></> : null}
+                  <span className="text-gray-500">Status</span><span className={`text-right font-semibold ${thermalPrinterSettings.is_enabled && thermalPrinterSettings.ip_address ? 'text-emerald-700' : 'text-amber-700'}`}>{thermalPrinterLoading ? 'Loading' : !thermalPrinterSettings.is_enabled ? 'Disabled' : thermalPrinterSettings.connection_type === 'network' && thermalPrinterSettings.ip_address ? 'Ready' : 'Not Configured'}</span>
+                </div>
+                <a href="/settings/thermal-printer" className="mt-3 inline-block text-xs font-semibold text-blue-600 hover:underline">Manage Printer Settings</a>
               </div>
 
               <div className="mt-8 flex gap-4 pt-2 flex-shrink-0">
