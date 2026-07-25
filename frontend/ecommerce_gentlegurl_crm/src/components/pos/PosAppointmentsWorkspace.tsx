@@ -93,6 +93,8 @@ import {
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
+import { defaultThermalPrinterSettings, getThermalPrinterAvailability, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
+import { printThermalReceiptCopies, type ReceiptData } from '@/utils/printReceipt'
 
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
 import { StaffSplitModeToggle } from '@/components/pos/PosStaffSplitEditorPanel'
@@ -101,6 +103,7 @@ import { SettlementRefundBreakdownRows } from '@/components/pos/SettlementCartPa
 import PosAppointmentPaymentLinksSection from '@/components/pos/PosAppointmentPaymentLinksSection'
 import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
+import ThermalPrinterCheckoutOption from '@/components/pos/ThermalPrinterCheckoutOption'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import {
   batchReleaseAppointmentPackageClaims,
@@ -447,6 +450,37 @@ export default function PosAppointmentsWorkspace({
     },
     [dismissToast],
   )
+  const [thermalPrinterSettings, setThermalPrinterSettings] = useState<ThermalPrinterSettings>(defaultThermalPrinterSettings)
+  const [thermalPrinterLoading, setThermalPrinterLoading] = useState(true)
+  const [createAppointmentAutoPrint, setCreateAppointmentAutoPrint] = useState(false)
+  const [appointmentCheckoutAutoPrint, setAppointmentCheckoutAutoPrint] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    getThermalPrinterSettings()
+      .then((settings) => {
+        if (active) setThermalPrinterSettings(settings)
+      })
+      .catch(() => {
+        if (active) pushToast('warning', 'Printer settings are unavailable. Appointments can continue without printing.')
+      })
+      .finally(() => {
+        if (active) setThermalPrinterLoading(false)
+      })
+    return () => { active = false }
+  }, [pushToast])
+
+  const printAppointmentReceipt = useCallback((enabled: boolean, receipt: ReceiptData) => {
+    if (!enabled) return
+    const availability = getThermalPrinterAvailability(thermalPrinterSettings)
+    if (!availability.available) {
+      pushToast('warning', `Appointment saved, but the receipt was not printed: ${availability.label}.`)
+      return
+    }
+    void printThermalReceiptCopies(thermalPrinterSettings, receipt)
+      .then(() => pushToast('success', `${thermalPrinterSettings.copies} receipt ${thermalPrinterSettings.copies === 1 ? 'copy' : 'copies'} sent to printer.`))
+      .catch((error) => pushToast('warning', `Appointment saved, but printing failed: ${error instanceof Error ? error.message : 'Printer unavailable'}`))
+  }, [pushToast, thermalPrinterSettings])
   const { hasOpenShift, cashShiftLoading, requireOpenShiftMessage } = usePosCashShift()
   const { isCompactLayout } = usePosWideLayout()
   const settlementColumnRef = useRef<HTMLDivElement>(null)
@@ -1575,12 +1609,15 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentGuestName('')
     setCreateAppointmentGuestPhone('')
     setCreateAppointmentGuestEmail('')
+    setCreateAppointmentAutoPrint(
+      thermalPrinterSettings.auto_print_receipt && getThermalPrinterAvailability(thermalPrinterSettings).available,
+    )
     setCreateAppointmentModalOpen(true)
     if (!createAppointmentServices.length) {
       void fetchCreateAppointmentServices()
     void fetchBookingServiceCategories()
     }
-  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchCreateAppointmentServices, requireOpenShiftMessage, showMsg])
+  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchCreateAppointmentServices, requireOpenShiftMessage, showMsg, thermalPrinterSettings])
 
   const closeCreateAppointmentMemberPicker = useCallback(() => {
     setCreateAppointmentMemberPickerOpen(false)
@@ -2067,11 +2104,12 @@ export default function PosAppointmentsWorkspace({
       const depositReceiptUrl = json?.data?.receipt_public_url ?? json?.data?.order?.receipt_public_url ?? null
       if (depositOrderId > 0 && depositOrderNumber) {
         const depositCashPaid = Number(createAppointmentDepositPayments.cash || 0)
+        const depositPaymentMethod = createAppointmentDepositRows.length > 1 ? 'split' : (createAppointmentDepositRows[0]?.method ?? 'cash')
         setAppointmentSettlementResult({
           order_id: depositOrderId,
           order_number: depositOrderNumber,
           receipt_public_url: depositReceiptUrl,
-          payment_method: createAppointmentDepositRows.length > 1 ? 'split' : (createAppointmentDepositRows[0]?.method ?? 'cash'),
+          payment_method: depositPaymentMethod,
           paid_amount: createAppointmentDepositValue,
           cash_received: depositCashPaid,
           change_amount: 0,
@@ -2081,6 +2119,56 @@ export default function PosAppointmentsWorkspace({
         setAppointmentReceiptCooldownUntil(0)
         setAppointmentQrCodeFullscreen(false)
         setAppointmentReceiptQrLoaded(false)
+        printAppointmentReceipt(createAppointmentAutoPrint, {
+          order_number: depositOrderNumber,
+          payment_method: depositPaymentMethod,
+          payments: createAppointmentDepositRows
+            .map((row) => ({ method: row.method, amount: row.amount }))
+            .filter((row) => Number(row.amount ?? 0) > 0.0001),
+          customer_name:
+            createAppointmentIdentityMode === 'member'
+              ? (createAppointmentMemberSummary?.name?.trim() || 'GUEST')
+              : (createAppointmentGuestName.trim() || 'GUEST'),
+          customer_phone:
+            createAppointmentIdentityMode === 'member'
+              ? (createAppointmentMemberSummary?.phone?.trim() || '-')
+              : (normalizeInternationalPhone(createAppointmentGuestPhone) || createAppointmentGuestPhone.trim() || '-'),
+          total: createAppointmentDepositValue,
+          subtotal: createAppointmentDepositValue,
+          paid_amount: createAppointmentDepositValue,
+          change_amount: 0,
+          qr_url: depositReceiptUrl,
+          items: [
+            {
+              section: 'service',
+              name: createAppointmentServiceDraft.name,
+              cn_name: createAppointmentServiceDraft.cn_name ?? null,
+              qty: 1,
+              amount: createAppointmentDepositValue,
+              stage: 'deposit',
+              addons: [
+                ...createAppointmentSelectedOptions.map((option) => ({
+                  name: option.label,
+                  cn_name: option.cn_label ?? option.cn_name ?? null,
+                })),
+                ...createAppointmentExtraServiceBlocks.flatMap((block) => {
+                  if (!block.service) return [] as Array<{ name: string; cn_name?: string | null }>
+                  const nested = block.questions
+                    .flatMap((question) => question.options)
+                    .filter((option) => isAddonSelected(block.addonQuantities, option.id))
+                    .map((option) => ({
+                      name: option.label,
+                      cn_name: option.cn_label ?? option.cn_name ?? null,
+                    }))
+                  return [
+                    { name: block.service.name, cn_name: block.service.cn_name ?? null },
+                    ...nested,
+                  ]
+                }),
+              ],
+            },
+          ],
+        })
       }
 
       await fetchAppointments({ silent: true })
@@ -2116,6 +2204,7 @@ export default function PosAppointmentsWorkspace({
   }, [
     activeStaffs,
     createAppointmentAssignedStaffId,
+    createAppointmentAutoPrint,
     appointmentQrProofFile,
     appointmentLineStaffSplits,
     appointmentQrProofPreviewUrl,
@@ -2141,6 +2230,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentSlotValue,
     closeCreateAppointmentMemberPicker,
     fetchAppointments,
+    printAppointmentReceipt,
     showMsg,
   ])
 
@@ -2450,16 +2540,82 @@ export default function PosAppointmentsWorkspace({
       showMsg(isZeroBalanceFinalize ? 'Appointment finalised.' : 'Appointment payment collected.', 'success')
       reportAppointmentCheckoutError(null)
       setAppointmentCheckoutConfirmationOpen(false)
+      const settlementReceiptPaymentMethod = paymentRows.length > 1 ? 'split' : (paymentRows[0]?.method ?? appointmentPaymentMethod)
       setAppointmentSettlementResult({
         order_id: Number(json?.data?.order_id ?? 0),
         order_number: String(json?.data?.order_number ?? '-'),
         receipt_public_url: json?.data?.receipt_public_url ?? null,
-        payment_method: paymentRows.length > 1 ? 'split' : (paymentRows[0]?.method ?? appointmentPaymentMethod),
+        payment_method: settlementReceiptPaymentMethod,
         paid_amount: isZeroBalanceFinalize ? 0 : dueAmount,
         cash_received: isZeroBalanceFinalize ? 0 : settlementTotalPaid,
         change_amount: isZeroBalanceFinalize ? 0 : settlementChange,
         refund_no: json?.data?.refund?.refund_no ?? null,
         refund_amount: Number(json?.data?.refund?.amount ?? 0),
+      })
+      printAppointmentReceipt(appointmentCheckoutAutoPrint, {
+        order_number: String(json?.data?.order_number ?? appointmentDetail.booking_code),
+        payment_method: settlementReceiptPaymentMethod,
+        payments: paymentRows
+          .map((row) => ({ method: row.method, amount: row.amount }))
+          .filter((row) => Number(row.amount ?? 0) > 0.0001),
+        customer_name: formatAppointmentCustomerDisplayName(appointmentDetail).replace(/\s*\(GUEST\)\s*$/, '') || 'GUEST',
+        customer_phone:
+          appointmentDetail.customer?.phone?.trim()
+          || appointmentDetail.customer_phone?.trim()
+          || appointmentDetail.guest_phone?.trim()
+          || '-',
+        total: isZeroBalanceFinalize ? 0 : dueAmount,
+        subtotal: isZeroBalanceFinalize ? 0 : dueAmount,
+        package_covered: Number(appointmentDetail.package_offset ?? appointmentDetail.total_covered ?? 0) || undefined,
+        paid_amount: isZeroBalanceFinalize ? 0 : settlementTotalPaid,
+        change_amount: isZeroBalanceFinalize ? 0 : settlementChange,
+        qr_url: json?.data?.receipt_public_url ?? null,
+        items: (() => {
+          const mains = (appointmentDetail.main_service_settlement_items ?? []).filter((row) => String(row.name ?? '').trim() !== '')
+          const addonRows = (appointmentDetail.addon_settlement_items ?? appointmentDetail.add_ons ?? []).map((addon) => {
+            const addonRef = addon as { linked_booking_service_id?: number | null; id?: number | null }
+            const addonServiceId = Number(addonRef.linked_booking_service_id ?? addonRef.id ?? 0)
+            const claim = findPackageClaimForService(appointmentDetail.package_claims, addonServiceId)
+            return {
+              name: String(addon.name ?? 'Add-on'),
+              cn_name: addon.cn_name ?? null,
+              amount: Number(
+                ('balance_due' in addon ? addon.balance_due : null)
+                ?? ('gross_amount' in addon ? addon.gross_amount : null)
+                ?? addon.extra_price
+                ?? 0,
+              ) || null,
+              package_claim: claim ? (String(claim.package_name ?? '').trim() || '') : undefined,
+            }
+          })
+          if (mains.length > 0) {
+            return mains.map((main, idx) => {
+              const claim = findPackageClaimForService(
+                appointmentDetail.package_claims,
+                Number(main.linked_booking_service_id ?? 0),
+              )
+              return {
+                section: 'service' as const,
+                name: main.name,
+                cn_name: main.cn_name ?? null,
+                qty: 1,
+                amount: Number(main.balance_due ?? main.extra_price ?? 0),
+                stage: 'settlement' as const,
+                addons: idx === 0 && addonRows.length ? addonRows : undefined,
+                package_claim: claim ? (String(claim.package_name ?? '').trim() || '') : undefined,
+              }
+            })
+          }
+          return [{
+            section: 'service' as const,
+            name: appointmentDetail.service?.name ?? appointmentDetail.booking_code,
+            cn_name: appointmentDetail.service?.cn_name ?? null,
+            qty: 1,
+            amount: isZeroBalanceFinalize ? 0 : dueAmount,
+            stage: 'settlement' as const,
+            addons: addonRows.length ? addonRows : undefined,
+          }]
+        })(),
       })
       setAppointmentReceiptEmail(formatAppointmentReceiptDefaultEmail(appointmentDetail))
       setAppointmentReceiptEmailError(null)
@@ -2480,6 +2636,7 @@ export default function PosAppointmentsWorkspace({
     }
   }, [
     appointmentDetail,
+    appointmentCheckoutAutoPrint,
     appointmentDiscountRemarkDraft,
     appointmentDiscountTypeDraft,
     appointmentDiscountValueDraft,
@@ -2488,6 +2645,7 @@ export default function PosAppointmentsWorkspace({
     appointmentQrProofPreviewUrl,
     appointmentSettlementPaymentAmounts,
     fetchAppointments,
+    printAppointmentReceipt,
     showMsg,
   ])
 
@@ -5640,6 +5798,9 @@ export default function PosAppointmentsWorkspace({
                               setAppointmentDiscountValueDraft('')
                               setAppointmentDiscountRemarkDraft('')
                               reportAppointmentCheckoutError(null)
+                              setAppointmentCheckoutAutoPrint(
+                                thermalPrinterSettings.auto_print_receipt && getThermalPrinterAvailability(thermalPrinterSettings).available,
+                              )
                               setAppointmentCheckoutConfirmationOpen(true)
                             }}
                             className="min-h-[44px] rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
@@ -6444,28 +6605,47 @@ export default function PosAppointmentsWorkspace({
                       <span className="text-[11px] font-medium text-gray-500">Leave all amounts as 0 for no deposit</span>
                     </div>
                     <div className="space-y-3">
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
-                          <div key={method}>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">{label} Amount</label>
+                      <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+                        {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                          const customerBalanceLocked = method === 'customer_balance' && !createAppointmentMemberSummary?.id
+                          return (
+                          <div
+                            key={method}
+                            className={`rounded-lg border p-3 ${
+                              customerBalanceLocked
+                                ? 'border-gray-200 bg-gray-50 opacity-70'
+                                : 'border-transparent bg-transparent'
+                            }`}
+                          >
+                            <label className={`mb-1 block text-xs font-semibold uppercase tracking-wide ${customerBalanceLocked ? 'text-gray-400' : 'text-gray-600'}`}>{label} Amount</label>
                             <input
                               type="number"
                               min="0"
                               step="0.01"
                               value={createAppointmentDepositPayments[method]}
                               max={method === 'customer_balance' ? (createAppointmentMemberWalletBalance ?? 0).toFixed(2) : undefined}
-                              disabled={method === 'customer_balance' && !createAppointmentMemberSummary?.id}
+                              disabled={customerBalanceLocked}
                               onChange={(e) => {
+                                if (customerBalanceLocked) return
                                 const value = method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), createAppointmentMemberWalletBalance ?? 0)) : e.target.value
                                 setCreateAppointmentDepositPayments((prev) => ({ ...prev, [method]: value }))
                                 reportCreateAppointmentError(null)
                               }}
-                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                              className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                customerBalanceLocked
+                                  ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                                  : 'border-gray-300 bg-white'
+                              }`}
                               placeholder="0.00"
                             />
-                            {method === 'customer_balance' ? <p className="mt-1 text-[11px] font-semibold text-emerald-700">{createAppointmentMemberSummary ? `Available: RM ${(createAppointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}</p> : null}
+                            {method === 'customer_balance' ? (
+                              <p className={`mt-1 text-[11px] font-semibold ${createAppointmentMemberSummary ? 'text-emerald-700' : 'text-gray-500'}`}>
+                                {createAppointmentMemberSummary ? `Available: RM ${(createAppointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}
+                              </p>
+                            ) : null}
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                       <div className="flex flex-wrap justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700">
                         <span>Total Deposit: RM {createAppointmentDepositValue.toFixed(2)}</span>
@@ -6492,6 +6672,17 @@ export default function PosAppointmentsWorkspace({
                         </div>
                       ) : null}
                     </div>
+                  </div>
+                  <div className="mt-4">
+                    <ThermalPrinterCheckoutOption
+                      checked={createAppointmentAutoPrint}
+                      onCheckedChange={setCreateAppointmentAutoPrint}
+                      settings={thermalPrinterSettings}
+                      loading={thermalPrinterLoading}
+                      onSettingsChange={setThermalPrinterSettings}
+                      onPreferenceSaved={(message) => pushToast('success', message)}
+                      onPreferenceError={(message) => pushToast('error', message)}
+                    />
                   </div>
                 </div>
               </div>
@@ -8621,23 +8812,30 @@ export default function PosAppointmentsWorkspace({
                   <p className="mb-3 text-sm font-bold text-gray-900">Payment Method (for receipt)</p>
                   <p className="mb-3 text-xs text-slate-600">RM 0 to collect — choose how this settlement is recorded on the receipt.</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
+                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                      const customerBalanceLocked = method === 'customer_balance' && !appointmentDetail?.customer?.id
+                      return (
                       <button
                         key={method}
                         type="button"
+                        disabled={customerBalanceLocked}
                         onClick={() => {
+                          if (customerBalanceLocked) return
                           reportAppointmentCheckoutError(null)
                           setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
                         }}
                         className={`rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition ${
-                          isAppointmentPaymentMethodSelected(appointmentPaymentMethod, method)
-                            ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm'
-                            : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50/40'
+                          customerBalanceLocked
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 opacity-70'
+                            : isAppointmentPaymentMethodSelected(appointmentPaymentMethod, method)
+                              ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm'
+                              : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50/40'
                         }`}
                       >
                         {label}
                       </button>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ) : (
@@ -8646,43 +8844,65 @@ export default function PosAppointmentsWorkspace({
                     <p className="text-sm font-bold text-gray-900">Split Payment</p>
                     <span className="text-xs font-semibold text-gray-500">Enter paid amount per method</span>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
-                      <div key={method} className="rounded-lg border border-gray-200 bg-white p-3">
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                      const customerBalanceLocked = method === 'customer_balance' && !appointmentDetail?.customer?.id
+                      return (
+                      <div
+                        key={method}
+                        className={`rounded-lg border p-3 ${
+                          customerBalanceLocked
+                            ? 'border-gray-200 bg-gray-50 opacity-70'
+                            : 'border-gray-200 bg-white'
+                        }`}
+                      >
                         <button
                           type="button"
-                          disabled={method === 'customer_balance' && !appointmentDetail?.customer?.id}
+                          disabled={customerBalanceLocked}
                           onClick={() => {
-                            if (method === 'customer_balance' && !appointmentDetail?.customer?.id) return
+                            if (customerBalanceLocked) return
                             reportAppointmentCheckoutError(null)
                             setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
                             setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', customer_balance: '', [method]: Math.min(appointmentDueAfterDiscount, method === 'customer_balance' ? (appointmentMemberWalletBalance ?? 0) : appointmentDueAfterDiscount).toFixed(2) })
                           }}
-                          className="mb-2 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                          className={`mb-2 w-full rounded-lg border px-3 py-2 text-xs font-bold transition ${
+                            customerBalanceLocked
+                              ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                              : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                          }`}
                         >
                           {label}
                         </button>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">{label} Amount</label>
+                        <label className={`mb-1 block text-xs font-semibold uppercase tracking-wide ${customerBalanceLocked ? 'text-gray-400' : 'text-gray-600'}`}>{label} Amount</label>
                         <input
                           type="number"
                           min="0"
                           step="0.01"
                           value={appointmentSettlementPaymentAmounts[method]}
                           max={method === 'customer_balance' ? Math.min(appointmentMemberWalletBalance ?? 0, appointmentDueAfterDiscount).toFixed(2) : undefined}
-                          disabled={method === 'customer_balance' && !appointmentDetail?.customer?.id}
+                          disabled={customerBalanceLocked}
                           onChange={(e) => {
                             reportAppointmentCheckoutError(null)
-                            if (method === 'customer_balance' && !appointmentDetail?.customer?.id) return
+                            if (customerBalanceLocked) return
                             setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
                             const value = method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), appointmentMemberWalletBalance ?? 0, appointmentDueAfterDiscount)) : e.target.value
                             setAppointmentSettlementPaymentAmounts((prev) => ({ ...prev, [method]: value }))
                           }}
-                          className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-900 focus:border-blue-500 focus:outline-none"
+                          className={`h-10 w-full rounded-lg border px-3 text-sm font-semibold focus:outline-none ${
+                            customerBalanceLocked
+                              ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                              : 'border-gray-300 bg-white text-gray-900 focus:border-blue-500'
+                          }`}
                           placeholder="0.00"
                         />
-                        {method === 'customer_balance' ? <p className="mt-1 text-[11px] font-semibold text-emerald-700">{appointmentDetail?.customer?.id ? `Available: RM ${(appointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Member required'}</p> : null}
+                        {method === 'customer_balance' ? (
+                          <p className={`mt-1 text-[11px] font-semibold ${appointmentDetail?.customer?.id ? 'text-emerald-700' : 'text-gray-500'}`}>
+                            {appointmentDetail?.customer?.id ? `Available: RM ${(appointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}
+                          </p>
+                        ) : null}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                   <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700 sm:grid-cols-3">
                     <span>Amount Due: RM {appointmentDueAfterDiscount.toFixed(2)}</span>
@@ -8717,6 +8937,15 @@ export default function PosAppointmentsWorkspace({
                     </div>
                   ) : null}
                 </div>
+              <ThermalPrinterCheckoutOption
+                checked={appointmentCheckoutAutoPrint}
+                onCheckedChange={setAppointmentCheckoutAutoPrint}
+                settings={thermalPrinterSettings}
+                loading={thermalPrinterLoading}
+                onSettingsChange={setThermalPrinterSettings}
+                onPreferenceSaved={(message) => pushToast('success', message)}
+                onPreferenceError={(message) => pushToast('error', message)}
+              />
             </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-6 py-4">
                 <button

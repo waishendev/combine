@@ -12,6 +12,7 @@ import PosAppointmentRefundCreditSection from '@/components/pos/PosAppointmentRe
 import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import type { PosDepositTransaction, PosRefundTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
+import ThermalPrinterCheckoutOption from '@/components/pos/ThermalPrinterCheckoutOption'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import {
   batchReleaseAppointmentPackageClaims,
@@ -118,17 +119,14 @@ import {
 import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
+import { defaultThermalPrinterSettings, getThermalPrinterAvailability, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
 import OrderViewPanel from './OrderViewPanel'
 import CustomerCreateModal from './CustomerCreateModal'
 import type { CustomerRowData } from './CustomerRow'
 import {
   printReceipt,
-  printReceiptBluetooth,
-  printReceiptWifi,
-  testWifiPrinterConnection,
-  connectBluetoothPrinter,
-  disconnectBluetoothPrinter,
-  isBluetoothPrinterConnected,
+  printThermalReceiptCopies,
+  type ReceiptData,
   type ReceiptLineItem,
 } from '@/utils/printReceipt'
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
@@ -2089,13 +2087,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [receiptCooldownUntil, setReceiptCooldownUntil] = useState<number>(0)
   const [receiptQrLoaded, setReceiptQrLoaded] = useState(false)
   const [autoPrint, setAutoPrint] = useState(false)
-  const [printMode, setPrintMode] = useState<'usb' | 'bluetooth' | 'wifi'>('bluetooth')
-  const [btPrinterName, setBtPrinterName] = useState<string | null>(null)
-  const [btConnecting, setBtConnecting] = useState(false)
-  const [wifiPrinterIp, setWifiPrinterIp] = useState('')
-  const [wifiPrinterPort, setWifiPrinterPort] = useState('9100')
-  const [wifiTesting, setWifiTesting] = useState(false)
-  const [wifiTestOk, setWifiTestOk] = useState<boolean | null>(null)
+  const [thermalPrinterSettings, setThermalPrinterSettings] = useState<ThermalPrinterSettings>(defaultThermalPrinterSettings)
+  const [thermalPrinterLoading, setThermalPrinterLoading] = useState(true)
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
@@ -2509,6 +2502,23 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     window.setTimeout(() => dismissToast(id), 3200)
   }, [dismissToast])
 
+  useEffect(() => {
+    let active = true
+    getThermalPrinterSettings()
+      .then((settings) => {
+        if (!active) return
+        setThermalPrinterSettings(settings)
+        setAutoPrint(settings.is_enabled && settings.auto_print_receipt)
+      })
+      .catch(() => {
+        if (active) pushToast('warning', 'Printer settings are unavailable. Checkout can continue without printing.')
+      })
+      .finally(() => {
+        if (active) setThermalPrinterLoading(false)
+      })
+    return () => { active = false }
+  }, [pushToast])
+
   const bookingModalErrorRef = useRef<HTMLDivElement>(null)
   const packageModalErrorRef = useRef<HTMLDivElement>(null)
   const cartEditSettlementErrorRef = useRef<HTMLDivElement>(null)
@@ -2649,46 +2659,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       voucherModalOpen,
     ],
   )
-
-  const handleConnectBtPrinter = async () => {
-    setBtConnecting(true)
-    try {
-      const name = await connectBluetoothPrinter()
-      setBtPrinterName(name)
-      pushToast('success', `Connected: ${name}`)
-    } catch (err) {
-      pushToast('error', err instanceof Error ? err.message : 'Failed to connect printer')
-      setBtPrinterName(null)
-    } finally {
-      setBtConnecting(false)
-    }
-  }
-
-  const handleDisconnectBtPrinter = () => {
-    disconnectBluetoothPrinter()
-    setBtPrinterName(null)
-    pushToast('info', 'Printer disconnected')
-  }
-
-  const handleTestWifiPrinter = async () => {
-    const ip = wifiPrinterIp.trim()
-    if (!ip) {
-      pushToast('error', 'Please enter printer IP address')
-      return
-    }
-    setWifiTesting(true)
-    setWifiTestOk(null)
-    try {
-      await testWifiPrinterConnection(ip, Number(wifiPrinterPort) || 9100)
-      setWifiTestOk(true)
-      pushToast('success', `Test print sent to ${ip}`)
-    } catch (err) {
-      setWifiTestOk(false)
-      pushToast('error', err instanceof Error ? err.message : 'WiFi print test failed')
-    } finally {
-      setWifiTesting(false)
-    }
-  }
 
   const focusScanner = () => {
     try {
@@ -6763,16 +6733,20 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [autoCalculateSplit, cartTotalCents, reportCheckoutError])
 
   const handleSplitPaymentMethodShortcut = useCallback((method: SplitPaymentMethod) => {
+    if (method === 'customer_balance' && !selectedMember?.id) return
     reportCheckoutError(null)
     setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
+    const assignedAmount = method === 'customer_balance'
+      ? Math.min(cartTotal, Math.max(0, memberWalletBalance ?? 0))
+      : cartTotal
     setSplitPaymentAmounts({
       cash: '',
       qrpay: '',
       credit_card: '',
       customer_balance: '',
-      ...(cartTotal > 0.0001 ? { [method]: cartTotal.toFixed(2) } : {}),
+      ...(assignedAmount > 0.0001 ? { [method]: assignedAmount.toFixed(2) } : {}),
     })
-  }, [cartTotal, reportCheckoutError])
+  }, [cartTotal, memberWalletBalance, reportCheckoutError, selectedMember?.id])
 
   useEffect(() => {
     if (!checkoutConfirmationOpen) return
@@ -7072,28 +7046,255 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       return
     }
 
-    const receiptLineItems: ReceiptLineItem[] = [
-      ...cartItems.map((item) => ({
-        name: item.product_name ?? item.variant_name ?? 'Product',
+    const receiptLineItems: ReceiptLineItem[] = []
+    let packageCoveredTotal = 0
+
+    const markClaim = (packageName: string | null | undefined, coveredAmount: number) => {
+      const amount = Math.max(0, Number(coveredAmount || 0))
+      if (amount > 0.0001) packageCoveredTotal += amount
+      return String(packageName ?? '').trim() || ''
+    }
+
+    for (const item of cartItems) {
+      const isBookingProduct = item.item_type === 'BOOKING_PRODUCT'
+      const name = item.product_name ?? item.variant_name ?? (isBookingProduct ? 'Item' : 'Product')
+      const amount = Number(item.line_total_after_discount ?? item.line_total ?? 0)
+      const options = getBookingProductSelectedOptions(item)
+      if (isBookingProduct) {
+        receiptLineItems.push({
+          section: 'service',
+          name,
+          cn_name: item.product_cn_name ?? item.variant_cn_name ?? null,
+          qty: item.qty,
+          amount,
+          children: options.map((opt) => ({
+            name: String(opt.label ?? 'Option'),
+            cn_name: opt.cn_label ?? null,
+            qty: item.qty,
+            amount: getBookingProductOptionNetLineTotal(item, opt),
+          })),
+        })
+        continue
+      }
+      receiptLineItems.push({
+        section: 'product',
+        name,
+        cn_name: item.product_cn_name ?? item.variant_cn_name ?? null,
         qty: item.qty,
-        amount: item.line_total,
-      })),
-      ...(cart.service_items ?? []).map((item) => ({
-        name: item.service_name ?? 'Service',
-        qty: item.qty,
-        amount: item.line_total,
-      })),
-      ...(cart.package_items ?? []).map((item) => ({
+        amount,
+      })
+    }
+
+    for (const item of cart.service_items ?? []) {
+      const blocks = getPosServiceDepositBlocks(item)
+      if (blocks.length > 0) {
+        for (const block of blocks) {
+          const displayAmount = Number(
+            block.covered_by_package
+              ? (block.reference_deposit ?? block.deposit ?? item.unit_price ?? item.line_total ?? 0)
+              : (block.deposit ?? item.line_total ?? 0),
+          )
+          const mainClaimName = block.covered_by_package
+            ? markClaim(
+                findPackageClaimForService(
+                  item.package_claims,
+                  Number(block.linked_booking_service_id ?? block.id ?? 0),
+                )?.package_name ?? item.package_claim_name,
+                displayAmount,
+              )
+            : undefined
+
+          const addonNodes = (block.add_ons ?? []).map((addon) => {
+            const addonAmount = Number(
+              addon.covered_by_package
+                ? (addon.reference_deposit ?? addon.line_gross_amount ?? addon.extra_price ?? 0)
+                : (addon.line_gross_amount ?? addon.extra_price ?? 0),
+            )
+            const addonClaimName = addon.covered_by_package
+              ? markClaim(
+                  findPackageClaimForService(
+                    item.package_claims,
+                    Number(addon.linked_booking_service_id ?? addon.id ?? 0),
+                  )?.package_name ?? item.package_claim_name,
+                  addonAmount,
+                )
+              : undefined
+            return {
+              name: addon.name,
+              cn_name: addon.cn_name ?? null,
+              qty: Number(addon.quantity ?? 1) || 1,
+              amount: addonAmount || null,
+              package_claim: addonClaimName,
+            }
+          })
+
+          receiptLineItems.push({
+            section: 'service',
+            name: block.name,
+            cn_name: block.cn_name ?? null,
+            qty: 1,
+            amount: displayAmount,
+            stage: 'deposit',
+            addons: addonNodes.length ? addonNodes : undefined,
+            package_claim: mainClaimName,
+          })
+        }
+      } else {
+        const covered = Boolean(item.claimed_by_package || (item.package_claims ?? []).length > 0)
+        const displayAmount = Number(item.line_total ?? item.unit_price ?? 0)
+        receiptLineItems.push({
+          section: 'service',
+          name: item.service_name ?? 'Service',
+          cn_name: item.service_cn_name ?? null,
+          qty: item.qty,
+          amount: displayAmount,
+          stage: 'deposit',
+          package_claim: covered
+            ? markClaim(item.package_claim_name ?? item.package_claims?.[0]?.package_name, displayAmount)
+            : undefined,
+        })
+      }
+    }
+
+    for (const item of cart.appointment_settlement_items ?? []) {
+      const mainLines = (item.main_service_settlement_items ?? []).filter((row) => String(row.name ?? '').trim() !== '')
+      const addonSource = item.addon_settlement_items ?? []
+
+      if (mainLines.length > 0) {
+        mainLines.forEach((main, idx) => {
+          const mainService = (item.main_services ?? []).find((svc) => String(svc.name) === String(main.name))
+            ?? (item.main_services ?? [])[idx]
+          const covered = settlementMainLineCoveredByPackage(item, mainService ?? { name: main.name, extra_price: main.extra_price }, idx)
+          const displayAmount = Number(
+            main.gross_amount
+            ?? main.extra_price
+            ?? main.line_total_after_discount
+            ?? main.balance_due
+            ?? 0,
+          )
+          const mainClaim = covered
+            ? markClaim(
+                findPackageClaimForService(
+                  item.package_claims,
+                  Number(main.linked_booking_service_id ?? mainService?.linked_booking_service_id ?? 0),
+                )?.package_name ?? item.package_claims?.[0]?.package_name,
+                displayAmount,
+              )
+            : undefined
+
+          const nestedAddons =
+            idx === 0
+              ? addonSource.map((addon) => {
+                  const coveredAddon = settlementAddonLineCoveredByPackage(item, addon, 0)
+                  const addonAmount = Number(addon.gross_amount ?? addon.extra_price ?? addon.balance_due ?? 0)
+                  return {
+                    name: addon.name,
+                    cn_name: addon.cn_name ?? null,
+                    qty: Number(addon.quantity ?? 1) || 1,
+                    amount: addonAmount || null,
+                    package_claim: coveredAddon
+                      ? markClaim(
+                          findPackageClaimForService(
+                            item.package_claims,
+                            Number(addon.linked_booking_service_id ?? addon.id ?? 0),
+                          )?.package_name ?? item.package_claims?.[0]?.package_name,
+                          addonAmount,
+                        )
+                      : undefined,
+                  }
+                })
+              : (mainService?.add_ons ?? []).map((addon) => ({
+                  name: addon.name,
+                  cn_name: addon.cn_name ?? null,
+                  qty: Number(addon.quantity ?? 1) || 1,
+                  amount: Number(addon.line_gross_amount ?? addon.extra_price ?? 0) || null,
+                }))
+
+          receiptLineItems.push({
+            section: 'service',
+            name: main.name,
+            cn_name: main.cn_name ?? null,
+            qty: 1,
+            amount: displayAmount,
+            stage: 'settlement',
+            addons: nestedAddons.length ? nestedAddons : undefined,
+            package_claim: mainClaim,
+          })
+        })
+      } else {
+        const covered = Number(item.package_offset ?? item.total_covered ?? 0)
+        const displayAmount = Number(item.service_total ?? item.amount_due_now ?? item.balance_due ?? 0)
+        if (covered > 0.0001) {
+          markClaim(item.package_claims?.[0]?.package_name, covered)
+        }
+        receiptLineItems.push({
+          section: 'service',
+          name: item.service_name ?? item.booking_code,
+          cn_name: item.service_cn_name ?? null,
+          qty: 1,
+          amount: displayAmount,
+          stage: 'settlement',
+          addons: addonSource.map((addon) => ({
+            name: addon.name,
+            cn_name: addon.cn_name ?? null,
+            qty: Number(addon.quantity ?? 1) || 1,
+            amount: Number(addon.gross_amount ?? addon.balance_due ?? 0) || null,
+          })),
+          package_claim: covered > 0.0001
+            ? (String(item.package_claims?.[0]?.package_name ?? '').trim() || '')
+            : undefined,
+        })
+      }
+    }
+
+    for (const item of cart.package_items ?? []) {
+      receiptLineItems.push({
+        section: 'package',
         name: item.package_name ?? 'Package',
         qty: item.qty,
-        amount: item.line_total,
-      })),
-      ...(cart.appointment_settlement_items ?? []).map((item) => ({
-        name: item.service_name ?? `Booking ${item.booking_code}`,
-        qty: 1,
-        amount: item.balance_due,
-      })),
-    ]
+        amount: Number(item.line_total_after_discount ?? item.line_total ?? 0),
+      })
+    }
+
+    const receiptCustomerName =
+      selectedMember?.name?.trim() ||
+      (checkoutIdentityMode === 'guest'
+        ? (checkoutGuestIsUnknown ? 'UNKNOWN' : guestContactCache.name.trim())
+        : '') ||
+      'GUEST'
+    const receiptCustomerPhone =
+      selectedMember?.phone?.trim() ||
+      (checkoutIdentityMode === 'guest' && !checkoutGuestIsUnknown
+        ? normalizeInternationalPhone(guestContactCache.phone) || guestContactCache.phone.trim()
+        : '') ||
+      '-'
+    const receiptPayments = checkoutPaymentRows
+      .map((row) => ({ method: row.method, amount: row.amount }))
+      .filter((row) => Number(row.amount ?? 0) > 0.0001)
+    const receiptPaymentMethod =
+      receiptPayments.length > 1
+        ? 'split'
+        : receiptPayments[0]?.method === 'credit_card'
+          ? 'billplz_credit_card'
+          : (receiptPayments[0]?.method ?? paymentMethod)
+    const receiptDiscount = Number(cart.voucher?.discount_amount ?? voucherDiscount ?? 0)
+    const receiptSubtotal = Number(cart.subtotal ?? 0)
+    const receiptPayload: ReceiptData = {
+      order_number: json.data.order.order_number,
+      payment_method: receiptPaymentMethod,
+      payments: receiptPayments,
+      customer_name: receiptCustomerName,
+      customer_phone: receiptCustomerPhone,
+      total: Number(json.data.order.grand_total ?? 0),
+      subtotal: receiptSubtotal > 0 ? receiptSubtotal : undefined,
+      discount: receiptDiscount > 0 ? receiptDiscount : undefined,
+      package_covered: packageCoveredTotal > 0.0001 ? packageCoveredTotal : undefined,
+      paid_amount: meta.paid_amount,
+      change_amount: meta.change_amount,
+      items: receiptLineItems,
+      qr_url: json.data.receipt_public_url ?? null,
+      paper_width: thermalPrinterSettings.paper_width,
+    }
 
     const clearedCartId = cart.id
     setCheckoutResult({
@@ -7146,22 +7347,22 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setCheckingOut(false)
 
     if (autoPrint) {
-      const receiptPayload = {
-        order_number: json.data.order.order_number,
-        payment_method: paymentMethod,
-        total: Number(json.data.order.grand_total ?? 0),
-        paid_amount: meta.paid_amount,
-        change_amount: meta.change_amount,
-        items: receiptLineItems,
-      }
 
-      if (printMode === 'bluetooth' && isBluetoothPrinterConnected()) {
-        printReceiptBluetooth(receiptPayload).catch(() => pushToast('error', 'Bluetooth print failed'))
-      } else if (printMode === 'wifi' && wifiPrinterIp.trim()) {
-        printReceiptWifi(wifiPrinterIp.trim(), Number(wifiPrinterPort) || 9100, receiptPayload)
-          .catch(() => pushToast('error', 'WiFi print failed'))
-      } else if (printMode === 'usb' && json.data.receipt_public_url) {
-        printReceipt(json.data.receipt_public_url)
+      if (!thermalPrinterSettings.is_enabled) {
+        pushToast('warning', 'Payment completed. Thermal printer is disabled, so the receipt was not printed.')
+      } else if (thermalPrinterSettings.connection_type !== 'network') {
+        pushToast('warning', `Payment completed. ${thermalPrinterSettings.connection_type} printing is not supported.`)
+      } else if (!thermalPrinterSettings.ip_address || !thermalPrinterSettings.port) {
+        pushToast('warning', 'Payment completed. Thermal printer is not configured, so the receipt was not printed.')
+      } else {
+        void (async () => {
+          try {
+            await printThermalReceiptCopies(thermalPrinterSettings, receiptPayload)
+            pushToast('success', `${thermalPrinterSettings.copies} receipt ${thermalPrinterSettings.copies === 1 ? 'copy' : 'copies'} sent to printer.`)
+          } catch (error) {
+            pushToast('error', `Payment completed, but printing failed: ${error instanceof Error ? error.message : 'Printer unavailable'}`)
+          }
+        })()
       }
     }
 
@@ -8382,6 +8583,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
     setSplitPaymentAmounts(buildDefaultSplitForTotal(cartTotal))
     setPaymentMethod('qrpay')
+    setAutoPrint(
+      thermalPrinterSettings.auto_print_receipt && getThermalPrinterAvailability(thermalPrinterSettings).available,
+    )
     setCheckoutConfirmationOpen(true)
   }
 
@@ -12111,40 +12315,61 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ) : null}
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
-                    <div key={method} className="rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
+                  {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                    const customerBalanceLocked = method === 'customer_balance' && !selectedMember?.id
+                    return (
+                    <div
+                      key={method}
+                      className={`rounded-xl border-2 p-4 shadow-sm ${
+                        customerBalanceLocked
+                          ? 'border-gray-200 bg-gray-50 opacity-70'
+                          : 'border-gray-200 bg-white'
+                      }`}
+                    >
                       <button
                         type="button"
+                        disabled={customerBalanceLocked}
                         onClick={() => handleSplitPaymentMethodShortcut(method)}
                         className={`mb-3 w-full rounded-lg border px-3 py-2 text-sm font-bold transition ${
-                          isPosPaymentMethodSelected(paymentMethod, method)
-                            ? 'border-blue-600 bg-blue-50 text-blue-800'
-                            : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                          customerBalanceLocked
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                            : isPosPaymentMethodSelected(paymentMethod, method)
+                              ? 'border-blue-600 bg-blue-50 text-blue-800'
+                              : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
                         }`}
                       >
                         {label}
                       </button>
                       {!cartCheckoutIsZeroTotal ? (
                       <>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label} Amount</label>
+                      <label className={`text-xs font-semibold uppercase tracking-wide ${customerBalanceLocked ? 'text-gray-400' : 'text-gray-500'}`}>{label} Amount</label>
                       <input
                         type="number"
                         min="0"
                         step="0.01"
                         value={splitPaymentAmounts[method]}
                         max={method === 'customer_balance' ? Math.min(memberWalletBalance ?? 0, cartTotal).toFixed(2) : undefined}
-                        disabled={method === 'customer_balance' && !selectedMember?.id}
+                        disabled={customerBalanceLocked}
                         onChange={(e) => handleSplitPaymentAmountChange(method, method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), memberWalletBalance ?? 0, cartTotal)) : e.target.value)}
-                        className="mt-1 h-12 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-base font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        className={`mt-1 h-12 w-full rounded-xl border-2 px-4 text-base font-bold transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                          customerBalanceLocked
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                            : 'border-gray-300 bg-white focus:border-blue-500'
+                        }`}
                         placeholder="0.00"
                       />
-                      {method === 'customer_balance' ? <p className="mt-1 text-xs font-semibold text-emerald-700">{selectedMember ? `Available: RM ${(memberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}</p> : null}
+                      {method === 'customer_balance' ? (
+                        <p className={`mt-1 text-xs font-semibold ${selectedMember ? 'text-emerald-700' : 'text-gray-500'}`}>
+                          {selectedMember ? `Available: RM ${(memberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}
+                        </p>
+                      ) : null}
                       </>
                       ) : (
                         <p className="text-xs font-medium text-slate-500">No amount required</p>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
                 {!cartCheckoutIsZeroTotal ? (
                 <>
@@ -12199,159 +12424,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ) : null}
                 </div>
 
-              <div className="mt-5 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 shadow-sm overflow-hidden">
-                <label className="flex cursor-pointer items-center gap-3 px-5 py-4 select-none">
-                  <input
-                    type="checkbox"
-                    checked={autoPrint}
-                    onChange={(e) => setAutoPrint(e.target.checked)}
-                    className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex items-center gap-2">
-                    <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                    </svg>
-                    <span className="text-sm font-semibold text-gray-700">Auto Print Receipt</span>
-                  </div>
-                </label>
-
-                {autoPrint && (
-                  <div className="border-t border-gray-200 px-5 py-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Print via</span>
-                      <div className="flex rounded-lg border border-gray-300 overflow-hidden text-xs font-semibold">
-                        <button
-                          type="button"
-                          onClick={() => setPrintMode('bluetooth')}
-                          className={`px-3 py-1.5 transition-all ${printMode === 'bluetooth' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                        >
-                          Bluetooth
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPrintMode('wifi')}
-                          className={`px-3 py-1.5 border-l border-gray-300 transition-all ${printMode === 'wifi' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                        >
-                          WiFi
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPrintMode('usb')}
-                          className={`px-3 py-1.5 border-l border-gray-300 transition-all ${printMode === 'usb' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                        >
-                          USB
-                        </button>
-                      </div>
-                    </div>
-
-                    {printMode === 'bluetooth' && (
-                      <div>
-                        {btPrinterName ? (
-                          <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2.5">
-                            <div className="flex items-center gap-2 text-sm font-medium text-green-800">
-                              <span className="relative flex h-2.5 w-2.5">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
-                              </span>
-                              {btPrinterName}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleDisconnectBtPrinter}
-                              className="text-xs font-semibold text-red-600 hover:text-red-700 underline transition-colors"
-                            >
-                              Disconnect
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void handleConnectBtPrinter()}
-                            disabled={btConnecting}
-                            className="w-full rounded-lg border-2 border-dashed border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {btConnecting ? (
-                              <span className="flex items-center justify-center gap-2">
-                                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                </svg>
-                                Connecting...
-                              </span>
-                            ) : (
-                              <span className="flex items-center justify-center gap-2">
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                </svg>
-                                Connect Bluetooth Printer
-                              </span>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {printMode === 'wifi' && (
-                      <div className="space-y-2">
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={wifiPrinterIp}
-                            onChange={(e) => { setWifiPrinterIp(e.target.value); setWifiTestOk(null) }}
-                            placeholder="Printer IP (e.g. 192.168.1.100)"
-                            className="h-9 flex-1 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-blue-500"
-                          />
-                          <input
-                            type="text"
-                            value={wifiPrinterPort}
-                            onChange={(e) => { setWifiPrinterPort(e.target.value); setWifiTestOk(null) }}
-                            placeholder="Port"
-                            className="h-9 w-20 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-blue-500"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void handleTestWifiPrinter()}
-                          disabled={wifiTesting || !wifiPrinterIp.trim()}
-                          className="w-full rounded-lg border-2 border-dashed border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-600 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {wifiTesting ? (
-                            <span className="flex items-center justify-center gap-2">
-                              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                              </svg>
-                              Testing...
-                            </span>
-                          ) : (
-                            <span className="flex items-center justify-center gap-2">
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                              </svg>
-                              Test Print
-                            </span>
-                          )}
-                        </button>
-                        {wifiTestOk === true && (
-                          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium text-green-800">
-                            <span className="relative flex h-2.5 w-2.5">
-                              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
-                            </span>
-                            Printer reachable — test receipt sent
-                          </div>
-                        )}
-                        {wifiTestOk === false && (
-                          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
-                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01" />
-                            </svg>
-                            Could not reach printer — check IP &amp; port
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+              <div className="mt-5">
+                <ThermalPrinterCheckoutOption
+                  checked={autoPrint}
+                  onCheckedChange={setAutoPrint}
+                  settings={thermalPrinterSettings}
+                  loading={thermalPrinterLoading}
+                  onSettingsChange={setThermalPrinterSettings}
+                  onPreferenceSaved={(message) => pushToast('success', message)}
+                  onPreferenceError={(message) => pushToast('error', message)}
+                />
               </div>
 
               <div className="mt-8 flex gap-4 pt-2 flex-shrink-0">

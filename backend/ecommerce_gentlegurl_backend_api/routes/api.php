@@ -71,6 +71,7 @@ use App\Http\Controllers\Ecommerce\LoyaltyAdminController;
 use App\Http\Controllers\Ecommerce\LoyaltyRewardController;
 use App\Http\Controllers\Ecommerce\LoyaltyRedemptionAdminController;
 use App\Http\Controllers\Ecommerce\ShopSettingController;
+use App\Http\Controllers\Ecommerce\ThermalPrinterSettingController;
 use App\Http\Controllers\LoyaltySettingController;
 use App\Http\Controllers\MembershipTierRuleController;
 use App\Http\Controllers\NotificationTemplateController;
@@ -1086,6 +1087,18 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.loyalty.redemptions.update');
 
         // Shop Settings
+        Route::get('/thermal-printer-settings', [ThermalPrinterSettingController::class, 'show'])
+            ->middleware('permission:ecommerce.thermal-printer-settings.view|ecommerce.thermal-printer-settings.update|pos.checkout|pos.appointments.manage|pos.appointments.checkout');
+
+        Route::put('/thermal-printer-settings', [ThermalPrinterSettingController::class, 'update'])
+            ->middleware('permission:ecommerce.thermal-printer-settings.update');
+
+        Route::patch('/thermal-printer-settings/auto-print', [ThermalPrinterSettingController::class, 'updateAutoPrint'])
+            ->middleware('permission:ecommerce.thermal-printer-settings.update|pos.checkout|pos.appointments.manage|pos.appointments.checkout');
+
+        Route::post('/thermal-printer-settings/test', [ThermalPrinterSettingController::class, 'test'])
+            ->middleware('permission:ecommerce.thermal-printer-settings.update');
+
         Route::get('/shop-settings', [ShopSettingController::class, 'index']);
 
         Route::get('/shop-settings/{key}', [ShopSettingController::class, 'show']);

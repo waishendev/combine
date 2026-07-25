@@ -3,6 +3,7 @@
 import { useState } from 'react'
 
 import ReceiptSharePanel from './ReceiptSharePanel'
+import { mapSalesDetailsToThermalReceipt, type ReceiptData } from '@/utils/printReceipt'
 
 type OrderReceiptActionProps = {
   orderId: number
@@ -12,6 +13,7 @@ type OrderReceiptActionProps = {
 type ReceiptPayload = {
   receipt_public_url: string
   customer_email?: string | null
+  thermal_receipt: ReceiptData
 }
 
 export default function OrderReceiptAction({ orderId, orderNo }: OrderReceiptActionProps) {
@@ -29,7 +31,32 @@ export default function OrderReceiptAction({ orderId, orderNo }: OrderReceiptAct
     try {
       const response = await fetch(`/api/proxy/admin/reports/sales/${orderId}/details`, { cache: 'no-store' })
       const data = await response.json().catch(() => null) as {
-        order?: { receipt_public_url?: string | null; customer_email?: string | null }
+        order?: {
+          id?: number
+          order_no?: string
+          order_datetime?: string | null
+          created_at?: string | null
+          receipt_public_url?: string | null
+          customer_email?: string | null
+          customer?: string | null
+          customer_phone?: string | null
+          payment_method?: string
+          grand_total?: number
+          payments?: Array<{ method?: string; amount?: number }>
+        }
+        lines?: Array<{
+          line_type?: string
+          name?: string
+          cn_name?: string | null
+          qty?: number
+          net_amount?: number
+          gross_amount?: number
+          discount_amount?: number
+          package_applied?: boolean
+          package_name?: string | null
+          addon_service_context?: string | null
+          children?: Array<{ name?: string; cn_name?: string | null; net_amount?: number; amount?: number }>
+        }>
         message?: string
       } | null
 
@@ -47,6 +74,11 @@ export default function OrderReceiptAction({ orderId, orderNo }: OrderReceiptAct
       setReceipt({
         receipt_public_url: receiptUrl,
         customer_email: data?.order?.customer_email ?? null,
+        thermal_receipt: mapSalesDetailsToThermalReceipt({
+          order: data?.order ?? null,
+          lines: data?.lines ?? [],
+          orderId,
+        }),
       })
     } catch {
       setError('Unable to load receipt.')
@@ -103,6 +135,7 @@ export default function OrderReceiptAction({ orderId, orderNo }: OrderReceiptAct
                   orderId={orderId}
                   receiptPublicUrl={receipt.receipt_public_url}
                   defaultEmail={receipt.customer_email}
+                  thermalReceipt={receipt.thermal_receipt}
                   compact
                 />
               ) : null}
