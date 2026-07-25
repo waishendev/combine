@@ -210,7 +210,9 @@ export default function ReceiptSharePanel({
               {printing ? 'Printing…' : 'Print Receipt'}
             </button>
             {printerUnavailableMessage ? <p className="text-center text-xs font-medium text-amber-700">{printerUnavailableMessage}</p> : null}
-            {!printerAvailability.available || printerLoadError ? <p className="text-center"><a href="/settings/thermal-printer" className="text-xs font-semibold text-blue-600 hover:underline">Manage Printer Settings</a></p> : null}
+            {!printerAvailability.available || printerLoadError ? <p className="text-center">
+              {/* <a href="/settings/thermal-printer" className="text-xs font-semibold text-blue-600 hover:underline">Manage Printer Settings</a> */}
+            </p> : null}
           </div>
         ) : null}
 

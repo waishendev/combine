@@ -56,7 +56,7 @@ export default function ThermalPrinterCheckoutOption({ checked, onCheckedChange,
         <span className="text-gray-500">Printer Status</span>
         <span className={`text-right font-semibold ${availability.available ? 'text-emerald-700' : 'text-amber-700'}`}>{loading ? 'Loading' : availability.label}</span>
       </div>
-      <a href="/settings/thermal-printer" className="mt-3 inline-block text-xs font-semibold text-blue-600 hover:underline">Manage Printer Settings</a>
+      {/* <a href="/settings/thermal-printer" className="mt-3 inline-block text-xs font-semibold text-blue-600 hover:underline">Manage Printer Settings</a> */}
     </div>
   )
 }

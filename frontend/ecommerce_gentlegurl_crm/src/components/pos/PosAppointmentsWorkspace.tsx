@@ -6506,28 +6506,47 @@ export default function PosAppointmentsWorkspace({
                       <span className="text-[11px] font-medium text-gray-500">Leave all amounts as 0 for no deposit</span>
                     </div>
                     <div className="space-y-3">
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
-                          <div key={method}>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">{label} Amount</label>
+                      <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+                        {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                          const customerBalanceLocked = method === 'customer_balance' && !createAppointmentMemberSummary?.id
+                          return (
+                          <div
+                            key={method}
+                            className={`rounded-lg border p-3 ${
+                              customerBalanceLocked
+                                ? 'border-gray-200 bg-gray-50 opacity-70'
+                                : 'border-transparent bg-transparent'
+                            }`}
+                          >
+                            <label className={`mb-1 block text-xs font-semibold uppercase tracking-wide ${customerBalanceLocked ? 'text-gray-400' : 'text-gray-600'}`}>{label} Amount</label>
                             <input
                               type="number"
                               min="0"
                               step="0.01"
                               value={createAppointmentDepositPayments[method]}
                               max={method === 'customer_balance' ? (createAppointmentMemberWalletBalance ?? 0).toFixed(2) : undefined}
-                              disabled={method === 'customer_balance' && !createAppointmentMemberSummary?.id}
+                              disabled={customerBalanceLocked}
                               onChange={(e) => {
+                                if (customerBalanceLocked) return
                                 const value = method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), createAppointmentMemberWalletBalance ?? 0)) : e.target.value
                                 setCreateAppointmentDepositPayments((prev) => ({ ...prev, [method]: value }))
                                 reportCreateAppointmentError(null)
                               }}
-                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                              className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                customerBalanceLocked
+                                  ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                                  : 'border-gray-300 bg-white'
+                              }`}
                               placeholder="0.00"
                             />
-                            {method === 'customer_balance' ? <p className="mt-1 text-[11px] font-semibold text-emerald-700">{createAppointmentMemberSummary ? `Available: RM ${(createAppointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}</p> : null}
+                            {method === 'customer_balance' ? (
+                              <p className={`mt-1 text-[11px] font-semibold ${createAppointmentMemberSummary ? 'text-emerald-700' : 'text-gray-500'}`}>
+                                {createAppointmentMemberSummary ? `Available: RM ${(createAppointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}
+                              </p>
+                            ) : null}
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                       <div className="flex flex-wrap justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700">
                         <span>Total Deposit: RM {createAppointmentDepositValue.toFixed(2)}</span>
@@ -8694,23 +8713,30 @@ export default function PosAppointmentsWorkspace({
                   <p className="mb-3 text-sm font-bold text-gray-900">Payment Method (for receipt)</p>
                   <p className="mb-3 text-xs text-slate-600">RM 0 to collect — choose how this settlement is recorded on the receipt.</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
+                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                      const customerBalanceLocked = method === 'customer_balance' && !appointmentDetail?.customer?.id
+                      return (
                       <button
                         key={method}
                         type="button"
+                        disabled={customerBalanceLocked}
                         onClick={() => {
+                          if (customerBalanceLocked) return
                           reportAppointmentCheckoutError(null)
                           setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
                         }}
                         className={`rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition ${
-                          isAppointmentPaymentMethodSelected(appointmentPaymentMethod, method)
-                            ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm'
-                            : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50/40'
+                          customerBalanceLocked
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 opacity-70'
+                            : isAppointmentPaymentMethodSelected(appointmentPaymentMethod, method)
+                              ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm'
+                              : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50/40'
                         }`}
                       >
                         {label}
                       </button>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ) : (
@@ -8719,43 +8745,65 @@ export default function PosAppointmentsWorkspace({
                     <p className="text-sm font-bold text-gray-900">Split Payment</p>
                     <span className="text-xs font-semibold text-gray-500">Enter paid amount per method</span>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
-                      <div key={method} className="rounded-lg border border-gray-200 bg-white p-3">
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                      const customerBalanceLocked = method === 'customer_balance' && !appointmentDetail?.customer?.id
+                      return (
+                      <div
+                        key={method}
+                        className={`rounded-lg border p-3 ${
+                          customerBalanceLocked
+                            ? 'border-gray-200 bg-gray-50 opacity-70'
+                            : 'border-gray-200 bg-white'
+                        }`}
+                      >
                         <button
                           type="button"
-                          disabled={method === 'customer_balance' && !appointmentDetail?.customer?.id}
+                          disabled={customerBalanceLocked}
                           onClick={() => {
-                            if (method === 'customer_balance' && !appointmentDetail?.customer?.id) return
+                            if (customerBalanceLocked) return
                             reportAppointmentCheckoutError(null)
                             setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
                             setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', customer_balance: '', [method]: Math.min(appointmentDueAfterDiscount, method === 'customer_balance' ? (appointmentMemberWalletBalance ?? 0) : appointmentDueAfterDiscount).toFixed(2) })
                           }}
-                          className="mb-2 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                          className={`mb-2 w-full rounded-lg border px-3 py-2 text-xs font-bold transition ${
+                            customerBalanceLocked
+                              ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                              : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                          }`}
                         >
                           {label}
                         </button>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">{label} Amount</label>
+                        <label className={`mb-1 block text-xs font-semibold uppercase tracking-wide ${customerBalanceLocked ? 'text-gray-400' : 'text-gray-600'}`}>{label} Amount</label>
                         <input
                           type="number"
                           min="0"
                           step="0.01"
                           value={appointmentSettlementPaymentAmounts[method]}
                           max={method === 'customer_balance' ? Math.min(appointmentMemberWalletBalance ?? 0, appointmentDueAfterDiscount).toFixed(2) : undefined}
-                          disabled={method === 'customer_balance' && !appointmentDetail?.customer?.id}
+                          disabled={customerBalanceLocked}
                           onChange={(e) => {
                             reportAppointmentCheckoutError(null)
-                            if (method === 'customer_balance' && !appointmentDetail?.customer?.id) return
+                            if (customerBalanceLocked) return
                             setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
                             const value = method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), appointmentMemberWalletBalance ?? 0, appointmentDueAfterDiscount)) : e.target.value
                             setAppointmentSettlementPaymentAmounts((prev) => ({ ...prev, [method]: value }))
                           }}
-                          className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-900 focus:border-blue-500 focus:outline-none"
+                          className={`h-10 w-full rounded-lg border px-3 text-sm font-semibold focus:outline-none ${
+                            customerBalanceLocked
+                              ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                              : 'border-gray-300 bg-white text-gray-900 focus:border-blue-500'
+                          }`}
                           placeholder="0.00"
                         />
-                        {method === 'customer_balance' ? <p className="mt-1 text-[11px] font-semibold text-emerald-700">{appointmentDetail?.customer?.id ? `Available: RM ${(appointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Member required'}</p> : null}
+                        {method === 'customer_balance' ? (
+                          <p className={`mt-1 text-[11px] font-semibold ${appointmentDetail?.customer?.id ? 'text-emerald-700' : 'text-gray-500'}`}>
+                            {appointmentDetail?.customer?.id ? `Available: RM ${(appointmentMemberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}
+                          </p>
+                        ) : null}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                   <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700 sm:grid-cols-3">
                     <span>Amount Due: RM {appointmentDueAfterDiscount.toFixed(2)}</span>

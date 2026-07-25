@@ -6732,16 +6732,20 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [autoCalculateSplit, cartTotalCents, reportCheckoutError])
 
   const handleSplitPaymentMethodShortcut = useCallback((method: SplitPaymentMethod) => {
+    if (method === 'customer_balance' && !selectedMember?.id) return
     reportCheckoutError(null)
     setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
+    const assignedAmount = method === 'customer_balance'
+      ? Math.min(cartTotal, Math.max(0, memberWalletBalance ?? 0))
+      : cartTotal
     setSplitPaymentAmounts({
       cash: '',
       qrpay: '',
       credit_card: '',
       customer_balance: '',
-      ...(cartTotal > 0.0001 ? { [method]: cartTotal.toFixed(2) } : {}),
+      ...(assignedAmount > 0.0001 ? { [method]: assignedAmount.toFixed(2) } : {}),
     })
-  }, [cartTotal, reportCheckoutError])
+  }, [cartTotal, memberWalletBalance, reportCheckoutError, selectedMember?.id])
 
   useEffect(() => {
     if (!checkoutConfirmationOpen) return
@@ -12092,40 +12096,61 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ) : null}
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
-                    <div key={method} className="rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
+                  {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                    const customerBalanceLocked = method === 'customer_balance' && !selectedMember?.id
+                    return (
+                    <div
+                      key={method}
+                      className={`rounded-xl border-2 p-4 shadow-sm ${
+                        customerBalanceLocked
+                          ? 'border-gray-200 bg-gray-50 opacity-70'
+                          : 'border-gray-200 bg-white'
+                      }`}
+                    >
                       <button
                         type="button"
+                        disabled={customerBalanceLocked}
                         onClick={() => handleSplitPaymentMethodShortcut(method)}
                         className={`mb-3 w-full rounded-lg border px-3 py-2 text-sm font-bold transition ${
-                          isPosPaymentMethodSelected(paymentMethod, method)
-                            ? 'border-blue-600 bg-blue-50 text-blue-800'
-                            : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                          customerBalanceLocked
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                            : isPosPaymentMethodSelected(paymentMethod, method)
+                              ? 'border-blue-600 bg-blue-50 text-blue-800'
+                              : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
                         }`}
                       >
                         {label}
                       </button>
                       {!cartCheckoutIsZeroTotal ? (
                       <>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label} Amount</label>
+                      <label className={`text-xs font-semibold uppercase tracking-wide ${customerBalanceLocked ? 'text-gray-400' : 'text-gray-500'}`}>{label} Amount</label>
                       <input
                         type="number"
                         min="0"
                         step="0.01"
                         value={splitPaymentAmounts[method]}
                         max={method === 'customer_balance' ? Math.min(memberWalletBalance ?? 0, cartTotal).toFixed(2) : undefined}
-                        disabled={method === 'customer_balance' && !selectedMember?.id}
+                        disabled={customerBalanceLocked}
                         onChange={(e) => handleSplitPaymentAmountChange(method, method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), memberWalletBalance ?? 0, cartTotal)) : e.target.value)}
-                        className="mt-1 h-12 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-base font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        className={`mt-1 h-12 w-full rounded-xl border-2 px-4 text-base font-bold transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                          customerBalanceLocked
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                            : 'border-gray-300 bg-white focus:border-blue-500'
+                        }`}
                         placeholder="0.00"
                       />
-                      {method === 'customer_balance' ? <p className="mt-1 text-xs font-semibold text-emerald-700">{selectedMember ? `Available: RM ${(memberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}</p> : null}
+                      {method === 'customer_balance' ? (
+                        <p className={`mt-1 text-xs font-semibold ${selectedMember ? 'text-emerald-700' : 'text-gray-500'}`}>
+                          {selectedMember ? `Available: RM ${(memberWalletBalance ?? 0).toFixed(2)}` : 'Assign a member to use Customer Balance'}
+                        </p>
+                      ) : null}
                       </>
                       ) : (
                         <p className="text-xs font-medium text-slate-500">No amount required</p>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
                 {!cartCheckoutIsZeroTotal ? (
                 <>
