@@ -100,6 +100,27 @@ class OrderReserveService
     public function isExpired(Order $order): bool
     {
         return $this->getReserveExpiresAt($order)->isPast();
+    }
+
+    /**
+     * Re-upload window after payment proof rejection.
+     * Uses payment_proof_rejected_at (not placed_at) so rejected orders are not
+     * cancelled immediately when the original reserve window has already passed.
+     */
+    public function getRejectReuploadExpiresAt(Order $order): Carbon
+    {
+        $base = $order->payment_proof_rejected_at?->copy()
+            ?? $order->updated_at?->copy()
+            ?? $order->placed_at?->copy()
+            ?? $order->created_at?->copy()
+            ?? Carbon::now();
+
+        return $base->addMinutes($this->getReserveMinutesForOrder($order));
+    }
+
+    public function isRejectReuploadExpired(Order $order): bool
+    {
+        return $this->getRejectReuploadExpiresAt($order)->isPast();
     }  
     /**
      * @param array<int, array<string, mixed>> $items

@@ -89,8 +89,45 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     }
   };
 
+  const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
+  const isZeroAmountOrder = Number(order?.grand_total ?? 0) <= 0;
+  const paymentStatusKey = String(order?.payment_status ?? "").toLowerCase();
+  const statusKey = String(order?.status ?? "").toLowerCase();
+  const isCancelled = statusKey === "cancelled";
+  const isPaid = paymentStatusKey === "paid";
+  const isCompleted = statusKey === "completed";
+  const isPaymentProofRejected = statusKey === "reject_payment_proof";
+  const canUploadPaymentSlip =
+    isManualTransfer &&
+    !isZeroAmountOrder &&
+    !isCancelled &&
+    !isPaid &&
+    !isCompleted;
+  const showUploadReminderHeading = canUploadPaymentSlip && Boolean(order);
+
+  const displayStatus = isCancelled
+    ? "Cancelled"
+    : isPaymentProofRejected
+      ? "Payment Proof Rejected"
+      : isPaid && (statusKey === "confirmed" || statusKey === "hold")
+        ? "Payment Confirmed"
+        : order?.status || "";
+
+  const statusBadgeClass = isCancelled || isPaymentProofRejected
+    ? "border-[var(--status-error-border)] bg-[var(--status-error-bg)] text-[color:var(--status-error)]"
+    : isPaid || isCompleted
+      ? "border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[color:var(--status-success)]"
+      : paymentStatusKey === "unpaid" || statusKey === "hold" || statusKey === "pending"
+        ? "border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)]"
+        : "border-transparent bg-[var(--muted)]/60 text-[var(--foreground)]/70";
+
+
   const handleUpload = async () => {
     if (!order || !selectedFile) return;
+    if (!canUploadPaymentSlip) {
+      setUploadError("Payment slip upload is not available for this booking.");
+      return;
+    }
 
     setIsUploading(true);
     setUploadError(null);
@@ -112,15 +149,6 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     }
   };
 
-  const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
-  const isZeroAmountOrder = Number(order?.grand_total ?? 0) <= 0;
-  const isCancelled = String(order?.status ?? "").toLowerCase() === "cancelled";
-  const showUploadReminderHeading =
-    isManualTransfer &&
-    !isZeroAmountOrder &&
-    !isCancelled &&
-    (order ? String(order.payment_status ?? "").toLowerCase() !== "paid" : true);
-
   return (
     <main className="mx-auto max-w-xl px-4 py-16 text-center text-[var(--foreground)]">
       {isCancelled && order ? (
@@ -128,6 +156,13 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
           <h1 className="text-3xl font-semibold">Order cancelled</h1>
           <p className="mt-3 text-lg text-[var(--foreground)]/80">
             This order is no longer active. If payment was not completed in time, please place a new booking.
+          </p>
+        </>
+      ) : isPaymentProofRejected ? (
+        <>
+          <h1 className="text-3xl font-semibold">Payment proof rejected</h1>
+          <p className="mt-3 text-lg text-[var(--foreground)]/80">
+            Your previous slip could not be verified. Please upload a clear new payment slip.
           </p>
         </>
       ) : showUploadReminderHeading ? (
@@ -157,8 +192,8 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Status</span>
-                <span className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/70">
-                  {order.status}
+                <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusBadgeClass}`}>
+                  {displayStatus}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -173,6 +208,11 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                   {isZeroAmountOrder ? "No payment required" : (order.payment_provider || "").includes("billplz") ? "Billplz" : "Manual Transfer"}
                 </span>
               </div>
+              {isManualTransfer && !isZeroAmountOrder && !isCancelled && (isPaid || isCompleted) ? (
+                <p className="mt-3 rounded-md bg-[var(--status-success-bg)] px-3 py-2 text-xs font-medium text-[var(--status-success)]">
+                  Payment received. No further slip upload is needed.
+                </p>
+              ) : null}
             </div>
             {/* {order.receipt_public_url ? (
               <a
@@ -193,7 +233,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
             </p>
           ) : null} */}
 
-          {isManualTransfer && !isZeroAmountOrder && !isCancelled && (
+          {canUploadPaymentSlip ? (
             <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
               <p className="font-medium">Manual Bank Transfer</p>
               {order.bank_account ? (
@@ -227,20 +267,26 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               )}
 
               <div className="mt-4 space-y-2">
-                <p className="text-xs text-[var(--foreground)]/80">After transfer, please upload your payment slip within 24 hours.</p>
-                {!latestUpload && (
+                {isPaymentProofRejected ? (
+                  <p className="rounded-md bg-[var(--status-error-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-error)]">
+                    Previous payment proof was rejected. Please upload a clear new slip.
+                  </p>
+                ) : (
+                  <p className="text-xs text-[var(--foreground)]/80">After transfer, please upload your payment slip within 24 hours.</p>
+                )}
+                {!latestUpload && !isPaymentProofRejected && (
                   <p className="text-xs text-[var(--foreground)]/80">Upload your bank-in slip</p>
                 )}
-                {!latestUpload && (
+                {(!latestUpload || isPaymentProofRejected) && (
                   <button
                     type="button"
                     onClick={openModal}
                     className="w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
                   >
-                    Upload Slip
+                    {isPaymentProofRejected ? "Upload New Slip" : "Upload Slip"}
                   </button>
                 )}
-                {latestUpload && (
+                {latestUpload && !isPaymentProofRejected && (
                   <div className="text-xs text-[var(--foreground)]/70 space-y-1">
                     <p>Latest upload: {latestUpload.created_at}</p>
                     <p className="font-medium text-[var(--accent-strong)]">Slip submitted • Pending verification</p>
@@ -256,7 +302,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                 {uploadMessage && <p className="text-xs text-[var(--status-success)]">{uploadMessage}</p>}
               </div>
             </div>
-          )}
+          ) : null}
 
           {!isManualTransfer && !isZeroAmountOrder && (
             <p className="text-center text-sm text-[var(--foreground)]/80">

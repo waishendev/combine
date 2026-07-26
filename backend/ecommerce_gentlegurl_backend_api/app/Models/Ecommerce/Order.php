@@ -83,6 +83,7 @@ class Order extends Model
             'completed_at' => 'datetime',
             'shipped_at' => 'datetime',
             'pickup_ready_at' => 'datetime',
+            'payment_proof_rejected_at' => 'datetime',
             'refunded_at' => 'datetime',
             'refund_total' => 'decimal:2',
         ];

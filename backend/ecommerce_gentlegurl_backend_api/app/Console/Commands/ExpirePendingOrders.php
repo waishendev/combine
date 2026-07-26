@@ -12,7 +12,7 @@ class ExpirePendingOrders extends Command
 {
     protected $signature = 'ecommerce:expire-pending-orders';
 
-    protected $description = 'Cancel pending unpaid orders past the reserve window and release stock.';
+    protected $description = 'Cancel pending unpaid / rejected-proof orders past the reserve window and release stock.';
 
     public function __construct(protected OrderReserveService $orderReserveService)
     {
@@ -21,23 +21,34 @@ class ExpirePendingOrders extends Command
 
     public function handle(): int
     {
-        Order::where('status', 'pending')
+        Order::query()
             ->where('payment_status', 'unpaid')
+            ->whereIn('status', ['pending', 'reject_payment_proof'])
             ->orderBy('id')
             ->chunkById(50, function ($orders) {
                 foreach ($orders as $order) {
                     DB::transaction(function () use ($order) {
                         $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
 
-                        if (!$lockedOrder) {
+                        if (! $lockedOrder) {
                             return;
                         }
 
-                        if ($lockedOrder->status !== 'pending' || $lockedOrder->payment_status !== 'unpaid') {
+                        if ($lockedOrder->payment_status !== 'unpaid') {
                             return;
                         }
 
-                        if (! $this->orderReserveService->isExpired($lockedOrder)) {
+                        $status = (string) $lockedOrder->status;
+
+                        if ($status === 'pending') {
+                            if (! $this->orderReserveService->isExpired($lockedOrder)) {
+                                return;
+                            }
+                        } elseif ($status === 'reject_payment_proof') {
+                            if (! $this->orderReserveService->isRejectReuploadExpired($lockedOrder)) {
+                                return;
+                            }
+                        } else {
                             return;
                         }
 

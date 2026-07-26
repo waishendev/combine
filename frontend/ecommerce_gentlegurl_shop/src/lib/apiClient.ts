@@ -431,7 +431,17 @@ async function apiRequest<T>(path: string, method: HttpMethod, options: ApiReque
       // keep original text
     }
 
-    const error: ApiError = new Error(`API error ${response.status}`);
+    const payload =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    const apiMessage =
+      (typeof payload?.message === "string" && payload.message.trim()) ||
+      (typeof payload?.error === "string" && payload.error.trim()) ||
+      (typeof parsed === "string" && parsed.trim()) ||
+      `API error ${response.status}`;
+
+    const error: ApiError = new Error(apiMessage);
     error.status = response.status;
     error.data = parsed;
 
