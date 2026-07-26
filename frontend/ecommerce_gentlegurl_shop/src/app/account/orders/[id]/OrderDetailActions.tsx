@@ -45,12 +45,16 @@ export function OrderDetailActions({
   const canPay = statusKey === "pending" && paymentStatus === "unpaid" && !isExpired;
   const canComplete =
     (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") || statusKey === "shipped";
+  const isPaymentProofRejected = statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid";
   const canUploadSlip =
     paymentMethod === "manual_transfer" &&
-    (canPay || (statusKey === "processing" && paymentStatus !== "paid"));
+    (canPay ||
+      (statusKey === "processing" && paymentStatus !== "paid") ||
+      isPaymentProofRejected);
   const isBillplzPayment = paymentMethod?.startsWith("billplz_");
   const showCancelled = statusKey === "cancelled";
   const showProcessing = statusKey === "processing";
+  const showRejectedProof = isPaymentProofRejected;
 
   const handleCancel = async () => {
     setError(null);
@@ -125,7 +129,7 @@ export function OrderDetailActions({
     }
   };
 
-  if (!canPay && !showCancelled && !showProcessing && !canComplete) {
+  if (!canPay && !showCancelled && !showProcessing && !showRejectedProof && !canComplete) {
     return null;
   }
 
@@ -151,7 +155,7 @@ export function OrderDetailActions({
               {isCancelling ? "Cancelling..." : "Cancel"}
             </button>
           </>
-        ) : showProcessing ? (
+        ) : showProcessing || showRejectedProof ? (
           <>
             {canUploadSlip && (
               <button
@@ -159,7 +163,7 @@ export function OrderDetailActions({
                 onClick={() => setShowSlipModal(true)}
                 className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
               >
-                Reupload Slip
+                {showRejectedProof ? "Upload Slip" : "Reupload Slip"}
               </button>
             )}
           </>

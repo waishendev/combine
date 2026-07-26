@@ -3,15 +3,23 @@
 import { useState } from 'react'
 
 import CrmFormModalShell from './CrmFormModalShell'
-import type { CustomerRowData } from './CustomerRow'
 
 type BalanceDirection = 'credit' | 'debit'
 
+export type AdjustBalanceCustomer = {
+  id: number
+  name: string
+  walletBalance?: number
+}
+
 type Props = {
-  customer: CustomerRowData
+  customer: AdjustBalanceCustomer
   canAdjust: boolean
   onClose: () => void
   onSuccess: (walletBalance: number) => void
+  /** When true, only Deposit is allowed (no Withdraw / type picker). Used by POS Top Up. */
+  depositOnly?: boolean
+  rootClassName?: string
 }
 
 export default function CustomerAdjustBalanceModal({
@@ -19,6 +27,8 @@ export default function CustomerAdjustBalanceModal({
   canAdjust,
   onClose,
   onSuccess,
+  depositOnly = false,
+  rootClassName,
 }: Props) {
   const [direction, setDirection] = useState<BalanceDirection>('credit')
   const [amount, setAmount] = useState('')
@@ -26,7 +36,7 @@ export default function CustomerAdjustBalanceModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isDeposit = direction === 'credit'
+  const isDeposit = depositOnly || direction === 'credit'
   const currentBalance = customer.walletBalance ?? 0
   const parsedAmount = Number(amount || 0)
   const previewBalance =
@@ -61,7 +71,7 @@ export default function CustomerAdjustBalanceModal({
           Accept: 'application/json',
         },
         body: JSON.stringify({
-          direction,
+          direction: isDeposit ? 'credit' : 'debit',
           amount,
           remark: remark.trim(),
         }),
@@ -70,7 +80,7 @@ export default function CustomerAdjustBalanceModal({
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(
-          json?.message ?? `${isDeposit ? 'Deposit' : 'Withdraw'} failed.`,
+          json?.message ?? `${isDeposit ? (depositOnly ? 'Top up' : 'Deposit') : 'Withdraw'} failed.`,
         )
       }
 
@@ -90,9 +100,10 @@ export default function CustomerAdjustBalanceModal({
 
   return (
     <CrmFormModalShell
-      title="Adjust Balance"
+      title={depositOnly ? 'Top Up' : 'Adjust Balance'}
       onClose={onClose}
       closeDisabled={submitting}
+      rootClassName={rootClassName}
       footer={
         <>
           <button
@@ -116,9 +127,11 @@ export default function CustomerAdjustBalanceModal({
             >
               {submitting
                 ? 'Saving...'
-                : isDeposit
-                  ? 'Confirm Deposit'
-                  : 'Confirm Withdraw'}
+                : depositOnly
+                  ? 'Confirm Top Up'
+                  : isDeposit
+                    ? 'Confirm Deposit'
+                    : 'Confirm Withdraw'}
             </button>
           ) : null}
         </>
@@ -137,7 +150,9 @@ export default function CustomerAdjustBalanceModal({
 
         {!canAdjust ? (
           <p className="rounded border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-gray-500">
-            You do not have permission to deposit or withdraw. Use View History for wallet details.
+            {depositOnly
+              ? 'You do not have permission to top up customer balance.'
+              : 'You do not have permission to deposit or withdraw. Use View History for wallet details.'}
           </p>
         ) : (
           <>
@@ -147,45 +162,47 @@ export default function CustomerAdjustBalanceModal({
               </div>
             )}
 
-            <div>
-              <p className="mb-2 block text-sm font-medium text-gray-700">
-                Adjustment type <span className="text-red-500">*</span>
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => {
-                    setDirection('credit')
-                    setError(null)
-                  }}
-                  className={`rounded border px-3 py-2 text-sm font-semibold transition ${
-                    isDeposit
-                      ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <i className="fa-solid fa-plus mr-1.5" aria-hidden="true" />
-                  Deposit
-                </button>
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => {
-                    setDirection('debit')
-                    setError(null)
-                  }}
-                  className={`rounded border px-3 py-2 text-sm font-semibold transition ${
-                    !isDeposit
-                      ? 'border-rose-600 bg-rose-50 text-rose-800'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <i className="fa-solid fa-minus mr-1.5" aria-hidden="true" />
-                  Withdraw
-                </button>
+            {!depositOnly ? (
+              <div>
+                <p className="mb-2 block text-sm font-medium text-gray-700">
+                  Adjustment type <span className="text-red-500">*</span>
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => {
+                      setDirection('credit')
+                      setError(null)
+                    }}
+                    className={`rounded border px-3 py-2 text-sm font-semibold transition ${
+                      isDeposit
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <i className="fa-solid fa-plus mr-1.5" aria-hidden="true" />
+                    Deposit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => {
+                      setDirection('debit')
+                      setError(null)
+                    }}
+                    className={`rounded border px-3 py-2 text-sm font-semibold transition ${
+                      !isDeposit
+                        ? 'border-rose-600 bg-rose-50 text-rose-800'
+                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <i className="fa-solid fa-minus mr-1.5" aria-hidden="true" />
+                    Withdraw
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -212,7 +229,7 @@ export default function CustomerAdjustBalanceModal({
                 onChange={(event) => setRemark(event.target.value)}
                 rows={3}
                 className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
-                placeholder="e.g. Manual top-up / Correction"
+                placeholder={depositOnly ? 'e.g. POS cash top-up' : 'e.g. Manual top-up / Correction'}
                 disabled={submitting}
               />
             </div>
@@ -221,7 +238,7 @@ export default function CustomerAdjustBalanceModal({
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 Current RM {currentBalance.toFixed(2)}
                 {' · '}
-                {isDeposit ? 'Deposit +' : 'Withdraw −'}RM {parsedAmount.toFixed(2)}
+                {isDeposit ? (depositOnly ? 'Top up +' : 'Deposit +') : 'Withdraw −'}RM {parsedAmount.toFixed(2)}
                 {' · '}
                 New balance{' '}
                 <span className="font-semibold">RM {previewBalance.toFixed(2)}</span>

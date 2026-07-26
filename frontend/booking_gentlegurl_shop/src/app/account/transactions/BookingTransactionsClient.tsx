@@ -437,8 +437,11 @@ export function BookingTransactionsClient() {
           const isPendingUnpaid = statusKey === "pending" && paymentStatusKey === "unpaid";
           const isPendingUnpaidExpired = isPendingUnpaid && isExpired;
           const isProcessing = statusKey === "processing" && paymentStatusKey === "unpaid";
+          const isPaymentProofRejected = statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid";
           const canPay = isPendingUnpaid && !isExpired;
-          const canUploadSlip = order.payment_method === "manual_transfer" && (isPendingUnpaid || isProcessing);
+          const canUploadSlip =
+            order.payment_method === "manual_transfer" &&
+            (isPendingUnpaid || isProcessing || isPaymentProofRejected);
           const isExpanded = expandedOrderId === order.id;
           const receiptUrl =
             paymentStatusKey === "paid" && order.receipt_public_url
@@ -452,7 +455,7 @@ export function BookingTransactionsClient() {
             displayStatus = "Cancelled";
           } else if (paymentStatusKey === "failed") {
             displayStatus = "Payment Failed";
-          } else if (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid") {
+          } else if (isPaymentProofRejected) {
             displayStatus = "Payment Proof Rejected";
           } else if (statusKey === "pending" && paymentStatusKey === "unpaid") {
             displayStatus = `Awaiting Payment${remainingLabel !== null ? ` (${remainingLabel} left)` : ""}`;
@@ -474,7 +477,7 @@ export function BookingTransactionsClient() {
             statusKey === "cancelled" ||
             isPendingUnpaidExpired ||
             paymentStatusKey === "failed" ||
-            (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid")
+            isPaymentProofRejected
           ) {
             badgeStyle =
               "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]";
@@ -551,13 +554,13 @@ export function BookingTransactionsClient() {
                         </button>
                       </>
                     ) : null}
-                    {!canPay && isProcessing && canUploadSlip ? (
+                    {!canPay && canUploadSlip && (isProcessing || isPaymentProofRejected) ? (
                       <button
                         type="button"
                         onClick={() => setSlipModal({ orderId: order.id })}
                         className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
                       >
-                        Reupload Slip
+                        {isPaymentProofRejected ? "Upload Slip" : "Reupload Slip"}
                       </button>
                     ) : null}
                     <button

@@ -89,8 +89,28 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     }
   };
 
+  const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
+  const isBillplzPayment = (paymentMethod ?? order?.payment_method)?.startsWith("billplz");
+  const paymentProvider = order?.payment_provider ?? (isBillplzPayment ? "billplz" : "manual");
+  const statusKey = String(order?.status ?? "").toLowerCase();
+  const paymentStatusKey = String(order?.payment_status ?? "").toLowerCase();
+  const isPaid = paymentStatusKey === "paid";
+  const isCompleted = statusKey === "completed";
+  const isCancelled = statusKey === "cancelled";
+  const isPaymentProofRejected = statusKey === "reject_payment_proof";
+  const canUploadPaymentSlip =
+    isManualTransfer &&
+    !isCancelled &&
+    !isPaid &&
+    !isCompleted;
+  const showUploadReminderHeading = canUploadPaymentSlip && Boolean(order);
+
   const handleUpload = async () => {
     if (!order || !selectedFile) return;
+    if (!canUploadPaymentSlip) {
+      setUploadError("Payment slip upload is not available for this order.");
+      return;
+    }
 
     setIsUploading(true);
     setUploadError(null);
@@ -108,12 +128,6 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     }
   };
 
-  const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
-  const isBillplzPayment = (paymentMethod ?? order?.payment_method)?.startsWith("billplz");
-  const paymentProvider = order?.payment_provider ?? (isBillplzPayment ? "billplz" : "manual");
-  const isPaid = order?.payment_status === "paid";
-
-  // Status display logic based on new requirements
   const displayStatus = useMemo(() => {
     if (!order) return "";
     const statusKey = order.status ? order.status.toLowerCase() : "";
@@ -125,7 +139,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     if (paymentStatusKey === "failed") {
       return "Payment Failed";
     }
-    if (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid") {
+    if (statusKey === "reject_payment_proof") {
       return "Payment Proof Rejected";
     }
     if (statusKey === "pending" && paymentStatusKey === "unpaid") {
@@ -157,7 +171,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     const statusKey = order.status ? order.status.toLowerCase() : "";
     const paymentStatusKey = order.payment_status ? order.payment_status.toLowerCase() : "";
     
-    if (statusKey === "cancelled" || paymentStatusKey === "failed" || (statusKey === "reject_payment_proof" && paymentStatusKey === "unpaid")) {
+    if (statusKey === "cancelled" || paymentStatusKey === "failed" || statusKey === "reject_payment_proof") {
       return "bg-[var(--status-error-bg)] text-[color:var(--status-error)] border-[var(--status-error-border)]";
     }
     if ((statusKey === "pending" && paymentStatusKey === "unpaid") || (statusKey === "processing" && paymentStatusKey === "unpaid")) {
@@ -169,26 +183,6 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     return "bg-[var(--muted)]/60 text-[var(--foreground)] border-transparent";
   }, [order]);
 
-  // Check if status is Payment Confirmed or Cancelled
-  const isPaymentConfirmed = useMemo(() => {
-    if (!order) return false;
-    const statusKey = order.status ? order.status.toLowerCase() : "";
-    const paymentStatusKey = order.payment_status ? order.payment_status.toLowerCase() : "";
-    return statusKey === "confirmed" && paymentStatusKey === "paid";
-  }, [order]);
-
-  const isCancelled = useMemo(() => {
-    if (!order) return false;
-    const statusKey = order.status ? order.status.toLowerCase() : "";
-    return statusKey === "cancelled";
-  }, [order]);
-
-  const showUploadReminderHeading =
-    isManualTransfer &&
-    !isCancelled &&
-    !isPaymentConfirmed &&
-    (order ? String(order.payment_status ?? "").toLowerCase() !== "paid" : true);
-
   return (
     <main className="mx-auto max-w-xl px-4 py-16 text-center text-[var(--foreground)]">
       {isCancelled && order ? (
@@ -196,6 +190,13 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
           <h1 className="text-3xl font-semibold">Order cancelled</h1>
           <p className="mt-3 text-lg text-[var(--foreground)]/80">
             This order is no longer active. If payment was not completed in time, please place a new order.
+          </p>
+        </>
+      ) : isPaymentProofRejected ? (
+        <>
+          <h1 className="text-3xl font-semibold">Payment proof rejected</h1>
+          <p className="mt-3 text-lg text-[var(--foreground)]/80">
+            Your previous slip could not be verified. Please upload a clear new payment slip.
           </p>
         </>
       ) : showUploadReminderHeading ? (
@@ -241,6 +242,11 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                   {paymentProvider === "billplz" ? "Billplz" : "Manual Transfer"}
                 </span>
               </div>
+              {isManualTransfer && !isCancelled && (isPaid || isCompleted) ? (
+                <p className="mt-3 rounded-md bg-[var(--status-success-bg)] px-3 py-2 text-xs font-medium text-[var(--status-success)]">
+                  Payment received. No further slip upload is needed.
+                </p>
+              ) : null}
             </div>
 
             {/* {!isPaid && (
@@ -259,7 +265,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
             )} */}
           </div>
 
-          {isManualTransfer && !isCancelled && (
+          {canUploadPaymentSlip ? (
             <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
               <p className="font-medium">Manual Bank Transfer</p>
               {order.bank_account ? (
@@ -303,42 +309,39 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               )}
 
               <div className="mt-4 space-y-2">
-                {!isPaymentConfirmed && (
-                  <>
-                    {!latestUpload && (
-                      <p className="text-xs text-[var(--foreground)]/80">Upload your bank-in slip</p>
-                    )}
-                    {!latestUpload && (
-                      <button
-                        type="button"
-                        onClick={openModal}
-                        className="w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
-                      >
-                        Upload Slip
-                      </button>
-                    )}
-                    {latestUpload && (
-                      <div className="text-xs text-[var(--foreground)]/70 space-y-1">
-                        <p>Latest upload: {latestUpload.created_at}</p>
-                        {!isCancelled && (
-                          <>
-                            <p className="font-medium text-[var(--accent-strong)]">Slip submitted • Pending verification</p>
-                            <button
-                              type="button"
-                              onClick={openModal}
-                              className="mt-2 w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
-                            >
-                              Reupload Slip
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </>
+                {isPaymentProofRejected ? (
+                  <p className="rounded-md bg-[var(--status-error-bg)] px-3 py-2 text-xs font-medium text-[color:var(--status-error)]">
+                    Previous payment proof was rejected. Please upload a clear new slip.
+                  </p>
+                ) : null}
+                {!latestUpload && !isPaymentProofRejected && (
+                  <p className="text-xs text-[var(--foreground)]/80">Upload your bank-in slip</p>
+                )}
+                {(!latestUpload || isPaymentProofRejected) && (
+                  <button
+                    type="button"
+                    onClick={openModal}
+                    className="w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+                  >
+                    {isPaymentProofRejected ? "Upload New Slip" : "Upload Slip"}
+                  </button>
+                )}
+                {latestUpload && !isPaymentProofRejected && (
+                  <div className="text-xs text-[var(--foreground)]/70 space-y-1">
+                    <p>Latest upload: {latestUpload.created_at}</p>
+                    <p className="font-medium text-[var(--accent-strong)]">Slip submitted • Pending verification</p>
+                    <button
+                      type="button"
+                      onClick={openModal}
+                      className="mt-2 w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+                    >
+                      Reupload Slip
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
-          )}
+          ) : null}
 
           {!isManualTransfer && (
             <p className="text-center text-sm text-[var(--foreground)]/80">

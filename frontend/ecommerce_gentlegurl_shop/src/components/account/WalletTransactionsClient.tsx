@@ -400,27 +400,6 @@ export default function WalletTransactionsClient() {
                 ? "You’re all caught up — nothing is waiting for review."
                 : "Top up your balance and your movements will show here."}
             </p>
-            {filter !== "all" ? (
-              <button
-                type="button"
-                onClick={() => handleFilterChange("all")}
-                className="mt-4 text-sm font-semibold text-[var(--accent-strong)] underline underline-offset-2"
-              >
-                Show all activity
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setMessage(null);
-                  setTopupOpen(true);
-                }}
-                className="mt-5 inline-flex rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)]"
-              >
-                Top Up
-              </button>
-            )}
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-[var(--input-border)] bg-[var(--card)] shadow-sm">

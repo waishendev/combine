@@ -568,7 +568,7 @@ class PublicCheckoutController extends Controller
             return $this->respondError(__('Payment slip upload is no longer allowed.'), 422);
         }
 
-        if (!in_array($order->status, ['pending', 'processing'], true)) {
+        if (! in_array($order->status, ['pending', 'processing', 'reject_payment_proof'], true)) {
             return $this->respondError(__('Order is not eligible for slip upload.'), 422);
         }
 
@@ -618,7 +618,7 @@ class PublicCheckoutController extends Controller
                 $slip->delete();
             });
 
-            if ($order->status === 'pending') {
+            if (in_array($order->status, ['pending', 'reject_payment_proof'], true)) {
                 $order->status = 'processing';
                 $order->save();
             }

@@ -227,6 +227,7 @@ class PosController extends Controller
                 'total_spent' => $totalSpent,
                 'last_order_date' => $lastOrderAt ? Carbon::parse($lastOrderAt)->toDateTimeString() : null,
                 'points_balance' => $memberPointsBalance,
+                'wallet_balance' => (float) ($member->wallet_balance ?? 0),
             ],
             'active_packages' => [
                 'total_active' => (int) $activePackagesTotal,
