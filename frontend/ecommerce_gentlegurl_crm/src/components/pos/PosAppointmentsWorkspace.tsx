@@ -3471,7 +3471,7 @@ export default function PosAppointmentsWorkspace({
     try {
       const needsSettledAmount = settlementNeedsSettledAmount(editOriginalSettlementSource)
       let settledServiceAmount: number | undefined
-      if (needsSettledAmount) {
+      if (needsSettledAmount && String(editSettledAmount ?? '').trim()) {
         const settledValidation = validateSettlementAmountInput(editSettledAmount, editOriginalSettlementSource)
         if (!settledValidation.ok) {
           reportEditSettlementError(settledValidation.message)
@@ -7713,7 +7713,7 @@ export default function PosAppointmentsWorkspace({
                             />
                           </div>
                           <p className="mt-1 text-[10px] text-gray-500">
-                            Enter the final service amount within the reference range.
+                            Optional until checkout — enter the final amount within the reference range when ready.
                             {Number(editOriginalService?.duration_min ?? 0) > 0 ? ` · ${editOriginalService?.duration_min}min` : ''}
                           </p>
                         </>

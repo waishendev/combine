@@ -5616,7 +5616,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     try {
       const needsSettledAmount = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
       let settledServiceAmount: number | undefined
-      if (needsSettledAmount) {
+      if (needsSettledAmount && String(cartEditSettledAmount ?? '').trim()) {
         const settledValidation = validateSettlementAmountInput(cartEditSettledAmount, cartEditOriginalSettlementSource)
         if (!settledValidation.ok) {
           reportCartEditSettlementError(settledValidation.message)
@@ -10629,7 +10629,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             />
                           </div>
                           <p className="mt-1 text-[10px] text-gray-500">
-                            Enter the final service amount within the reference range.
+                            Optional until checkout — enter the final amount within the reference range when ready.
                             {Number(cartEditOriginalService?.duration_min ?? 0) > 0 ? ` · ${cartEditOriginalService?.duration_min}min` : ''}
                           </p>
                         </>
