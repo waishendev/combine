@@ -25,6 +25,8 @@ use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\CustomerWalletService;
+use App\Services\Loyalty\CheckoutPointsService;
+use App\Models\Ecommerce\Customer;
 use App\Services\SettingService;
 use App\Support\WorkspaceType;
 use Carbon\Carbon;
@@ -46,6 +48,7 @@ class CartController extends Controller
         private readonly BillplzService $billplzService,
         private readonly OrderPaymentService $orderPaymentService,
         private readonly CustomerWalletService $customerWalletService,
+        private readonly CheckoutPointsService $checkoutPointsService,
     ) {}
 
     public function add(Request $request)
@@ -462,6 +465,7 @@ class CartController extends Controller
             'payment_method' => ['nullable', 'string', 'in:manual_transfer,billplz_fpx,billplz_card,billplz_online_banking,billplz_credit_card,customer_balance'],
             'bank_account_id' => ['nullable', 'integer', 'exists:bank_accounts,id'],
             'billplz_gateway_option_id' => ['nullable', 'integer', 'exists:billplz_payment_gateway_options,id'],
+            'loyalty_points' => ['nullable', 'integer', 'min:0'],
         ]);
 
         if (empty($validated['guest_name']) || empty($validated['guest_phone'])) {
@@ -508,6 +512,13 @@ class CartController extends Controller
             $depositTotal = round((float) ($depositBreakdown['deposit_total'] ?? 0), 2);
             $addonTotal = 0.0;
             $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
+            $payableBeforePoints = round($depositTotal + $packageTotal, 2);
+            $requestedPoints = (int) ($validated['loyalty_points'] ?? 0);
+            if ($requestedPoints > 0 && ! $customer) {
+                return $this->respondError('Please sign in to use Loyalty Points.', 422);
+            }
+            $loyalty = $customer ? $this->checkoutPointsService->quote($customer, 'booking', $payableBeforePoints, $requestedPoints) : null;
+            $payableAfterPoints = round(max(0, $payableBeforePoints - (float) ($loyalty['discount'] ?? 0)), 2);
             $activeItemIds = $activeItems->pluck('id')->all();
             $paymentMethod = $this->normalizeRequestedPaymentMethod((string) ($validated['payment_method'] ?? 'manual_transfer'));
             $gatewayKey = $paymentMethod === 'customer_balance' ? 'customer_balance' : ($paymentMethod === 'billplz_online_banking' ? 'billplz_fpx' : ($paymentMethod === 'billplz_credit_card' ? 'billplz_card' : 'manual_transfer'));
@@ -569,7 +580,10 @@ class CartController extends Controller
                 'subtotal' => round($depositTotal + $packageTotal, 2),
                 'discount_total' => 0,
                 'shipping_fee' => 0,
-                'grand_total' => round($depositTotal + $packageTotal, 2),
+                'grand_total' => $payableAfterPoints,
+                'loyalty_points_used' => $requestedPoints,
+                'loyalty_discount' => $loyalty['discount'] ?? 0,
+                'loyalty_point_value_sen' => $loyalty['point_value_sen'] ?? null,
                 'placed_at' => now(),
                 'shipping_name' => (string) ($validated['guest_name'] ?? ''),
                 'shipping_phone' => (string) ($validated['guest_phone'] ?? ''),
@@ -580,6 +594,10 @@ class CartController extends Controller
                     ? 'Booking cart checkout'
                     : ('Booking cart checkout | guest_token:' . (string) ($cart->guest_token ?? '')),
             ]);
+
+            if ($customer && $requestedPoints > 0) {
+                $this->checkoutPointsService->deduct($customer, $order, 'booking', $requestedPoints, $payableBeforePoints);
+            }
 
             foreach ($activeItems as $item) {
                 $service = $item->service;
@@ -844,7 +862,7 @@ class CartController extends Controller
                 'booking_ids' => $bookingIds,
                 'deposit_total' => $depositTotal,
                 'package_total' => round($packageTotal, 2),
-                'cart_total' => round($depositTotal + $addonTotal + $packageTotal, 2),
+                'cart_total' => $payableAfterPoints,
                 'order_id' => $order?->id,
                 'order_grand_total' => (float) ($order?->grand_total ?? 0),
                 'payment_method' => $paymentMethod,
@@ -865,6 +883,7 @@ class CartController extends Controller
                 'payment_method' => $order?->payment_method,
                 'payment_status' => $order?->payment_status,
                 'payment_url' => $billplzPaymentUrl,
+                'loyalty' => $loyalty,
                 'redirect_url' => $order
                     ? '/payment-result?' . http_build_query(['order_id' => (int) $order->id, 'order_no' => (string) $order->order_number])
                     : null,
@@ -1049,6 +1068,12 @@ class CartController extends Controller
         $depositTotal = round((float) ($depositBreakdown['deposit_total'] ?? 0), 2);
         $packageTotal = (float) $activePackageItems->sum(fn (BookingCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
 
+        $loyalty = null;
+        if ($cart->customer_id) {
+            $customer = Customer::find($cart->customer_id);
+            if ($customer) $loyalty = $this->checkoutPointsService->quote($customer, 'booking', round($depositTotal + $packageTotal, 2));
+        }
+
         return [
             'id' => $cart->id,
             'status' => $cart->status,
@@ -1104,6 +1129,7 @@ class CartController extends Controller
             'addon_total' => 0,
             'package_total' => round($packageTotal, 2),
             'cart_total' => round($depositTotal + $packageTotal, 2),
+            'loyalty' => $loyalty,
             'next_expiry_at' => $nextExpiry?->toIso8601String(),
             'allow_booking_without_deposit' => $isDepositWaivedForCustomer,
         ];

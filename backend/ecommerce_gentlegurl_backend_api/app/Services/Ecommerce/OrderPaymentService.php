@@ -53,10 +53,17 @@ class OrderPaymentService
             return;
         }
 
-        $setting = LoyaltySetting::orderByDesc('created_at')->first();
+        if (PointsTransaction::query()->where('customer_id', $order->customer_id)->where('type', 'earn')
+            ->where('source_type', Order::class)->where('source_id', $order->id)->exists()) {
+            return;
+        }
+
+        $setting = LoyaltySetting::active();
         $tierMultiplier = MembershipTierRule::where('tier', $order->customer->tier)->value('multiplier') ?? 1;
 
-        $baseMultiplier = $setting?->base_multiplier ?? 1;
+        $isBooking = $order->items()->whereIn('line_type', ['booking_deposit', 'booking_addon'])->exists();
+        $channelRate = $isBooking ? $setting?->booking_earning_rate : $setting?->ecommerce_earning_rate;
+        $baseMultiplier = $channelRate ?? $setting?->base_multiplier ?? 1;
         $expiryMonths = $setting?->expiry_months ?? 12;
 
         $rawPoints = (float) $order->grand_total * $baseMultiplier * $tierMultiplier;

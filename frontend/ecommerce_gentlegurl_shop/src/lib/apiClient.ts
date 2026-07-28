@@ -224,6 +224,11 @@ export type CheckoutPreviewVoucher = {
 };
 
 export type CheckoutPreviewResponse = {
+  loyalty?: {
+    enabled: boolean; available_points: number; point_value: number; point_value_sen: number;
+    maximum_percentage: number; maximum_points: number; maximum_discount: number;
+    points_used: number; discount: number;
+  } | null;
   items: {
     product_id: number;
     name: string;
@@ -699,6 +704,7 @@ export async function mergeCart(payload?: { session_token?: string }) {
 }
 
 export type CheckoutPreviewPayload = {
+  loyalty_points?: number;
   items?: {
     product_id: number;
     product_variant_id?: number | null;
@@ -726,6 +732,7 @@ export type CheckoutPreviewPayload = {
 };
 
 export type CheckoutPayload = {
+  loyalty_points?: number;
   items?: Array<{
     product_id: number;
     product_variant_id?: number | null;

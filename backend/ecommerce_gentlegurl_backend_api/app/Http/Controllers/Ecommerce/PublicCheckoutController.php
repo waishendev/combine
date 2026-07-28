@@ -27,6 +27,7 @@ use App\Services\Voucher\VoucherService;
 use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\CustomerWalletService;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\Loyalty\CheckoutPointsService;
 use Carbon\Carbon;
 use App\Support\Pricing\ProductPricing;
 use App\Support\WorkspaceType;
@@ -56,6 +57,7 @@ class PublicCheckoutController extends Controller
         protected ShippingService $shippingService,
         protected CustomerWalletService $customerWalletService,
         protected OrderPaymentService $orderPaymentService,
+        protected CheckoutPointsService $checkoutPointsService,
     )
     {
     }
@@ -88,6 +90,12 @@ class PublicCheckoutController extends Controller
 
         $this->orderReserveService->validateStockForItems($calculation['items']);
 
+        $loyalty = null;
+        if ($customer) {
+            $loyalty = $this->checkoutPointsService->quote($customer, 'ecommerce', (float) $calculation['grand_total'], (int) ($validated['loyalty_points'] ?? 0));
+            $calculation['grand_total'] = round(max(0, (float) $calculation['grand_total'] - $loyalty['discount']), 2);
+        }
+
         return $this->respond([
             'items' => $calculation['items'],
             'subtotal' => $calculation['subtotal'],
@@ -99,6 +107,7 @@ class PublicCheckoutController extends Controller
             'voucher_valid' => $calculation['voucher_valid'],
             'voucher_message' => $calculation['voucher_message'],
             'shipping' => $calculation['shipping'] ?? null,
+            'loyalty' => $loyalty,
         ]);
     }
 
@@ -143,6 +152,15 @@ class PublicCheckoutController extends Controller
             $validated['shipping_country'] ?? null,
             $validated['shipping_state'] ?? null,
         );
+
+        $requestedPoints = (int) ($validated['loyalty_points'] ?? 0);
+        if ($requestedPoints > 0 && !$customer) {
+            throw ValidationException::withMessages(['loyalty_points' => __('Please sign in to use Loyalty Points.')]);
+        }
+        $loyalty = $customer
+            ? $this->checkoutPointsService->quote($customer, 'ecommerce', (float) $calculation['grand_total'], $requestedPoints)
+            : null;
+        if ($loyalty) $calculation['grand_total'] = round(max(0, (float) $calculation['grand_total'] - $loyalty['discount']), 2);
 
         if ((!empty($validated['voucher_code']) || !empty($validated['customer_voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']['is_valid'])) {
             return $this->respond(null, $calculation['voucher_error'] ?? __('Invalid voucher'), false, 422);
@@ -250,7 +268,7 @@ class PublicCheckoutController extends Controller
         $billplzId = null;
 
         try {
-            [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod, $billingSameAsShipping, $billingName, $billingPhone, $billingAddressLine1, $billingAddressLine2, $billingCity, $billingState, $billingPostcode, $billingCountry, $type, $selectedGatewayOption) {
+            [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $loyalty, $requestedPoints, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod, $billingSameAsShipping, $billingName, $billingPhone, $billingAddressLine1, $billingAddressLine2, $billingCity, $billingState, $billingPostcode, $billingCountry, $type, $selectedGatewayOption) {
                 $this->orderReserveService->reserveStockForItems($calculation['items']);
 
                 $order = Order::create([
@@ -272,6 +290,9 @@ class PublicCheckoutController extends Controller
                     'discount_total' => $calculation['discount_total'],
                     'shipping_fee' => $calculation['shipping_fee'],
                     'grand_total' => $calculation['grand_total'],
+                    'loyalty_points_used' => $requestedPoints,
+                    'loyalty_discount' => $loyalty['discount'] ?? 0,
+                    'loyalty_point_value_sen' => $loyalty['point_value_sen'] ?? null,
                     'voucher_code_snapshot' => $calculation['voucher']['code'] ?? ($validated['voucher_code'] ?? null),
                     'placed_at' => Carbon::now(),
                     'shipping_name' => $shippingName,
@@ -295,6 +316,13 @@ class PublicCheckoutController extends Controller
 
                 if ($customer) {
                     $order->setRelation('customer', $customer);
+                }
+
+                if ($customer && $requestedPoints > 0) {
+                    $this->checkoutPointsService->deduct(
+                        $customer, $order, 'ecommerce', $requestedPoints,
+                        (float) $calculation['grand_total'] + (float) ($loyalty['discount'] ?? 0),
+                    );
                 }
 
                 foreach ($calculation['items'] as $item) {
@@ -465,6 +493,7 @@ class PublicCheckoutController extends Controller
                 'code' => $calculation['voucher']['code'] ?? null,
                 'discount_amount' => $calculation['voucher']['discount_amount'] ?? 0,
             ] : null,
+            'loyalty' => $loyalty,
         ]);
     }
 
@@ -663,6 +692,7 @@ class PublicCheckoutController extends Controller
             'items.*.reward_redemption_id' => ['nullable', 'integer', 'exists:loyalty_redemptions,id'],
             'voucher_code' => ['nullable', 'string'],
             'customer_voucher_id' => ['nullable', 'integer', 'exists:customer_vouchers,id'],
+            'loyalty_points' => ['nullable', 'integer', 'min:0'],
             'shipping_method' => ['required', 'in:pickup,shipping,self_pickup'],
             'store_location_id' => ['required_unless:shipping_method,shipping', 'integer'],
             'shipping_postcode' => ['nullable', 'string'],

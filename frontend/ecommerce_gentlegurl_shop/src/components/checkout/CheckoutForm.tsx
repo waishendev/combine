@@ -168,6 +168,7 @@ export default function CheckoutForm() {
   const [storeLocations, setStoreLocations] = useState<PublicStoreLocation[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
   const [shippingPreview, setShippingPreview] = useState<CheckoutPreviewResponse | null>(null);
+  const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
 
@@ -521,6 +522,7 @@ export default function CheckoutForm() {
       shipping_state: country === "MY" ? state ?? null : null,
       voucher_code: appliedVoucher?.code ?? undefined,
       customer_voucher_id: appliedVoucher?.customer_voucher_id ?? undefined,
+      loyalty_points: loyaltyPoints,
       session_token: sessionToken ?? undefined,
       billing_same_as_shipping: billingSameAsShipping,
       ...(billingSameAsShipping
@@ -552,6 +554,7 @@ export default function CheckoutForm() {
     hasMissingVariant,
     sessionToken,
     shippingMethod,
+    loyaltyPoints,
   ]);
 
   // const shouldRedirectToCart = hasLoadedCart && selectedItems.length === 0;
@@ -833,6 +836,7 @@ export default function CheckoutForm() {
         billing_same_as_shipping: billingSameAsShipping,
         voucher_code: voucherCodeForSubmit,
         customer_voucher_id: selectedVoucherId ?? undefined,
+        loyalty_points: loyaltyPoints || undefined,
         store_location_id: shippingMethod === "self_pickup" ? selectedStoreId ?? undefined : undefined,
         bank_account_id: paymentMethod === "manual_transfer" ? selectedBankId ?? undefined : undefined,
         billplz_gateway_option_id:
@@ -1558,6 +1562,19 @@ export default function CheckoutForm() {
         >
           <h2 className="text-lg font-semibold">Order Summary</h2>
 
+          {isLoggedIn && shippingPreview?.loyalty?.enabled && (
+            <section className="rounded-lg border border-[var(--muted)]/70 bg-[var(--muted)]/10 p-3 text-sm">
+              <div className="flex items-center justify-between"><strong>Loyalty Points</strong><span>Available: {shippingPreview.loyalty.available_points.toLocaleString()} Points</span></div>
+              <p className="mt-1 text-xs text-[var(--foreground)]/60">1 Point = RM {shippingPreview.loyalty.point_value.toFixed(2)} · Maximum {shippingPreview.loyalty.maximum_points.toLocaleString()} Points / RM {shippingPreview.loyalty.maximum_discount.toFixed(2)}</p>
+              <div className="mt-3 flex gap-2">
+                <input aria-label="Loyalty Points to use" type="number" min="0" max={shippingPreview.loyalty.maximum_points} step="1" value={loyaltyPoints}
+                  onChange={(e) => setLoyaltyPoints(Math.max(0, Math.trunc(Number(e.target.value) || 0)))} className="min-w-0 flex-1 rounded border border-[var(--muted)] px-3 py-2" />
+                <button type="button" onClick={() => setLoyaltyPoints(shippingPreview.loyalty?.maximum_points ?? 0)} className="rounded bg-[var(--accent)] px-3 py-2 font-semibold text-white">Use Maximum</button>
+                {loyaltyPoints > 0 && <button type="button" onClick={() => setLoyaltyPoints(0)} className="rounded border px-3 py-2">Remove</button>}
+              </div>
+            </section>
+          )}
+
           <div className="flex items-start justify-between gap-3 rounded-lg border border-[var(--muted)]/70 bg-[var(--muted)]/10 p-3 text-sm">
             <div>
               <p className="text-xs font-medium text-[var(--foreground)]/70">Voucher / Discount</p>
@@ -1860,6 +1877,9 @@ export default function CheckoutForm() {
                 <span className="font-medium">Total Discount</span>
                 <span className="font-semibold">- RM {safeTotals.discount.toFixed(2)}</span>
               </div>
+            )}
+            {Number(shippingPreview?.loyalty?.discount ?? 0) > 0 && (
+              <div className="flex justify-between text-[color:var(--status-success)]"><span>Points Discount</span><span>- RM {Number(shippingPreview?.loyalty?.discount).toFixed(2)}</span></div>
             )}
             <div className="flex justify-between">
               <span>{shippingSummaryText}</span>

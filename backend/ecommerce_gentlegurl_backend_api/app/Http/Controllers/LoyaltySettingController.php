@@ -54,6 +54,14 @@ class LoyaltySettingController extends Controller
     {
         return $request->validate([
             'base_multiplier' => ['required', 'numeric'],
+            'ecommerce_earning_rate' => ['nullable', 'numeric', 'min:0'],
+            'ecommerce_redemption_enabled' => ['required', 'boolean'],
+            'ecommerce_point_value_sen' => ['required', 'integer', 'min:1'],
+            'ecommerce_max_redemption_percent' => ['required', 'numeric', 'between:0,100'],
+            'booking_earning_rate' => ['nullable', 'numeric', 'min:0'],
+            'booking_redemption_enabled' => ['required', 'boolean'],
+            'booking_point_value_sen' => ['required', 'integer', 'min:1'],
+            'booking_max_redemption_percent' => ['required', 'numeric', 'between:0,100'],
             'expiry_months' => ['required', 'integer'],
             'evaluation_cycle_months' => ['required', 'integer'],
             'rules_effective_at' => ['nullable', 'date'],
