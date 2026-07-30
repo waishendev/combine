@@ -42,6 +42,52 @@ CALLBACK_TIMEOUT_MS=5000
 
 The API is `http://127.0.0.1:4400/api/v3`, health is `http://127.0.0.1:4400/health`, and hosted bills are at `http://127.0.0.1:4400/bills/{billId}`.
 
+## Local environment setup
+
+### Laravel
+
+1. Copy the relevant entries from `backend/ecommerce_gentlegurl_backend_api/.env.billplz-simulator.example` into the backend's local `.env`.
+2. Clear cached configuration:
+
+   ```bash
+   php artisan optimize:clear
+   ```
+
+3. Verify the values Laravel resolved:
+
+   ```bash
+   php artisan tinker
+   ```
+
+   ```php
+   config('services.billplz.base_url');
+   config('services.billplz.api_key');
+   config('services.billplz.x_signature');
+   ```
+
+Do not print real credentials in screenshots, shared terminal output, or logs. Local database payment-gateway records may override these environment values, so check both the ecommerce and booking gateway configuration when the resolved result is unexpected.
+
+### Simulator
+
+1. Copy `.env.example` to `.env`.
+2. Run `npm install` and `npm run dev`.
+3. Open `http://127.0.0.1:4400/health` and confirm it returns `{"ok":true}`.
+
+The Laravel `BILPLZ_API_KEY` must equal the simulator `BILLPLZ_API_KEY`, and Laravel `BILPLZ_X_SIGNATURE` must equal simulator `BILLPLZ_X_SIGNATURE_KEY`.
+
+### Postman
+
+1. Import `postman/Billplz-Simulator.postman_collection.json`.
+2. Import `postman/Billplz-Simulator-Local.postman_environment.json`.
+3. Select **Billplz Simulator Local** as the active environment.
+4. Run **Health Check**.
+5. Run **Create Bill**; its test script saves `bill_id` and `hosted_payment_url`.
+6. Run **Get Bill**.
+7. Open `{{hosted_payment_url}}` (or copy its saved environment value into a browser).
+8. Select the required callback or redirect scenario on the hosted page.
+
+Direct callback requests are intentionally omitted from the collection. The hosted page uses the simulator's real signing implementation and avoids stale, hardcoded signatures.
+
 ## Laravel configuration
 
 The backend already reads `BILPLZ_BASE_URL`; no Laravel source change is needed. For host-to-host local development, use local-only environment values:
@@ -120,6 +166,8 @@ BILPLZ_BASE_URL=https://www.billplz.com/api/v3
 ```
 
 Restore the matching Sandbox or Production API key, collection ID, and x-signature key. Never reuse local simulator credentials outside local development. No production controller, callback, redirect, order, booking, wallet, stock, or loyalty behavior is changed by this tool.
+
+After restoring the original URL and credentials, run `php artisan optimize:clear` and verify the resolved configuration again before processing payments.
 
 ## Troubleshooting and limitations
 

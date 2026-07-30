@@ -1,0 +1,682 @@
+{
+  "info": {
+    "_postman_id": "d60f3773-2e01-49e3-862e-baa09f82c445",
+    "name": "Billplz Simulator",
+    "description": "Bill creation and lookup tests for the local simulator. Use the saved hosted_payment_url for signed callback and redirect scenarios; direct Laravel callback requests are intentionally omitted.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{simulator_base_url}}/health"
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Simulator is healthy\", () => { pm.response.to.have.status(200); pm.expect(pm.response.json().ok).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Bill",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{simulator_api_base_url}}/bills",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "{{simulator_api_key}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "collection_id",
+              "value": "{{collection_id}}",
+              "type": "text"
+            },
+            {
+              "key": "email",
+              "value": "{{customer_email}}",
+              "type": "text"
+            },
+            {
+              "key": "mobile",
+              "value": "{{customer_mobile}}",
+              "type": "text"
+            },
+            {
+              "key": "name",
+              "value": "{{customer_name}}",
+              "type": "text"
+            },
+            {
+              "key": "amount",
+              "value": "{{amount_cents}}",
+              "type": "text"
+            },
+            {
+              "key": "description",
+              "value": "Local Billplz simulator test",
+              "type": "text"
+            },
+            {
+              "key": "callback_url",
+              "value": "{{callback_url}}",
+              "type": "text"
+            },
+            {
+              "key": "redirect_url",
+              "value": "{{redirect_url}}",
+              "type": "text"
+            },
+            {
+              "key": "reference_1",
+              "value": "{{order_reference}}",
+              "type": "text"
+            },
+            {
+              "key": "reference_2",
+              "value": "ecommerce",
+              "type": "text"
+            }
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Successful response\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+              "const json = pm.response.json();",
+              "pm.test(\"Response contains bill ID\", () => pm.expect(json.id).to.be.a(\"string\").and.not.empty);",
+              "pm.test(\"Response contains hosted URL\", () => pm.expect(json.url).to.be.a(\"string\").and.include(\"/bills/\"));",
+              "pm.test(\"Amount is integer cents\", () => pm.expect(json.amount).to.eql(Number(pm.environment.get(\"amount_cents\"))));",
+              "pm.test(\"Bill starts unpaid\", () => pm.expect(json.paid).to.eql(false));",
+              "pm.environment.set(\"bill_id\", json.id);",
+              "pm.environment.set(\"hosted_payment_url\", json.url);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Bill",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{simulator_api_base_url}}/bills/{{bill_id}}",
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "{{simulator_api_key}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Successful response\", () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"Returned ID matches\", () => pm.expect(json.id).to.eql(pm.environment.get(\"bill_id\")));",
+              "pm.test(\"Returned amount matches\", () => pm.expect(json.amount).to.eql(Number(pm.environment.get(\"amount_cents\"))));",
+              "pm.test(\"Payment fields exist\", () => { pm.expect(json).to.have.property(\"paid\"); pm.expect(json).to.have.property(\"state\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validation and errors",
+      "item": [
+        {
+          "name": "Create Bill \u2014 Invalid API Key",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{simulator_api_base_url}}/bills",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "intentionally-wrong-api-key",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "collection_id",
+                  "value": "{{collection_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "{{customer_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "mobile",
+                  "value": "{{customer_mobile}}",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "{{customer_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "amount",
+                  "value": "{{amount_cents}}",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Local Billplz simulator test",
+                  "type": "text"
+                },
+                {
+                  "key": "callback_url",
+                  "value": "{{callback_url}}",
+                  "type": "text"
+                },
+                {
+                  "key": "redirect_url",
+                  "value": "{{redirect_url}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_1",
+                  "value": "{{order_reference}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_2",
+                  "value": "ecommerce",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Invalid key is rejected\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Bill \u2014 Missing Required Field",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{simulator_api_base_url}}/bills",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{simulator_api_key}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "collection_id",
+                  "value": "{{collection_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "{{customer_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "mobile",
+                  "value": "{{customer_mobile}}",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "{{customer_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "amount",
+                  "value": "{{amount_cents}}",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Local Billplz simulator test",
+                  "type": "text"
+                },
+                {
+                  "key": "redirect_url",
+                  "value": "{{redirect_url}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_1",
+                  "value": "{{order_reference}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_2",
+                  "value": "ecommerce",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Missing callback URL is rejected\", () => pm.expect(pm.response.code).to.be.oneOf([400, 422]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Bill \u2014 Invalid Amount",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{simulator_api_base_url}}/bills",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{simulator_api_key}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "collection_id",
+                  "value": "{{collection_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "{{customer_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "mobile",
+                  "value": "{{customer_mobile}}",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "{{customer_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "amount",
+                  "value": "10.50",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Local Billplz simulator test",
+                  "type": "text"
+                },
+                {
+                  "key": "callback_url",
+                  "value": "{{callback_url}}",
+                  "type": "text"
+                },
+                {
+                  "key": "redirect_url",
+                  "value": "{{redirect_url}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_1",
+                  "value": "{{order_reference}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_2",
+                  "value": "ecommerce",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Decimal amount is rejected\", () => pm.expect(pm.response.code).to.be.oneOf([400, 422]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Unknown Bill",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{simulator_api_base_url}}/bills/sim_definitely_unknown",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{simulator_api_key}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Unknown bill returns 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Additional bill examples",
+      "item": [
+        {
+          "name": "Create Booking Bill",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{simulator_api_base_url}}/bills",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{simulator_api_key}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "collection_id",
+                  "value": "{{collection_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "{{customer_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "mobile",
+                  "value": "{{customer_mobile}}",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "{{customer_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "amount",
+                  "value": "{{amount_cents}}",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Local Billplz simulator test",
+                  "type": "text"
+                },
+                {
+                  "key": "callback_url",
+                  "value": "{{callback_url}}",
+                  "type": "text"
+                },
+                {
+                  "key": "redirect_url",
+                  "value": "{{redirect_url}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_1",
+                  "value": "{{booking_order_reference}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_2",
+                  "value": "booking",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Creates a simulator bill using booking reference metadata. Payment scenarios are selected on the hosted page."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Successful response\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response contains bill ID\", () => pm.expect(json.id).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Response contains hosted URL\", () => pm.expect(json.url).to.be.a(\"string\").and.include(\"/bills/\"));",
+                  "pm.test(\"Amount is integer cents\", () => pm.expect(json.amount).to.eql(Number(pm.environment.get(\"amount_cents\"))));",
+                  "pm.test(\"Bill starts unpaid\", () => pm.expect(json.paid).to.eql(false));",
+                  "pm.environment.set(\"bill_id\", json.id);",
+                  "pm.environment.set(\"hosted_payment_url\", json.url);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Credit Card Bill",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{simulator_api_base_url}}/bills",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{simulator_api_key}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "collection_id",
+                  "value": "{{collection_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "{{customer_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "mobile",
+                  "value": "{{customer_mobile}}",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "{{customer_name}}",
+                  "type": "text"
+                },
+                {
+                  "key": "amount",
+                  "value": "{{amount_cents}}",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Local Billplz credit card simulator test",
+                  "type": "text"
+                },
+                {
+                  "key": "callback_url",
+                  "value": "{{callback_url}}",
+                  "type": "text"
+                },
+                {
+                  "key": "redirect_url",
+                  "value": "{{redirect_url}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_1_label",
+                  "value": "Bank Code",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_1",
+                  "value": "{{credit_card_gateway_code}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_2_label",
+                  "value": "OrderNo",
+                  "type": "text"
+                },
+                {
+                  "key": "reference_2",
+                  "value": "{{credit_card_order_reference}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Mirrors Laravel direct-channel reference routing. Replace credit_card_gateway_code with the selected local gateway option code. No payment-method callback field is added."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Successful response\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response contains bill ID\", () => pm.expect(json.id).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Response contains hosted URL\", () => pm.expect(json.url).to.be.a(\"string\").and.include(\"/bills/\"));",
+                  "pm.test(\"Amount is integer cents\", () => pm.expect(json.amount).to.eql(Number(pm.environment.get(\"amount_cents\"))));",
+                  "pm.test(\"Bill starts unpaid\", () => pm.expect(json.paid).to.eql(false));",
+                  "pm.environment.set(\"bill_id\", json.id);",
+                  "pm.environment.set(\"hosted_payment_url\", json.url);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
