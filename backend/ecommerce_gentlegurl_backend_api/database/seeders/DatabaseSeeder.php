@@ -18,14 +18,15 @@ class DatabaseSeeder extends Seeder
             AdminSeeder::class,
             CustomerSuperAdminSeeder::class,
             SuperAdminRoleSeeder::class,
+            SalesReportWithVoidPermissionSeeder::class,
+            AppointmentActivityLogPermissionSeeder::class,
             SuperAdminSeeder::class,
             StaffPermissionSeeder::class,
-            SalesReportWithVoidPermissionSeeder::class,
-            // AppointmentActivityLogPermissionSeeder::class,
+
+
 
             GlobalSeoSeedeer::class,
             SettingSeeder::class,
-            WalletTopupReserveMinutesSettingSeeder::class,
             ShippingSettingSeeder::class,
             InvoiceProfileSeeder::class,
             BankAccountSeeder::class,
@@ -36,37 +37,33 @@ class DatabaseSeeder extends Seeder
             FooterWidgetSeederReal::class,
             ServicesMenuAndPagesSeeder::class,
             CustomerTypeSeeder::class,
+            ExpenseCategorySeeder::class,
+            ProfitLossReportPermissionSeeder::class,
+            ExpenseDemoSeeder::class,
             BookingSettingsSeeder::class,
             PaymentProofNotificationSettingSeeder::class,
             EnsurePromotionPermissionsForSuperAdminSeeder::class,
-            StaffSalesReportPermissionSeeder::class,
-            ExpenseCategorySeeder::class,
-            ExpenseDemoSeeder::class,
-            
+           
             PaymentGatewaySeeder::class,
             BillplzPaymentGatewayOptionSeeder::class,
             BookingLandingPageSeeder::class,
-            EcommerceLandingPageSeeder::class,
-            BookingProductSeeder::class,
+            // EcommerceLandingPageSeeder::class,
+            // BookingProductSeeder::class,
             
-            // upper all should open , no command to avoid error seed
-            DemoMembersSeederTesting::class,
+            // // upper all should open , no command to avoid error seed
+            // DemoMembersSeederTesting::class,
 
-            FrontendTestDataSeeder::class,
-            LoyaltyRewardSeederTesting::class,
-            LoyaltyDemoCustomerSeederTesting::class,
-            // SelfPickupCompletedOrderSeeder::class,
-            // GuestCompletedOrderSeeder::class,
-            
-            BookingTestingSeeder::class,
-            BookingLeaveTestingSeeder::class,
-            ServicePackageTestingSeeder::class,
-            CustomerWalletPermissionSeeder::class,
-            ProfitLossReportPermissionSeeder::class,
+            // FrontendTestDataSeeder::class,
+            // LoyaltyRewardSeederTesting::class,
+            // LoyaltyDemoCustomerSeederTesting::class,
+            // // SelfPickupCompletedOrderSeeder::class,
+            // // GuestCompletedOrderSeeder::class,
+          
+            // BookingTestingSeeder::class,
+            // BookingLeaveTestingSeeder::class,
+            // ServicePackageTestingSeeder::class,
             // CommissionTestingSeeder::class,
-
-            // DepositSettlementTestingSeeder::class,
-            // RetursnDemoSeeder::class,
+            // ReturnDemoSeeder::class,
             // SalesReportSeeder::class,
             // ReturnRequestSeeder::class,
 
