@@ -61,7 +61,7 @@ class BillplzCallbackController extends Controller
             return response('order not found', 404);
         }
 
-        // Verify signature, but don't block processing if order exists and payment is confirmed
+        // A provider status is never trusted unless its signature is valid.
         $workspaceType = $order->paymentGateway?->type ?? WorkspaceType::ECOMMERCE;
         $signatureValid = $this->verifySignature($payload, $workspaceType);
         $paid = isset($billplzPayload['paid']) ? filter_var($billplzPayload['paid'], FILTER_VALIDATE_BOOLEAN) : false;
@@ -82,17 +82,23 @@ class BillplzCallbackController extends Controller
                 'payload' => $payload,
             ]);
 
-            // If payment is clearly marked as paid and we have a valid order, 
-            // process it anyway but log the signature failure
-            // This prevents legitimate payments from being blocked due to signature issues
-            if (!($paid && ($state === 'paid' || $transactionStatus === 'completed'))) {
-                return response('invalid signature', 400);
-            }
-            
-            Log::warning('Billplz callback processing despite signature failure - payment confirmed', [
+            return response('invalid signature', 400);
+        }
+
+        $receivedAmount = isset($billplzPayload['amount']) ? (int) $billplzPayload['amount'] : null;
+        $expectedAmount = $bill?->amount !== null
+            ? (int) $bill->amount
+            : (int) round(((float) $order->grand_total) * 100);
+
+        if ($receivedAmount === null || $receivedAmount !== $expectedAmount) {
+            Log::warning('Billplz callback amount mismatch', [
+                'bill_id' => $billId,
                 'order_id' => $order->id,
-                'order_no' => $order->order_number,
+                'expected_amount' => $expectedAmount,
+                'received_amount' => $receivedAmount,
             ]);
+
+            return response('amount mismatch', 400);
         }
 
         if (!$bill && $billId) {
@@ -161,7 +167,9 @@ class BillplzCallbackController extends Controller
                     $paid = isset($billplzPayload['paid']) ? filter_var($billplzPayload['paid'], FILTER_VALIDATE_BOOLEAN) : false;
                     $state = $billplzPayload['state'] ?? null;
                     $transactionStatus = $billplzPayload['transaction_status'] ?? null;
-                    $isPaymentConfirmed = $paid || $state === 'paid' || $transactionStatus === 'completed';
+                    // Browser redirects are informational only. The signed server-to-server
+                    // callback is the sole payment confirmation path.
+                    $isPaymentConfirmed = false;
 
                     // Process payment if signature is valid OR if payment is clearly confirmed
                     if ($signatureValid || $isPaymentConfirmed) {
