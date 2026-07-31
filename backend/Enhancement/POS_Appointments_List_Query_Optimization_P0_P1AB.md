@@ -13,24 +13,24 @@
 |--------|--------|
 | Production flow (enrich-all → PHP filter → `forPage`) | Unchanged |
 | API response keys / pagination shape | Unchanged |
-| Financial / status field values | Unchanged (byte-stable SHA) |
+| Financial / status field values (tested July sample) | Unchanged (byte-stable SHA on that request) |
 | Frontend / 5s auto-refresh | Unchanged |
-| P1-A + P1-B correctness | Verified (unit tests + live payload SHA) |
+| P1-A + P1-B correctness | Verified via unit tests + local payload SHA on the benchmark request |
 
-**Local benchmark (July 2026, 17 appointments, `per_page=500`):**
+**Local benchmark only** (`from_date=2026-07-01&to_date=2026-07-31&per_page=500`, 17 appointments). The **−44%** figure below is a **local query-count** reduction. Production latency improvement is **expected** (fewer round-trips) but **not yet proven** — confirm after deploy.
 
-| Stage | Median SQL queries | Δ vs baseline |
+| Stage | Median SQL queries (local) | Δ vs local baseline |
 |--------|--------------------|---------------|
 | Baseline (before this work) | **505** | — |
 | After P0 (indexes + sargable dates) | ~505 | plan quality only; N+1 unchanged |
 | After P1-A (request memo) | **351** | **−154 (−30%)** |
 | After P1-B (batch active `order_items`) | **284** | **−221 (−44%)** vs baseline |
 
-Payload SHA stayed identical across stages:
+For **this same July 2026 dataset and those benchmark params**, payload SHA stayed identical across stages (not a claim that every production filter/date combination was byte-verified):
 
 `1c12646324986a6af631be7de18640920f6d7294916c10e70e548c342c127a82`
 
-Appointment IDs stable: `[1, 2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21]`
+Appointment IDs for that request: `[1, 2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21]`
 
 ---
 
@@ -103,7 +103,7 @@ Only while `appointmentSearch` runs (`begin` → `try` → `finally end`):
 `tests/Unit/PosAppointmentSearchMemoTest.php`
 
 ### Measured impact
-**505 → 351 queries (−154)** on the July sample. Payload SHA unchanged.
+**505 → 351 queries (−154)** on the local July benchmark request. Payload SHA unchanged for that request only.
 
 ---
 
@@ -138,21 +138,23 @@ Each query used `whereHas('order', …)` → expensive correlated existence chec
 `tests/Unit/PosAppointmentActiveOrderItemsBatchTest.php`
 
 ### Measured impact
-**351 → 284 queries (−67)** on the July sample. Payload SHA unchanged.  
-Live re-check (2026-08-01): `query_count=284`, `sha_match=true`, `ids_match=true`, response keys unchanged.  
+**351 → 284 queries (−67)** on the local July benchmark request. Payload SHA unchanged for that request only.  
+Local re-check (2026-08-01): `query_count=284`, `sha_match=true`, `ids_match=true`, response keys unchanged.  
 Batch preload queries: **1**. Remaining per-booking `whereHas` on `order_items` (~26) are from other paths (e.g. refund/split lookups) — left for P1-C+.
 
 ---
 
 ## Cumulative performance analysis
 
-### Query count (primary, stable metric)
+### Query count (local primary metric)
 
 ```
 Baseline ████████████████████████████████████████████████████  505
-P1-A     ███████████████████████████████████                   351   (−30%)
-P1-B     ████████████████████████████                          284   (−44% vs baseline)
+P1-A     ███████████████████████████████████                   351   (−30% local)
+P1-B     ████████████████████████████                          284   (−44% local vs baseline)
 ```
+
+These percentages are **local query-count** reductions on the July sample. They are **not** measured production latency.
 
 ### Wall / DB time (local, noisy — use as directional)
 
@@ -160,7 +162,7 @@ On the same July request (`from_date=2026-07-01&to_date=2026-07-31&per_page=500`
 - Median wall ≈ **~1.1–1.5 s** (machine load varies; single warm run can be higher)
 - Median DB time ≈ **~340 ms** (earlier P1-B benchmark set)
 
-**Interpretation:** Query count is the reliable evidence of less work. Wall clock on a busy local machine fluctuates; production should see clearer wins under concurrent load because fewer round-trips to Postgres.
+**Interpretation:** Local query count is the reliable evidence of less work on this dataset. Local wall clock fluctuates. Production should see latency improvement from fewer Postgres round-trips, but that still needs **post-deployment verification** — it has not been proven in production yet.
 
 ### Why it is still not “instant”
 Enrichment still does per-booking work for:
@@ -200,10 +202,12 @@ php vendor/phpunit/phpunit/phpunit --filter "PosAppointmentSearchMemoTest|PosApp
 
 Expected: **12 tests, OK**.
 
-Live smoke (same params as benchmark):
-- Query count ≈ **284** (for July sample size ~17)
-- Payload SHA = `1c126463…127a82`
+Local smoke (same params as the July benchmark only):
+- Query count ≈ **284** (for that sample size ~17)
+- Payload SHA = `1c126463…127a82` (this request/dataset only)
 - IDs = `[1,2,6,7,8,9,10,11,12,13,14,15,16,17,18,19,21]`
+
+After deploy: re-measure production latency / query volume; do not treat the local −44% as proven prod latency.
 
 ---
 
@@ -215,10 +219,10 @@ Live smoke (same params as benchmark):
 | **P1-D** | Batch visit checkout meta | Medium |
 | **P1-E** | Batch package / cart resolution | Medium–higher |
 
-Rule: ship one phase at a time; require payload SHA / business-field equality before merging.
+Rule: ship one phase at a time; require payload SHA / business-field equality on a defined test request before merging.
 
 ---
 
 ## Bottom line
 
-P0 + P1-A + P1-B only remove **duplicate / N+1 SQL** on the appointments list. They do **not** reorder filters, change pagination, or alter money/status logic. Local evidence: **−44% SQL queries** with **identical response payload**. Safe to treat as a pure performance acceleration of the existing production flow.
+P0 + P1-A + P1-B only remove **duplicate / N+1 SQL** on the appointments list. They do **not** reorder filters, change pagination, or alter money/status logic. On the **local July 2026 benchmark request**: **−44% SQL queries** and an **identical payload SHA** for that dataset/params. Treat this as a safe acceleration of the existing production flow; **confirm real-world latency after deployment**.

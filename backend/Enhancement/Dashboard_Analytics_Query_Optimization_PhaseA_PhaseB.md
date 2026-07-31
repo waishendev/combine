@@ -29,7 +29,7 @@
 | `reserved_qty` 新旧算法等价 | **MATCH** `[[1,1],[2,0],[3,0]]` |
 | HTTP status | 全部 **200** |
 
-**最终安全复核（2026-08-01）：** 用改动后的 controller 重新打 API，与 Phase B **改代码前**落盘的 payload 文件比对 SHA —— 4 个主 endpoint **全部一致**。
+**最终安全复核（2026-08-01）：** 用改动后的 controller 重新打 API，与 Phase B **改代码前**落盘的 payload 文件比对 SHA —— 5 个 endpoint **全部一致**。
 
 | Endpoint | Payload SHA-256（改前 = 改后） |
 |----------|--------------------------------|
@@ -121,7 +121,7 @@ EXPLAIN 显示销售 / 退款 / inventory UNION / package liability 等路径对
 |------|----------|
 | Schema memo | 同一请求内同一 `(table, column)` 答案不变；只少打 catalog，SQL 表达式仍相同 |
 | Inventory clone | 同一 Builder 编译出相同 UNION SQL；summary / detail 语义不变 |
-| `reserved_qty` join + `MAX` | 与 correlated `SUM(used_qty) WHERE status='reserved'` 数值等价；用 `MAX` 避免 balances 行放大后误 `SUM` |
+| `reserved_qty` join + `MAX` | 与 correlated `SUM(used_qty) WHERE status='reserved'` 数值等价。子查询先按 `customer_service_package_id` 聚合并得到每个 package 的 reserved 总量；再与 balances join 时，该已聚合值可能随 balance 行被复制多份；外层用 `MAX(reserved_qty)` 保留这一份 reserved 数量，而不是把复制行再 `SUM` 放大 |
 | 去掉无用 `booking_services` | 仅在 **不 select 服务名** 的 summary / list；detail / redemptions 仍 join `bs` |
 
 ### Phase B 冷请求 benchmark（每次 new controller，贴近真实 HTTP）
@@ -141,7 +141,7 @@ Local Postgres · 2026-08-01 · median of 5 runs：
 - `filter-options` 几乎全是「各查一次不同 table」，memo 收益有限；wall 波动属噪声。
 - 本地行数很少；**production 行数上去后**，Phase A 索引 + Phase B 去掉 SubPlan 的收益会更明显。
 
-同一 controller 实例内连打（warm memo）时 schema_q 可到 **0**，ecommerce wall 可到 ~18 ms —— 说明 schema 税曾是主瓶颈；真实 HTTP 按 **cold 表** 评估更公允。
+同一 controller 实例内连打（warm memo）时 schema_q 可到 **0**，ecommerce wall 可到 ~18 ms —— 这只是 **行为实验**，用来证明 schema 税曾是主瓶颈。Schema memo 是 **request-scoped**（按 controller 实例），真实 HTTP 每次请求都会新建实例，因此 **真实性能必须以上方 cold-request benchmark 为准**，不能用 warm memo 数字代表 production。
 
 ---
 
