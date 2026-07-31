@@ -62,6 +62,7 @@ use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
 use App\Support\BookingNotes;
 use App\Support\OrderReceiptEmailLabels;
+use App\Support\PosAppointmentStartAtFilter;
 use App\Support\Pricing\ProductPricing;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
@@ -77,6 +78,35 @@ use Illuminate\Support\Str;
 
 class PosController extends Controller
 {
+    /**
+     * Request-local memo for appointmentSearch only (P1-A).
+     * Cleared in begin/end; never static, Redis, or cross-request.
+     */
+    private bool $appointmentSearchMemoEnabled = false;
+
+    /** @var array<string, mixed> */
+    private array $appointmentSearchMemo = [];
+
+    /**
+     * P1-B: active order_items for candidate bookings, keyed by booking_id.
+     * Null outside appointmentSearch preload window.
+     *
+     * @var \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, \App\Models\Ecommerce\OrderItem>>|null
+     */
+    private $appointmentSearchActiveOrderItemsByBookingId = null;
+
+    private const APPOINTMENT_SEARCH_ACTIVE_ORDER_LINE_TYPES = [
+        'booking_addon',
+        'booking_deposit',
+        'booking_settlement',
+    ];
+
+    private const APPOINTMENT_SEARCH_INACTIVE_ORDER_STATUSES = [
+        'voided',
+        'cancelled',
+        'draft',
+    ];
+
     public function __construct(
         protected VoucherEligibilityService $voucherEligibilityService,
         protected VoucherService $voucherService,
@@ -90,6 +120,87 @@ class PosController extends Controller
         protected BookingAddonQuantityService $addonQuantityService,
         protected AppointmentActivityLogService $appointmentActivityLogService,
     ) {}
+
+    private function beginAppointmentSearchMemo(): void
+    {
+        $this->appointmentSearchMemoEnabled = true;
+        $this->appointmentSearchMemo = [];
+    }
+
+    private function endAppointmentSearchMemo(): void
+    {
+        $this->appointmentSearchMemoEnabled = false;
+        $this->appointmentSearchMemo = [];
+        $this->appointmentSearchActiveOrderItemsByBookingId = null;
+    }
+
+    /**
+     * @template T
+     * @param  callable(): T  $resolver
+     * @return T
+     */
+    private function rememberAppointmentSearch(string $key, callable $resolver): mixed
+    {
+        if (! $this->appointmentSearchMemoEnabled) {
+            return $resolver();
+        }
+
+        if (array_key_exists($key, $this->appointmentSearchMemo)) {
+            return $this->appointmentSearchMemo[$key];
+        }
+
+        return $this->appointmentSearchMemo[$key] = $resolver();
+    }
+
+    /**
+     * Memoized wrapper around CustomerServicePackageService::resolvePosCartServiceItemIdsForBooking.
+     *
+     * @return list<int>
+     */
+    protected function resolvePosCartServiceItemIdsForBookingCached(int $bookingId): array
+    {
+        $bookingId = (int) $bookingId;
+        if ($bookingId <= 0) {
+            return [];
+        }
+
+        /** @var list<int> $ids */
+        $ids = $this->rememberAppointmentSearch("pos_cart_ids:{$bookingId}", function () use ($bookingId) {
+            return $this->customerServicePackageService->resolvePosCartServiceItemIdsForBooking($bookingId);
+        });
+
+        return $ids;
+    }
+
+    /**
+     * Staff fallback used when booking_service_staff_splits has no rows.
+     *
+     * @return array{staff_id: int, staff_name: string, share_percent: int, service_commission_rate_snapshot: float}|null
+     */
+    protected function resolveStaffSplitFallbackStaff(int $staffId): ?array
+    {
+        $staffId = (int) $staffId;
+        if ($staffId <= 0) {
+            return null;
+        }
+
+        /** @var array{staff_id: int, staff_name: string, share_percent: int, service_commission_rate_snapshot: float}|null $row */
+        $row = $this->rememberAppointmentSearch("staff_fallback:{$staffId}", function () use ($staffId) {
+            $fallbackStaff = Staff::query()->find($staffId, ['id', 'name', 'service_commission_rate']);
+            if (! $fallbackStaff) {
+                return null;
+            }
+
+            return [
+                'staff_id' => (int) $fallbackStaff->id,
+                'staff_name' => (string) ($fallbackStaff->name ?? '-'),
+                'share_percent' => 100,
+                'service_commission_rate_snapshot' => (float) ($fallbackStaff->service_commission_rate ?? 0),
+            ];
+        });
+
+        return $row;
+    }
 
     public function memberSearch(Request $request)
     {
@@ -315,6 +426,17 @@ class PosController extends Controller
 
     public function appointmentSearch(Request $request)
     {
+        $this->beginAppointmentSearchMemo();
+
+        try {
+            return $this->runAppointmentSearch($request);
+        } finally {
+            $this->endAppointmentSearchMemo();
+        }
+    }
+
+    protected function runAppointmentSearch(Request $request)
+    {
         $query = trim((string) $request->query('q', ''));
         $page = max(1, (int) $request->query('page', 1));
         $unpaidOnly = (bool) $request->boolean('unpaid_only', false);
@@ -335,11 +457,22 @@ class PosController extends Controller
             });
         }
 
+        // Sargable timestamp range (same calendar-day semantics as whereDate under app timezone).
+        // Inclusive start-of-day .. exclusive next-day-start so DATE(start_at) bounds stay identical.
+        // Bind wall-clock strings so timestamp-without-time-zone columns match prior whereDate results.
         if ($hasRange) {
-            $builder->whereDate('start_at', '>=', $request->string('from_date'))
-                ->whereDate('start_at', '<=', $request->string('to_date'));
+            PosAppointmentStartAtFilter::apply(
+                $builder,
+                (string) $request->string('from_date'),
+                (string) $request->string('to_date'),
+            );
         } elseif ($request->filled('date')) {
-            $builder->whereDate('start_at', $request->string('date'));
+            PosAppointmentStartAtFilter::apply(
+                $builder,
+                null,
+                null,
+                (string) $request->string('date'),
+            );
         }
         if ($request->filled('customer_id')) {
             $builder->where('customer_id', (int) $request->query('customer_id'));
@@ -371,7 +504,12 @@ class PosController extends Controller
             $statusFilterNeedsActiveCheck = ! $includeTerminalStatuses;
         }
 
-        $allRows = $builder->orderBy('start_at')->get()->map(function (Booking $booking) {
+        $allRows = $builder->orderBy('start_at')->get();
+        $this->preloadAppointmentSearchActiveOrderItems(
+            $allRows->pluck('id')->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all()
+        );
+
+        $allRows = $allRows->map(function (Booking $booking) {
             $summary = $this->resolveAppointmentFinancialSummary($booking);
             $guestName = trim((string) ($booking->guest_name ?? ''));
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
@@ -921,7 +1059,7 @@ class PosController extends Controller
 
     protected function resolveAppointmentPackageClaimsCollection(Booking $booking): \Illuminate\Support\Collection
     {
-        $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking((int) $booking->id);
+        $posCartItemIds = $this->resolvePosCartServiceItemIdsForBookingCached((int) $booking->id);
 
         return CustomerServicePackageUsage::query()
             ->where(function ($q) use ($booking, $posCartItemIds) {
@@ -3721,27 +3859,30 @@ class PosController extends Controller
 
     protected function appointmentVisitCheckoutFinalized(int $bookingId): bool
     {
+        $bookingId = (int) $bookingId;
         if ($bookingId <= 0) {
             return false;
         }
 
-        if (OrderItem::query()
-            ->where('booking_id', $bookingId)
-            ->where('line_type', 'booking_settlement')
-            ->exists()) {
-            return true;
-        }
+        return (bool) $this->rememberAppointmentSearch("visit_finalized:{$bookingId}", function () use ($bookingId) {
+            if (OrderItem::query()
+                ->where('booking_id', $bookingId)
+                ->where('line_type', 'booking_settlement')
+                ->exists()) {
+                return true;
+            }
 
-        // Deposit orders also attach an OrderServiceItem for commission/receipt context — that is not visit checkout.
-        return OrderServiceItem::query()
-            ->where('booking_id', $bookingId)
-            ->whereHas('order', function ($orderQuery) use ($bookingId) {
-                $orderQuery->whereDoesntHave('items', function ($itemQuery) use ($bookingId) {
-                    $itemQuery->where('booking_id', $bookingId)
-                        ->where('line_type', 'booking_deposit');
-                });
-            })
-            ->exists();
+            // Deposit orders also attach an OrderServiceItem for commission/receipt context — that is not visit checkout.
+            return OrderServiceItem::query()
+                ->where('booking_id', $bookingId)
+                ->whereHas('order', function ($orderQuery) use ($bookingId) {
+                    $orderQuery->whereDoesntHave('items', function ($itemQuery) use ($bookingId) {
+                        $itemQuery->where('booking_id', $bookingId)
+                            ->where('line_type', 'booking_deposit');
+                    });
+                })
+                ->exists();
+        });
     }
 
     /**
@@ -8674,13 +8815,108 @@ class PosController extends Controller
     protected function activeBookingOrderItemQuery(?int $bookingId = null): \Illuminate\Database\Eloquent\Builder
     {
         $query = OrderItem::query()
-            ->whereHas('order', fn ($orderQuery) => $orderQuery->whereNotIn('status', ['voided', 'cancelled', 'draft']));
+            ->whereHas('order', fn ($orderQuery) => $orderQuery->whereNotIn('status', self::APPOINTMENT_SEARCH_INACTIVE_ORDER_STATUSES));
 
         if ($bookingId !== null) {
             $query->where('booking_id', $bookingId);
         }
 
         return $query;
+    }
+
+    /**
+     * P1-B: one query for all candidate booking IDs used by appointmentSearch financial summary.
+     *
+     * Replaces these per-booking activeBookingOrderItemQuery calls inside resolveAppointmentFinancialSummary:
+     * 1) line_type=booking_addon (addon paid + addon settlement filter on variant)
+     * 2) line_type=booking_deposit (main deposit collected)
+     * 3) line_type=booking_addon + variant_name_snapshot='Booking Add-on Deposit'
+     * 4) line_type=booking_settlement (main settlement paid)
+     *
+     * Shared conditions preserved:
+     * - order.status NOT IN (voided, cancelled, draft) via whereHas('order')
+     * - booking_id in candidate set
+     * - only the line_types listed above (exact set used by those four call sites)
+     *
+     * @param  list<int>  $bookingIds
+     */
+    protected function preloadAppointmentSearchActiveOrderItems(array $bookingIds): void
+    {
+        $bookingIds = collect($bookingIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($bookingIds === []) {
+            $this->appointmentSearchActiveOrderItemsByBookingId = collect();
+
+            return;
+        }
+
+        $items = OrderItem::query()
+            ->whereIn('booking_id', $bookingIds)
+            ->whereIn('line_type', self::APPOINTMENT_SEARCH_ACTIVE_ORDER_LINE_TYPES)
+            ->whereHas(
+                'order',
+                fn ($orderQuery) => $orderQuery->whereNotIn('status', self::APPOINTMENT_SEARCH_INACTIVE_ORDER_STATUSES)
+            )
+            ->get([
+                'id',
+                'order_id',
+                'booking_id',
+                'line_type',
+                'display_name_snapshot',
+                'product_name_snapshot',
+                'variant_name_snapshot',
+                'line_total',
+                'line_total_snapshot',
+                'line_total_after_discount',
+                'effective_line_total',
+            ]);
+
+        $this->appointmentSearchActiveOrderItemsByBookingId = $items
+            ->groupBy(fn (OrderItem $item) => (int) $item->booking_id)
+            ->map(fn ($rows) => $rows->values());
+    }
+
+    /**
+     * Active order items for a booking, optionally filtered by line_type / variant snapshot.
+     * Uses P1-B preload during appointmentSearch; otherwise falls back to activeBookingOrderItemQuery.
+     *
+     * @return \Illuminate\Support\Collection<int, OrderItem>
+     */
+    protected function activeBookingOrderItemsFiltered(
+        int $bookingId,
+        string $lineType,
+        ?string $variantNameSnapshot = null,
+    ): \Illuminate\Support\Collection {
+        $bookingId = (int) $bookingId;
+
+        if ($this->appointmentSearchActiveOrderItemsByBookingId !== null) {
+            return $this->appointmentSearchActiveOrderItemsByBookingId
+                ->get($bookingId, collect())
+                ->filter(function (OrderItem $item) use ($lineType, $variantNameSnapshot) {
+                    if ((string) ($item->line_type ?? '') !== $lineType) {
+                        return false;
+                    }
+                    if ($variantNameSnapshot !== null
+                        && (string) ($item->variant_name_snapshot ?? '') !== $variantNameSnapshot) {
+                        return false;
+                    }
+
+                    return true;
+                })
+                ->values();
+        }
+
+        $query = $this->activeBookingOrderItemQuery($bookingId)->where('line_type', $lineType);
+        if ($variantNameSnapshot !== null) {
+            $query->where('variant_name_snapshot', $variantNameSnapshot);
+        }
+
+        return $query->get();
     }
 
     protected function refreshOrderTotalsFromItems(Order $order): void
@@ -9864,7 +10100,7 @@ class PosController extends Controller
             return [];
         }
 
-        $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking($bookingId);
+        $posCartItemIds = $this->resolvePosCartServiceItemIdsForBookingCached($bookingId);
 
         $rows = DB::table('customer_service_package_usages as u')
             ->join('customer_service_packages as csp', 'csp.id', '=', 'u.customer_service_package_id')
@@ -11040,7 +11276,26 @@ class PosController extends Controller
 
     public function resolvePerLinePackageClaims(Booking $booking, array $summary): array
     {
-        $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking((int) $booking->id);
+        // $summary is unused by claim resolution today; key covers booking fields that affect filtering.
+        $bookingId = (int) $booking->id;
+        $serviceId = (int) ($booking->service_id ?? 0);
+        $addonFingerprint = md5(json_encode($booking->addon_items_json ?? []));
+        $memoKey = "pkg_claims:{$bookingId}:svc:{$serviceId}:addons:{$addonFingerprint}";
+
+        /** @var list<array<string, mixed>> $claims */
+        $claims = $this->rememberAppointmentSearch($memoKey, function () use ($booking) {
+            return $this->computePerLinePackageClaims($booking);
+        });
+
+        return $claims;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function computePerLinePackageClaims(Booking $booking): array
+    {
+        $posCartItemIds = $this->resolvePosCartServiceItemIdsForBookingCached((int) $booking->id);
 
         $claims = CustomerServicePackageUsage::query()
             ->with(['customerServicePackage.servicePackage'])
@@ -11777,9 +12032,7 @@ class PosController extends Controller
         })->values();
         $addonTotalDurationMin = (int) $addonItems->sum(fn (array $addon) => $this->addonQuantityService->lineDurationMinutes($addon));
         $addonTotalPrice = round((float) $addonItems->sum(fn (array $addon) => (float) ($addon['line_gross_amount'] ?? $this->addonQuantityService->lineGrossAmount($addon))), 2);
-        $addonPaidRows = $this->activeBookingOrderItemQuery((int) $booking->id)
-            ->where('line_type', 'booking_addon')
-            ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total', 'line_total_snapshot', 'variant_name_snapshot']);
+        $addonPaidRows = $this->activeBookingOrderItemsFiltered((int) $booking->id, 'booking_addon');
         $addonPaidByName = $addonPaidRows
             ->groupBy(fn (OrderItem $row) => (string) ($row->display_name_snapshot ?: $row->product_name_snapshot ?: 'Add-on'))
             ->map(fn ($rows) => (float) $rows->sum(fn (OrderItem $row) => $this->resolveOrderItemSettlementGrossAmount($row)));
@@ -11809,7 +12062,7 @@ class PosController extends Controller
             ->latest('id')
             ->first();
         if (! $packageUsageEarly && $booking->customer_id && $booking->service_id) {
-            $posCartItemIdsForBooking = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking((int) $booking->id);
+            $posCartItemIdsForBooking = $this->resolvePosCartServiceItemIdsForBookingCached((int) $booking->id);
             $packageUsageEarly = CustomerServicePackageUsage::query()
                 ->where('customer_id', (int) $booking->customer_id)
                 ->where('booking_service_id', (int) $booking->service_id)
@@ -11823,15 +12076,13 @@ class PosController extends Controller
         $expectedDepositByAddonId = collect($depositBreakdown['addon_deposit_items'] ?? [])
             ->mapWithKeys(fn (array $row) => [(int) ($row['id'] ?? 0) => (float) ($row['deposit_contribution'] ?? 0)]);
 
-        $mainDepositCollected = round((float) $this->activeBookingOrderItemQuery((int) $booking->id)
-            ->where('line_type', 'booking_deposit')
-            ->get()
+        $mainDepositCollected = round((float) $this->activeBookingOrderItemsFiltered((int) $booking->id, 'booking_deposit')
             ->sum(fn (OrderItem $row) => $this->invoiceService->resolveOrderItemCollectedAmount($row)), 2);
-        $addonDepositCollected = round((float) $this->activeBookingOrderItemQuery((int) $booking->id)
-            ->where('line_type', 'booking_addon')
-            ->where('variant_name_snapshot', 'Booking Add-on Deposit')
-            ->get()
-            ->sum(fn (OrderItem $row) => $this->invoiceService->resolveOrderItemCollectedAmount($row)), 2);
+        $addonDepositCollected = round((float) $this->activeBookingOrderItemsFiltered(
+            (int) $booking->id,
+            'booking_addon',
+            'Booking Add-on Deposit',
+        )->sum(fn (OrderItem $row) => $this->invoiceService->resolveOrderItemCollectedAmount($row)), 2);
         $actualAppointmentDepositCollected = round($mainDepositCollected + $addonDepositCollected, 2);
 
         $depositPaid = $actualAppointmentDepositCollected;
@@ -11860,9 +12111,7 @@ class PosController extends Controller
             ];
         })->values();
 
-        $mainSettlementPaidRows = $this->activeBookingOrderItemQuery((int) $booking->id)
-            ->where('line_type', 'booking_settlement')
-            ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total', 'line_total_snapshot']);
+        $mainSettlementPaidRows = $this->activeBookingOrderItemsFiltered((int) $booking->id, 'booking_settlement');
         $serviceSettlementPaid = (float) $mainSettlementPaidRows
             ->sum(fn (OrderItem $row) => $this->resolveOrderItemSettlementGrossAmount($row));
         $mainPaidByName = $mainSettlementPaidRows
@@ -11900,7 +12149,7 @@ class PosController extends Controller
                 : null;
         }
 
-        $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking((int) $booking->id);
+        $posCartItemIds = $this->resolvePosCartServiceItemIdsForBookingCached((int) $booking->id);
 
         if (! $packageUsage && $booking->customer_id && $booking->service_id) {
             $packageUsage = CustomerServicePackageUsage::query()
@@ -12218,6 +12467,24 @@ class PosController extends Controller
 
     protected function resolveBookingStaffSplits(int $bookingId, int $fallbackStaffId = 0)
     {
+        $bookingId = (int) $bookingId;
+        $fallbackStaffId = (int) $fallbackStaffId;
+        $memoKey = "staff_splits:{$bookingId}:fallback:{$fallbackStaffId}";
+
+        /** @var list<array<string, mixed>> $rows */
+        $rows = $this->rememberAppointmentSearch($memoKey, function () use ($bookingId, $fallbackStaffId) {
+            return $this->computeBookingStaffSplits($bookingId, $fallbackStaffId);
+        });
+
+        // Return a fresh collection so callers cannot mutate the memoized list.
+        return collect($rows);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function computeBookingStaffSplits(int $bookingId, int $fallbackStaffId = 0): array
+    {
         $rows = DB::table('booking_service_staff_splits as splits')
             ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
             ->where('splits.booking_id', $bookingId)
@@ -12242,24 +12509,19 @@ class PosController extends Controller
             ->values();
 
         if ($rows->isNotEmpty()) {
-            return $rows;
+            return $rows->all();
         }
 
         if ($fallbackStaffId <= 0) {
-            return collect();
+            return [];
         }
 
-        $fallbackStaff = Staff::query()->find($fallbackStaffId, ['id', 'name', 'service_commission_rate']);
-        if (! $fallbackStaff) {
-            return collect();
+        $fallback = $this->resolveStaffSplitFallbackStaff($fallbackStaffId);
+        if ($fallback === null) {
+            return [];
         }
 
-        return collect([[
-            'staff_id' => (int) $fallbackStaff->id,
-            'staff_name' => (string) ($fallbackStaff->name ?? '-'),
-            'share_percent' => 100,
-            'service_commission_rate_snapshot' => (float) ($fallbackStaff->service_commission_rate ?? 0),
-        ]]);
+        return [$fallback];
     }
 
     protected function normalizeBookingStaffSplits($splits, int $fallbackStaffId, float $lineTotal = 0): array
