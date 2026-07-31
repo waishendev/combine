@@ -475,6 +475,13 @@ class CartController extends Controller
 
         return DB::transaction(function () use ($request, $validated, $billingSameAsContact) {
             $cart = $this->resolveActiveCart($request);
+
+            // Serialize concurrent checkouts for the same cart (Billplz multi-click race).
+            $cart = BookingCart::query()->whereKey($cart->id)->lockForUpdate()->first();
+            if (! $cart || $cart->status !== 'active') {
+                return $this->respondError('Cart is empty or already checked out.', 422);
+            }
+
             $this->cleanupExpiredItems($cart);
             $cart->load(['items.service', 'packageItems.servicePackage']);
 

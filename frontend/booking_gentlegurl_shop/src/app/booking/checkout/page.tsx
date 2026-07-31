@@ -24,10 +24,13 @@ function CheckoutContent() {
   const countdown = useMemo(() => `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`, [remaining]);
 
   const onPay = async () => {
+    if (paying || !bookingId) return;
     setPaying(true);
+    let unlock = true;
     try {
       const response = await payBooking(bookingId);
       if (response?.data?.payment_url) {
+        unlock = false;
         window.location.href = response.data.payment_url;
         return;
       }
@@ -42,7 +45,7 @@ function CheckoutContent() {
       }
       router.push(`/payment-result?${nextParams.toString()}`);
     } finally {
-      setPaying(false);
+      if (unlock) setPaying(false);
     }
   };
 

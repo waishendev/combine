@@ -1,0 +1,753 @@
+You are working inside this existing local workspace:
+
+C:\Users\WS\Desktop\combine
+
+The relevant projects are:
+
+Laravel backend:
+C:\Users\WS\Desktop\combine\backend\ecommerce_gentlegurl_backend_api
+
+Ecommerce frontend:
+C:\Users\WS\Desktop\combine\frontend\ecommerce_gentlegurl_shop
+
+Ecommerce checkout:
+C:\Users\WS\Desktop\combine\frontend\ecommerce_gentlegurl_shop\src\app\checkout\page.tsx
+
+Booking frontend:
+C:\Users\WS\Desktop\combine\frontend\booking_gentlegurl_shop
+
+Booking checkout:
+C:\Users\WS\Desktop\combine\frontend\booking_gentlegurl_shop\src\app\booking\checkout\page.tsx
+
+Existing simulator project:
+C:\Users\WS\Desktop\combine\tools\billplz-simulator
+
+The simulator project has already been initialized with Node.js, Express, TypeScript, and tsx. It currently runs successfully on:
+
+http://localhost:4400
+
+Do not recreate the project, do not run npm init again, and do not replace the existing project structure unnecessarily.
+
+Current simulator structure:
+
+billplz-simulator
+├── src
+│   ├── controllers
+│   ├── models
+│   ├── routes
+│   ├── utils
+│   ├── views
+│   ├── public
+│   └── index.ts
+├── .env.example
+├── .gitignore
+├── package.json
+└── tsconfig.json
+
+Goal
+
+Build a local Billplz payment simulator for development and testing.
+
+I cannot conveniently test the full Billplz payment flow on localhost, especially Online Banking and Credit Card flows.
+
+The simulator must allow the existing Laravel backend and both existing Next.js checkout applications to run through the complete payment lifecycle locally:
+
+Checkout
+→ Laravel creates a Billplz bill
+→ Laravel receives a simulator payment URL
+→ Customer opens the simulated hosted payment page
+→ Customer selects a test payment result
+→ Simulator sends a callback to Laravel
+→ Simulator redirects the browser to the configured redirect URL
+→ Laravel validates the signature and payment data
+→ Laravel updates the ecommerce order or booking payment
+→ Frontend displays the correct final or pending status
+
+This simulator is for local development only.
+
+It must not replace or weaken the real Billplz Sandbox or Production integration.
+
+Critical working rule
+
+Do not start implementation immediately.
+
+First inspect and document the existing integration.
+
+Do not guess:
+
+* Billplz API paths
+* API versions
+* request field names
+* response field names
+* callback payload
+* redirect query parameters
+* x_signature generation
+* signature source string ordering
+* payment status rules
+* order status rules
+* booking status rules
+
+The existing Laravel code is the primary source of truth for the current application contract.
+
+Where useful, compare it against the official Billplz API contract, but preserve compatibility with what the application currently expects.
+
+Phase 1 — Inspect the current integration
+
+Inspect the Laravel backend and identify all Billplz-related code, including:
+
+* Controllers
+* Services
+* Payment provider classes
+* Interfaces
+* Traits
+* Models
+* Migrations
+* Routes
+* Configuration files
+* Environment variables
+* Checkout endpoints
+* Create bill logic
+* Get bill logic
+* Callback endpoints
+* Redirect endpoints
+* Signature validation logic
+* Payment transaction records
+* Ecommerce order creation
+* Ecommerce payment confirmation
+* Booking order creation
+* Booking payment confirmation
+* Stock deduction
+* Voucher handling
+* Member point handling
+* Notifications
+* Emails
+* Booking slot confirmation
+* Deposit and settlement handling
+* Retry handling
+* Duplicate callback handling
+* Database transactions and locking
+
+Search using variations such as:
+
+* Billplz
+* billplz
+* bill_id
+* collection_id
+* x_signature
+* callback_url
+* redirect_url
+* paid
+* paid_amount
+* payment gateway
+* payment provider
+
+Inspect both checkout pages and any related API clients, hooks, services, return pages, success pages, failed pages, pending pages, and URL parameter handling.
+
+Determine:
+
+1. How ecommerce checkout requests payment.
+2. How booking checkout requests payment.
+3. What Laravel returns to each frontend.
+4. How each frontend redirects to the Billplz hosted payment URL.
+5. What happens after the customer returns.
+6. Whether the frontend checks payment status.
+7. Whether redirect handling can update payment status.
+8. Whether callback handling is the actual source of truth.
+9. Whether ecommerce and booking use the same or different callback handlers.
+10. Whether Online Banking and Credit Card are represented differently anywhere.
+
+Before modifying code, provide a concise report containing:
+
+* Current ecommerce payment flow
+* Current booking payment flow
+* Existing Billplz API paths
+* Exact create-bill request payload
+* Exact create-bill response fields consumed by Laravel
+* Exact callback payload expected by Laravel
+* Exact redirect payload expected by Laravel or the frontend
+* Exact signature generation and verification logic
+* Existing idempotency protection
+* Existing weaknesses or risks
+* Files that will need modification
+* Files that should not need modification
+
+After this analysis, continue with implementation unless there is a genuine blocker that makes implementation unsafe or impossible.
+
+Do not stop only to ask for confirmation.
+
+Make the safest reasonable implementation and clearly document any assumptions.
+
+Phase 2 — Simulator architecture
+
+Use the existing Node.js, Express, and TypeScript project.
+
+Keep the application lightweight.
+
+A simple server-rendered HTML interface is sufficient. EJS may be added only if it meaningfully simplifies the implementation.
+
+Default port:
+
+4400
+
+Expected simulator base URL:
+
+http://127.0.0.1:4400
+
+Expected simulator API base URL:
+
+http://127.0.0.1:4400/api
+
+Use a clean structure such as:
+
+src
+├── config
+├── controllers
+├── models
+├── routes
+├── services
+├── stores
+├── types
+├── utils
+├── views
+├── public
+├── app.ts
+└── index.ts
+
+Do not create unnecessary layers for a small simulator.
+
+Use:
+
+* Express
+* TypeScript
+* dotenv
+* Node built-in crypto
+* Native fetch if supported by the current Node version
+
+Add other dependencies only when justified.
+
+The simulator must:
+
+* Validate input
+* Return clear errors
+* Log development requests
+* Avoid logging API keys or signing secrets
+* Generate unique simulated Billplz bill IDs
+* Store amounts as integer cents
+* Never trust an amount posted from the hosted payment page
+* Use the amount stored during bill creation
+* Keep callback and redirect as separate operations
+* Keep simulator-only metadata separate from the Billplz-compatible contract
+
+Storage
+
+Use in-memory storage initially.
+
+It may optionally persist to a local JSON file if this improves usability, but persistence must not make the implementation unnecessarily complicated.
+
+Each simulated bill should store at minimum:
+
+* Bill ID
+* Collection ID
+* Customer name
+* Email
+* Mobile
+* Description
+* Amount in cents
+* Paid amount in cents
+* Paid status
+* Bill state
+* Callback URL
+* Redirect URL
+* References
+* Selected simulated payment method
+* Created timestamp
+* Updated timestamp
+* Callback delivery attempts
+* Last callback result
+* Simulator scenario metadata
+
+Phase 3 — Billplz-compatible API
+
+Implement only the Billplz API endpoints that the current Laravel application actually uses.
+
+Determine the exact paths by inspecting the backend.
+
+At minimum, support create bill and get bill status.
+
+Implement delete or deactivate bill only if the existing Laravel integration uses it.
+
+Create bill
+
+Accept the exact fields sent by the Laravel backend.
+
+These may include:
+
+* collection_id
+* email
+* mobile
+* name
+* amount
+* description
+* callback_url
+* redirect_url
+* reference_1_label
+* reference_1
+* reference_2_label
+* reference_2
+* deliver
+* due_at
+
+Do not require fields that the existing application does not send.
+
+Return a response compatible with the fields consumed by the current Laravel code.
+
+It should normally include:
+
+* id
+* collection_id
+* paid
+* state
+* amount
+* paid_amount
+* url
+* callback_url
+* redirect_url
+* description
+* email
+* mobile
+* name
+* reference_1
+* reference_2
+
+The returned payment URL must point to the simulator hosted payment page.
+
+Example concept:
+
+http://127.0.0.1:4400/bills/{billId}
+
+Authentication
+
+Inspect how Laravel authenticates with Billplz.
+
+If it uses HTTP Basic Authentication with the API key, make the simulator support a compatible local authentication check.
+
+Allow local credentials to be configured through environment variables.
+
+Do not hardcode secrets.
+
+Phase 4 — Simulated hosted payment page
+
+Implement:
+
+GET /bills/:billId
+
+The page should display:
+
+* Bill ID
+* Customer name
+* Email
+* Mobile where available
+* Description
+* Amount
+* Current bill status
+* Callback URL
+* Redirect URL
+* Existing callback delivery status
+
+Provide clearly separated development scenarios.
+
+Normal payment scenarios:
+
+* Successful Online Banking payment
+* Successful Credit Card payment
+* Failed payment
+* Cancelled payment
+
+Callback and redirect scenarios:
+
+* Send successful callback and then redirect
+* Send callback only
+* Redirect only
+* Redirect before callback
+* Callback before redirect
+* Send duplicate successful callbacks
+* Resend the most recent callback
+* Send callback with invalid signature
+* Send callback with modified amount
+* Send callback with an unknown bill ID
+* Send delayed callback
+* Simulate callback connection failure
+* Simulate callback timeout
+* Display a simulated server error response
+* Redirect with invalid signature
+* Redirect with failed payment status
+
+Do not allow simulator form fields to overwrite the stored expected amount for normal payment actions.
+
+For malicious test scenarios such as modified amount, make the modified field explicit and clearly labelled as a negative test.
+
+Online Banking and Credit Card
+
+Record the selected simulated payment method internally.
+
+Only send a payment-method field to Laravel if the real/current integration supports or expects one.
+
+Do not invent a Billplz callback field that could cause the simulator contract to differ from the real provider.
+
+Simulator-specific fields should remain internal or use a clearly namespaced field only when safe.
+
+Phase 5 — Callback implementation
+
+The simulator must send callbacks to the callback_url supplied when the bill was created.
+
+Use:
+
+* HTTP POST
+* Content-Type: application/x-www-form-urlencoded
+
+Match the exact callback field names expected by the existing Laravel callback handler.
+
+Generate x_signature using the exact algorithm, field selection, sorting, joining, encoding, and secret expected by the current backend.
+
+Use Node's built-in crypto implementation.
+
+Do not assume the algorithm is HMAC-SHA256 until verified from the current Laravel implementation.
+
+If the backend implementation is incorrect or inconsistent with the real Billplz contract:
+
+1. Clearly document the mismatch.
+2. Preserve compatibility where possible.
+3. Apply the smallest safe correction.
+4. Add tests covering the final contract.
+
+Record each callback attempt with:
+
+* Attempt number
+* Target URL
+* Timestamp
+* Payload excluding secrets
+* HTTP response status
+* Response body preview
+* Duration
+* Network error
+* Timeout error
+* Whether delivery was considered successful
+
+Treat an HTTP 2xx response as delivered unless the existing application requires exactly HTTP 200.
+
+Add a configurable request timeout.
+
+Allow the callback to be resent manually.
+
+Delayed callback should not block the main Node.js process.
+
+A short development delay may be scheduled in-process.
+
+Document that delayed jobs are lost if the simulator restarts.
+
+Phase 6 — Redirect implementation
+
+Redirect the browser to the redirect_url supplied during bill creation.
+
+Include the exact query parameters expected by the current Laravel or frontend implementation.
+
+Generate a valid x_signature using the exact redirect signing contract.
+
+Support:
+
+* Valid successful redirect
+* Valid failed redirect
+* Invalid signature redirect
+* Redirect before callback
+* Redirect without callback
+
+Callback and redirect must remain independent.
+
+A successful browser redirect must not itself prove that payment was received.
+
+Phase 7 — Laravel configuration changes
+
+Make the minimum changes required to allow the current Laravel Billplz client to use a configurable base URL.
+
+Do not duplicate configuration that already exists.
+
+Prefer existing naming conventions.
+
+A possible configuration is:
+
+BILLPLZ_MODE=sandbox
+BILLPLZ_BASE_URL=https://www.billplz-sandbox.com/api
+BILLPLZ_API_KEY=
+BILLPLZ_COLLECTION_ID=
+BILLPLZ_X_SIGNATURE_KEY=
+
+For local simulator mode:
+
+BILLPLZ_MODE=simulator
+BILLPLZ_BASE_URL=http://127.0.0.1:4400/api
+
+Use the actual API path required by the existing integration.
+
+If Laravel runs in Docker and the simulator runs on the Windows host, document and support an environment such as:
+
+BILLPLZ_BASE_URL=http://host.docker.internal:4400/api
+
+Callback URL examples must account for the process topology.
+
+Examples:
+
+Laravel and simulator both on host:
+
+http://127.0.0.1:8000/api/...
+
+Simulator in Docker calling host Laravel:
+
+http://host.docker.internal:8000/api/...
+
+Laravel in Docker calling host simulator:
+
+http://host.docker.internal:4400/api/...
+
+Use the application's actual callback route.
+
+Security restrictions
+
+* Do not weaken production signature validation.
+* Do not skip signature validation when simulator mode is enabled.
+* The simulator must generate a valid signature.
+* Do not add a development endpoint that directly marks an order or booking as paid.
+* Simulator callbacks must use the normal Laravel callback controller.
+* Simulator callbacks must execute the same business logic as real Billplz callbacks.
+* Do not allow BILLPLZ_MODE=simulator in production.
+* Add a fail-fast environment guard if simulator mode is enabled outside local or testing.
+* Do not expose local simulator credentials in committed environment files.
+* Preserve Sandbox and Production compatibility.
+
+Phase 8 — Payment integrity and idempotency review
+
+Review the existing payment processing carefully.
+
+A valid successful callback must verify:
+
+* Signature is valid
+* Bill ID matches the stored payment transaction
+* Amount matches the expected amount
+* Currency assumptions are valid
+* Payment has not already been processed
+* Order or booking belongs to the payment record
+* Current status allows transition to paid
+
+Successful callback handling must be idempotent.
+
+Duplicate callbacks must not cause:
+
+* Duplicate ecommerce orders
+* Duplicate bookings
+* Duplicate payment rows
+* Duplicate stock deductions
+* Duplicate voucher usage
+* Duplicate loyalty point deductions
+* Duplicate loyalty point rewards
+* Duplicate package redemption
+* Duplicate appointment creation
+* Duplicate service settlement
+* Duplicate notifications
+* Duplicate emails
+* Duplicate invoices or receipt numbers
+
+Use the existing transaction and locking patterns where available.
+
+If protection is currently insufficient, implement the smallest safe improvement.
+
+Prefer:
+
+* Database transactions
+* Atomic status transitions
+* Unique constraints where appropriate
+* Row locking where appropriate
+* Early return for already processed payments
+
+Do not perform a broad unrelated refactor.
+
+Browser redirect handling
+
+A redirect must never be the sole reason an order or booking becomes paid.
+
+If the callback has not completed yet, the return page should show a pending or processing state and poll or query the backend payment status where appropriate.
+
+Avoid changing frontend code unless the current flow is unsafe or incompatible.
+
+Phase 9 — Automated tests
+
+Add simulator tests covering at minimum:
+
+* Bill creation
+* Invalid bill creation payload
+* Bill lookup
+* Unknown bill lookup
+* Authentication if applicable
+* Amount stored as integer cents
+* Signature generation
+* Callback form encoding
+* Successful callback delivery
+* Callback failure
+* Callback timeout
+* Duplicate callback delivery
+* Invalid signature callback
+* Modified amount callback
+* Redirect query generation
+* Invalid redirect signature
+* Online Banking scenario
+* Credit Card scenario
+
+Use the project's existing test conventions if present.
+
+If no test framework exists, add a lightweight appropriate framework such as Vitest or Node's built-in test runner.
+
+Add Laravel tests where practical for:
+
+* Valid successful callback
+* Invalid signature
+* Incorrect amount
+* Unknown bill ID
+* Duplicate callback
+* Already-paid payment
+* Redirect before callback
+* Callback before redirect
+* Successful Online Banking simulation
+* Successful Credit Card simulation
+* Failed payment
+* Cancelled payment
+* Ecommerce checkout flow
+* Booking checkout flow
+* Callback timeout or retry-related handling
+* No duplicate side effects
+
+Do not write shallow tests that only assert HTTP 200.
+
+Test meaningful database state transitions and side effects.
+
+If the existing Laravel test environment cannot run because of unrelated configuration or dependencies, still create focused tests where safe and clearly report the blocker.
+
+Phase 10 — Developer experience
+
+Update or create:
+
+C:\Users\WS\Desktop\combine\tools\billplz-simulator\README.md
+
+Include:
+
+* Purpose of the simulator
+* Architecture overview
+* Installation
+* npm commands
+* Environment variables
+* How to start the simulator
+* How to start Laravel locally
+* How to start the ecommerce frontend
+* How to start the booking frontend
+* Example URLs
+* How to configure Laravel for simulator mode
+* How to configure Laravel for Sandbox
+* How to configure Laravel for Production
+* Non-Docker callback setup
+* Docker callback setup
+* host.docker.internal examples
+* How to test Online Banking
+* How to test Credit Card
+* How to test duplicate callbacks
+* How to test invalid signatures
+* How to test incorrect amounts
+* How to test callback failure
+* How to test redirect-before-callback
+* Expected order and booking status transitions
+* Troubleshooting for connection refused
+* Troubleshooting for incorrect callback URL
+* Troubleshooting for CORS
+* Troubleshooting for invalid signatures
+* Troubleshooting for localhost versus 127.0.0.1
+* Troubleshooting for Docker host networking
+* Limitations of the simulator
+
+Update .env.example with safe placeholder values only.
+
+Do not include real credentials.
+
+Add useful npm scripts such as:
+
+* npm run dev
+* npm run build
+* npm run start
+* npm run typecheck
+* npm run test
+* npm run lint, if linting is configured
+
+Do not add scripts that do not work.
+
+Implementation principles
+
+* Reuse the existing Laravel integration contract.
+* Make the smallest necessary Laravel changes.
+* Avoid changing frontend checkout pages unless required.
+* Do not rewrite the existing payment architecture.
+* Do not replace Billplz with a generic payment abstraction unless one already exists.
+* Do not add unnecessary databases or containers.
+* Do not introduce Redis, queues, or Docker only for the simulator.
+* Do not silently change existing environment variable names.
+* Do not expose credentials.
+* Do not reduce validation.
+* Do not use floating-point arithmetic for money.
+* Do not automatically commit or push changes.
+* Do not delete existing files or unrelated code.
+* Do not modify production environment files.
+* Do not run destructive database operations.
+* Do not mark orders or bookings as paid through a shortcut.
+* Do not assume successful redirect means successful callback.
+
+Validation
+
+After implementation, run all commands that are practical in the local environment.
+
+For the simulator, run:
+
+npm install
+npm run typecheck
+npm run test
+npm run build
+
+Run npm run dev briefly to confirm startup where practical.
+
+For Laravel, run targeted tests and formatting or static analysis commands already used by the project.
+
+For the frontends, run relevant type checking or linting only if files were modified.
+
+Do not claim that a command passed unless it actually ran successfully.
+
+Final response
+
+At the end, provide a clear implementation report containing:
+
+1. Existing integration summary
+2. Final simulator architecture
+3. Files created
+4. Files modified
+5. Exact environment variables to add
+6. Commands to run
+7. Local URLs
+8. Manual ecommerce test steps
+9. Manual booking test steps
+10. Online Banking test steps
+11. Credit Card test steps
+12. Duplicate callback test steps
+13. Invalid signature test steps
+14. Incorrect amount test steps
+15. Redirect-before-callback test steps
+16. Test results
+17. Remaining assumptions
+18. Anything that could not be verified
+19. Any existing bugs or risks discovered
+20. Recommended follow-up improvements
+
+Do not automatically commit or push the changes.
+
+The simulator must remain an optional local development tool and must preserve compatibility with the existing real Billplz Sandbox and Production payment flows.

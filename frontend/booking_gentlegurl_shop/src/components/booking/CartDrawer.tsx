@@ -158,9 +158,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [depositTncImage, setDepositTncImage] = useState<string | null>(null);
   const [depositTncImagePreviewOpen, setDepositTncImagePreviewOpen] = useState(false);
   const [unavailableSlotItemIds, setUnavailableSlotItemIds] = useState<number[]>([]);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const cartItemRefs = useRef<Record<number, HTMLElement | null>>({});
+  const checkoutInFlightRef = useRef(false);
 
   const unavailableSlotItemIdSet = useMemo(() => new Set(unavailableSlotItemIds), [unavailableSlotItemIds]);
 
@@ -374,6 +376,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   }, [cart?.items, customerId, isLoggedIn, isOpen]);
 
   const onCheckout = async () => {
+    if (checkoutInFlightRef.current || isCheckingOut) {
+      return;
+    }
+
+    checkoutInFlightRef.current = true;
+    setIsCheckingOut(true);
+    let unlockAfterAttempt = true;
+
     try {
       setFieldErrors({});
       setMessage(null);
@@ -478,6 +488,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       }
 
       if (checkoutResponse?.payment_url) {
+        unlockAfterAttempt = false;
         window.location.href = checkoutResponse.payment_url;
         return;
       }
@@ -512,6 +523,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           });
           const redirectUrl = payResponse?.redirect_url;
           if (redirectUrl) {
+            unlockAfterAttempt = false;
             window.location.href = redirectUrl;
             return;
           }
@@ -540,6 +552,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
         const paymentData = paymentResponse?.data;
         if (paymentData?.payment_url) {
+          unlockAfterAttempt = false;
           window.location.href = paymentData.payment_url;
           return;
         }
@@ -585,6 +598,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         return;
       }
       setMessage(err instanceof Error ? err.message : "Checkout failed. Please review your cart and try again.");
+    } finally {
+      if (unlockAfterAttempt) {
+        checkoutInFlightRef.current = false;
+        setIsCheckingOut(false);
+      }
     }
   };
 
@@ -1681,11 +1699,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               <button
                 type="button"
                 onClick={onCheckout}
-                disabled={!hasItems || (!isLoggedIn && hasPackageItems)}
+                disabled={isCheckingOut || !hasItems || (!isLoggedIn && hasPackageItems)}
                 className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--accent-strong)] px-6 py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)] hover:shadow-lg disabled:pointer-events-none disabled:opacity-40"
               >
                 <i className="fa-solid fa-lock text-xs opacity-90" aria-hidden />
-                {isZeroPayableCheckout ? "Confirm booking" : "Proceed to payment"}
+                {isCheckingOut
+                  ? "Processing…"
+                  : isZeroPayableCheckout
+                    ? "Confirm booking"
+                    : "Proceed to payment"}
               </button>
             </div>
           ) : null}
