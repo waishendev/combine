@@ -570,7 +570,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentLineSplitOverwrite, setAppointmentLineSplitOverwrite] = useState(false)
   const [appointmentLineSplitError, setAppointmentLineSplitError] = useState<string | null>(null)
   const [appointments, setAppointments] = useState<PosAppointmentListItem[]>([])
-  const [appointmentsLoading, setAppointmentsLoading] = useState(false)
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true)
   const [appointmentsRefreshing, setAppointmentsRefreshing] = useState(false)
   const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
   const [appointmentListRefreshCountdown, setAppointmentListRefreshCountdown] = useState(5)

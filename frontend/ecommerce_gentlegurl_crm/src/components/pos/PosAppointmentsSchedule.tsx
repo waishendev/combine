@@ -312,59 +312,76 @@ export default function PosAppointmentsSchedule({
           <p className="mb-2 shrink-0 text-xs text-slate-500">
             Tap a date for the <span className="font-semibold text-slate-700">day schedule</span>. Times in your local timezone.
           </p>
-          <div className="mb-1 grid shrink-0 grid-cols-7 gap-1 text-[11px] font-semibold text-slate-500">
-            {WEEKDAYS.map((d) => (
-              <div key={d} className="px-1 py-1 text-center">
-                {d}
+          {appointmentsLoading ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex min-h-[20rem] flex-col items-center justify-center gap-3 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-10"
+            >
+              <div className="flex items-center gap-1.5" aria-hidden>
+                <span className="crm-loading-dot h-2 w-2 rounded-full bg-slate-400" style={{ animationDelay: '0ms' }} />
+                <span className="crm-loading-dot h-2 w-2 rounded-full bg-slate-400" style={{ animationDelay: '160ms' }} />
+                <span className="crm-loading-dot h-2 w-2 rounded-full bg-slate-400" style={{ animationDelay: '320ms' }} />
               </div>
-            ))}
-          </div>
-          <div className="pos-appt-month-grid grid grid-cols-7 gap-1">
-            {calendarCells.map((cell, idx) => {
-              if (!cell.date) return <div key={`empty-${idx}`} className="min-h-[7.5rem] rounded border border-transparent" />
-
-              const key = formatYmd(cell.date)
-              const { lines, more } = previewLinesForYmd(key)
-              const isToday = key === formatYmd(new Date())
-
-              const hasBookings = lines.length > 0 || more > 0
-
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => onMonthDayNavigateToDay(key)}
-                  className={`flex min-h-[7.5rem] flex-col rounded border p-1.5 text-left transition hover:border-indigo-500 hover:bg-indigo-50/90 ${
-                    hasBookings
-                      ? 'border-indigo-400 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-200/80'
-                      : 'border-slate-200 bg-white hover:border-blue-400 hover:bg-blue-50/80'
-                  }`}
-                >
-                  <span className={`text-xs font-bold ${isToday ? 'text-blue-700' : 'text-slate-800'}`}>
-                    {cell.date.getDate()}
-                  </span>
-                  <div className="mt-0.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden sm:mt-1">
-                    {lines.length === 0 ? (
-                      <span className="text-[10px] text-slate-400">—</span>
-                    ) : (
-                      lines.map((entry, i) => (
-                        <span
-                          key={i}
-                          className={posAppointmentMonthPreviewChipClass(entry.tone)}
-                          title={entry.text}
-                        >
-                          {entry.text}
-                        </span>
-                      ))
-                    )}
-                    {more > 0 ? (
-                      <span className="mt-auto text-[9px] font-medium text-slate-500">+{more} more</span>
-                    ) : null}
+              <p className="text-sm font-medium text-slate-500">Loading schedule…</p>
+            </div>
+          ) : (
+            <div className="pos-appt-appear">
+              <div className="mb-1 grid shrink-0 grid-cols-7 gap-1 text-[11px] font-semibold text-slate-500">
+                {WEEKDAYS.map((d) => (
+                  <div key={d} className="px-1 py-1 text-center">
+                    {d}
                   </div>
-                </button>
-              )
-            })}
-          </div>
+                ))}
+              </div>
+              <div className="pos-appt-month-grid grid grid-cols-7 gap-1">
+                {calendarCells.map((cell, idx) => {
+                  if (!cell.date) return <div key={`empty-${idx}`} className="min-h-[7.5rem] rounded border border-transparent" />
+
+                  const key = formatYmd(cell.date)
+                  const { lines, more } = previewLinesForYmd(key)
+                  const isToday = key === formatYmd(new Date())
+
+                  const hasBookings = lines.length > 0 || more > 0
+
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => onMonthDayNavigateToDay(key)}
+                      className={`flex min-h-[7.5rem] flex-col rounded border p-1.5 text-left transition hover:border-indigo-500 hover:bg-indigo-50/90 ${
+                        hasBookings
+                          ? 'border-indigo-400 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-200/80'
+                          : 'border-slate-200 bg-white hover:border-blue-400 hover:bg-blue-50/80'
+                      }`}
+                    >
+                      <span className={`text-xs font-bold ${isToday ? 'text-blue-700' : 'text-slate-800'}`}>
+                        {cell.date.getDate()}
+                      </span>
+                      <div className="mt-0.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden sm:mt-1">
+                        {lines.length === 0 ? (
+                          <span className="text-[10px] text-slate-400">—</span>
+                        ) : (
+                          lines.map((entry, i) => (
+                            <span
+                              key={i}
+                              className={posAppointmentMonthPreviewChipClass(entry.tone)}
+                              title={entry.text}
+                            >
+                              {entry.text}
+                            </span>
+                          ))
+                        )}
+                        {more > 0 ? (
+                          <span className="mt-auto text-[9px] font-medium text-slate-500">+{more} more</span>
+                        ) : null}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
 

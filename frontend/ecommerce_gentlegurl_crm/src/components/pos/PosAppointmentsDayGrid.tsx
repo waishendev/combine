@@ -219,13 +219,24 @@ export default function PosAppointmentsDayGrid({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">Loading schedule…</div>
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-10"
+      >
+        <div className="flex items-center gap-1.5" aria-hidden>
+          <span className="crm-loading-dot h-2 w-2 rounded-full bg-slate-400" style={{ animationDelay: '0ms' }} />
+          <span className="crm-loading-dot h-2 w-2 rounded-full bg-slate-400" style={{ animationDelay: '160ms' }} />
+          <span className="crm-loading-dot h-2 w-2 rounded-full bg-slate-400" style={{ animationDelay: '320ms' }} />
+        </div>
+        <p className="text-sm font-medium text-slate-500">Loading schedule…</p>
+      </div>
     )
   }
 
   if (scheduleStaff.length === 0 && staffColumns.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+      <div className="pos-appt-appear rounded-lg border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
         No appointments for this date. Adjust filters or pick another day.
       </div>
     )
@@ -234,7 +245,7 @@ export default function PosAppointmentsDayGrid({
   const HEADER_H = 44
 
   return (
-    <div className="pos-appt-day-grid-root flex min-h-[280px] flex-col overflow-visible">
+    <div className="pos-appt-day-grid-root pos-appt-appear flex min-h-[280px] flex-col overflow-visible">
       <div
         ref={scrollRef}
         className="pos-appt-day-grid-scroll rounded-lg border border-slate-200 bg-white shadow-sm [scrollbar-gutter:stable]"
