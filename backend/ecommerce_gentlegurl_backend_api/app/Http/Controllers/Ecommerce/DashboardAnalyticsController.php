@@ -2,14 +2,16 @@
 
 namespace App\Http\Controllers\Ecommerce;
 
+use App\Http\Controllers\Concerns\MemoizesSchemaLookups;
 use App\Http\Controllers\Controller;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class DashboardAnalyticsController extends Controller
 {
+    use MemoizesSchemaLookups;
+
     public function ecommerce(Request $request)
     {
         $lowStockOnly = $request->boolean('low_stock');
@@ -19,9 +21,9 @@ class DashboardAnalyticsController extends Controller
         $categoryId = $request->query('category_id');
         $perPage = min(max((int) $request->query('per_page', 10), 1), 50);
 
-        $inventoryRows = fn () => $this->inventoryRowsQuery();
-        $inventoryBase = DB::query()->fromSub($inventoryRows(), 'i');
-        $summary = (clone $inventoryBase)->selectRaw(
+        // Build inventory once; clone for summary + detail so Schema lookups and SQL assembly run once.
+        $inventoryRows = $this->inventoryRowsQuery();
+        $summary = DB::query()->fromSub(clone $inventoryRows, 'i')->selectRaw(
             'COUNT(DISTINCT product_id) as active_count, COUNT(*) as sku_count, SUM(stock) as current_stock_qty, SUM(CASE WHEN cost_price IS NULL THEN 1 ELSE 0 END) as missing_cost_count, SUM(CASE WHEN stock <= low_stock_threshold THEN 1 ELSE 0 END) as low_stock_count, SUM(stock * COALESCE(cost_price, 0)) as current_cost, SUM(stock * retail_price) as retail_value'
         )->first();
 
@@ -29,7 +31,7 @@ class DashboardAnalyticsController extends Controller
         $refundAmount = $this->ecommerceRefundAmount();
 
         $categoryAggregate = $this->categoryAggregateExpression();
-        $detailQuery = DB::query()->fromSub($inventoryRows(), 'i')
+        $detailQuery = DB::query()->fromSub(clone $inventoryRows, 'i')
             ->leftJoin('product_categories as pc', 'pc.product_id', '=', 'i.product_id')
             ->leftJoin('categories as c', 'c.id', '=', 'pc.category_id')
             ->selectRaw("i.*, {$categoryAggregate} as category")
@@ -106,7 +108,7 @@ class DashboardAnalyticsController extends Controller
     {
         $singleRows = $this->singleProductRowsQuery();
 
-        if (! Schema::hasTable('product_variants')) {
+        if (! $this->schemaHasTable('product_variants')) {
             return $singleRows;
         }
 
@@ -129,7 +131,7 @@ class DashboardAnalyticsController extends Controller
 
     private function singleProductRowsQuery(): Builder
     {
-        $stockFallback = Schema::hasColumn('products', 'stock_quantity') ? 'p.stock_quantity' : '0';
+        $stockFallback = $this->schemaHasColumn('products', 'stock_quantity') ? 'p.stock_quantity' : '0';
         $productStock = $this->columnExpression('p', 'products', 'stock', $stockFallback);
         $productCost = $this->columnExpression('p', 'products', 'cost_price', 'NULL');
         $productPrice = $this->priceExpression('p', 'products');
@@ -139,7 +141,7 @@ class DashboardAnalyticsController extends Controller
             ->selectRaw("p.id as product_id, p.name as product_name, p.sku as product_sku, p.is_active as product_active, null as variant_id, null as variant_title, p.sku as variant_sku, COALESCE({$productStock}, 0) as stock, {$productCost} as cost_price, {$productPrice} as retail_price, COALESCE({$productLowStock}, 0) as low_stock_threshold")
             ->where('p.is_active', true);
 
-        if (Schema::hasTable('product_variants')) {
+        if ($this->schemaHasTable('product_variants')) {
             $query->leftJoin('product_variants as any_v', 'any_v.product_id', '=', 'p.id')
                 ->whereNull('any_v.id');
         }
@@ -166,7 +168,7 @@ class DashboardAnalyticsController extends Controller
 
     private function ecommerceRefundAmount(): float
     {
-        if (Schema::hasColumn('orders', 'refund_total')) {
+        if ($this->schemaHasColumn('orders', 'refund_total')) {
             return (float) DB::table('orders')
                 ->whereIn('payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
                 ->whereNotIn('status', ['cancelled', 'voided'])
@@ -174,7 +176,7 @@ class DashboardAnalyticsController extends Controller
                 ->value('total');
         }
 
-        if (Schema::hasTable('return_requests') && Schema::hasColumn('return_requests', 'refund_amount')) {
+        if ($this->schemaHasTable('return_requests') && $this->schemaHasColumn('return_requests', 'refund_amount')) {
             return (float) DB::table('return_requests as rr')
                 ->join('orders as o', 'o.id', '=', 'rr.order_id')
                 ->whereIn('o.payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
@@ -188,8 +190,8 @@ class DashboardAnalyticsController extends Controller
 
     private function refundsAreAvailable(): bool
     {
-        return Schema::hasColumn('orders', 'refund_total')
-            || (Schema::hasTable('return_requests') && Schema::hasColumn('return_requests', 'refund_amount'));
+        return $this->schemaHasColumn('orders', 'refund_total')
+            || ($this->schemaHasTable('return_requests') && $this->schemaHasColumn('return_requests', 'refund_amount'));
     }
 
     private function categoryAggregateExpression(): string
@@ -202,17 +204,17 @@ class DashboardAnalyticsController extends Controller
     private function priceExpression(string $alias, string $table, ?string $fallbackAlias = null, ?string $fallbackTable = null): string
     {
         $columns = [];
-        if (Schema::hasColumn($table, 'sale_price')) {
+        if ($this->schemaHasColumn($table, 'sale_price')) {
             $columns[] = "{$alias}.sale_price";
         }
-        if (Schema::hasColumn($table, 'price')) {
+        if ($this->schemaHasColumn($table, 'price')) {
             $columns[] = "{$alias}.price";
         }
         if ($fallbackAlias && $fallbackTable) {
-            if (Schema::hasColumn($fallbackTable, 'sale_price')) {
+            if ($this->schemaHasColumn($fallbackTable, 'sale_price')) {
                 $columns[] = "{$fallbackAlias}.sale_price";
             }
-            if (Schema::hasColumn($fallbackTable, 'price')) {
+            if ($this->schemaHasColumn($fallbackTable, 'price')) {
                 $columns[] = "{$fallbackAlias}.price";
             }
         }
@@ -223,13 +225,13 @@ class DashboardAnalyticsController extends Controller
 
     private function columnExpression(string $alias, string $table, string $column, string $fallback): string
     {
-        return Schema::hasColumn($table, $column) ? "{$alias}.{$column}" : $fallback;
+        return $this->schemaHasColumn($table, $column) ? "{$alias}.{$column}" : $fallback;
     }
 
     private function firstExistingColumnExpression(string $alias, string $table, array $columns, string $fallback): string
     {
         foreach ($columns as $column) {
-            if (Schema::hasColumn($table, $column)) {
+            if ($this->schemaHasColumn($table, $column)) {
                 return "{$alias}.{$column}";
             }
         }
