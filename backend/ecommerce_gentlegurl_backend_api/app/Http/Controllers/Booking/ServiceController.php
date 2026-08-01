@@ -67,7 +67,14 @@ class ServiceController extends Controller
                 'image_path',
             ]);
 
-        $payload = $services->map(fn (BookingService $service) => $this->mapService($service, false))->values();
+        // Batch staff for the list path only — same filters/order as per-service mapService lookups.
+        $staffByServiceId = $this->loadStaffPayloadsByServiceIds(
+            $services->pluck('id')->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all()
+        );
+
+        $payload = $services->map(
+            fn (BookingService $service) => $this->mapService($service, false, $staffByServiceId[(int) $service->id] ?? [])
+        )->values();
 
         return $this->respond($payload);
     }
@@ -83,31 +90,106 @@ class ServiceController extends Controller
         return $this->respond($this->mapService($service, true));
     }
 
-    private function mapService(BookingService $service, bool $includeDescription): array
+    /**
+     * Load allowed active staff payloads for many services in two queries.
+     * Mirrors mapService staff filters: active pivot rows + active staff, ordered by name.
+     *
+     * @param  list<int>  $serviceIds
+     * @return array<int, list<array{id:int,name:mixed,position:mixed,description:mixed,avatar_path:mixed,avatar_url:mixed}>>
+     */
+    private function loadStaffPayloadsByServiceIds(array $serviceIds): array
     {
-        $staffRows = BookingServiceStaff::query()
-            ->where('service_id', $service->id)
-            ->where('is_active', true)
-            ->get(['staff_id']);
+        $serviceIds = array_values(array_unique(array_filter(array_map('intval', $serviceIds), fn (int $id) => $id > 0)));
+        if ($serviceIds === []) {
+            return [];
+        }
 
-        $staffIds = $staffRows->pluck('staff_id')->unique()->values()->all();
-        $staffs = Staff::query()
-            ->whereIn('id', $staffIds)
+        $pivotRows = BookingServiceStaff::query()
+            ->whereIn('service_id', $serviceIds)
             ->where('is_active', true)
-            ->orderBy('name')
-            ->get(['id', 'name', 'position', 'description', 'avatar_path'])
-            ->map(function (Staff $staff) {
-                return [
-                    'id' => (int) $staff->id,
-                    'name' => $staff->name,
-                    'position' => $staff->position,
-                    'description' => $staff->description,
-                    'avatar_path' => $staff->avatar_path,
-                    'avatar_url' => $staff->avatar_url,
-                ];
-            })
-            ->values()
-            ->all();
+            ->get(['service_id', 'staff_id']);
+
+        $staffIdsByService = [];
+        $allStaffIds = [];
+        foreach ($pivotRows as $row) {
+            $serviceId = (int) $row->service_id;
+            $staffId = (int) $row->staff_id;
+            if ($staffId <= 0) {
+                continue;
+            }
+            $staffIdsByService[$serviceId][$staffId] = $staffId;
+            $allStaffIds[$staffId] = $staffId;
+        }
+
+        $staffPayloadById = [];
+        if ($allStaffIds !== []) {
+            $staffPayloadById = Staff::query()
+                ->whereIn('id', array_values($allStaffIds))
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'position', 'description', 'avatar_path'])
+                ->mapWithKeys(function (Staff $staff) {
+                    $payload = $this->mapStaffPayload($staff);
+
+                    return [(int) $staff->id => $payload];
+                })
+                ->all();
+        }
+
+        // staffPayloadById preserves Staff::orderBy('name') insertion order.
+        $result = [];
+        foreach ($serviceIds as $serviceId) {
+            $allowed = $staffIdsByService[$serviceId] ?? [];
+            $staffs = [];
+            foreach ($staffPayloadById as $staffId => $payload) {
+                if (isset($allowed[$staffId])) {
+                    $staffs[] = $payload;
+                }
+            }
+            $result[$serviceId] = $staffs;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array{id:int,name:mixed,position:mixed,description:mixed,avatar_path:mixed,avatar_url:mixed}
+     */
+    private function mapStaffPayload(Staff $staff): array
+    {
+        return [
+            'id' => (int) $staff->id,
+            'name' => $staff->name,
+            'position' => $staff->position,
+            'description' => $staff->description,
+            'avatar_path' => $staff->avatar_path,
+            'avatar_url' => $staff->avatar_url,
+        ];
+    }
+
+    /**
+     * @param  list<array{id:int,name:mixed,position:mixed,description:mixed,avatar_path:mixed,avatar_url:mixed}>|null  $preloadedStaffs
+     */
+    private function mapService(BookingService $service, bool $includeDescription, ?array $preloadedStaffs = null): array
+    {
+        if ($preloadedStaffs !== null) {
+            $staffs = $preloadedStaffs;
+        } else {
+            $staffRows = BookingServiceStaff::query()
+                ->where('service_id', $service->id)
+                ->where('is_active', true)
+                ->get(['staff_id']);
+
+            $staffIds = $staffRows->pluck('staff_id')->unique()->values()->all();
+            $staffs = Staff::query()
+                ->whereIn('id', $staffIds)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'position', 'description', 'avatar_path'])
+                ->map(fn (Staff $staff) => $this->mapStaffPayload($staff))
+                ->values()
+                ->all();
+        }
 
         $primarySlots = $service->relationLoaded('primarySlots')
             ? $service->primarySlots
