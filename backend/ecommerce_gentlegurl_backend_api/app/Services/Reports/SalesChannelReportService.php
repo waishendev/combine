@@ -417,9 +417,114 @@ class SalesChannelReportService
                 $this->applyOrderItemPackageUsageScope($q, $item);
             })
             ->whereIn('status', ['reserved', 'consumed'])
+            // Deterministic when multiple usages match the same scope (batch path uses the same order).
+            ->orderBy('id')
             ->first();
 
         return $usage?->customerServicePackage?->servicePackage?->name ?? null;
+    }
+
+    /**
+     * Batch package-applied / applied-package-name for booking report rows.
+     * Preserves the same scope rules as resolveLinePackageApplied / resolveLinePackageName.
+     *
+     * @param  \Illuminate\Support\Collection<int, OrderItem>|iterable<OrderItem>  $items
+     * @return array<int, array{applied: bool, name: ?string}>
+     */
+    private function resolveLinePackageMetaForOrderItems(iterable $items): array
+    {
+        $result = [];
+        $needsLookup = [];
+
+        foreach ($items as $item) {
+            $orderItemId = (int) ($item->id ?? 0);
+            if ($orderItemId <= 0) {
+                continue;
+            }
+
+            $bookingServiceId = (int) ($item->booking_service_id ?? 0);
+            if ($bookingServiceId <= 0) {
+                $result[$orderItemId] = ['applied' => false, 'name' => null];
+                continue;
+            }
+
+            $needsLookup[$orderItemId] = $item;
+        }
+
+        if ($needsLookup === []) {
+            return $result;
+        }
+
+        $posCartIdsByOrderItem = app(CustomerServicePackageService::class)
+            ->resolvePosCartServiceItemIdsForOrderItems(array_keys($needsLookup));
+
+        $bookingServiceIds = collect($needsLookup)
+            ->map(fn (OrderItem $item) => (int) ($item->booking_service_id ?? 0))
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $usages = $bookingServiceIds === []
+            ? collect()
+            : \App\Models\Booking\CustomerServicePackageUsage::query()
+                ->with('customerServicePackage.servicePackage')
+                ->whereIn('booking_service_id', $bookingServiceIds)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->orderBy('id')
+                ->get();
+
+        $usagesByServiceId = $usages->groupBy(fn ($usage) => (int) ($usage->booking_service_id ?? 0));
+
+        foreach ($needsLookup as $orderItemId => $item) {
+            $bookingServiceId = (int) ($item->booking_service_id ?? 0);
+            $bookingId = (int) ($item->booking_id ?? 0);
+            $posCartItemIds = $posCartIdsByOrderItem[$orderItemId] ?? [];
+            $candidates = $usagesByServiceId->get($bookingServiceId, collect());
+
+            $matched = $candidates->first(
+                fn ($usage) => $this->usageMatchesOrderItemPackageScope($usage, $bookingId, $posCartItemIds)
+            );
+
+            $result[$orderItemId] = [
+                'applied' => $matched !== null,
+                'name' => $matched?->customerServicePackage?->servicePackage?->name ?? null,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Mirrors applyOrderItemPackageUsageScope() filters in PHP for preloaded usages.
+     *
+     * @param  list<int>  $posCartItemIds
+     */
+    private function usageMatchesOrderItemPackageScope(object $usage, int $bookingId, array $posCartItemIds): bool
+    {
+        if ($bookingId <= 0 && $posCartItemIds === []) {
+            return $usage->id !== null;
+        }
+
+        if ($bookingId > 0) {
+            if ((int) ($usage->booking_id ?? 0) === $bookingId) {
+                return true;
+            }
+            if ((string) ($usage->used_from ?? '') === 'POS' && (int) ($usage->used_ref_id ?? 0) === $bookingId) {
+                return true;
+            }
+        }
+
+        if ($posCartItemIds !== []) {
+            if ((string) ($usage->used_from ?? '') === 'POS' && in_array((int) ($usage->used_ref_id ?? 0), $posCartItemIds, true)) {
+                return true;
+            }
+            if (in_array((int) ($usage->booking_id ?? 0), $posCartItemIds, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function applyOrderItemPackageUsageScope($query, OrderItem $item): void
@@ -902,8 +1007,11 @@ class SalesChannelReportService
             ->get()
             ->keyBy('id');
 
-        $rows = $pageItems->map(function ($row) use ($cnNames, $paymentRowsByOrder, $orderItemsById) {
-            $orderItem = $orderItemsById->get((int) $row->order_item_id);
+        $packageMetaByOrderItemId = $this->resolveLinePackageMetaForOrderItems($orderItemsById->values());
+
+        $rows = $pageItems->map(function ($row) use ($cnNames, $paymentRowsByOrder, $packageMetaByOrderItemId) {
+            $orderItemId = (int) $row->order_item_id;
+            $packageMeta = $packageMetaByOrderItemId[$orderItemId] ?? ['applied' => false, 'name' => null];
 
             return [
                 'order_id' => (int) $row->order_id,
@@ -923,9 +1031,9 @@ class SalesChannelReportService
                 'booking_id' => $row->booking_id ? (int) $row->booking_id : null,
                 'booking_no' => $row->booking_no,
                 'package_name' => $row->package_name,
-                'package_cn_name' => $cnNames->get((int) $row->order_item_id),
-                'package_applied' => $orderItem ? $this->resolveLinePackageApplied($orderItem) : false,
-                'applied_package_name' => $orderItem ? $this->resolveLinePackageName($orderItem) : null,
+                'package_cn_name' => $cnNames->get($orderItemId),
+                'package_applied' => (bool) ($packageMeta['applied'] ?? false),
+                'applied_package_name' => $packageMeta['name'] ?? null,
                 'gross_amount' => (float) $row->gross_amount,
                 'discount' => (float) $row->discount,
                 'net_amount' => (float) $row->net_amount,
@@ -953,10 +1061,10 @@ class SalesChannelReportService
         $totalsPage = $this->aggregateBookingTotals($rows);
         $totalsPage['orders_count'] = (int) $rows->pluck('order_id')->filter(fn (int $id) => $id > 0)->unique()->count() + (int) $rows->where('is_refund', true)->count();
         $refundNetTotal = ($type === self::BOOKING_TYPE_ALL || $type === self::BOOKING_TYPE_REFUND)
-            ? (float) $this->bookingRefundReportRows($start, $end, $channel, $paymentMethod, $customerId)->sum('net_amount')
+            ? (float) $refundRows->sum('net_amount')
             : 0.0;
         $grandTotals = [
-            'orders_count' => (int) ($summaryRow->total_transactions ?? 0) + ($refundNetTotal !== 0.0 ? (int) $this->bookingRefundReportRows($start, $end, $channel, $paymentMethod, $customerId)->count() : 0),
+            'orders_count' => (int) ($summaryRow->total_transactions ?? 0) + ($refundNetTotal !== 0.0 ? (int) $refundRows->count() : 0),
             'gross_amount' => (float) ((clone $baseQuery)->sum('gross_amount') ?? 0),
             'discount' => (float) ((clone $baseQuery)->sum('discount') ?? 0),
             'net_amount' => (float) ($summaryRow->total_booking_revenue ?? 0) + $refundNetTotal,

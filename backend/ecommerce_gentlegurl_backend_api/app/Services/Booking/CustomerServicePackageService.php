@@ -233,22 +233,55 @@ class CustomerServicePackageService
 
     public function resolvePosCartServiceItemIdsForOrderItem(int $orderItemId): array
     {
-        if ($orderItemId <= 0) {
-            return [];
-        }
+        return $this->resolvePosCartServiceItemIdsForOrderItems([$orderItemId])[$orderItemId] ?? [];
+    }
 
-        return OrderItemStaffSplit::query()
-            ->where('order_item_id', $orderItemId)
-            ->pluck('snapshot')
-            ->map(function ($snapshot) {
-                $data = is_array($snapshot) ? $snapshot : json_decode((string) $snapshot, true);
-
-                return (int) (is_array($data) ? ($data['cart_service_item_id'] ?? 0) : 0);
-            })
+    /**
+     * Batch variant of resolvePosCartServiceItemIdsForOrderItem.
+     * Same snapshot → cart_service_item_id extraction; keyed by order_item_id.
+     *
+     * @param  list<int>  $orderItemIds
+     * @return array<int, list<int>>
+     */
+    public function resolvePosCartServiceItemIdsForOrderItems(array $orderItemIds): array
+    {
+        $ids = collect($orderItemIds)
+            ->map(fn ($id) => (int) $id)
             ->filter(fn (int $id) => $id > 0)
             ->unique()
             ->values()
             ->all();
+
+        $out = [];
+        foreach ($ids as $id) {
+            $out[$id] = [];
+        }
+
+        if ($ids === []) {
+            return $out;
+        }
+
+        $rows = OrderItemStaffSplit::query()
+            ->whereIn('order_item_id', $ids)
+            ->orderBy('id')
+            ->get(['order_item_id', 'snapshot']);
+
+        foreach ($rows as $row) {
+            $snapshot = $row->snapshot;
+            $data = is_array($snapshot) ? $snapshot : json_decode((string) $snapshot, true);
+            $cartId = (int) (is_array($data) ? ($data['cart_service_item_id'] ?? 0) : 0);
+            if ($cartId <= 0) {
+                continue;
+            }
+            $orderItemId = (int) $row->order_item_id;
+            $out[$orderItemId][] = $cartId;
+        }
+
+        foreach ($out as $orderItemId => $cartIds) {
+            $out[$orderItemId] = array_values(array_unique($cartIds));
+        }
+
+        return $out;
     }
 
     public function consumeReservedClaimsForBooking(int $bookingId): int
