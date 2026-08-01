@@ -91,13 +91,20 @@ function fromYmdDayLabel(value: string) {
   return `${parsed.day} ${monthShort(parsed.month)} ${parsed.year}`
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
+function DetailField({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+      <p className={`mt-1 text-sm font-semibold ${valueClassName ?? 'text-slate-900'}`}>{value}</p>
     </div>
   )
+}
+
+function differenceToneClass(value: number | null | undefined) {
+  const n = Number(value ?? 0)
+  if (n < 0) return 'text-red-600'
+  if (n > 0) return 'text-amber-600'
+  return 'text-gray-900'
 }
 
 function SummaryStatCard({
@@ -156,17 +163,22 @@ const tableHeadings = [
   'Staff',
   'Opening',
   'Closing',
+  'Withdraw',
   'Cash Sales',
-  'Expected',
   'Difference',
   'Refill Packet',
   'ATM',
-  'Withdraw',
   'Refill Cash',
   'Total Pool Initial',
   'Total Pool Withdraw',
   'Details',
 ]
+
+/** Difference = Cash Sales − Withdraw (CLOSE rows only). */
+function cashShiftDifference(row: Pick<CashShiftRow, 'event_type' | 'cash_sales' | 'closing_withdraw'>) {
+  if (row.event_type !== 'CLOSE') return null
+  return Number(row.cash_sales ?? 0) - Number(row.closing_withdraw ?? 0)
+}
 
 export default function CashShiftReportPage() {
   const defaults = useMemo(() => defaultDateRange(), [])
@@ -287,7 +299,7 @@ export default function CashShiftReportPage() {
           label="Difference"
           value={loading && !periodSummary ? '…' : currency(periodSummary?.difference)}
           accent={differenceAccent}
-          footer={`Sum of close differences · ${periodLabel}`}
+          footer={`Sum of (Cash Sales − Withdraw) · ${periodLabel}`}
           valueClassName={differenceValueClass}
         />
       </div>
@@ -343,6 +355,7 @@ export default function CashShiftReportPage() {
                 const isOpen = row.event_type === 'OPEN'
                 const eventDate = isOpen ? row.opened_at : row.closed_at
                 const staffName = isOpen ? row.opened_staff_name : row.closed_staff_name
+                const difference = cashShiftDifference(row)
 
                 return (
                   <tr key={row.id} className="hover:bg-gray-50">
@@ -355,14 +368,13 @@ export default function CashShiftReportPage() {
                     <td className="whitespace-nowrap px-4 py-3">{staffName ?? '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold">{row.opening_amount ? currency(row.opening_amount) : '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3">{!isOpen && row.closing_amount != null ? currency(row.closing_amount) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-violet-700">{!isOpen ? displayAmount(row.closing_withdraw) : '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-emerald-700">{!isOpen ? currency(row.cash_sales) : '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-3">{!isOpen ? currency(row.expected_cash) : '—'}</td>
-                    <td className={`whitespace-nowrap px-4 py-3 font-semibold ${Number(row.difference ?? 0) < 0 ? 'text-red-600' : Number(row.difference ?? 0) > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
-                      {!isOpen && row.difference != null ? currency(row.difference) : '—'}
+                    <td className={`whitespace-nowrap px-4 py-3 font-semibold ${differenceToneClass(difference)}`}>
+                      {difference != null ? currency(difference) : '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">{isOpen ? displayAmount(row.opening_refill_packet) : '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3">{isOpen ? displayAmount(row.opening_atm) : '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-3">{!isOpen ? displayAmount(row.closing_withdraw) : '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3">{!isOpen ? displayAmount(row.closing_refill_cash) : '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-blue-700">{currency(row.total_initial_cash)}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-violet-700">{currency(row.total_withdraw)}</td>
@@ -398,13 +410,15 @@ export default function CashShiftReportPage() {
         onClose={() => setSelectedRow(null)}
         maxWidthClassName="max-w-3xl"
       >
-        {selectedRow ? (
+        {selectedRow ? (() => {
+          const difference = cashShiftDifference(selectedRow)
+          return (
           <div className="space-y-6">
             <section>
               <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600">Pool Snapshot</h4>
               <div className="grid gap-3 sm:grid-cols-2">
-                <DetailField label="Total Initial Cash" value={currency(selectedRow.total_initial_cash)} />
-                <DetailField label="Total Withdraw" value={currency(selectedRow.total_withdraw)} />
+                <DetailField label="Total Initial Cash" value={currency(selectedRow.total_initial_cash)} valueClassName="text-blue-700" />
+                <DetailField label="Total Withdraw" value={currency(selectedRow.total_withdraw)} valueClassName="text-violet-700" />
               </div>
             </section>
 
@@ -428,10 +442,13 @@ export default function CashShiftReportPage() {
                   <DetailField label="Closed Staff" value={selectedRow.closed_staff_name ?? '—'} />
                   <DetailField label="Opening Amount (session)" value={currency(selectedRow.opening_amount)} />
                   <DetailField label="Closing Amount" value={selectedRow.closing_amount == null ? '—' : currency(selectedRow.closing_amount)} />
-                  <DetailField label="Cash Sales" value={currency(selectedRow.cash_sales)} />
-                  <DetailField label="Expected Cash" value={currency(selectedRow.expected_cash)} />
-                  <DetailField label="Difference" value={selectedRow.difference == null ? '—' : currency(selectedRow.difference)} />
-                  <DetailField label="Withdraw" value={displayAmount(selectedRow.closing_withdraw)} />
+                  <DetailField label="Withdraw" value={displayAmount(selectedRow.closing_withdraw)} valueClassName="text-violet-700" />
+                  <DetailField label="Cash Sales" value={currency(selectedRow.cash_sales)} valueClassName="text-emerald-700" />
+                  <DetailField
+                    label="Difference"
+                    value={difference == null ? '—' : currency(difference)}
+                    valueClassName={differenceToneClass(difference)}
+                  />
                   <DetailField label="Refill Cash" value={displayAmount(selectedRow.closing_refill_cash)} />
                   <DetailField label="Remarks" value={selectedRow.remark || '—'} />
                   <DetailField label="Closed By Account" value={selectedRow.closed_by_name ?? '—'} />
@@ -439,7 +456,8 @@ export default function CashShiftReportPage() {
               </section>
             )}
           </div>
-        ) : null}
+          )
+        })() : null}
       </ReportDetailDrawer>
     </div>
   )

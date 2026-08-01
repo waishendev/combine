@@ -219,7 +219,7 @@ class PosCashShiftController extends Controller
     }
 
     /**
-     * Sum Cash Sales / Difference for CLOSE events in the current report filter.
+     * Sum Cash Sales / Difference (Cash Sales − Withdraw) for CLOSE events in the current report filter.
      *
      * @return array{cash_sales: float, difference: float}
      */
@@ -303,8 +303,9 @@ class PosCashShiftController extends Controller
             'total_withdraw' => round((float) ($shift->total_withdraw ?? 0), 2),
             'cash_sales' => round($cashSales, 2),
             'expected_cash' => $expectedCash,
-            'difference' => $shift->isCloseEvent() && $closingAmount !== null
-                ? round($closingAmount - $expectedCash, 2)
+            // Difference = Cash Sales − Withdraw (CLOSE events only).
+            'difference' => $shift->isCloseEvent()
+                ? round($cashSales - (float) ($shift->closing_withdraw ?? 0), 2)
                 : null,
             'created_at' => optional($shift->created_at)?->toDateTimeString(),
             'updated_at' => optional($shift->updated_at)?->toDateTimeString(),
