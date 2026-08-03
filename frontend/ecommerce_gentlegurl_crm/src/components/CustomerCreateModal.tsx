@@ -24,11 +24,14 @@ interface FormState {
   date_of_birth: string
 }
 
+/** Default member password; staff can change it before submit. */
+const DEFAULT_MEMBER_PASSWORD = 'password'
+
 const initialFormState: FormState = {
   name: '',
   email: '',
   phone: '',
-  password: '',
+  password: DEFAULT_MEMBER_PASSWORD,
   customerTypeId: '',
   gender: '',
   date_of_birth: '',
@@ -49,6 +52,7 @@ export default function CustomerCreateModal({
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
   const [customerTypes, setCustomerTypes] = useState<Array<{ id: number; name: string }>>([])
 
   const handleChange = (
@@ -328,16 +332,28 @@ export default function CustomerCreateModal({
             >
               {t('common.password')} <span className="text-red-500">*</span>
             </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={form.password}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder={t('common.passwordPlaceholder')}
-              disabled={submitting}
-            />
+            <div className="relative">
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={handleChange}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-blue-500"
+                placeholder={t('common.passwordPlaceholder')}
+                disabled={submitting}
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                onClick={() => setShowPassword((prev) => !prev)}
+                disabled={submitting}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`} aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           {error && (

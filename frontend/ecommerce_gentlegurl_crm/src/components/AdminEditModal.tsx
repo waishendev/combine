@@ -22,6 +22,7 @@ interface FormState {
   password: string
   email: string
   roleId: string
+  isActive: 'true' | 'false'
 }
 
 const initialFormState: FormState = {
@@ -29,6 +30,7 @@ const initialFormState: FormState = {
   password: '',
   email: '',
   roleId: '',
+  isActive: 'true',
 }
 
 export default function AdminEditModal({
@@ -129,6 +131,7 @@ export default function AdminEditModal({
           password: '',
           email: typeof admin.email === 'string' ? admin.email : '',
           roleId: primaryRoleId != null ? String(primaryRoleId) : '',
+          isActive: mappedAdmin.isActive ? 'true' : 'false',
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -174,6 +177,7 @@ export default function AdminEditModal({
         name: trimmedUsername || trimmedEmail.split('@')[0],
         username: trimmedUsername || null,
         email: trimmedEmail,
+        is_active: form.isActive === 'true',
       }
 
       if (!roleReadOnly) {
@@ -245,7 +249,7 @@ export default function AdminEditModal({
             id: loadedAdmin?.id ?? adminId,
             username: trimmedUsername || '',
             email: trimmedEmail,
-            isActive: loadedAdmin?.isActive ?? true,
+            isActive: form.isActive === 'true',
             roleName,
             roleId: roleIdNumber || null,
             createdAt: loadedAdmin?.createdAt ?? '',
@@ -380,6 +384,26 @@ export default function AdminEditModal({
                     This role is internal and can only be changed by users with admins.manage-system.
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-isActive"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  {t('common.status')} <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="edit-isActive"
+                  name="isActive"
+                  value={form.isActive}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={disableForm}
+                >
+                  <option value="true">{t('common.active')}</option>
+                  <option value="false">{t('common.inactive')}</option>
+                </select>
               </div>
             </>
           )}
