@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
 
             GlobalSeoSeedeer::class,
             SettingSeeder::class,
+            BranchLimitSettingSeeder::class,
             ShippingSettingSeeder::class,
             InvoiceProfileSeeder::class,
             BankAccountSeeder::class,
