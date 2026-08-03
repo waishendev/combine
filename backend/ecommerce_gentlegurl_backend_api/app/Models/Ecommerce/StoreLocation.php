@@ -10,6 +10,15 @@ class StoreLocation extends Model
 {
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        static::updating(function (StoreLocation $location): void {
+            if ($location->isDirty('code')) {
+                throw new \LogicException('Branch code is immutable after creation.');
+            }
+        });
+    }
+
     protected $fillable = [
         'name',
         'code',
@@ -21,6 +30,10 @@ class StoreLocation extends Model
         'country',
         'phone',
         'is_active',
+        'is_pickup_available',
+        'is_booking_available',
+        'is_pos_available',
+        'sort_order',
         'opening_hours',
     ];
 
@@ -28,6 +41,10 @@ class StoreLocation extends Model
     {
         return [
             'is_active' => 'boolean',
+            'is_pickup_available' => 'boolean',
+            'is_booking_available' => 'boolean',
+            'is_pos_available' => 'boolean',
+            'sort_order' => 'integer',
             'opening_hours' => 'array',
         ];
     }

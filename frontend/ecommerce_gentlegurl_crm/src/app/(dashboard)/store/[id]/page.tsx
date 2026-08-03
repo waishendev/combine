@@ -82,10 +82,10 @@ export default async function StoreDetailPage({
         <span className="text-gray-500">Catalog</span>
         <span className="mx-1">/</span>
         <Link href="/store" className="text-blue-600 hover:underline">
-          Stores
+          Branches
         </Link>
         <span className="mx-1">/</span>
-        <span className="text-gray-700 font-medium">Store Details</span>
+        <span className="text-gray-700 font-medium">Branch Details</span>
       </div>
 
       <div className="mb-6">
@@ -176,6 +176,10 @@ export default async function StoreDetailPage({
                 {store.isActive ? t('common.active') : t('common.inactive')}
               </p>
             </div>
+            <div><p className="text-xs text-gray-500">Pickup</p><p className="text-sm mt-1">{store.isPickupAvailable ? 'Enabled' : 'Disabled'}</p></div>
+            <div><p className="text-xs text-gray-500">Booking</p><p className="text-sm mt-1">{store.isBookingAvailable ? 'Enabled' : 'Disabled'}</p></div>
+            <div><p className="text-xs text-gray-500">POS</p><p className="text-sm mt-1">{store.isPosAvailable ? 'Enabled' : 'Disabled'}</p></div>
+            <div><p className="text-xs text-gray-500">Sort Order</p><p className="text-sm mt-1">{store.sortOrder}</p></div>
           </div>
 
           <div>

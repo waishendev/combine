@@ -4,9 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\StoreLocationImage;
+use App\Models\Setting;
+use App\Http\Requests\StoreLocation\StoreStoreLocationRequest;
+use App\Http\Requests\StoreLocation\UpdateStoreLocationRequest;
+use App\Services\BranchCapacityService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class StoreLocationController extends Controller
 {
@@ -25,43 +30,55 @@ class StoreLocationController extends Controller
             ->when($request->has('is_active'), function ($query) use ($request) {
                 $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
             })
+            ->orderBy('sort_order')
             ->orderBy('name')
             ->with('images')
             ->paginate($perPage);
 
-        return $this->respond($locations);
+        return response()->json([
+            'data' => $locations,
+            'branch_usage' => app(BranchCapacityService::class)->usage(),
+            'message' => null,
+            'success' => true,
+        ]);
     }
 
-    public function store(Request $request)
+    public function store(StoreStoreLocationRequest $request)
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:150'],
-            'code' => ['required', 'string', 'max:50', 'unique:store_locations,code'],
-            'address_line1' => ['required', 'string', 'max:255'],
-            'address_line2' => ['nullable', 'string', 'max:255'],
-            'city' => ['required', 'string', 'max:100'],
-            'state' => ['required', 'string', 'max:100'],
-            'postcode' => ['required', 'string', 'max:20'],
-            'country' => ['sometimes', 'string', 'max:100'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'is_active' => ['sometimes', 'boolean'],
-            'opening_hours' => ['nullable', 'array'],
-            'opening_hours.*' => ['string', 'max:255'],
-            'images' => ['nullable', 'array', 'max:6'],
-            'images.*' => ['image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
-        ]);
+        $validated = $request->validated();
 
         if ($request->hasFile('images') && count($request->file('images')) > 6) {
             return $this->respond(null, __('A maximum of 6 images is allowed.'), false, 422);
         }
 
-        $location = StoreLocation::create($validated + ['is_active' => $validated['is_active'] ?? true]);
+        $location = DB::transaction(function () use ($validated) {
+            $setting = Setting::firstOrCreate(
+                ['type' => 'ecommerce', 'key' => BranchCapacityService::SETTING_KEY],
+                ['value' => BranchCapacityService::DEFAULT_LIMIT]
+            );
+            $setting->newQuery()->whereKey($setting->id)->lockForUpdate()->first();
+
+            $capacity = app(BranchCapacityService::class)->usage();
+            if (! $capacity['can_create']) {
+                throw ValidationException::withMessages([
+                    'branch_limit' => [__('The branch limit has been reached. Inactive branches count toward the limit.')],
+                ]);
+            }
+
+            return StoreLocation::create($validated + [
+                'is_active' => $validated['is_active'] ?? true,
+                'is_pickup_available' => $validated['is_pickup_available'] ?? true,
+                'is_booking_available' => $validated['is_booking_available'] ?? false,
+                'is_pos_available' => $validated['is_pos_available'] ?? false,
+                'sort_order' => $validated['sort_order'] ?? 0,
+            ]);
+        });
 
         if ($request->hasFile('images')) {
             $this->handleImageUploads($location, $request->file('images'));
         }
 
-        return $this->respond($location->load('images'), __('Store location created successfully.'));
+        return $this->respond($location->load('images'), __('Branch created successfully.'));
     }
 
     public function show(StoreLocation $storeLocation)
@@ -69,28 +86,10 @@ class StoreLocationController extends Controller
         return $this->respond($storeLocation->load('images'));
     }
 
-    public function update(Request $request, StoreLocation $storeLocation)
+    public function update(UpdateStoreLocationRequest $request, StoreLocation $storeLocation)
     {
-        $validated = $request->validate([
-            'name' => ['sometimes', 'string', 'max:150'],
-            'code' => ['sometimes', 'string', 'max:50', Rule::unique('store_locations', 'code')->ignore($storeLocation->id)],
-            'address_line1' => ['sometimes', 'string', 'max:255'],
-            'address_line2' => ['nullable', 'string', 'max:255'],
-            'city' => ['sometimes', 'string', 'max:100'],
-            'state' => ['sometimes', 'string', 'max:100'],
-            'postcode' => ['sometimes', 'string', 'max:20'],
-            'country' => ['sometimes', 'string', 'max:100'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'is_active' => ['sometimes', 'boolean'],
-            'opening_hours' => ['nullable', 'array'],
-            'opening_hours.*' => ['string', 'max:255'],
-            'images' => ['nullable', 'array', 'max:6'],
-            'images.*' => ['image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
-            'delete_image_ids' => ['nullable', 'array'],
-            'delete_image_ids.*' => ['integer', 'exists:store_location_images,id'],
-            'image_order' => ['nullable', 'array'],
-            'image_order.*' => ['string', 'max:50'],
-        ]);
+        $validated = $request->validated();
+        unset($validated['id'], $validated['code']);
 
         $existingImages = $storeLocation->images()->count();
         $deleteCount = $request->filled('delete_image_ids')
@@ -119,16 +118,15 @@ class StoreLocationController extends Controller
             $this->syncImageOrder($storeLocation, $validated['image_order'], $createdImages);
         }
 
-        return $this->respond($storeLocation->load('images'), __('Store location updated successfully.'));
+        return $this->respond($storeLocation->load('images'), __('Branch updated successfully.'));
     }
 
     public function destroy(StoreLocation $storeLocation)
     {
-        $this->deleteImages($storeLocation);
-
-        $storeLocation->delete();
-
-        return $this->respond(null, __('Store location deleted successfully.'));
+        return $this->respondError(
+            __('Branches cannot be deleted. Deactivate the branch instead.'),
+            422
+        );
     }
 
     protected function handleImageUploads(StoreLocation $storeLocation, array $files): array

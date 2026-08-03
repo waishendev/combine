@@ -308,7 +308,7 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
           },
           {
             key: 'store',
-            label: 'Stores',
+            label: 'Branch Management',
             href: '/store',
             requiredPermission: 'ecommerce.stores.view',
           },

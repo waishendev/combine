@@ -12,6 +12,8 @@ class PublicStoreLocationController extends Controller
     {
         $locations = StoreLocation::query()
             ->where('is_active', true)
+            ->where('is_pickup_available', true)
+            ->orderBy('sort_order')
             ->orderBy('name')
             ->orderBy('id')
             ->with('images')
@@ -34,7 +36,7 @@ class PublicStoreLocationController extends Controller
 
     public function show(StoreLocation $storeLocation): JsonResponse
     {
-        abort_unless($storeLocation->is_active, 404);
+        abort_unless($storeLocation->is_active && $storeLocation->is_pickup_available, 404);
 
         $storeLocation->load('images');
 
