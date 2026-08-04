@@ -2,11 +2,13 @@
 
 namespace App\Services\Notifications;
 
+use App\Mail\DailyLowStockSummaryMail;
+use Illuminate\Support\Facades\Mail;
+
 class NotificationService
 {
     public function __construct(
         private TemplateRenderer $renderer,
-        private EmailSender $emailSender,
         private WhatsAppSender $whatsAppSender,
     ) {
     }
@@ -19,6 +21,18 @@ class NotificationService
         if (empty($products)) {
             return;
         }
+
+        // Out-of-stock first, then lowest remaining stock.
+        usort($products, function (array $a, array $b): int {
+            $stockCmp = (int) ($a['stock'] ?? 0) <=> (int) ($b['stock'] ?? 0);
+            if ($stockCmp !== 0) {
+                return $stockCmp;
+            }
+
+            return strcmp((string) ($a['sku'] ?? ''), (string) ($b['sku'] ?? ''));
+        });
+
+        $date = now()->toDateString();
 
         $lines = [];
         foreach ($products as $p) {
@@ -54,21 +68,27 @@ class NotificationService
         }
 
         $data = [
-            'date' => now()->toDateString(),
+            'date' => $date,
             'product_list' => implode("\n", $lines),
         ];
 
-        $adminEmails = array_filter(array_map('trim', explode(',', env('NOTIFY_ADMIN_EMAILS', ''))));
+        $adminEmails = array_values(array_unique(array_filter(
+            array_map('trim', explode(',', (string) env('NOTIFY_ADMIN_EMAILS', ''))),
+            fn ($email) => $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)
+        )));
 
         if (! empty($adminEmails)) {
             $tpl = $this->renderer->getTemplate('stock.low.admin.email', 'email');
+            $subject = 'Daily Low Stock Summary - '.$date;
             if ($tpl) {
-                $subject = $this->renderer->renderSubject($tpl->subject_template, $data) ?: 'Daily Low Stock Alert';
-                $body = $this->renderer->render($tpl->body_template, $data);
-
-                foreach ($adminEmails as $email) {
-                    $this->emailSender->send($email, $subject, $body);
+                $rendered = $this->renderer->renderSubject($tpl->subject_template, $data);
+                if (is_string($rendered) && trim($rendered) !== '') {
+                    $subject = $rendered;
                 }
+            }
+
+            foreach ($adminEmails as $email) {
+                Mail::to($email)->send(new DailyLowStockSummaryMail($products, $date, $subject));
             }
         }
 

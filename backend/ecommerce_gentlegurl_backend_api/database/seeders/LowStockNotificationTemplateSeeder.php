@@ -22,7 +22,8 @@ class LowStockNotificationTemplateSeeder extends Seeder
                 'channel' => 'email',
                 'name' => 'Daily Low Stock Summary (Email)',
                 'subject_template' => 'Daily Low Stock Summary - {{date}}',
-                'body_template' => "Dear Admin,\n\n以下产品库存低于阈值（{{date}}）：\n\n{{product_list}}\n\n请尽快补货。",
+                // Email body is rendered from resources/views/emails/daily-low-stock-summary.blade.php
+                'body_template' => 'Daily low stock HTML email (blade). Date: {{date}}. Items: {{product_list}}',
                 'variables' => ['{{date}}', '{{product_list}}'],
                 'is_active' => true,
             ]
