@@ -24,6 +24,7 @@ interface FormState {
   country: string
   phone: string
   isPickupAvailable: 'true' | 'false'
+  isReviewAvailable: 'true' | 'false'
   isBookingAvailable: 'true' | 'false'
   isPosAvailable: 'true' | 'false'
   sortOrder: string
@@ -40,6 +41,7 @@ const initialFormState: FormState = {
   country: '',
   phone: '',
   isPickupAvailable: 'true',
+  isReviewAvailable: 'true',
   isBookingAvailable: 'false',
   isPosAvailable: 'false',
   sortOrder: '0',
@@ -224,6 +226,7 @@ export default function StoreCreateModal({
       formData.append('phone', trimmedPhone)
       formData.append('is_active', '1')
       formData.append('is_pickup_available', form.isPickupAvailable === 'true' ? '1' : '0')
+      formData.append('is_review_available', form.isReviewAvailable === 'true' ? '1' : '0')
       formData.append('is_booking_available', form.isBookingAvailable === 'true' ? '1' : '0')
       formData.append('is_pos_available', form.isPosAvailable === 'true' ? '1' : '0')
       formData.append('sort_order', form.sortOrder)
@@ -511,9 +514,9 @@ export default function StoreCreateModal({
                 />
               </div>
 
-              {(['isPickupAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (
+              {(['isPickupAvailable', 'isReviewAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (
                 <div key={field}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{field === 'isPickupAvailable' ? 'Pickup Available' : field === 'isBookingAvailable' ? 'Booking Available' : 'POS Available'}</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{field === 'isPickupAvailable' ? 'Pickup Available' : field === 'isReviewAvailable' ? 'Reviews Available' : field === 'isBookingAvailable' ? 'Booking Available' : 'POS Available'}</label>
                   <select name={field} value={form[field]} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting}>
                     <option value="true">Enabled</option><option value="false">Disabled</option>
                   </select>

@@ -26,6 +26,7 @@ interface FormState {
   phone: string
   isActive: 'true' | 'false'
   isPickupAvailable: 'true' | 'false'
+  isReviewAvailable: 'true' | 'false'
   isBookingAvailable: 'true' | 'false'
   isPosAvailable: 'true' | 'false'
   sortOrder: string
@@ -43,6 +44,7 @@ const initialFormState: FormState = {
   phone: '',
   isActive: 'true',
   isPickupAvailable: 'true',
+  isReviewAvailable: 'true',
   isBookingAvailable: 'false',
   isPosAvailable: 'false',
   sortOrder: '0',
@@ -191,6 +193,7 @@ export default function StoreEditModal({
               ? 'true'
               : 'false',
           isPickupAvailable: mappedStore.isPickupAvailable ? 'true' : 'false',
+          isReviewAvailable: mappedStore.isReviewAvailable ? 'true' : 'false',
           isBookingAvailable: mappedStore.isBookingAvailable ? 'true' : 'false',
           isPosAvailable: mappedStore.isPosAvailable ? 'true' : 'false',
           sortOrder: String(mappedStore.sortOrder ?? 0),
@@ -366,6 +369,7 @@ export default function StoreEditModal({
       formData.append('phone', trimmedPhone)
       formData.append('is_active', form.isActive === 'true' ? '1' : '0')
       formData.append('is_pickup_available', form.isPickupAvailable === 'true' ? '1' : '0')
+      formData.append('is_review_available', form.isReviewAvailable === 'true' ? '1' : '0')
       formData.append('is_booking_available', form.isBookingAvailable === 'true' ? '1' : '0')
       formData.append('is_pos_available', form.isPosAvailable === 'true' ? '1' : '0')
       formData.append('sort_order', form.sortOrder)
@@ -689,8 +693,8 @@ export default function StoreEditModal({
                     />
                   </div>
 
-                  {(['isPickupAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (
-                    <div key={field}><label className="block text-sm font-medium text-gray-700 mb-1">{field === 'isPickupAvailable' ? 'Pickup Available' : field === 'isBookingAvailable' ? 'Booking Available' : 'POS Available'}</label><select name={field} value={form[field]} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={disableForm}><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
+                  {(['isPickupAvailable', 'isReviewAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (
+                    <div key={field}><label className="block text-sm font-medium text-gray-700 mb-1">{field === 'isPickupAvailable' ? 'Pickup Available' : field === 'isReviewAvailable' ? 'Reviews Available' : field === 'isBookingAvailable' ? 'Booking Available' : 'POS Available'}</label><select name={field} value={form[field]} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={disableForm}><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
                   ))}
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label><input name="sortOrder" type="number" min="0" value={form.sortOrder} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={disableForm} /></div>
 

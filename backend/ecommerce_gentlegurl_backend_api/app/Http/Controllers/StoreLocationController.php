@@ -68,6 +68,7 @@ class StoreLocationController extends Controller
             return StoreLocation::create($validated + [
                 'is_active' => $validated['is_active'] ?? true,
                 'is_pickup_available' => $validated['is_pickup_available'] ?? true,
+                'is_review_available' => $validated['is_review_available'] ?? true,
                 'is_booking_available' => $validated['is_booking_available'] ?? false,
                 'is_pos_available' => $validated['is_pos_available'] ?? false,
                 'sort_order' => $validated['sort_order'] ?? 0,

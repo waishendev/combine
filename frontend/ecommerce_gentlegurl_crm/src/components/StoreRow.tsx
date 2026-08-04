@@ -26,6 +26,7 @@ export interface StoreRowData {
   phone: string
   isActive: boolean
   isPickupAvailable?: boolean
+  isReviewAvailable?: boolean
   isBookingAvailable?: boolean
   isPosAvailable?: boolean
   sortOrder?: number

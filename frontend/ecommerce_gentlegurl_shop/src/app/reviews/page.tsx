@@ -91,7 +91,7 @@ export default function ReviewsPage() {
     const loadLocations = async () => {
       setLoadingLocations(true);
       try {
-        const data = await getStoreLocations();
+        const data = await getStoreLocations("reviews");
         setLocations(data);
         setSelectedLocationId((current) => current ?? (data[0]?.id ?? null));
       } catch (err) {
@@ -109,7 +109,7 @@ export default function ReviewsPage() {
       if (!selectedLocationId) return;
       setLoadingStoreDetail(true);
       try {
-        const data = await getStoreLocationDetail(selectedLocationId);
+        const data = await getStoreLocationDetail(selectedLocationId, "reviews");
         setStoreDetail(data);
       } catch (err) {
         setError(getErrorMessage(err));
