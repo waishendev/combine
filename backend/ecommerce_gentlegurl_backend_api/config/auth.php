@@ -134,6 +134,6 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
-    'super_admin_role' => env('SUPER_ADMIN_ROLE', 'super_admin'),
+    'super_admin_role' => env('SUPER_ADMIN_ROLE', 'infra_core_x1'),
 
 ];

@@ -61,7 +61,10 @@ class BranchFoundationTest extends TestCase
         $this->actingAs($regularUser)->putJson('/api/ecommerce/branch-limit', ['limit' => 5])
             ->assertForbidden();
 
-        $role = Role::create(['name' => config('auth.super_admin_role'), 'is_active' => true]);
+        // The production Platform Super Admin role must remain authorized even
+        // when an older deployment overrides SUPER_ADMIN_ROLE differently.
+        config(['auth.super_admin_role' => 'legacy_super_admin']);
+        $role = Role::create(['name' => 'infra_core_x1', 'is_active' => true]);
         $superAdmin = User::factory()->create();
         $superAdmin->roles()->attach($role);
 
