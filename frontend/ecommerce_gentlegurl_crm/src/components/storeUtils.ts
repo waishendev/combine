@@ -20,6 +20,7 @@ export type StoreApiItem = {
   phone?: string | null
   is_active?: boolean | number | string | null
   is_pickup_available?: boolean | number | string | null
+  is_review_available?: boolean | number | string | null
   is_booking_available?: boolean | number | string | null
   is_pos_available?: boolean | number | string | null
   sort_order?: number | string | null
@@ -85,6 +86,7 @@ export const mapStoreApiItemToRow = (item: StoreApiItem): StoreRowData => {
     phone: item.phone ?? '-',
     isActive,
     isPickupAvailable: Boolean(Number(item.is_pickup_available)) || item.is_pickup_available === true,
+    isReviewAvailable: Boolean(Number(item.is_review_available)) || item.is_review_available === true,
     isBookingAvailable: Boolean(Number(item.is_booking_available)) || item.is_booking_available === true,
     isPosAvailable: Boolean(Number(item.is_pos_available)) || item.is_pos_available === true,
     sortOrder: Number(item.sort_order ?? 0),

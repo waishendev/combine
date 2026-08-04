@@ -31,6 +31,7 @@ class StoreLocation extends Model
         'phone',
         'is_active',
         'is_pickup_available',
+        'is_review_available',
         'is_booking_available',
         'is_pos_available',
         'sort_order',
@@ -42,6 +43,7 @@ class StoreLocation extends Model
         return [
             'is_active' => 'boolean',
             'is_pickup_available' => 'boolean',
+            'is_review_available' => 'boolean',
             'is_booking_available' => 'boolean',
             'is_pos_available' => 'boolean',
             'sort_order' => 'integer',

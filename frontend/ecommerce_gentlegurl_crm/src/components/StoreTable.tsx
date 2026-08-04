@@ -306,6 +306,7 @@ export default function StoreTable({
   }
 
   const handleStoreCreated = (store: StoreRowData) => {
+    setBranchUsage((usage) => ({ ...usage, count: usage.count + 1, can_create: usage.count + 1 < usage.limit }))
     setRows((prev) => {
       if (currentPage !== 1) return prev
       const filtered = prev.filter((item) => item.id !== store.id)
@@ -386,12 +387,10 @@ export default function StoreTable({
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          {hasCreatePermission && (
+          {canCreate && (
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
               onClick={() => setIsCreateModalOpen(true)}
-              disabled={!canCreate}
-              title={!branchUsage.can_create ? 'Branch limit reached' : undefined}
               type="button"
             >
               <i className="fa-solid fa-plus" />

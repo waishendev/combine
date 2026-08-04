@@ -25,6 +25,7 @@ class StoreStoreLocationRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:30'],
             'is_active' => ['sometimes', 'boolean'],
             'is_pickup_available' => ['sometimes', 'boolean'],
+            'is_review_available' => ['sometimes', 'boolean'],
             'is_booking_available' => ['sometimes', 'boolean'],
             'is_pos_available' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer', 'min:0'],

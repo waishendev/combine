@@ -567,6 +567,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             href: '/settings/thermal-printer',
             requiredPermission: 'ecommerce.thermal-printer-settings.view',
           },
+          {
+            key: 'branch-limit-settings',
+            label: 'Branch Limit',
+            href: '/settings/branch-limit',
+            requiredPermission: 'ecommerce.settings.view',
+          },
         ],
       },
 

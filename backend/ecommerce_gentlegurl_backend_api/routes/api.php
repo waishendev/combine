@@ -72,6 +72,7 @@ use App\Http\Controllers\Ecommerce\LoyaltyRewardController;
 use App\Http\Controllers\Ecommerce\LoyaltyRedemptionAdminController;
 use App\Http\Controllers\Ecommerce\ShopSettingController;
 use App\Http\Controllers\Ecommerce\ThermalPrinterSettingController;
+use App\Http\Controllers\Ecommerce\BranchLimitSettingController;
 use App\Http\Controllers\LoyaltySettingController;
 use App\Http\Controllers\MembershipTierRuleController;
 use App\Http\Controllers\NotificationTemplateController;
@@ -1087,6 +1088,9 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.loyalty.redemptions.update');
 
         // Shop Settings
+        Route::get('/branch-limit', [BranchLimitSettingController::class, 'show']);
+        Route::put('/branch-limit', [BranchLimitSettingController::class, 'update']);
+
         Route::get('/thermal-printer-settings', [ThermalPrinterSettingController::class, 'show'])
             ->middleware('permission:ecommerce.thermal-printer-settings.view|ecommerce.thermal-printer-settings.update|pos.checkout|pos.appointments.manage|pos.appointments.checkout');
 

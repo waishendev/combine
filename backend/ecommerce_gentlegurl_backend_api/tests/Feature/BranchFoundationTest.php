@@ -18,7 +18,7 @@ class BranchFoundationTest extends TestCase
 
     public function test_migration_adds_branch_foundation_columns_and_model_casts_flags(): void
     {
-        foreach (['is_pickup_available', 'is_booking_available', 'is_pos_available', 'sort_order'] as $column) {
+        foreach (['is_pickup_available', 'is_review_available', 'is_booking_available', 'is_pos_available', 'sort_order'] as $column) {
             $this->assertTrue(Schema::hasColumn('store_locations', $column));
         }
 
@@ -38,6 +38,39 @@ class BranchFoundationTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $included->id);
+    }
+
+    public function test_review_branch_availability_is_independent_from_pickup(): void
+    {
+        $reviewOnly = $this->branch([
+            'code' => 'REVIEW-ONLY',
+            'is_pickup_available' => false,
+            'is_review_available' => true,
+        ]);
+        $this->branch(['code' => 'PICKUP-ONLY', 'is_review_available' => false]);
+
+        $this->getJson('/api/public/shop/store-locations?for=reviews')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $reviewOnly->id);
+    }
+
+    public function test_only_platform_super_admin_can_manage_branch_limit(): void
+    {
+        $regularUser = User::factory()->create();
+        $this->actingAs($regularUser)->putJson('/api/ecommerce/branch-limit', ['limit' => 5])
+            ->assertForbidden();
+
+        // The production Platform Super Admin role must remain authorized even
+        // when an older deployment overrides SUPER_ADMIN_ROLE differently.
+        config(['auth.super_admin_role' => 'legacy_super_admin']);
+        $role = Role::create(['name' => 'infra_core_x1', 'is_active' => true]);
+        $superAdmin = User::factory()->create();
+        $superAdmin->roles()->attach($role);
+
+        $this->actingAs($superAdmin)->putJson('/api/ecommerce/branch-limit', ['limit' => 5])
+            ->assertOk()
+            ->assertJsonPath('data.limit', 5);
     }
 
     public function test_code_and_id_are_immutable_but_branch_flags_are_editable(): void
@@ -112,6 +145,7 @@ class BranchFoundationTest extends TestCase
             'name' => 'Main Branch', 'code' => $code, 'address_line1' => '1 Main Street',
             'city' => 'Kuala Lumpur', 'state' => 'Kuala Lumpur', 'postcode' => '50000',
             'country' => 'Malaysia', 'is_active' => true, 'is_pickup_available' => true,
+            'is_review_available' => true,
             'is_booking_available' => false, 'is_pos_available' => false, 'sort_order' => 0,
         ];
     }
