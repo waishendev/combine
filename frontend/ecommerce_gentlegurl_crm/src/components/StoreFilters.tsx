@@ -72,7 +72,7 @@ export default function StoreFilters({
             type="text"
             value={values.name}
             onChange={handleChange}
-            placeholder="Store Name"
+            placeholder="Branch Name"
             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
@@ -90,7 +90,7 @@ export default function StoreFilters({
             type="text"
             value={values.code}
             onChange={handleChange}
-            placeholder="Store Code"
+            placeholder="Branch Code"
             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
           />
         </div>

@@ -25,6 +25,11 @@ export interface StoreRowData {
   country: string
   phone: string
   isActive: boolean
+  isPickupAvailable?: boolean
+  isReviewAvailable?: boolean
+  isBookingAvailable?: boolean
+  isPosAvailable?: boolean
+  sortOrder?: number
 }
 
 interface StoreRowProps {
@@ -89,8 +94,8 @@ export default function StoreRow({
             <Link
               href={`/store/${store.id}`}
               className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
-              aria-label="View store"
-              title="View store"
+              aria-label="View branch"
+              title="View branch"
             >
               <i className="fa-solid fa-eye" />
             </Link>

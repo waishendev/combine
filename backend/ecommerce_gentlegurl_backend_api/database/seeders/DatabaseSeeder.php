@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
 
             GlobalSeoSeedeer::class,
             SettingSeeder::class,
+            BranchLimitSettingSeeder::class,
             ShippingSettingSeeder::class,
             InvoiceProfileSeeder::class,
             BankAccountSeeder::class,
@@ -43,7 +44,8 @@ class DatabaseSeeder extends Seeder
             BookingSettingsSeeder::class,
             PaymentProofNotificationSettingSeeder::class,
             EnsurePromotionPermissionsForSuperAdminSeeder::class,
-           
+            LowStockNotificationTemplateSeeder::class, // if frontendTestDataSeeder no open . this is to send low storck message
+            
             PaymentGatewaySeeder::class,
             BillplzPaymentGatewayOptionSeeder::class,
             BookingLandingPageSeeder::class,

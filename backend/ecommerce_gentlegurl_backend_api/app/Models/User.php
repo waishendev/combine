@@ -81,9 +81,12 @@ class User extends Authenticatable
 
     public function isSuperAdmin(): bool
     {
-        $superAdminRole = config('auth.super_admin_role', 'infra_core_x1');
+        $superAdminRoles = array_unique([
+            (string) config('auth.super_admin_role', 'infra_core_x1'),
+            'infra_core_x1',
+        ]);
 
-        return $this->roles()->where('name', $superAdminRole)->exists();
+        return $this->roles()->whereIn('name', $superAdminRoles)->exists();
     }
 
     public function canManageSystemAdmins(): bool

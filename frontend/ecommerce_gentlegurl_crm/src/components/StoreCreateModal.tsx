@@ -23,6 +23,11 @@ interface FormState {
   postcode: string
   country: string
   phone: string
+  isPickupAvailable: 'true' | 'false'
+  isReviewAvailable: 'true' | 'false'
+  isBookingAvailable: 'true' | 'false'
+  isPosAvailable: 'true' | 'false'
+  sortOrder: string
 }
 
 const initialFormState: FormState = {
@@ -35,6 +40,11 @@ const initialFormState: FormState = {
   postcode: '',
   country: '',
   phone: '',
+  isPickupAvailable: 'true',
+  isReviewAvailable: 'true',
+  isBookingAvailable: 'false',
+  isPosAvailable: 'false',
+  sortOrder: '0',
 }
 
 const MAX_IMAGES = 6
@@ -90,7 +100,7 @@ export default function StoreCreateModal({
     })
 
   const handleChange = (
-    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
@@ -215,6 +225,11 @@ export default function StoreCreateModal({
       formData.append('country', trimmedCountry)
       formData.append('phone', trimmedPhone)
       formData.append('is_active', '1')
+      formData.append('is_pickup_available', form.isPickupAvailable === 'true' ? '1' : '0')
+      formData.append('is_review_available', form.isReviewAvailable === 'true' ? '1' : '0')
+      formData.append('is_booking_available', form.isBookingAvailable === 'true' ? '1' : '0')
+      formData.append('is_pos_available', form.isPosAvailable === 'true' ? '1' : '0')
+      formData.append('sort_order', form.sortOrder)
 
       openingHours
         .map(buildOpeningHourValue)
@@ -236,7 +251,7 @@ export default function StoreCreateModal({
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        let message = 'Failed to create store'
+        let message = 'Failed to create branch'
         if (data && typeof data === 'object') {
           if (typeof (data as { message?: unknown }).message === 'string') {
             message = (data as { message: string }).message
@@ -292,7 +307,7 @@ export default function StoreCreateModal({
       onSuccess(storeRow)
     } catch (err) {
       console.error(err)
-      setError('Failed to create store')
+      setError('Failed to create branch')
     } finally {
       setSubmitting(false)
     }
@@ -300,7 +315,7 @@ export default function StoreCreateModal({
 
   return (
     <CrmFormModalShell
-      title="Create Store"
+      title="Create Branch"
       size="lg"
       onClose={onClose}
       closeDisabled={submitting}
@@ -475,7 +490,7 @@ export default function StoreCreateModal({
                   value={form.name}
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Store Name"
+                  placeholder="Branch Name"
                   disabled={submitting}
                 />
               </div>
@@ -494,10 +509,20 @@ export default function StoreCreateModal({
                   value={form.code}
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Store Code"
+                  placeholder="Branch Code"
                   disabled={submitting}
                 />
               </div>
+
+              {(['isPickupAvailable', 'isReviewAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (
+                <div key={field}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{field === 'isPickupAvailable' ? 'Pickup Available' : field === 'isReviewAvailable' ? 'Reviews Available' : field === 'isBookingAvailable' ? 'Booking Available' : 'POS Available'}</label>
+                  <select name={field} value={form[field]} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting}>
+                    <option value="true">Enabled</option><option value="false">Disabled</option>
+                  </select>
+                </div>
+              ))}
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label><input name="sortOrder" type="number" min="0" value={form.sortOrder} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting} /></div>
 
               <div className="md:col-span-2">
                 <label

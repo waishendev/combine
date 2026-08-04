@@ -43,6 +43,11 @@ class SettingSeeder extends Seeder
             ['value' => 30]
         );
 
+        Setting::firstOrCreate(
+            ['type' => 'ecommerce', 'key' => 'branch_limit'],
+            ['value' => 2]
+        );
+
         Setting::updateOrCreate(
             ['type' => 'ecommerce', 'key' => 'ecommerce.wallet_topup_reserve_minutes'],
             ['value' => 30]

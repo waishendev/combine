@@ -962,16 +962,18 @@ export async function getBillplzPaymentGatewayOptions(params: {
   return response.data ?? [];
 }
 
-export async function getStoreLocations(): Promise<PublicStoreLocation[]> {
-  const response = await get<{ data: PublicStoreLocation[] }>("/public/shop/store-locations", {
+export async function getStoreLocations(feature?: "reviews"): Promise<PublicStoreLocation[]> {
+  const suffix = feature ? `?for=${feature}` : "";
+  const response = await get<{ data: PublicStoreLocation[] }>(`/public/shop/store-locations${suffix}`, {
     headers: { Accept: "application/json" },
   });
 
   return response.data;
 }
 
-export async function getStoreLocationDetail(id: number): Promise<PublicStoreLocation> {
-  const response = await get<{ data: PublicStoreLocation }>(`/public/shop/store-locations/${id}`, {
+export async function getStoreLocationDetail(id: number, feature?: "reviews"): Promise<PublicStoreLocation> {
+  const suffix = feature ? `?for=${feature}` : "";
+  const response = await get<{ data: PublicStoreLocation }>(`/public/shop/store-locations/${id}${suffix}`, {
     headers: { Accept: "application/json" },
   });
 

@@ -37,11 +37,11 @@ export default async function StorePage() {
           href="/store"
           className="text-blue-600 hover:underline"
         >
-          Stores
+          Branches
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">
-        Stores
+        Branch Management
       </h2>
       <StoreTable
         permissions={user.permissions}
@@ -49,5 +49,4 @@ export default async function StorePage() {
     </div>
   )
 }
-
 

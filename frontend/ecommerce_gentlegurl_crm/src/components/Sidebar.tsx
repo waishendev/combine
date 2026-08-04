@@ -308,7 +308,7 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
           },
           {
             key: 'store',
-            label: 'Stores',
+            label: 'Branch Management',
             href: '/store',
             requiredPermission: 'ecommerce.stores.view',
           },
@@ -566,6 +566,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             label: 'Thermal Printer',
             href: '/settings/thermal-printer',
             requiredPermission: 'ecommerce.thermal-printer-settings.view',
+          },
+          {
+            key: 'branch-limit-settings',
+            label: 'Branch Limit',
+            href: '/settings/branch-limit',
+            requiredPermission: 'ecommerce.settings.view',
           },
         ],
       },

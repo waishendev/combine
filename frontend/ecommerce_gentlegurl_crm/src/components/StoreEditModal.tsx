@@ -25,6 +25,11 @@ interface FormState {
   country: string
   phone: string
   isActive: 'true' | 'false'
+  isPickupAvailable: 'true' | 'false'
+  isReviewAvailable: 'true' | 'false'
+  isBookingAvailable: 'true' | 'false'
+  isPosAvailable: 'true' | 'false'
+  sortOrder: string
 }
 
 const initialFormState: FormState = {
@@ -38,6 +43,11 @@ const initialFormState: FormState = {
   country: '',
   phone: '',
   isActive: 'true',
+  isPickupAvailable: 'true',
+  isReviewAvailable: 'true',
+  isBookingAvailable: 'false',
+  isPosAvailable: 'false',
+  sortOrder: '0',
 }
 
 const MAX_IMAGES = 6
@@ -138,13 +148,13 @@ export default function StoreEditModal({
               return
             }
           }
-          setError('Failed to load store')
+          setError('Failed to load branch')
           return
         }
 
         const store = data?.data as StoreApiItem | undefined
         if (!store || typeof store !== 'object') {
-          setError('Failed to load store')
+          setError('Failed to load branch')
           return
         }
 
@@ -182,10 +192,15 @@ export default function StoreEditModal({
             store.is_active === 1
               ? 'true'
               : 'false',
+          isPickupAvailable: mappedStore.isPickupAvailable ? 'true' : 'false',
+          isReviewAvailable: mappedStore.isReviewAvailable ? 'true' : 'false',
+          isBookingAvailable: mappedStore.isBookingAvailable ? 'true' : 'false',
+          isPosAvailable: mappedStore.isPosAvailable ? 'true' : 'false',
+          sortOrder: String(mappedStore.sortOrder ?? 0),
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          setError('Failed to load store')
+          setError('Failed to load branch')
         }
       } finally {
         setLoading(false)
@@ -194,7 +209,7 @@ export default function StoreEditModal({
 
     loadStore().catch(() => {
       setLoading(false)
-      setError('Failed to load store')
+      setError('Failed to load branch')
     })
 
     return () => controller.abort()
@@ -345,7 +360,6 @@ export default function StoreEditModal({
       const formData = new FormData()
       formData.append('_method', 'PUT')
       formData.append('name', trimmedName)
-      formData.append('code', trimmedCode)
       formData.append('address_line1', trimmedAddressLine1)
       formData.append('address_line2', form.address_line2.trim())
       formData.append('city', trimmedCity)
@@ -354,6 +368,11 @@ export default function StoreEditModal({
       formData.append('country', trimmedCountry)
       formData.append('phone', trimmedPhone)
       formData.append('is_active', form.isActive === 'true' ? '1' : '0')
+      formData.append('is_pickup_available', form.isPickupAvailable === 'true' ? '1' : '0')
+      formData.append('is_review_available', form.isReviewAvailable === 'true' ? '1' : '0')
+      formData.append('is_booking_available', form.isBookingAvailable === 'true' ? '1' : '0')
+      formData.append('is_pos_available', form.isPosAvailable === 'true' ? '1' : '0')
+      formData.append('sort_order', form.sortOrder)
       openingHours
         .map(buildOpeningHourValue)
         .map((value) => value.trim())
@@ -424,7 +443,7 @@ export default function StoreEditModal({
             }
           }
         }
-        setError('Failed to update store')
+        setError('Failed to update branch')
         return
       }
 
@@ -459,7 +478,7 @@ export default function StoreEditModal({
       onSuccess(storeRow)
     } catch (err) {
       console.error(err)
-      setError('Failed to update store')
+      setError('Failed to update branch')
     } finally {
       setSubmitting(false)
     }
@@ -469,7 +488,7 @@ export default function StoreEditModal({
 
   return (
     <CrmFormModalShell
-      title="Edit Store"
+      title="Edit Branch"
       size="lg"
       onClose={onClose}
       closeDisabled={submitting}
@@ -667,12 +686,17 @@ export default function StoreEditModal({
                       name="code"
                       type="text"
                       value={form.code}
-                      onChange={handleChange}
+                      readOnly
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Store Code"
+                      placeholder="Branch Code"
                       disabled={disableForm}
                     />
                   </div>
+
+                  {(['isPickupAvailable', 'isReviewAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (
+                    <div key={field}><label className="block text-sm font-medium text-gray-700 mb-1">{field === 'isPickupAvailable' ? 'Pickup Available' : field === 'isReviewAvailable' ? 'Reviews Available' : field === 'isBookingAvailable' ? 'Booking Available' : 'POS Available'}</label><select name={field} value={form[field]} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={disableForm}><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
+                  ))}
+                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label><input name="sortOrder" type="number" min="0" value={form.sortOrder} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={disableForm} /></div>
 
                   <div className="md:col-span-2">
                     <label

@@ -13,7 +13,6 @@ import {
 } from './StoreFilters'
 import StoreCreateModal from './StoreCreateModal'
 import StoreEditModal from './StoreEditModal'
-import StoreDeleteModal from './StoreDeleteModal'
 import {
   type StoreApiItem,
   mapStoreApiItemToRow,
@@ -45,6 +44,7 @@ type StoreApiResponse = {
   meta?: Partial<Meta>
   success?: boolean
   message?: string
+  branch_usage?: { count: number; limit: number; can_create: boolean }
 }
 
 export default function StoreTable({
@@ -62,11 +62,12 @@ export default function StoreTable({
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingStoreId, setEditingStoreId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<StoreRowData | null>(null)
-
-  const canCreate = permissions.includes('ecommerce.stores.create')
+  const [branchUsage, setBranchUsage] = useState({ count: 0, limit: 0, can_create: false })
+  const hasCreatePermission = permissions.includes('ecommerce.stores.create')
   const canView = permissions.includes('ecommerce.stores.view')
   const canUpdate = permissions.includes('ecommerce.stores.update')
-  const canDelete = permissions.includes('ecommerce.stores.delete')
+  const canDelete = false
+  const canCreate = hasCreatePermission && branchUsage.can_create
   const showActions = canView || canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -137,6 +138,7 @@ export default function StoreTable({
         const response: StoreApiResponse = await res
           .json()
           .catch(() => ({} as StoreApiResponse))
+        if (response.branch_usage) setBranchUsage(response.branch_usage)
         if (response?.success === false && response?.message === 'Unauthorized') {
           window.location.replace('/dashboard')
           return
@@ -304,6 +306,7 @@ export default function StoreTable({
   }
 
   const handleStoreCreated = (store: StoreRowData) => {
+    setBranchUsage((usage) => ({ ...usage, count: usage.count + 1, can_create: usage.count + 1 < usage.limit }))
     setRows((prev) => {
       if (currentPage !== 1) return prev
       const filtered = prev.filter((item) => item.id !== store.id)
@@ -391,7 +394,7 @@ export default function StoreTable({
               type="button"
             >
               <i className="fa-solid fa-plus" />
-              Create Store
+              Create Branch
             </button>
           )}
 
@@ -406,6 +409,7 @@ export default function StoreTable({
         </div>
 
         <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-gray-700">{branchUsage.count} / {branchUsage.limit} Branches</span>
           <label htmlFor="pageSize" className="text-sm text-gray-700">
             {t('common.show')}
           </label>
@@ -530,16 +534,6 @@ export default function StoreTable({
         />
       )}
 
-      {deleteTarget && (
-        <StoreDeleteModal
-          store={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onDeleted={(storeId) => {
-            setDeleteTarget(null)
-            handleStoreDeleted(storeId)
-          }}
-        />
-      )}
 
       <PaginationControls
         currentPage={currentPage}
