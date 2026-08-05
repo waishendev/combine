@@ -8,18 +8,24 @@ import { mapAdminApiItemToRow, type AdminApiItem } from './adminUtils'
 import CrmFormModalShell from './CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 
+interface BranchOption { id: number; name: string; code?: string; is_active?: boolean }
+
 interface AdminCreateModalProps {
   onClose: () => void
   onSuccess: (admin: AdminRowData) => void
   roles: AdminRoleOption[]
   rolesLoading: boolean
+  branchOptions: BranchOption[]
+  canAssignBranches: boolean
 }
+
 
 interface FormState {
   username: string
   password: string
   email: string
   roleId: string
+  storeLocationIds: string[]
 }
 
 const initialFormState: FormState = {
@@ -27,6 +33,7 @@ const initialFormState: FormState = {
   password: '',
   email: '',
   roleId: '',
+  storeLocationIds: [],
 }
 
 export default function AdminCreateModal({
@@ -34,6 +41,8 @@ export default function AdminCreateModal({
   onSuccess,
   roles,
   rolesLoading,
+  branchOptions,
+  canAssignBranches,
 }: AdminCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -44,6 +53,14 @@ export default function AdminCreateModal({
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     const { name, value } = event.target
+    if (name === 'storeLocationIds' && event.target instanceof HTMLSelectElement) {
+      const select = event.currentTarget as HTMLSelectElement
+      setForm((prev) => ({
+        ...prev,
+        storeLocationIds: Array.from(select.selectedOptions).map((option) => option.value),
+      }))
+      return
+    }
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -76,6 +93,7 @@ export default function AdminCreateModal({
           email: trimmedEmail,
           role_ids: [roleIdNumber],
           is_active: true,
+          ...(canAssignBranches ? { store_location_ids: form.storeLocationIds.map(Number) } : {}),
         }),
       })
 
@@ -122,6 +140,7 @@ export default function AdminCreateModal({
             roleId: roleIdNumber,
             createdAt: '',
             updatedAt: '',
+            storeLocations: branchOptions.filter((location) => form.storeLocationIds.includes(String(location.id))).map((location) => ({ id: location.id, name: location.name, code: location.code })),
           }
 
       setForm({ ...initialFormState })
@@ -224,6 +243,30 @@ export default function AdminCreateModal({
               ))}
             </select>
           </div>
+
+          {canAssignBranches && (
+            <div>
+              <label htmlFor="storeLocationIds" className="block text-sm font-medium text-gray-700 mb-1">
+                Branch access
+              </label>
+              <select
+                id="storeLocationIds"
+                name="storeLocationIds"
+                multiple
+                value={form.storeLocationIds}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 min-h-28"
+                disabled={submitting}
+              >
+                {branchOptions.map((location) => (
+                  <option key={location.id} value={String(location.id)}>
+                    {location.name}{location.code ? ` (${location.code})` : ''}{location.is_active === false ? ' — inactive' : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">Hold Ctrl/Cmd to select multiple branches. Platform Super Admin users do not require branch rows.</p>
+            </div>
+          )}
 
           {error && (
             <div className="text-sm text-red-600" role="alert">

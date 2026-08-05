@@ -4,17 +4,22 @@ namespace App\Http\Controllers;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
 {
+    public function __construct(private StoreLocationAccessService $storeLocationAccess)
+    {
+    }
+
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 15);
         $search = $request->string('search')->toString();
 
-        $admins = User::with(['roles', 'staff'])
+        $admins = User::with(['roles', 'staff', 'storeLocations'])
             ->when(! $request->user()?->canManageSystemAdmins(), function ($query) {
                 $query->whereDoesntHave('roles', function ($roleQuery) {
                     $roleQuery->where('is_system', true);
@@ -42,6 +47,8 @@ class AdminController extends Controller
             'role_ids' => ['required', 'array', 'min:1'],
             'role_ids.*' => ['integer', 'exists:roles,id'],
             'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
+            'store_location_ids' => ['sometimes', 'array'],
+            'store_location_ids.*' => ['integer', 'exists:store_locations,id'],
         ]);
 
         $username = isset($validated['username']) ? trim((string) $validated['username']) : null;
@@ -60,15 +67,16 @@ class AdminController extends Controller
 
         $roleIds = $this->filterAssignableRoleIds($validated['role_ids'] ?? [], $request->user());
         $user->roles()->sync($roleIds);
+        $this->syncStoreLocations($request, $user, $validated['store_location_ids'] ?? null);
 
-        return $this->respond($user->load(['roles', 'staff']), __('Admin created successfully.'));
+        return $this->respond($user->load(['roles', 'staff', 'storeLocations']), __('Admin created successfully.'));
     }
 
     public function show(Request $request, User $admin)
     {
         $this->ensureSystemAdminAllowed($request->user(), $admin);
 
-        return $this->respond($admin->load(['roles', 'staff']));
+        return $this->respond($admin->load(['roles', 'staff', 'storeLocations']));
     }
 
     public function update(Request $request, User $admin)
@@ -83,6 +91,8 @@ class AdminController extends Controller
             'role_ids' => ['sometimes', 'array', 'min:1'],
             'role_ids.*' => ['integer', 'exists:roles,id'],
             'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
+            'store_location_ids' => ['sometimes', 'array'],
+            'store_location_ids.*' => ['integer', 'exists:store_locations,id'],
         ]);
 
         if (array_key_exists('username', $validated)) {
@@ -105,7 +115,9 @@ class AdminController extends Controller
             $admin->roles()->sync($roleIds);
         }
 
-        return $this->respond($admin->load(['roles', 'staff']), __('Admin updated successfully.'));
+        $this->syncStoreLocations($request, $admin, $validated['store_location_ids'] ?? null);
+
+        return $this->respond($admin->load(['roles', 'staff', 'storeLocations']), __('Admin updated successfully.'));
     }
 
     public function destroy(Request $request, User $admin)
@@ -117,6 +129,28 @@ class AdminController extends Controller
         return $this->respond(null, __('Admin deleted successfully.'));
     }
 
+    private function syncStoreLocations(Request $request, User $admin, ?array $storeLocationIds): void
+    {
+        if (! $request->has('store_location_ids')) {
+            return;
+        }
+
+        if ($request->user()?->id === $admin->id) {
+            abort(403, __('You cannot change your own branch assignments.'));
+        }
+
+        if (! $request->user()?->getAllPermissions()->contains('branch_access.assign')) {
+            abort(403, __('You are not allowed to assign branches.'));
+        }
+
+        if ($this->storeLocationAccess->hasPlatformBypass($admin)) {
+            $admin->storeLocations()->sync([]);
+            return;
+        }
+
+        $ids = $this->storeLocationAccess->assertCanAssign($request->user(), $storeLocationIds ?? [], true);
+        $admin->storeLocations()->sync($ids);
+    }
 
     private function ensureSystemAdminAllowed(?User $actor, User $targetAdmin): void
     {

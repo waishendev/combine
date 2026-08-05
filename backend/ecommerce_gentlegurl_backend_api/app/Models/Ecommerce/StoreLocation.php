@@ -3,6 +3,7 @@
 namespace App\Models\Ecommerce;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use DateTimeInterface;
 
@@ -54,6 +55,12 @@ class StoreLocation extends Model
     public function images()
     {
         return $this->hasMany(StoreLocationImage::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function users()
+    {
+        return $this->belongsToMany(User::class, 'store_location_user')
+            ->withTimestamps();
     }
 
     /**

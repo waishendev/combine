@@ -9,6 +9,17 @@ export type AdminApiRole = {
   is_default?: boolean | number | string | null
 }
 
+export type AdminApiStoreLocation = {
+  id?: number | string | null
+  name?: string | null
+  code?: string | null
+  is_active?: boolean | number | string | null
+  is_pickup_available?: boolean | number | string | null
+  is_booking_available?: boolean | number | string | null
+  is_pos_available?: boolean | number | string | null
+  sort_order?: number | string | null
+}
+
 export type AdminApiStaff = {
   id?: number | string | null
   name?: string | null
@@ -28,6 +39,7 @@ export type AdminApiItem = {
   last_login_ip?: string | null
   staff_id?: number | string | null
   staff?: AdminApiStaff | null
+  store_locations?: AdminApiStoreLocation[] | null
 }
 
 export const mapAdminApiItemToRow = (item: AdminApiItem): AdminRowData => {
@@ -71,5 +83,13 @@ export const mapAdminApiItemToRow = (item: AdminApiItem): AdminRowData => {
     roleId: normalizedRoleId,
     createdAt: formatDateTime12Hour(item.created_at),
     updatedAt: item.updated_at ?? '',
+    storeLocations: Array.isArray(item.store_locations)
+      ? item.store_locations.map((location) => ({
+          id: Number(location.id) || 0,
+          name: location.name ?? '-',
+          code: location.code ?? '',
+          isActive: location.is_active === true || location.is_active === 1 || location.is_active === '1' || location.is_active === 'true',
+        }))
+      : [],
   }
 }

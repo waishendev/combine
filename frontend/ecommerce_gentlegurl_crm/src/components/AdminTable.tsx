@@ -34,6 +34,8 @@ type Meta = {
   total: number
 }
 
+type BranchOption = { id: number; name: string; code?: string; is_active?: boolean }
+
 type AdminApiResponse = {
   data?: AdminApiItem[] | {
     current_page?: number
@@ -68,12 +70,14 @@ export default function AdminTable({
   const [rolesLoading, setRolesLoading] = useState(false)
   const [hasFetchedRoles, setHasFetchedRoles] = useState(false)
   const [editingAdminId, setEditingAdminId] = useState<number | null>(null)
+  const [branchOptions, setBranchOptions] = useState<BranchOption[]>([])
   const [deleteTarget, setDeleteTarget] = useState<AdminRowData | null>(null)
 
   const canCreate = permissions.includes('users.create')
   const canUpdate = permissions.includes('users.update')
   const canDelete = permissions.includes('users.delete')
   const canManageSystemAdmins = permissions.includes('admins.manage-system')
+  const canAssignBranches = permissions.includes('branch_access.assign')
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -83,6 +87,27 @@ export default function AdminTable({
     total: 0,
   })
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!canAssignBranches) return
+
+    const controller = new AbortController()
+    const fetchBranches = async () => {
+      const res = await fetch('/api/proxy/me/store-locations', { cache: 'no-store', signal: controller.signal })
+      if (!res.ok) return
+      const data = await res.json().catch(() => null)
+      const locations = Array.isArray(data?.data) ? data.data : []
+      setBranchOptions(locations.map((location: { id?: number | string; name?: string; code?: string; is_active?: boolean }) => ({
+        id: Number(location.id) || 0,
+        name: location.name || '-',
+        code: location.code,
+        is_active: location.is_active,
+      })).filter((location: BranchOption) => location.id > 0))
+    }
+
+    fetchBranches().catch(() => {})
+    return () => controller.abort()
+  }, [canAssignBranches])
 
 
 
@@ -488,6 +513,8 @@ export default function AdminTable({
           }}
           roles={roles}
           rolesLoading={rolesLoading && !hasFetchedRoles}
+          branchOptions={branchOptions}
+          canAssignBranches={canAssignBranches}
         />
       )}
 
@@ -634,6 +661,8 @@ export default function AdminTable({
           roles={roles}
           rolesLoading={rolesLoading && !hasFetchedRoles}
           canManageSystemRoles={canManageSystemAdmins}
+          branchOptions={branchOptions}
+          canAssignBranches={canAssignBranches}
         />
       )}
 

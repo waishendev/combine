@@ -13,6 +13,7 @@ class PermissionSeeder extends Seeder
         $groups = [
             'users' => 'Users',
             'admins' => 'Admins',
+            'branch_access' => 'Branch Access',
             'roles' => 'Roles',
             'permissions' => 'Permissions',
             'permission-groups' => 'Permission Groups',
@@ -78,6 +79,7 @@ class PermissionSeeder extends Seeder
         $definitions = [
             'users' => ['view', 'create', 'update', 'delete'],
             'admins' => ['manage-system'],
+            'branch_access' => ['view', 'assign'],
             'roles' => ['view', 'view-all', 'manage-system', 'create', 'update', 'delete'],
             'permissions' => ['view', 'create', 'update', 'delete'],
             'permission-groups' => ['view', 'create', 'update', 'delete'],
