@@ -157,6 +157,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [depositTncText, setDepositTncText] = useState("");
   const [depositTncImage, setDepositTncImage] = useState<string | null>(null);
   const [depositTncImagePreviewOpen, setDepositTncImagePreviewOpen] = useState(false);
+  const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [unavailableSlotItemIds, setUnavailableSlotItemIds] = useState<number[]>([]);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -462,6 +463,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           payment_method: isZeroPayableCheckout ? undefined : selectedPaymentMethod,
           bank_account_id: !isZeroPayableCheckout && selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
           billplz_gateway_option_id: !isZeroPayableCheckout && selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
+          loyalty_points: loyaltyPoints || undefined,
         },
         { authenticated: isLoggedIn },
       );
@@ -1618,6 +1620,16 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
               <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Payment summary</p>
+                {isLoggedIn && cart?.loyalty?.enabled ? (
+                  <div className="rounded-lg border border-[var(--card-border)] bg-[var(--surface)] p-3 text-sm">
+                    <div className="flex justify-between gap-3"><strong>Loyalty Points</strong><span>{cart.loyalty.available_points.toLocaleString()} available</span></div>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">1 Point = RM {cart.loyalty.point_value.toFixed(2)} · Maximum {cart.loyalty.maximum_points.toLocaleString()} Points / RM {cart.loyalty.maximum_discount.toFixed(2)}</p>
+                    <div className="mt-2 flex gap-2">
+                      <input aria-label="Loyalty Points to use" type="number" min="0" max={cart.loyalty.maximum_points} step="1" value={loyaltyPoints} onChange={(e) => setLoyaltyPoints(Math.max(0, Math.min(cart.loyalty?.maximum_points ?? 0, Math.trunc(Number(e.target.value) || 0))))} className="min-w-0 flex-1 rounded-lg border border-[var(--card-border)] px-3 py-2" />
+                      <button type="button" onClick={() => setLoyaltyPoints(cart.loyalty?.maximum_points ?? 0)} className="rounded-lg bg-[var(--accent)] px-3 py-2 font-semibold text-white">Use Maximum</button>
+                    </div>
+                  </div>
+                ) : null}
                 {paymentSummaryDisplay.originalMain > 0 ? (
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--text-muted)]">Main service deposit</span>
@@ -1654,13 +1666,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   </div>
                 ) : null} */}
                 <div className="border-t border-[var(--card-border)] pt-3">
+                  {loyaltyPoints > 0 && cart?.loyalty ? <div className="mb-2 flex justify-between text-sm text-[var(--status-success)]"><span>Points Discount</span><span>-RM {(loyaltyPoints * cart.loyalty.point_value).toFixed(2)}</span></div> : null}
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="min-w-0">
                       <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
                       <p className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)]">Total due now</p>
                     </div>
                     <span className="shrink-0 font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
-                      RM {paymentSummaryDisplay.totalDue.toFixed(2)}
+                      RM {Math.max(0, paymentSummaryDisplay.totalDue - loyaltyPoints * Number(cart?.loyalty?.point_value ?? 0)).toFixed(2)}
                     </span>
                   </div>
                   {nextExpiryIn ? (

@@ -268,7 +268,7 @@ class PublicReceiptController extends Controller
         if (in_array($receiptStage, ['booking_deposit', 'final_settlement'], true)) {
             $collectedFromLines = round((float) $displayItemsForResponse->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2);
             if ($collectedFromLines > 0.0001) {
-                $displayGrandTotal = $collectedFromLines;
+                $displayGrandTotal = max(0, $collectedFromLines - (float) $order->loyalty_discount);
                 $summarySubtotal = $collectedFromLines;
             }
         }
@@ -286,6 +286,9 @@ class PublicReceiptController extends Controller
             'created_at' => $order->created_at,
             'subtotal' => $summarySubtotal,
             'discount_total' => $order->discount_total,
+            'loyalty_points_used' => (int) $order->loyalty_points_used,
+            'loyalty_discount' => (float) $order->loyalty_discount,
+            'loyalty_point_value_sen' => $order->loyalty_point_value_sen,
             'shipping_fee' => $order->shipping_fee,
             'grand_total' => $displayGrandTotal,
             'promotion_snapshot' => $order->promotion_snapshot,

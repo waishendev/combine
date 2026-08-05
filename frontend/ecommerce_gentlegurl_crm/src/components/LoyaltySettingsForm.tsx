@@ -7,6 +7,14 @@ import { formatDateTime12Hour } from '@/lib/formatDateTime'
 type LoyaltySetting = {
   id: number
   base_multiplier: string
+  ecommerce_earning_rate: string | null
+  ecommerce_redemption_enabled: boolean
+  ecommerce_point_value_sen: number
+  ecommerce_max_redemption_percent: string
+  booking_earning_rate: string | null
+  booking_redemption_enabled: boolean
+  booking_point_value_sen: number
+  booking_max_redemption_percent: string
   expiry_months: number
   evaluation_cycle_months: number
   rules_effective_at: string | null
@@ -110,6 +118,14 @@ export default function LoyaltySettingsForm({ canEdit }: LoyaltySettingsFormProp
         },
         body: JSON.stringify({
           base_multiplier: parseFloat(formState.base_multiplier),
+          ecommerce_earning_rate: formState.ecommerce_earning_rate ? parseFloat(formState.ecommerce_earning_rate) : null,
+          ecommerce_redemption_enabled: formState.ecommerce_redemption_enabled,
+          ecommerce_point_value_sen: formState.ecommerce_point_value_sen,
+          ecommerce_max_redemption_percent: parseFloat(formState.ecommerce_max_redemption_percent),
+          booking_earning_rate: formState.booking_earning_rate ? parseFloat(formState.booking_earning_rate) : null,
+          booking_redemption_enabled: formState.booking_redemption_enabled,
+          booking_point_value_sen: formState.booking_point_value_sen,
+          booking_max_redemption_percent: parseFloat(formState.booking_max_redemption_percent),
           expiry_months: formState.expiry_months,
           evaluation_cycle_months: formState.evaluation_cycle_months,
           rules_effective_at: formattedEffectiveDate || null,
@@ -216,6 +232,7 @@ export default function LoyaltySettingsForm({ canEdit }: LoyaltySettingsFormProp
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <h4 className="md:col-span-2 border-b pb-2 text-base font-semibold text-slate-900">General Points Rules</h4>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700" htmlFor="base_multiplier">
                   Base multiplier
@@ -246,6 +263,39 @@ export default function LoyaltySettingsForm({ canEdit }: LoyaltySettingsFormProp
                   Multiply every dollar spent by this factor to determine points earned.
                 </p>
               </div>
+
+              {(['ecommerce', 'booking'] as const).map((channel) => (
+                <section key={channel} className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-5">
+                  <h4 className="mb-4 text-base font-semibold capitalize text-slate-900">{channel} Points Rules</h4>
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <label className="space-y-2 text-sm font-medium text-slate-700">
+                      Points earned per RM1
+                      <input type="number" min="0" step="0.01" value={formState[`${channel}_earning_rate`] ?? ''}
+                        onChange={(e) => setFormState(p => p ? ({...p, [`${channel}_earning_rate`]: e.target.value} as LoyaltySetting) : p)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2.5" disabled={inputDisabled} placeholder="Use base multiplier" />
+                    </label>
+                    <label className="space-y-2 text-sm font-medium text-slate-700">
+                      1 Point value (sen)
+                      <input type="number" min="1" step="1" required value={formState[`${channel}_point_value_sen`]}
+                        onChange={(e) => setFormState(p => p ? ({...p, [`${channel}_point_value_sen`]: Number(e.target.value)} as LoyaltySetting) : p)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2.5" disabled={inputDisabled} />
+                    </label>
+                    <label className="space-y-2 text-sm font-medium text-slate-700">
+                      Maximum redemption (%)
+                      <input type="number" min="0" max="100" step="0.01" required value={formState[`${channel}_max_redemption_percent`]}
+                        onChange={(e) => setFormState(p => p ? ({...p, [`${channel}_max_redemption_percent`]: e.target.value} as LoyaltySetting) : p)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2.5" disabled={inputDisabled} />
+                    </label>
+                    <label className="flex items-center gap-3 pt-7 text-sm font-medium text-slate-700">
+                      <input type="checkbox" checked={formState[`${channel}_redemption_enabled`]}
+                        onChange={(e) => setFormState(p => p ? ({...p, [`${channel}_redemption_enabled`]: e.target.checked} as LoyaltySetting) : p)}
+                        disabled={inputDisabled} className="h-4 w-4 rounded" />
+                      Points redemption enabled
+                    </label>
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">A blank earning rate safely falls back to the General Base Multiplier.</p>
+                </section>
+              ))}
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700" htmlFor="expiry_months">
@@ -389,6 +439,8 @@ export default function LoyaltySettingsForm({ canEdit }: LoyaltySettingsFormProp
                     <th className="py-2 pr-4">Updated</th>
                     <th className="py-2 pr-4">Base multiplier</th>
                     <th className="py-2 pr-4">Expiry (months)</th>
+                    <th className="py-2 pr-4">Ecommerce</th>
+                    <th className="py-2 pr-4">Booking</th>
                     <th className="py-2 pr-4">Evaluation (months)</th>
                     <th className="py-2 pr-4">Effective date</th>
                   </tr>
@@ -401,6 +453,8 @@ export default function LoyaltySettingsForm({ canEdit }: LoyaltySettingsFormProp
                       </td>
                       <td className="py-3 pr-4 font-semibold text-slate-900">{entry.base_multiplier}</td>
                       <td className="py-3 pr-4">{entry.expiry_months}</td>
+                      <td className="py-3 pr-4">{entry.ecommerce_redemption_enabled ? 'On' : 'Off'} · {entry.ecommerce_point_value_sen} sen · {entry.ecommerce_max_redemption_percent}%</td>
+                      <td className="py-3 pr-4">{entry.booking_redemption_enabled ? 'On' : 'Off'} · {entry.booking_point_value_sen} sen · {entry.booking_max_redemption_percent}%</td>
                       <td className="py-3 pr-4">{entry.evaluation_cycle_months}</td>
                       <td className="py-3 pr-4">
                         {entry.rules_effective_at
@@ -418,4 +472,3 @@ export default function LoyaltySettingsForm({ canEdit }: LoyaltySettingsFormProp
     </div>
   )
 }
-

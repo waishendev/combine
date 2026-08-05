@@ -163,6 +163,10 @@ export type BookingCart = {
   cart_total: number;
   next_expiry_at: string | null;
   allow_booking_without_deposit?: boolean;
+  loyalty?: {
+    enabled: boolean; available_points: number; point_value: number; maximum_points: number;
+    maximum_discount: number; maximum_percentage: number; points_used: number; discount: number;
+  } | null;
 };
 
 export type BookingCartPackageItem = {

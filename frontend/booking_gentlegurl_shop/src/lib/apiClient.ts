@@ -306,6 +306,7 @@ export async function updateBookingPackageCartItemQty(itemId: number, qty: numbe
 }
 
 export async function checkoutCart(payload?: {
+  loyalty_points?: number;
   guest_name?: string;
   guest_phone?: string;
   guest_email?: string;
