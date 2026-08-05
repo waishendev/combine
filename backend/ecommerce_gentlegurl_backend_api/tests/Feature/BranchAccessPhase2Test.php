@@ -8,7 +8,6 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\StoreLocationAccessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -142,7 +141,7 @@ class BranchAccessPhase2Test extends TestCase
         $response->assertOk()->assertJsonPath('data.email', 'compat@example.com');
     }
 
-    public function test_backfill_assigns_default_branch_to_existing_non_platform_users_idempotently(): void
+    public function test_default_branch_backfill_seeder_assigns_existing_non_platform_users_idempotently(): void
     {
         $default = $this->location('PNG', ['sort_order' => 99]);
         $fallback = $this->location('AAA', ['sort_order' => 1]);
@@ -150,8 +149,8 @@ class BranchAccessPhase2Test extends TestCase
         $platform = $this->user(['email' => 'backfill-platform@example.com']);
         $platform->roles()->sync([$this->platformRole->id]);
 
-        Artisan::call('migrate', ['--path' => 'database/migrations/2026_08_05_000001_create_store_location_user_table.php', '--force' => true]);
-        Artisan::call('migrate', ['--path' => 'database/migrations/2026_08_05_000001_create_store_location_user_table.php', '--force' => true]);
+        $this->seed(\Database\Seeders\BranchAccessDefaultStoreLocationSeeder::class);
+        $this->seed(\Database\Seeders\BranchAccessDefaultStoreLocationSeeder::class);
 
         $this->assertDatabaseHas('store_location_user', ['user_id' => $admin->id, 'store_location_id' => $default->id]);
         $this->assertDatabaseMissing('store_location_user', ['user_id' => $platform->id, 'store_location_id' => $default->id]);

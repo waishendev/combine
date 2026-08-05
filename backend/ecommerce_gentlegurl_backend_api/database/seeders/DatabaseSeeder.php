@@ -15,13 +15,13 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             PermissionSeeder::class,
-            BranchAccessPermissionSeeder::class,
             AdminSeeder::class,
             CustomerSuperAdminSeeder::class,
             SuperAdminRoleSeeder::class,
             SalesReportWithVoidPermissionSeeder::class,
             AppointmentActivityLogPermissionSeeder::class,
             SuperAdminSeeder::class,
+            BranchAccessPermissionSeeder::class,
             StaffPermissionSeeder::class,
 
 
@@ -36,6 +36,7 @@ class DatabaseSeeder extends Seeder
             MembershipTiersSeeder::class,
             LoyaltyRewardSeederReal::class,
             StoreLocationsSeederReal::class,
+            BranchAccessDefaultStoreLocationSeeder::class,
             FooterWidgetSeederReal::class,
             ServicesMenuAndPagesSeeder::class,
             CustomerTypeSeeder::class,
