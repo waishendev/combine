@@ -78,14 +78,12 @@ class NotificationService
         )));
 
         if (! empty($adminEmails)) {
-            $tpl = $this->renderer->getTemplate('stock.low.admin.email', 'email');
-            $subject = 'Daily Low Stock Summary - '.$date;
-            if ($tpl) {
-                $rendered = $this->renderer->renderSubject($tpl->subject_template, $data);
-                if (is_string($rendered) && trim($rendered) !== '') {
-                    $subject = $rendered;
-                }
-            }
+            // Fixed transactional subject — avoid newsletter-style wording (Gmail Promotions).
+            $subject = sprintf(
+                'Inventory alert: %d product(s) below threshold (%s)',
+                count($products),
+                $date
+            );
 
             foreach ($adminEmails as $email) {
                 Mail::to($email)->send(new DailyLowStockSummaryMail($products, $date, $subject));
