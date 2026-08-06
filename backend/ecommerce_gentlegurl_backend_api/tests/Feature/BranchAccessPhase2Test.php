@@ -141,6 +141,84 @@ class BranchAccessPhase2Test extends TestCase
         $response->assertOk()->assertJsonPath('data.email', 'compat@example.com');
     }
 
+    public function test_backfill_command_requires_store_code(): void
+    {
+        $this->artisan('branch-access:backfill')
+            ->expectsOutput('The --store-code option is required. Example: php artisan branch-access:backfill --store-code=PNG --dry-run')
+            ->assertExitCode(1);
+    }
+
+    public function test_backfill_command_fails_for_unknown_or_inactive_code_without_writing(): void
+    {
+        $user = $this->user(['email' => 'unknown-code@example.com']);
+        $inactive = $this->location('OLD', ['is_active' => false]);
+        $this->location('PNG');
+
+        $this->artisan('branch-access:backfill --store-code=NOPE')
+            ->expectsOutput('No active StoreLocation exists with code [NOPE]. This command will not create a Branch or fallback to another Branch.')
+            ->assertExitCode(1);
+
+        $this->artisan('branch-access:backfill --store-code=OLD')
+            ->expectsOutput('No active StoreLocation exists with code [OLD]. This command will not create a Branch or fallback to another Branch.')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseMissing('store_location_user', ['user_id' => $user->id]);
+        $this->assertSame(2, StoreLocation::count());
+    }
+
+    public function test_backfill_command_requires_force_in_production(): void
+    {
+        $this->app->detectEnvironment(fn () => 'production');
+        $user = $this->user(['email' => 'production-no-force@example.com']);
+        $this->location('PNG');
+
+        $this->artisan('branch-access:backfill --store-code=PNG')
+            ->expectsOutput('Refusing to run in production without --force. Re-run with --force after reviewing --dry-run output.')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseMissing('store_location_user', ['user_id' => $user->id]);
+    }
+
+    public function test_backfill_command_with_force_assigns_only_unassigned_non_platform_users_idempotently(): void
+    {
+        $this->app->detectEnvironment(fn () => 'production');
+        $selected = $this->location('PNG');
+        $other = $this->location('KL');
+        $unassigned = $this->user(['email' => 'needs-branch@example.com']);
+        $alreadyAssigned = $this->user(['email' => 'already-branch@example.com']);
+        $alreadyAssigned->storeLocations()->attach($other->id);
+        $platform = $this->user(['email' => 'platform-branch@example.com']);
+        $platform->roles()->sync([$this->platformRole->id]);
+
+        $this->artisan('branch-access:backfill --store-code=PNG --force')
+            ->expectsOutput('Branch access backfill summary')
+            ->assertExitCode(0);
+        $this->artisan('branch-access:backfill --store-code=PNG --force')
+            ->expectsOutput('Branch access backfill summary')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('store_location_user', ['user_id' => $unassigned->id, 'store_location_id' => $selected->id]);
+        $this->assertDatabaseHas('store_location_user', ['user_id' => $alreadyAssigned->id, 'store_location_id' => $other->id]);
+        $this->assertDatabaseMissing('store_location_user', ['user_id' => $alreadyAssigned->id, 'store_location_id' => $selected->id]);
+        $this->assertDatabaseMissing('store_location_user', ['user_id' => $platform->id]);
+        $this->assertSame(2, \Illuminate\Support\Facades\DB::table('store_location_user')->count());
+        $this->assertSame(2, StoreLocation::count());
+    }
+
+    public function test_backfill_command_dry_run_writes_nothing(): void
+    {
+        $user = $this->user(['email' => 'dry-run@example.com']);
+        $this->location('PNG');
+        $permissionCount = Permission::count();
+
+        $this->artisan('branch-access:backfill --store-code=PNG --dry-run')
+            ->expectsOutput('DRY RUN: no permissions, pivot assignments, StoreLocation data, or business records will be written.')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseMissing('store_location_user', ['user_id' => $user->id]);
+        $this->assertSame($permissionCount, Permission::count());
+    }
+
     public function test_default_branch_backfill_seeder_assigns_existing_non_platform_users_idempotently(): void
     {
         $default = $this->location('PNG', ['sort_order' => 99]);
