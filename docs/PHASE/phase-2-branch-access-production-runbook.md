@@ -1,6 +1,6 @@
 # Phase 2 Branch Access Production Runbook
 
-Phase 2 adds admin-to-Branch access assignment without filtering existing business modules.
+This document is the production operator checklist. For the Phase 2 design, completed work, test scope, and the reason this deployment step is required, see [`phase-2-branch-access.md`](phase-2-branch-access.md).
 
 ## Production sequence
 
@@ -52,7 +52,3 @@ ORDER BY u.id, sl.code;
 - The command does not modify Orders, Bookings, POS, Products, Inventory, Reports, or other business records.
 - The command may be run repeatedly safely; it only assigns eligible users who currently have no Branch assignments.
 - Platform Super Admin users with `infra_core_x1` / configured super-admin role receive no pivot rows because they rely on centralized bypass access.
-
-## Fresh installs / other customers
-
-`php artisan migrate:fresh --seed` remains supported. The normal `DatabaseSeeder` creates roles and Platform Super Admin first, runs Branch access permission setup, creates the initial StoreLocation through `StoreLocationsSeederReal`, then runs the fresh-install Branch access backfill for the seeded default Branch.
