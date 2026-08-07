@@ -12,24 +12,22 @@ class BranchAccessBackfillService
      */
     public function backfill(StoreLocation $storeLocation, bool $dryRun = false): array
     {
-        $superAdminRole = config('auth.super_admin_role', 'infra_core_x1');
-
         $platformUserQuery = DB::table('users')
-            ->whereExists(function ($query) use ($superAdminRole) {
+            ->whereExists(function ($query) {
                 $query->select(DB::raw(1))
                     ->from('role_user')
                     ->join('roles', 'roles.id', '=', 'role_user.role_id')
                     ->whereColumn('role_user.user_id', 'users.id')
-                    ->whereIn('roles.name', array_unique([$superAdminRole, 'infra_core_x1']));
+                    ->where('roles.name', StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE);
             });
 
         $eligibleUserQuery = DB::table('users')
-            ->whereNotExists(function ($query) use ($superAdminRole) {
+            ->whereNotExists(function ($query) {
                 $query->select(DB::raw(1))
                     ->from('role_user')
                     ->join('roles', 'roles.id', '=', 'role_user.role_id')
                     ->whereColumn('role_user.user_id', 'users.id')
-                    ->whereIn('roles.name', array_unique([$superAdminRole, 'infra_core_x1']));
+                    ->where('roles.name', StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE);
             })
             ->whereNotExists(function ($query) {
                 $query->select(DB::raw(1))
@@ -38,12 +36,12 @@ class BranchAccessBackfillService
             });
 
         $alreadyAssigned = DB::table('users')
-            ->whereNotExists(function ($query) use ($superAdminRole) {
+            ->whereNotExists(function ($query) {
                 $query->select(DB::raw(1))
                     ->from('role_user')
                     ->join('roles', 'roles.id', '=', 'role_user.role_id')
                     ->whereColumn('role_user.user_id', 'users.id')
-                    ->whereIn('roles.name', array_unique([$superAdminRole, 'infra_core_x1']));
+                    ->where('roles.name', StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE);
             })
             ->whereExists(function ($query) {
                 $query->select(DB::raw(1))

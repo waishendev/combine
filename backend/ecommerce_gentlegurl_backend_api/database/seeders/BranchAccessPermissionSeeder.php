@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Permission;
 use App\Models\PermissionGroup;
 use App\Models\Role;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Database\Seeder;
 
 class BranchAccessPermissionSeeder extends Seeder
@@ -26,8 +27,7 @@ class BranchAccessPermissionSeeder extends Seeder
                 ]
             ));
 
-        Role::where('name', config('auth.super_admin_role', 'infra_core_x1'))
-            ->orWhere('name', 'infra_core_x1')
+        Role::where('name', StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE)
             ->get()
             ->each(fn (Role $role) => $role->permissions()->syncWithoutDetaching($permissions->pluck('id')->all()));
     }

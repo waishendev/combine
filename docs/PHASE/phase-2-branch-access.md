@@ -9,10 +9,10 @@ The operator supplies the immutable code of the existing active Branch. This mak
 ## What Phase 2 completed
 
 - Added the `store_location_user` many-to-many relationship between users and StoreLocations, including timestamps, foreign keys, and duplicate-assignment protection.
-- Added centralized backend Branch access checks. Platform Super Admin users use bypass access and do not need pivot rows.
+- Added centralized backend Branch access checks. Only users with the `infra_core_x1` Platform Super Admin role use bypass access and do not need pivot rows; application Super Admin and Owner roles remain assignment-scoped.
 - Added `GET /api/me/store-locations` for the authenticated user's accessible Branches.
 - Added Branch assignment controls and backend validation to CRM Admin create/edit flows.
-- Added the idempotent `branch_access.view` and `branch_access.assign` permissions for the configured Platform Super Admin role.
+- Added the idempotent `branch_access.view` and `branch_access.assign` permissions for the `infra_core_x1` Platform Super Admin role.
 - Added a reusable backfill service and the production-safe `branch-access:backfill` Artisan command.
 - Kept existing Orders, Bookings, POS, Products, Inventory, Reports, and other business modules unchanged and unfiltered.
 

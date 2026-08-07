@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class StoreLocationAccessService
 {
+    public const PLATFORM_SUPER_ADMIN_ROLE = 'infra_core_x1';
+
     public function accessibleStoreLocations(User $user, bool $includeInactive = true): Builder
     {
         $query = StoreLocation::query()
@@ -78,6 +80,8 @@ class StoreLocationAccessService
 
     public function hasPlatformBypass(User $user): bool
     {
-        return $user->isSuperAdmin();
+        return $user->roles()
+            ->where('name', self::PLATFORM_SUPER_ADMIN_ROLE)
+            ->exists();
     }
 }

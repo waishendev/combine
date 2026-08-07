@@ -51,4 +51,4 @@ ORDER BY u.id, sl.code;
 - The command never creates a Branch and never falls back to another Branch.
 - The command does not modify Orders, Bookings, POS, Products, Inventory, Reports, or other business records.
 - The command may be run repeatedly safely; it only assigns eligible users who currently have no Branch assignments.
-- Platform Super Admin users with `infra_core_x1` / configured super-admin role receive no pivot rows because they rely on centralized bypass access.
+- Only Platform Super Admin users with the `infra_core_x1` role receive no pivot rows because they rely on centralized bypass access. Application Super Admin and Owner roles remain explicitly assignment-scoped.

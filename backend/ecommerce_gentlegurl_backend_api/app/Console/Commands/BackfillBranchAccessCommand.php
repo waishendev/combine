@@ -6,6 +6,7 @@ use App\Models\Ecommerce\StoreLocation;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Services\BranchAccessBackfillService;
+use App\Services\StoreLocationAccessService;
 use Database\Seeders\BranchAccessPermissionSeeder;
 use Illuminate\Console\Command;
 
@@ -75,7 +76,7 @@ class BackfillBranchAccessCommand extends Command
         $missingPermissions = array_values(array_diff($requiredPermissions, $existingPermissions));
 
         $superAdminRoles = Role::query()
-            ->whereIn('name', array_unique([config('auth.super_admin_role', 'infra_core_x1'), 'infra_core_x1']))
+            ->where('name', StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE)
             ->with('permissions')
             ->get();
 

@@ -77,6 +77,29 @@ class BranchAccessPhase2Test extends TestCase
         $this->assertDatabaseMissing('store_location_user', ['user_id' => $platform->id, 'store_location_id' => $location->id]);
     }
 
+    public function test_normal_application_super_admin_has_no_platform_bypass(): void
+    {
+        config(['auth.super_admin_role' => 'superAdmin']);
+
+        $normalSuperAdminRole = Role::create([
+            'name' => 'superAdmin',
+            'is_active' => true,
+            'is_system' => false,
+            'is_default' => false,
+        ]);
+        $normalSuperAdmin = $this->user(['email' => 'normal-super-admin@example.com']);
+        $normalSuperAdmin->roles()->sync([$normalSuperAdminRole->id]);
+        $branchA = $this->location('A');
+        $branchB = $this->location('B');
+        $normalSuperAdmin->storeLocations()->sync([$branchA->id]);
+
+        $service = app(StoreLocationAccessService::class);
+
+        $this->assertFalse($service->hasPlatformBypass($normalSuperAdmin));
+        $this->assertTrue($service->canAccessStoreLocation($normalSuperAdmin, $branchA));
+        $this->assertFalse($service->canAccessStoreLocation($normalSuperAdmin, $branchB));
+    }
+
     public function test_current_user_accessible_store_locations_api(): void
     {
         $user = $this->user();
