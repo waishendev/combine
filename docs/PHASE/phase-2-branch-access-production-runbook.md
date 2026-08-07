@@ -20,6 +20,14 @@ cd backend/ecommerce_gentlegurl_backend_api
 php artisan migrate --force
 ```
 
+If the Phase 1 production rollout has not already run its setting seeder, run it once with Laravel's production flag:
+
+```bash
+php artisan db:seed --class=BranchLimitSettingSeeder --force
+```
+
+`BranchLimitSettingSeeder` belongs to the Phase 1 Branch capacity foundation and uses `firstOrCreate`, so an existing setting is preserved. It is separate from the Phase 2 admin-to-Branch backfill.
+
 ### 3. Preview the backfill
 
 ```bash
@@ -31,6 +39,10 @@ php artisan branch-access:backfill --store-code=PNG --dry-run
 ```bash
 php artisan branch-access:backfill --store-code=PNG --force
 ```
+
+Do not run `BranchAccessPermissionSeeder` separately. The non-dry-run `branch-access:backfill` command invokes it automatically before assigning users. The permission setup is idempotent and grants `branch_access.view` and `branch_access.assign` only to `infra_core_x1`.
+
+In production, do not use `php artisan branch-access:backfill --store-code=PNG` without `--force`; the command will refuse to write. `--force` is unnecessary for `--dry-run` because preview mode performs no writes.
 
 ### 5. Verify assignments
 
