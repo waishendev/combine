@@ -28,6 +28,8 @@ class BillplzPaymentGatewayOptionSeeder extends Seeder
             ['code' => 'AMBB0209', 'name' => 'AmOnline', 'is_default' => false, 'is_active' => true, 'sort_order' => 7],
             ['code' => 'BCBB0235', 'name' => 'CIMB Clicks', 'is_default' => false, 'is_active' => true, 'sort_order' => 8],
             ['code' => 'BIMB0340', 'name' => 'Bank Islam Internet Banking', 'is_default' => false, 'is_active' => true, 'sort_order' => 9],
+            ['code' => 'PBBEMYKL', 'name' => 'Public Bank Berhad', 'is_default' => false, 'is_active' => true, 'sort_order' => 10],
+            ['code' => 'RHBBMYKL', 'name' => 'RHB Bank Berhad', 'is_default' => false, 'is_active' => true, 'sort_order' => 11],
         ];
 
         foreach ($banks as $bank) {

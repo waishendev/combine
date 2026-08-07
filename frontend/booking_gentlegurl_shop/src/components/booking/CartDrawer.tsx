@@ -157,6 +157,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [depositTncText, setDepositTncText] = useState("");
   const [depositTncImage, setDepositTncImage] = useState<string | null>(null);
   const [depositTncImagePreviewOpen, setDepositTncImagePreviewOpen] = useState(false);
+  const [paymentSummaryOpen, setPaymentSummaryOpen] = useState(false);
   const [unavailableSlotItemIds, setUnavailableSlotItemIds] = useState<number[]>([]);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -1616,61 +1617,6 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 </div>
               ) : null}
 
-              <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Payment summary</p>
-                {paymentSummaryDisplay.originalMain > 0 ? (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[var(--text-muted)]">Main service deposit</span>
-                    <span className="font-medium tabular-nums text-[var(--foreground)]">RM {paymentSummaryDisplay.originalMain.toFixed(2)}</span>
-                  </div>
-                ) : null}
-                {paymentSummaryDisplay.originalAddon > 0 ? (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[var(--text-muted)]">Add-on deposit</span>
-                    <span className="font-medium tabular-nums text-[var(--foreground)]">RM {paymentSummaryDisplay.originalAddon.toFixed(2)}</span>
-                  </div>
-                ) : null}
-                {paymentSummaryDisplay.packageCovered > 0 ? (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[var(--status-success)]">Package Covered</span>
-                    <span className="font-semibold tabular-nums text-[var(--status-success)]">-RM {paymentSummaryDisplay.packageCovered.toFixed(2)}</span>
-                  </div>
-                ) : null}
-                {Number(cart?.package_total ?? 0) > 0 ? (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[var(--text-muted)]">Packages</span>
-                    <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.package_total ?? 0).toFixed(2)}</span>
-                  </div>
-                ) : null}
-                {/* {estimatedPayLaterTotal > 0 ? (
-                  <div
-                    className="flex justify-between gap-3 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2.5 text-sm ring-1 ring-[var(--status-success)]/10"
-                    role="note"
-                  >
-                    <span className="font-medium text-[var(--status-success)]">Total (Pay later)</span>
-                    <span className="shrink-0 font-semibold tabular-nums text-[var(--status-success)]">
-                      RM {estimatedPayLaterTotal.toFixed(2)}
-                    </span>
-                  </div>
-                ) : null} */}
-                <div className="border-t border-[var(--card-border)] pt-3">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <div className="min-w-0">
-                      <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
-                      <p className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)]">Total due now</p>
-                    </div>
-                    <span className="shrink-0 font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
-                      RM {paymentSummaryDisplay.totalDue.toFixed(2)}
-                    </span>
-                  </div>
-                  {nextExpiryIn ? (
-                    <p className="mt-3 border-t border-[var(--card-border)] pt-3 text-xs text-[var(--text-muted)]">
-                      Next hold expires in <span className="font-semibold tabular-nums text-[var(--status-warning)]">{nextExpiryIn}</span>
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-
               {(depositTncEnabled && depositTncImage) || depositTncText ? (
                 <div className="space-y-3">
                   {depositTncEnabled && depositTncImage ? (
@@ -1695,6 +1641,83 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   ) : null}
                 </div>
               ) : null}
+
+              <div className="overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)]">
+                <button
+                  type="button"
+                  onClick={() => setPaymentSummaryOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-[var(--muted)]/30"
+                  aria-expanded={paymentSummaryOpen}
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Payment summary</span>
+                  <span className="flex items-center gap-2">
+                    {!paymentSummaryOpen ? (
+                      <span className="font-[var(--font-heading)] text-sm font-semibold tabular-nums text-[var(--accent-strong)]">
+                        RM {paymentSummaryDisplay.totalDue.toFixed(2)}
+                      </span>
+                    ) : null}
+                    <i
+                      className={`fa-solid fa-chevron-down text-[10px] text-[var(--text-muted)] transition-transform ${paymentSummaryOpen ? "rotate-180" : ""}`}
+                      aria-hidden
+                    />
+                  </span>
+                </button>
+                {paymentSummaryOpen ? (
+                  <div className="space-y-3 border-t border-[var(--card-border)] px-4 pb-4 pt-3">
+                    {paymentSummaryDisplay.originalMain > 0 ? (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--text-muted)]">Main service deposit</span>
+                        <span className="font-medium tabular-nums text-[var(--foreground)]">RM {paymentSummaryDisplay.originalMain.toFixed(2)}</span>
+                      </div>
+                    ) : null}
+                    {paymentSummaryDisplay.originalAddon > 0 ? (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--text-muted)]">Add-on deposit</span>
+                        <span className="font-medium tabular-nums text-[var(--foreground)]">RM {paymentSummaryDisplay.originalAddon.toFixed(2)}</span>
+                      </div>
+                    ) : null}
+                    {paymentSummaryDisplay.packageCovered > 0 ? (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--status-success)]">Package Covered</span>
+                        <span className="font-semibold tabular-nums text-[var(--status-success)]">-RM {paymentSummaryDisplay.packageCovered.toFixed(2)}</span>
+                      </div>
+                    ) : null}
+                    {Number(cart?.package_total ?? 0) > 0 ? (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--text-muted)]">Packages</span>
+                        <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.package_total ?? 0).toFixed(2)}</span>
+                      </div>
+                    ) : null}
+                    {/* {estimatedPayLaterTotal > 0 ? (
+                      <div
+                        className="flex justify-between gap-3 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2.5 text-sm ring-1 ring-[var(--status-success)]/10"
+                        role="note"
+                      >
+                        <span className="font-medium text-[var(--status-success)]">Total (Pay later)</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-[var(--status-success)]">
+                          RM {estimatedPayLaterTotal.toFixed(2)}
+                        </span>
+                      </div>
+                    ) : null} */}
+                    <div className="border-t border-[var(--card-border)] pt-3">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">Total</span>
+                          <p className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)]">Total due now</p>
+                        </div>
+                        <span className="shrink-0 font-[var(--font-heading)] text-xl font-semibold tabular-nums text-[var(--accent-strong)]">
+                          RM {paymentSummaryDisplay.totalDue.toFixed(2)}
+                        </span>
+                      </div>
+                      {nextExpiryIn ? (
+                        <p className="mt-3 border-t border-[var(--card-border)] pt-3 text-xs text-[var(--text-muted)]">
+                          Next hold expires in <span className="font-semibold tabular-nums text-[var(--status-warning)]">{nextExpiryIn}</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
 
               <button
                 type="button"
