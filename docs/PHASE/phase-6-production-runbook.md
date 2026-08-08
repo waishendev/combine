@@ -142,11 +142,21 @@ Thermal printer connection, enabled state, paper width, copies, and auto-print r
 
 ### Operational and historical rules
 
-Opening, closing, or querying the current shift requires an explicit existing, active, POS-enabled, actor-accessible Branch. Only one open shift is allowed across the current POS deployment; selecting another Branch cannot reinterpret it. A POS cart request is rejected when its Branch differs from the persisted open shift. POS Orders already inherit the cart Branch, while shift cash totals now include only Orders from the same Branch.
+Opening, closing, or querying the current shift requires an explicit existing, active, POS-enabled, actor-accessible Branch. Only one open shift is allowed **per Branch**; different Branches may have open shifts concurrently, and selecting another Branch must neither reinterpret nor close the previous Branch's shift. Open and close requests carry the explicit Branch in their request bodies, while current-shift reads carry it in the query string. A close request for a Branch with no open shift is rejected. POS Orders already inherit the cart Branch, while shift cash totals now include only Orders from the same Branch.
+
+The CRM cash-shift gate is keyed to the Header Branch selection. A Branch change immediately clears the previous shift, cash pools, errors, and open/close modal state before loading the newly selected Branch. Stale asynchronous responses are ignored, and an explicitly attributed request cannot be overwritten by the POS fetch interceptor. The UI exposes only a shift whose `store_location_id` equals the current selection, displays the Branch in the open-shift dialog, and refuses to close a legacy NULL-attributed or different-Branch shift.
 
 Historical shift reports remain readable for accessible Branches even after POS is disabled. Legacy NULL shift/account history stays explicitly unresolved until backfill; it is never treated as Branch 1, current Header Branch, or All Branches. Cash report All Branches means an overview of accessible attributed Branches, not mutation permission.
 
 Printer configuration can be read and administratively edited for an accessible historical Branch. Auto-print preference changes and test-print operations require an active, POS-enabled Branch. CRM All Branches cannot save printer settings; a specific global Branch Context selection is required.
+
+Printer settings are an optional peripheral dependency and no longer block POS Product checkout or the Appointments workspace. Each workspace schedules an independent, Branch-explicit settings request after its required operational requests, aborts it after eight seconds, and represents `idle`, `loading`, `ready`, `disabled`, `not_configured`, and `error` separately. A Branch switch immediately hides the previous Branch's printer snapshot; late responses cannot leak it into the new Branch. Missing, disabled, failed, or timed-out printer settings disable printing and show a warning/status, but checkout and appointment work continue. Auto-print updates also send the selected Branch explicitly.
+
+### POS appointment Branch scoping
+
+The POS Appointments workspace is scoped to the selected Branch end to end. Appointment list/search, detail, creation, status/hold/completion actions, rescheduling, settlement edits, package apply/release, confirmation email, cancellation review, and payment-link list/create/cancel/approve/reject calls carry `store_location_id`. Backend list queries filter to the authorized selected Branch and single-record actions authorize both actor access and request/Booking Branch equality. Pending cancellation and payment-review counts use the same scope. A mismatched explicit Branch returns not-found rather than exposing the other Branch's Booking; without an explicit Branch, compatibility reads are limited to accessible Branches plus legacy NULL-attributed Bookings.
+
+Appointment responses include Branch ID and Branch name/code so the CRM can retain and display attribution. Branch changes clear list/detail state and invalidate in-flight list/detail responses before reloading, preventing stale results from the previous Branch. Appointment creation is blocked unless a specific Branch is selected; booking services, service details/questions, and active staff choices are requested for that Branch. The staff endpoint applies the requested authorized Branch assignment filter. This closes the Phase 6 POS surface gap without changing the Phase 5 Booking ownership and schedule rules.
 
 ### POS operational backfill
 
@@ -171,6 +181,23 @@ Production Product/POS stock and low-stock alerts continue reading global Produc
 Fresh Branch creation and seeding create a zero-valued default physical cash account and default disabled printer row. Rollback requires stopping cash operations, exporting any new Branch cash/printer data, reverting application code, then rolling back the additive migration. Removing Branch attribution does not delete shifts or ledger history, but the rollback recreates the legacy unique global account code and therefore requires consolidating/removing additional Branch account rows first.
 
 No inventory activation, stock writer conversion, transfer workflow, public ecommerce reservation/pickup behavior, Phase 7/8 feature, reporting conversion, or multi-tenant architecture is included.
+
+## Merged implementation trace
+
+This runbook was reconciled against every commit merged by PR #564 (`codex/implement-phase-6a-for-multi-branch-project`). The trace is intentionally recorded here so later operators do not mistake the original “6A” branch name for the final 6A/6B/6C delivery boundary.
+
+| Commit | Delivered behavior | Runbook coverage |
+|---|---|---|
+| `95373b6` | Phase 6A Product availability, preparatory Branch inventory schema/model, POS cart/order Branch attribution, backfill/seeding, CRM Branch gates and Product assignments | Release boundary, schema, availability rollout, POS behavior, rollback and 6B prerequisites |
+| `7b39885` | Phase 6B cutover-state schema, canonical movement fields, guarded atomic mutation service, reconciliation/backfill command and tests | Re-audit matrix, confirmed decisions, mandatory stop, reconciliation, cutover and rollback |
+| `c988711` | Phase 6C Branch cash shifts/pools, printer settings, Branch-context inventory status, backfill/seeding, CRM POS/report/settings integration | Cash/printer re-audit, operational/history rules, POS backfill, inventory compatibility and deferrals |
+| `528438b` | PostgreSQL-safe nullable/non-null Variant partial unique indexes and corrected inventory identity handling | PostgreSQL migration compatibility correction |
+| `189ffdc` | Explicit selected-Branch cash-shift requests and UI attribution/close safeguards | Operational and historical rules |
+| `f6db414` | Concurrent per-Branch shifts, Branch-switch state reset, stale-request protection, and non-overwriting fetch interception | Operational and historical rules |
+| `e8abf8a` | Branch-scoped POS appointment reads/actions, cancellation/payment-link review, staff options, service inputs, and stale-response protection | POS appointment Branch scoping |
+| `2d56090` | Independent optional printer loading, timeout/error states, Branch snapshot isolation, and non-blocking checkout | Printer operational rules |
+
+The merge commit is `71d3a37`. No Phase 6 operational behavior from those eight commits is intentionally left undocumented; implementation-level method and test details remain discoverable from the commit trace, while this document records the production contract, safety boundaries, rollout, and rollback consequences.
 
 ## PostgreSQL migration compatibility correction
 
