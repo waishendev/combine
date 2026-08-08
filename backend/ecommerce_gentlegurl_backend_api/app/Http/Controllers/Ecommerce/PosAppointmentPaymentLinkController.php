@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentLink;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Services\Booking\BookingPaymentLinkService;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -30,6 +31,9 @@ class PosAppointmentPaymentLinkController extends Controller
             ->with(['createdBy:id,name', 'booking:id,booking_code,customer_id,guest_name,guest_phone,guest_email,service_id,staff_id,start_at', 'booking.customer:id,name,phone,email', 'booking.service:id,name', 'booking.staff:id,name'])
             ->where('status', 'PENDING')
             ->where('manual_review_status', 'slip_uploaded_pending_review')
+            ->whereHas('booking', function ($booking) use ($request) {
+                $this->scopeBookingQuery($booking, $request);
+            })
             ->orderByDesc('updated_at')
             ->get()
             ->map(fn (BookingPaymentLink $link) => $this->serializeForReview($link))
@@ -44,6 +48,7 @@ class PosAppointmentPaymentLinkController extends Controller
     public function index(Request $request, int $id)
     {
         $booking = Booking::query()->findOrFail($id);
+        $this->authorizeBooking($booking, $request);
 
         $links = BookingPaymentLink::query()
             ->with('createdBy:id,name')
@@ -62,6 +67,7 @@ class PosAppointmentPaymentLinkController extends Controller
     public function store(Request $request, int $id)
     {
         $booking = Booking::query()->findOrFail($id);
+        $this->authorizeBooking($booking, $request);
 
         if (in_array(strtoupper((string) $booking->status), ['CANCELLED', 'VOID', 'VOIDED'], true)) {
             return $this->respondError(__('Cannot create a payment link for a cancelled appointment.'), 422);
@@ -106,6 +112,7 @@ class PosAppointmentPaymentLinkController extends Controller
      */
     public function cancel(Request $request, int $id, int $linkId)
     {
+        $this->authorizeBooking(Booking::query()->findOrFail($id), $request);
         $link = $this->resolveLink($id, $linkId);
 
         try {
@@ -126,6 +133,7 @@ class PosAppointmentPaymentLinkController extends Controller
      */
     public function approveManual(Request $request, int $id, int $linkId)
     {
+        $this->authorizeBooking(Booking::query()->findOrFail($id), $request);
         $link = $this->resolveLink($id, $linkId);
 
         if ($link->status !== 'PENDING') {
@@ -163,6 +171,7 @@ class PosAppointmentPaymentLinkController extends Controller
      */
     public function rejectProof(Request $request, int $id, int $linkId)
     {
+        $this->authorizeBooking(Booking::query()->findOrFail($id), $request);
         $link = $this->resolveLink($id, $linkId);
 
         if ($link->status !== 'PENDING') {
@@ -194,6 +203,28 @@ class PosAppointmentPaymentLinkController extends Controller
             ->where('id', $linkId)
             ->where('booking_id', $bookingId)
             ->firstOrFail();
+    }
+
+    private function scopeBookingQuery($query, Request $request): void
+    {
+        $access = app(StoreLocationAccessService::class);
+        if ($request->filled('store_location_id')) {
+            $branch = $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false);
+            $query->where('store_location_id', $branch->id);
+            return;
+        }
+        $ids = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+        $query->where(fn ($scope) => $scope->whereIn('store_location_id', $ids)->orWhereNull('store_location_id'));
+    }
+
+    private function authorizeBooking(Booking $booking, Request $request): void
+    {
+        if ($booking->store_location_id === null) {
+            if ($request->filled('store_location_id')) abort(404);
+            return;
+        }
+        $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), (int) $booking->store_location_id);
+        if ($request->filled('store_location_id') && $request->integer('store_location_id') !== (int) $branch->id) abort(404);
     }
 
     /**

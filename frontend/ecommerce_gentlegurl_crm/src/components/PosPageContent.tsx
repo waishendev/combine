@@ -119,7 +119,8 @@ import {
 import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
-import { defaultThermalPrinterSettings, getThermalPrinterAvailability, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
+import { getThermalPrinterAvailability } from '@/lib/thermalPrinterSettings'
+import { useOptionalThermalPrinterSettings } from '@/hooks/useOptionalThermalPrinterSettings'
 import OrderViewPanel from './OrderViewPanel'
 import CustomerAdjustBalanceModal, { type AdjustBalanceCustomer } from './CustomerAdjustBalanceModal'
 import CustomerCreateModal from './CustomerCreateModal'
@@ -2103,8 +2104,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [receiptCooldownUntil, setReceiptCooldownUntil] = useState<number>(0)
   const [receiptQrLoaded, setReceiptQrLoaded] = useState(false)
   const [autoPrint, setAutoPrint] = useState(false)
-  const [thermalPrinterSettings, setThermalPrinterSettings] = useState<ThermalPrinterSettings>(defaultThermalPrinterSettings)
-  const [thermalPrinterLoading, setThermalPrinterLoading] = useState(true)
+  const {
+    settings: thermalPrinterSettings,
+    setSettings: setThermalPrinterSettings,
+    loading: thermalPrinterLoading,
+    state: thermalPrinterState,
+    error: thermalPrinterError,
+  } = useOptionalThermalPrinterSettings()
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
@@ -2519,21 +2525,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [dismissToast])
 
   useEffect(() => {
-    let active = true
-    getThermalPrinterSettings()
-      .then((settings) => {
-        if (!active) return
-        setThermalPrinterSettings(settings)
-        setAutoPrint(settings.is_enabled && settings.auto_print_receipt)
-      })
-      .catch(() => {
-        if (active) pushToast('warning', 'Printer settings are unavailable. Checkout can continue without printing.')
-      })
-      .finally(() => {
-        if (active) setThermalPrinterLoading(false)
-      })
-    return () => { active = false }
-  }, [pushToast])
+    setAutoPrint(thermalPrinterSettings.is_enabled && thermalPrinterSettings.auto_print_receipt)
+  }, [thermalPrinterSettings])
+
+  useEffect(() => {
+    if (thermalPrinterError) pushToast('warning', 'Printer unavailable. Checkout can continue without printing.')
+  }, [pushToast, thermalPrinterError])
 
   const bookingModalErrorRef = useRef<HTMLDivElement>(null)
   const packageModalErrorRef = useRef<HTMLDivElement>(null)
@@ -12562,6 +12559,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   onCheckedChange={setAutoPrint}
                   settings={thermalPrinterSettings}
                   loading={thermalPrinterLoading}
+                  state={thermalPrinterState}
                   onSettingsChange={setThermalPrinterSettings}
                   onPreferenceSaved={(message) => pushToast('success', message)}
                   onPreferenceError={(message) => pushToast('error', message)}

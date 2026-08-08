@@ -7,4 +7,7 @@ export type StoreLocation = {
   is_booking_available: boolean
   is_pos_available: boolean
   sort_order: number
+  inventory_cutover_status?: 'pending' | 'reconciled' | 'active'
+  inventory_is_authoritative?: boolean
+  inventory_authority_label?: string
 }

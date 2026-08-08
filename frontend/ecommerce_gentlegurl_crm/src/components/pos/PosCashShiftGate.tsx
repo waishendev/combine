@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import PosModalShell from '@/components/pos/PosModalShell'
 import {
@@ -11,9 +11,12 @@ import {
   type CashShiftPoolBalances,
 } from '@/lib/cashShiftPools'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { useBranch } from '@/contexts/BranchContext'
 
 type PosCashShift = {
   id: number
+  store_location_id?: number | null
+  store_location?: { id: number; name: string; code: string } | null
   opening_amount: number
   opening_refill_packet?: number | null
   opening_atm?: number | null
@@ -131,6 +134,7 @@ export default function PosCashShiftGate({
   cashShiftRequired = true,
   canManageCashShift = true,
 }: PosCashShiftGateProps) {
+  const { selectedBranchId, selectedBranch } = useBranch()
   const [shift, setShift] = useState<PosCashShift | null>(null)
   const [poolBalances, setPoolBalances] = useState<CashShiftPoolBalances>(EMPTY_POOLS)
   const [closeModalShift, setCloseModalShift] = useState<PosCashShift | null>(null)
@@ -151,6 +155,7 @@ export default function PosCashShiftGate({
   const [openShiftModalOpen, setOpenShiftModalOpen] = useState(false)
   const [closeModalOpen, setCloseModalOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const currentShiftRequest = useRef(0)
 
   const loadStaffOptions = useCallback(async () => {
     setStaffLoading(true)
@@ -170,12 +175,25 @@ export default function PosCashShiftGate({
   }, [defaultStaffId])
 
   const loadCurrentShift = useCallback(async () => {
+    const request = ++currentShiftRequest.current
+    setShift(null)
+    setCloseModalShift(null)
+    setOpenShiftModalOpen(false)
+    setCloseModalOpen(false)
+    setPoolBalances(EMPTY_POOLS)
+    setError(null)
+
+    if (!selectedBranchId) {
+      setCashShiftLoading(false)
+      return null
+    }
     setCashShiftLoading(true)
     try {
-      const res = await fetch('/api/proxy/pos/cash-shifts/current', { cache: 'no-store' })
+      const res = await fetch(`/api/proxy/pos/cash-shifts/current?store_location_id=${selectedBranchId}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to check current cash shift.')
       const currentShift = (json?.data?.shift ?? null) as PosCashShift | null
+      if (request !== currentShiftRequest.current) return null
       setShift(currentShift)
       setPoolBalances(normalizePoolBalances(json?.data?.pool_balances))
       if (currentShift?.opened_staff_id) {
@@ -183,12 +201,13 @@ export default function PosCashShiftGate({
       }
       return currentShift
     } catch (err) {
+      if (request !== currentShiftRequest.current) return null
       setError(err instanceof Error ? err.message : 'Unable to check current cash shift.')
       return null
     } finally {
-      setCashShiftLoading(false)
+      if (request === currentShiftRequest.current) setCashShiftLoading(false)
     }
-  }, [])
+  }, [selectedBranchId])
 
   useEffect(() => {
     if (!cashShiftRequired) return
@@ -214,7 +233,8 @@ export default function PosCashShiftGate({
     }
   }, [cashShiftRequired, loadCurrentShift, shift])
 
-  const modalShift = closeModalShift ?? shift
+  const visibleShift = shift?.store_location_id === selectedBranchId ? shift : null
+  const modalShift = closeModalShift?.store_location_id === selectedBranchId ? closeModalShift : visibleShift
   const openAtmAmount = parseCashShiftAmount(openingAtm)
   const openRefillPacketAmount = parseCashShiftAmount(openingRefillPacket)
   const closeWithdrawAmount = parseCashShiftAmount(closingWithdraw)
@@ -245,7 +265,7 @@ export default function PosCashShiftGate({
   const closeDifference = useMemo(() => Number(closingAmountInput || 0) - expectedCash, [closingAmountInput, expectedCash])
   const openStaffMissing = !openedStaffId
   const closeStaffMissing = !closedStaffId
-  const hasOpenShift = cashShiftRequired ? Boolean(shift) : true
+  const hasOpenShift = cashShiftRequired ? Boolean(visibleShift) : true
   const cashShiftOverlayActive = cashShiftRequired && (openShiftModalOpen || closeModalOpen)
   const openAtmInvalid = openAtmAmount > 0 && !canUseAtm(poolBalances, openAtmAmount)
   const closeRefillCashInvalid = closeRefillCashAmount > 0 && closeRefillCashAmount > poolBalances.total_initial_cash
@@ -265,13 +285,17 @@ export default function PosCashShiftGate({
   const requireOpenShiftMessage = canManageCashShift ? CASH_SHIFT_OPEN_MESSAGE : CASH_SHIFT_WAIT_MESSAGE
 
   const contextValue = useMemo<PosCashShiftContextValue>(() => ({
-    shift: cashShiftRequired ? shift : null,
+    shift: cashShiftRequired ? visibleShift : null,
     hasOpenShift,
     cashShiftLoading: cashShiftRequired ? cashShiftLoading : false,
     requireOpenShiftMessage: cashShiftRequired ? requireOpenShiftMessage : '',
-  }), [cashShiftLoading, cashShiftRequired, hasOpenShift, requireOpenShiftMessage, shift])
+  }), [cashShiftLoading, cashShiftRequired, hasOpenShift, requireOpenShiftMessage, visibleShift])
 
   const openShift = async () => {
+    if (!selectedBranchId || !selectedBranch) {
+      setError('Please select a specific Branch before opening a Cash Shift.')
+      return
+    }
     const amount = parseCashShiftAmount(openingAmount)
     const refillPacket = openRefillPacketAmount
     const atm = openAtmAmount
@@ -296,6 +320,7 @@ export default function PosCashShiftGate({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          store_location_id: selectedBranchId,
           opened_staff_id: staffId,
           opening_amount: amount,
           opening_refill_packet: refillPacket > 0 ? refillPacket : null,
@@ -320,6 +345,15 @@ export default function PosCashShiftGate({
   }
 
   const closeShift = async () => {
+    const shiftBranchId = visibleShift?.store_location_id ?? null
+    if (!shiftBranchId) {
+      setError('The open Cash Shift has no Branch attribution and cannot be closed from POS.')
+      return
+    }
+    if (selectedBranchId !== shiftBranchId) {
+      setError('Return to the Cash Shift Branch before closing this shift.')
+      return
+    }
     const amount = Number(closingAmountInput)
     const withdraw = closeWithdrawAmount
     const refillCash = closeRefillCashAmount
@@ -344,6 +378,7 @@ export default function PosCashShiftGate({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          store_location_id: shiftBranchId,
           closed_staff_id: staffId,
           closing_amount: amount,
           closing_withdraw: withdraw > 0 ? withdraw : null,
@@ -414,21 +449,26 @@ export default function PosCashShiftGate({
           <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800 shadow-sm">
             Checking current cash shift…
           </div>
-        ) : shift ? (
+        ) : !selectedBranchId || !selectedBranch ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 shadow-sm">
+            Select a specific Branch to view or operate its current Cash Shift.
+          </div>
+        ) : visibleShift ? (
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm shadow-sm">
             <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white">Shift: OPEN</span>
-            <span><b>Initial Cash Pool:</b> {currency(shift.total_initial_cash)}</span>
-            <span><b>Withdraw Pool:</b> {currency(shift.total_withdraw)}</span>
-            <span><b>Opening:</b> {currency(shift.opening_amount)}</span>
-            <span><b>Cash Sales:</b> {currency(shift.cash_sales)}</span>
-            <span><b>Opened At:</b> {formatDateTime(shift.opened_at)}</span>
+            <span><b>Initial Cash Pool:</b> {currency(visibleShift.total_initial_cash)}</span>
+            <span><b>Withdraw Pool:</b> {currency(visibleShift.total_withdraw)}</span>
+            <span><b>Opening:</b> {currency(visibleShift.opening_amount)}</span>
+            <span><b>Cash Sales:</b> {currency(visibleShift.cash_sales)}</span>
+            <span><b>Opened At:</b> {formatDateTime(visibleShift.opened_at)}</span>
+            <span><b>Branch:</b> {visibleShift.store_location?.name ?? 'Legacy / unresolved'}</span>
             {canManageCashShift ? (
             <button
               type="button"
               onClick={() => {
                 setError(null)
                 void loadCurrentShift().then((currentShift) => {
-                  const shiftForClose = currentShift ?? shift
+                  const shiftForClose = currentShift
                   if (!shiftForClose) return
                   setCloseModalShift(shiftForClose)
                   setClosingAmountInput(
@@ -498,6 +538,10 @@ export default function PosCashShiftGate({
         >
           <div className="space-y-4 p-6">
             {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Branch</p>
+              <p className="mt-1 font-black text-blue-950">{selectedBranch?.name ?? 'No specific Branch selected'}{selectedBranch?.code ? ` (${selectedBranch.code})` : ''}</p>
+            </div>
             <CarriedPoolCards balances={openPreviewPools} carried={poolBalances} />
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block text-sm font-semibold text-gray-700">

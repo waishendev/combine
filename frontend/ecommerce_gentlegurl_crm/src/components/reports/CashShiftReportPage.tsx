@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { useBranch } from '@/contexts/BranchContext'
 
 type CashShiftRow = {
   id: number
@@ -181,6 +182,7 @@ function cashShiftDifference(row: Pick<CashShiftRow, 'event_type' | 'cash_sales'
 }
 
 export default function CashShiftReportPage() {
+  const { selectedBranchId } = useBranch()
   const defaults = useMemo(() => defaultDateRange(), [])
   const [filters, setFilters] = useState({ date_from: defaults.from, date_to: defaults.to, status: '', staff_id: '', user_id: '' })
   const [appliedFilters, setAppliedFilters] = useState(filters)
@@ -203,7 +205,8 @@ export default function CashShiftReportPage() {
   const loadSummary = useCallback(async () => {
     setSummaryLoading(true)
     try {
-      const res = await fetch('/api/proxy/ecommerce/reports/cash-shifts/summary', { cache: 'no-store' })
+      const suffix = selectedBranchId ? `?store_location_id=${selectedBranchId}` : ''
+      const res = await fetch(`/api/proxy/ecommerce/reports/cash-shifts/summary${suffix}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to load cash shift summary.')
       const payload = json?.data ?? {}
@@ -217,7 +220,7 @@ export default function CashShiftReportPage() {
     } finally {
       setSummaryLoading(false)
     }
-  }, [])
+  }, [selectedBranchId])
 
   const loadData = useCallback(async (targetPage = 1, nextFilters = filters) => {
     setLoading(true)
@@ -229,6 +232,7 @@ export default function CashShiftReportPage() {
       if (nextFilters.status) qs.set('status', nextFilters.status)
       if (nextFilters.staff_id) qs.set('staff_id', nextFilters.staff_id)
       if (nextFilters.user_id) qs.set('user_id', nextFilters.user_id)
+      if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
 
       const [reportRes] = await Promise.all([
         fetch(`/api/proxy/ecommerce/reports/cash-shifts?${qs.toString()}`, { cache: 'no-store' }),
@@ -254,7 +258,7 @@ export default function CashShiftReportPage() {
     } finally {
       setLoading(false)
     }
-  }, [filters, loadSummary])
+  }, [filters, loadSummary, selectedBranchId])
 
   useEffect(() => {
     void loadData(1)

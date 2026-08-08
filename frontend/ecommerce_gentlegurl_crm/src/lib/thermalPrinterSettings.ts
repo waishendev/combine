@@ -9,6 +9,8 @@ export type ThermalPrinterSettings = {
   paper_width: 58 | 80
   auto_print_receipt: boolean
   copies: number
+  store_location_id?: number
+  inherited_global_legacy?: boolean
 }
 
 type ApiResponse<T> = { data: T; message: string | null; success: boolean }
@@ -31,27 +33,29 @@ export function getThermalPrinterAvailability(settings: ThermalPrinterSettings):
   return { available: true, label: 'Ready' }
 }
 
-export async function getThermalPrinterSettings() {
-  const response = await apiFetch<ApiResponse<Partial<ThermalPrinterSettings>>>('/api/proxy/ecommerce/thermal-printer-settings')
+const branchQuery = (storeLocationId?: number) => storeLocationId ? `?store_location_id=${storeLocationId}` : ''
+
+export async function getThermalPrinterSettings(storeLocationId?: number, signal?: AbortSignal) {
+  const response = await apiFetch<ApiResponse<Partial<ThermalPrinterSettings>>>(`/api/proxy/ecommerce/thermal-printer-settings${branchQuery(storeLocationId)}`, { signal })
   return { ...defaultThermalPrinterSettings, ...response.data }
 }
 
-export async function saveThermalPrinterSettings(settings: ThermalPrinterSettings) {
-  return apiFetch<ApiResponse<ThermalPrinterSettings>>('/api/proxy/ecommerce/thermal-printer-settings', {
+export async function saveThermalPrinterSettings(settings: ThermalPrinterSettings, storeLocationId?: number) {
+  return apiFetch<ApiResponse<ThermalPrinterSettings>>(`/api/proxy/ecommerce/thermal-printer-settings${branchQuery(storeLocationId)}`, {
     method: 'PUT',
     body: JSON.stringify(settings),
   })
 }
 
-export async function saveThermalPrinterAutoPrint(autoPrintReceipt: boolean) {
-  return apiFetch<ApiResponse<ThermalPrinterSettings>>('/api/proxy/ecommerce/thermal-printer-settings/auto-print', {
+export async function saveThermalPrinterAutoPrint(autoPrintReceipt: boolean, storeLocationId?: number) {
+  return apiFetch<ApiResponse<ThermalPrinterSettings>>(`/api/proxy/ecommerce/thermal-printer-settings/auto-print${branchQuery(storeLocationId)}`, {
     method: 'PATCH',
     body: JSON.stringify({ auto_print_receipt: autoPrintReceipt }),
   })
 }
 
-export async function testThermalPrinter(settings: ThermalPrinterSettings) {
-  return apiFetch<ApiResponse<{ status: 'sent'; address: string }>>('/api/proxy/ecommerce/thermal-printer-settings/test', {
+export async function testThermalPrinter(settings: ThermalPrinterSettings, storeLocationId?: number) {
+  return apiFetch<ApiResponse<{ status: 'sent'; address: string }>>(`/api/proxy/ecommerce/thermal-printer-settings/test${branchQuery(storeLocationId)}`, {
     method: 'POST',
     body: JSON.stringify(settings),
   })

@@ -10,39 +10,45 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Services\StoreLocationAccessService;
+use App\Models\Ecommerce\StoreLocation;
+use App\Models\Ecommerce\PosCashPoolAccount;
 
 class PosCashShiftController extends Controller
 {
     /** Order statuses excluded from shift cash sales (void/cancelled never count toward drawer). */
     private const EXCLUDED_ORDER_STATUSES = ['cancelled', 'draft', 'voided'];
 
-    public function __construct(private readonly PosCashPoolService $cashPoolService) {}
+    public function __construct(private readonly PosCashPoolService $cashPoolService, private readonly StoreLocationAccessService $branchAccess) {}
 
     public function current(Request $request)
     {
-        $shift = $this->globalOpenShiftQuery()->first();
+        $branch = $this->operationalBranch($request);
+        $shift = $this->openShiftQuery($branch->id)->first();
 
         return $this->respond([
             'shift' => $shift ? $this->serializeShift($shift) : null,
-            'pool_balances' => $this->cashPoolService->balances(),
+            'pool_balances' => $this->cashPoolService->balances($branch->id),
         ]);
     }
 
     public function open(Request $request)
     {
         $validated = $request->validate([
+            'store_location_id' => ['nullable', 'integer'],
             'opened_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'opening_amount' => ['required', 'numeric', 'min:0'],
             'opening_refill_packet' => ['nullable', 'numeric', 'min:0'],
             'opening_atm' => ['nullable', 'numeric', 'min:0'],
         ]);
+        $branch = $this->operationalBranch($request);
 
         $openingAmount = round((float) $validated['opening_amount'], 2);
         $refillPacket = round((float) ($validated['opening_refill_packet'] ?? 0), 2);
         $atm = round((float) ($validated['opening_atm'] ?? 0), 2);
 
-        $shift = DB::transaction(function () use ($request, $validated, $openingAmount, $refillPacket, $atm) {
-            $existing = $this->globalOpenShiftQuery()->lockForUpdate()->first();
+        $shift = DB::transaction(function () use ($request, $validated, $openingAmount, $refillPacket, $atm, $branch) {
+            $existing = $this->openShiftQuery($branch->id)->lockForUpdate()->first();
             if ($existing) {
                 throw ValidationException::withMessages([
                     'shift' => [__('A cash shift is already open. Close the current shift before opening a new one.')],
@@ -50,6 +56,7 @@ class PosCashShiftController extends Controller
             }
 
             $shift = PosCashShift::query()->create([
+                'store_location_id' => $branch->id,
                 'event_type' => PosCashShift::EVENT_OPEN,
                 'opening_amount' => $openingAmount,
                 'opening_refill_packet' => $refillPacket > 0 ? $refillPacket : null,
@@ -77,22 +84,27 @@ class PosCashShiftController extends Controller
 
         return $this->respond([
             'shift' => $this->serializeShift($shift->fresh(['opener', 'closer', 'openedStaff', 'closedStaff', 'linkedOpenShift'])),
-            'pool_balances' => $this->cashPoolService->balances(),
+            'pool_balances' => $this->cashPoolService->balances($branch->id),
         ], __('Cash shift is open.'));
     }
 
     public function close(Request $request)
     {
         $validated = $request->validate([
+            'store_location_id' => ['nullable', 'integer'],
             'closed_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'closing_amount' => ['required', 'numeric', 'min:0'],
             'closing_withdraw' => ['nullable', 'numeric', 'min:0'],
             'closing_refill_cash' => ['nullable', 'numeric', 'min:0'],
             'remark' => ['nullable', 'string'],
         ]);
+        $branch = $this->operationalBranch($request);
 
-        $shift = DB::transaction(function () use ($request, $validated) {
-            $openShift = $this->globalOpenShiftQuery()->lockForUpdate()->firstOrFail();
+        $shift = DB::transaction(function () use ($request, $validated, $branch) {
+            $openShift = $this->openShiftQuery($branch->id)->lockForUpdate()->first();
+            if (! $openShift) {
+                throw ValidationException::withMessages(['store_location_id' => [__('No open cash shift belongs to the selected Branch.')]]);
+            }
             PosCashShift::query()->whereKey($openShift->id)->lockForUpdate()->first();
 
             $closingAmount = round((float) $validated['closing_amount'], 2);
@@ -100,6 +112,7 @@ class PosCashShiftController extends Controller
             $refillCash = round((float) ($validated['closing_refill_cash'] ?? 0), 2);
 
             $closeShift = PosCashShift::query()->create([
+                'store_location_id' => $openShift->store_location_id,
                 'event_type' => PosCashShift::EVENT_CLOSE,
                 'linked_open_shift_id' => $openShift->id,
                 'opening_amount' => $openShift->opening_amount,
@@ -135,16 +148,31 @@ class PosCashShiftController extends Controller
 
         return $this->respond([
             'shift' => $this->serializeShift($shift->fresh(['opener', 'closer', 'openedStaff', 'closedStaff', 'linkedOpenShift.openedStaff', 'linkedOpenShift.opener'])),
-            'pool_balances' => $this->cashPoolService->balances(),
+            'pool_balances' => $this->cashPoolService->balances($branch->id),
         ], __('Cash shift closed.'));
     }
 
     public function summary(Request $request)
     {
-        $openShift = $this->globalOpenShiftQuery()->first();
+        if (! $request->filled('store_location_id')) {
+            $ids = $this->branchAccess->accessibleStoreLocations($request->user(), true)->pluck('id');
+            $accounts = PosCashPoolAccount::query()->whereIn('store_location_id', $ids)->get();
+            $openShifts = $this->openShiftQuery()->whereIn('store_location_id', $ids)->get();
+            return $this->respond([
+                'pool_balances' => [
+                    'total_initial_cash' => round((float) $accounts->sum('total_initial_cash'), 2),
+                    'total_withdraw' => round((float) $accounts->sum('total_withdraw'), 2),
+                ],
+                'open_shift' => null,
+                'open_shifts' => $openShifts->map(fn ($shift) => $this->serializeShift($shift))->values(),
+                'scope' => 'all_accessible_branches',
+            ]);
+        }
+        $branch = $this->operationalBranch($request);
+        $openShift = $this->openShiftQuery($branch->id)->first();
 
         return $this->respond([
-            'pool_balances' => $this->cashPoolService->balances(),
+            'pool_balances' => $this->cashPoolService->balances($branch->id),
             'open_shift' => $openShift ? $this->serializeShift($openShift) : null,
         ]);
     }
@@ -159,8 +187,14 @@ class PosCashShiftController extends Controller
             'staff_id' => ['nullable', 'integer'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'branch_store_location_id' => ['nullable', 'integer'],
         ]);
 
+        $branchId = isset($validated['branch_store_location_id']) ? (int) $validated['branch_store_location_id'] : null;
+        if ($branchId) {
+            $this->branchAccess->authorizeStoreLocation($request->user(), $branchId, true);
+        }
+        $accessibleIds = $this->branchAccess->accessibleStoreLocations($request->user(), true)->pluck('id');
         $query = PosCashShift::query()
             ->with([
                 'opener:id,name,email',
@@ -170,6 +204,8 @@ class PosCashShiftController extends Controller
                 'linkedOpenShift.openedStaff:id,name,email,phone',
                 'linkedOpenShift.opener:id,name,email',
             ])
+            ->when($branchId, fn (Builder $q) => $q->where('store_location_id', $branchId))
+            ->when(! $branchId, fn (Builder $q) => $q->whereIn('store_location_id', $accessibleIds))
             ->when(! empty($validated['date_from']), function (Builder $q) use ($validated) {
                 $q->where(function (Builder $inner) use ($validated) {
                     $inner->whereDate('opened_at', '>=', $validated['date_from'])
@@ -250,12 +286,13 @@ class PosCashShiftController extends Controller
         ];
     }
 
-    private function globalOpenShiftQuery(): Builder
+    private function openShiftQuery(?int $storeLocationId = null): Builder
     {
         return PosCashShift::query()
             ->with(['opener:id,name,email', 'closer:id,name,email', 'openedStaff:id,name,email,phone', 'closedStaff:id,name,email,phone'])
             ->where('event_type', PosCashShift::EVENT_OPEN)
             ->whereDoesntHave('closeEvent')
+            ->when($storeLocationId, fn (Builder $query) => $query->where('store_location_id', $storeLocationId))
             ->latest('opened_at');
     }
 
@@ -274,6 +311,8 @@ class PosCashShiftController extends Controller
 
         return [
             'id' => (int) $shift->id,
+            'store_location_id' => $shift->store_location_id ? (int) $shift->store_location_id : null,
+            'store_location' => $shift->storeLocation ? ['id' => (int) $shift->storeLocation->id, 'name' => $shift->storeLocation->name, 'code' => $shift->storeLocation->code] : null,
             'event_type' => (string) ($shift->event_type ?? PosCashShift::EVENT_OPEN),
             'linked_open_shift_id' => $shift->linked_open_shift_id ? (int) $shift->linked_open_shift_id : null,
             'event_at' => $eventAt,
@@ -333,6 +372,7 @@ class PosCashShiftController extends Controller
                     });
             })
             ->whereNotIn('orders.status', self::EXCLUDED_ORDER_STATUSES)
+            ->when($openShift->store_location_id, fn ($query) => $query->where('orders.store_location_id', $openShift->store_location_id))
             ->where(function ($query) {
                 $query->whereIn('orders.pickup_or_shipping', ['pos', 'in_store'])
                     ->orWhereNotNull('orders.created_by_user_id');
@@ -349,6 +389,7 @@ class PosCashShiftController extends Controller
                     });
             })
             ->whereNotIn('status', self::EXCLUDED_ORDER_STATUSES)
+            ->when($openShift->store_location_id, fn ($query) => $query->where('store_location_id', $openShift->store_location_id))
             ->where(function ($query) {
                 $query->whereIn('pickup_or_shipping', ['pos', 'in_store'])
                     ->orWhereNotNull('created_by_user_id');
@@ -361,5 +402,18 @@ class PosCashShiftController extends Controller
             ->sum('grand_total');
 
         return round($cashFromPayments + $fallbackCash, 2);
+    }
+
+    private function operationalBranch(Request $request): StoreLocation
+    {
+        $id = (int) $request->input('store_location_id', $request->query('store_location_id', 0));
+        if ($id <= 0) {
+            throw ValidationException::withMessages(['store_location_id' => [__('A specific Branch is required for cash operations.')]]);
+        }
+        $branch = $this->branchAccess->authorizeStoreLocation($request->user(), $id, false);
+        if (! $branch->is_pos_available) {
+            throw ValidationException::withMessages(['store_location_id' => [__('The selected Branch is not available for POS.')]]);
+        }
+        return $branch;
     }
 }

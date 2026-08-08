@@ -13,9 +13,14 @@ class ProductStockMovement extends Model
     protected $fillable = [
         'product_id',
         'product_variant_id',
+        'store_location_id',
+        'reference_type',
+        'reference_id',
+        'idempotency_key',
         'type',
         'quantity_before',
         'quantity_change',
+        'quantity_delta',
         'quantity_after',
         'cost_price_before',
         'cost_price_after',
@@ -36,6 +41,7 @@ class ProductStockMovement extends Model
         return [
             'quantity_before' => 'integer',
             'quantity_change' => 'integer',
+            'quantity_delta' => 'integer',
             'quantity_after' => 'integer',
             'product_variant_id' => 'integer',
             'cost_price_before' => 'decimal:2',
@@ -79,5 +85,15 @@ class ProductStockMovement extends Model
     public function variant()
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class);
+    }
+
+    public function reference()
+    {
+        return $this->morphTo();
     }
 }

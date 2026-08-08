@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { useBranch } from '@/contexts/BranchContext'
 
 import PaymentProofModal from '@/components/payment/PaymentProofModal'
 
@@ -109,6 +110,12 @@ export default function PosAppointmentPaymentLinksSection({
   onDepositRecorded,
   disabled = false,
 }: PosAppointmentPaymentLinksSectionProps) {
+  const { selectedBranchId } = useBranch()
+  const branchFetch = useCallback((raw: string, init?: RequestInit) => {
+    const url = new URL(raw, window.location.origin)
+    if (selectedBranchId) url.searchParams.set('store_location_id', String(selectedBranchId))
+    return fetch(`${url.pathname}${url.search}`, init)
+  }, [selectedBranchId])
   const [links, setLinks] = useState<PosPaymentLink[]>([])
   const [loading, setLoading] = useState(bookingId > 0)
   const [creating, setCreating] = useState(false)
@@ -130,7 +137,7 @@ export default function PosAppointmentPaymentLinksSection({
     if (!bookingId) return
     if (!options?.silent) setLoading(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${bookingId}/payment-links`, { cache: 'no-store' })
+      const res = await branchFetch(`/api/proxy/pos/appointments/${bookingId}/payment-links`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         showMsg?.(json?.message ?? 'Failed to load payment links.', 'error')
@@ -140,7 +147,7 @@ export default function PosAppointmentPaymentLinksSection({
     } finally {
       if (!options?.silent) setLoading(false)
     }
-  }, [bookingId, showMsg])
+  }, [bookingId, branchFetch, showMsg])
 
   useEffect(() => {
     void refreshLinks()
@@ -168,7 +175,7 @@ export default function PosAppointmentPaymentLinksSection({
       if (Number.isFinite(hours) && hours > 0) body.expires_in_hours = Math.round(hours)
       if (notesDraft.trim()) body.notes = notesDraft.trim()
 
-      const res = await fetch(`/api/proxy/pos/appointments/${bookingId}/payment-links`, {
+      const res = await branchFetch(`/api/proxy/pos/appointments/${bookingId}/payment-links`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -216,7 +223,7 @@ export default function PosAppointmentPaymentLinksSection({
   const cancelLink = useCallback(async (link: PosPaymentLink) => {
     setActionId(link.id)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${bookingId}/payment-links/${link.id}/cancel`, { method: 'POST' })
+      const res = await branchFetch(`/api/proxy/pos/appointments/${bookingId}/payment-links/${link.id}/cancel`, { method: 'POST' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         showMsg?.(json?.message ?? 'Failed to cancel payment link.', 'error')
@@ -233,7 +240,7 @@ export default function PosAppointmentPaymentLinksSection({
   const approveLink = useCallback(async (link: PosPaymentLink) => {
     setActionId(link.id)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${bookingId}/payment-links/${link.id}/approve`, { method: 'POST' })
+      const res = await branchFetch(`/api/proxy/pos/appointments/${bookingId}/payment-links/${link.id}/approve`, { method: 'POST' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         showMsg?.(json?.message ?? 'Failed to approve payment.', 'error')
@@ -251,7 +258,7 @@ export default function PosAppointmentPaymentLinksSection({
   const rejectProof = useCallback(async (link: PosPaymentLink) => {
     setActionId(link.id)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${bookingId}/payment-links/${link.id}/reject-proof`, { method: 'POST' })
+      const res = await branchFetch(`/api/proxy/pos/appointments/${bookingId}/payment-links/${link.id}/reject-proof`, { method: 'POST' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         showMsg?.(json?.message ?? 'Failed to reject payment proof.', 'error')

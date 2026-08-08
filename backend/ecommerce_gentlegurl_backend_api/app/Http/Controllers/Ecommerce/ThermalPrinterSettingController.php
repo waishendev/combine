@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Services\SettingService;
+use App\Services\StoreLocationAccessService;
+use App\Models\Ecommerce\StoreLocation;
+use App\Models\Ecommerce\StoreLocationPosSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -13,15 +16,19 @@ class ThermalPrinterSettingController extends Controller
 {
     private const SETTING_KEY = 'thermal_printer';
 
-    public function show()
+    public function __construct(private readonly StoreLocationAccessService $branchAccess) {}
+
+    public function show(Request $request)
     {
-        return $this->respond($this->settings(), null);
+        $branch = $this->branch($request, false);
+        return $this->respond($this->settings($branch), null);
     }
 
     public function update(Request $request)
     {
+        $branch = $this->branch($request, false);
         $settings = $this->validatedSettings($request);
-        SettingService::set(self::SETTING_KEY, $settings, 'ecommerce');
+        $this->persist($branch, $settings);
 
         return $this->respond($settings, 'Thermal printer settings updated successfully.');
     }
@@ -31,15 +38,17 @@ class ThermalPrinterSettingController extends Controller
         $validated = $request->validate([
             'auto_print_receipt' => ['required', 'boolean'],
         ]);
-        $settings = $this->settings();
+        $branch = $this->branch($request, true);
+        $settings = $this->settings($branch);
         $settings['auto_print_receipt'] = (bool) $validated['auto_print_receipt'];
-        SettingService::set(self::SETTING_KEY, $settings, 'ecommerce');
+        $this->persist($branch, $settings);
 
         return $this->respond($settings, 'Auto Print Receipt preference updated.');
     }
 
     public function test(Request $request)
     {
+        $branch = $this->branch($request, true);
         $settings = $this->validatedSettings($request);
 
         if ($settings['connection_type'] !== 'network') {
@@ -83,9 +92,16 @@ class ThermalPrinterSettingController extends Controller
         ], 'Printer connected and test print sent.');
     }
 
-    private function settings(): array
+    private function settings(StoreLocation $branch): array
     {
-        return array_merge($this->defaults(), (array) SettingService::get(self::SETTING_KEY, [], 'ecommerce'));
+        $record = StoreLocationPosSetting::query()->where('store_location_id', $branch->id)->first();
+        if ($record) {
+            return $record->printerArray() + ['inherited_global_legacy' => false];
+        }
+        return array_merge($this->defaults(), (array) SettingService::get(self::SETTING_KEY, [], 'ecommerce'), [
+            'store_location_id' => (int) $branch->id,
+            'inherited_global_legacy' => true,
+        ]);
     }
 
     private function defaults(): array
@@ -133,5 +149,32 @@ class ThermalPrinterSettingController extends Controller
             'auto_print_receipt' => (bool) $validated['auto_print_receipt'],
             'copies' => (int) $validated['copies'],
         ];
+    }
+
+    private function persist(StoreLocation $branch, array $settings): void
+    {
+        StoreLocationPosSetting::query()->updateOrCreate(['store_location_id' => $branch->id], [
+            'printer_enabled' => $settings['is_enabled'],
+            'printer_name' => $settings['printer_name'],
+            'printer_connection_type' => $settings['connection_type'],
+            'printer_ip_address' => $settings['ip_address'],
+            'printer_port' => $settings['port'],
+            'printer_paper_width' => $settings['paper_width'],
+            'printer_auto_print_receipt' => $settings['auto_print_receipt'],
+            'printer_copies' => $settings['copies'],
+        ]);
+    }
+
+    private function branch(Request $request, bool $operational): StoreLocation
+    {
+        $id = (int) $request->input('store_location_id', $request->query('store_location_id', 0));
+        if ($id <= 0) {
+            throw ValidationException::withMessages(['store_location_id' => ['Select a specific Branch for printer settings.']]);
+        }
+        $branch = $this->branchAccess->authorizeStoreLocation($request->user(), $id, ! $operational);
+        if ($operational && ! $branch->is_pos_available) {
+            throw ValidationException::withMessages(['store_location_id' => ['The selected Branch is not available for POS printer operations.']]);
+        }
+        return $branch;
     }
 }

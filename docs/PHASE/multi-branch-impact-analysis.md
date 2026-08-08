@@ -404,3 +404,20 @@ Phase 4 was re-audited against the post-Phase-3 code and implemented as an addit
 Phase 4 completion subsequently added explicit public Booking Shop Branch selection using active, booking-enabled StoreLocations. The selected Branch is persisted on the booking cart and inherited by its Bookings and checkout Order; no service, staff, schedule, or availability filtering was introduced.
 
 The Branch step is conditional: zero booking-enabled Branches blocks booking, one is auto-selected behind the original four-step UX, and multiple Branches require the explicit five-step selector. This changes presentation only; backend validation and transaction attribution are identical in single- and multi-Branch modes.
+# Phase 6A implementation refinement (2026-08-08)
+
+The current-code re-audit confirms that Product identity and Product-level availability remain global/additive, while variant quantities remain required for future Branch inventory. Phase 6A uses `store_location_product`, `store_location_product_inventories`, and nullable `pos_carts.store_location_id`; the new inventory table is explicitly non-authoritative. Current Product/Variant fields, stock deductions/restorations, movement history, low-stock, reports, and public ecommerce behavior remain unchanged.
+
+The audit also confirms a Phase 6B blocker: `ProductStockMovement` is actively written by CRM adjustment/revoke and POS stock paths and supports variants/reversals, while `StockMovement` is still written by ecommerce paid-order handling and lacks both. Phase 6A does not add Branch columns to either ledger or select a canonical ledger. See `docs/PHASE/phase-6-production-runbook.md` for reconciliation prerequisites and rollback.
+
+## Phase 6B re-audit refinement (2026-08-08)
+
+Phase 6B confirms `ProductStockMovement` as the candidate canonical Branch ledger and adds the schema/service/reconciliation foundation. Authoritative activation is intentionally blocked: ecommerce currently reserves/releases global Product/Variant fields without deterministic delivery Branch attribution, monetary partial refunds do not identify restock quantities, void/cancel restoration is not centralized, and loyalty reward stock writes lack Branch identity. The cutover state cannot be activated by the backfill command. Existing operational writers remain unchanged until these explicit stop conditions are resolved; no Phase 6C, 7, or 8 behavior is included.
+
+## Phase 6C implementation refinement (2026-08-08)
+
+The POS cash re-audit confirms Cash Shift and the physical carried Cash Pool Account as Branch-operational parents. Ledger children inherit Branch through those parents, avoiding redundant attribution. Structured per-Branch POS printer settings replace global printer writes with a legacy read fallback. Authorized Branch Context exposes cutover status with explicit non-authoritative labels, while global Product/Variant stock and low-stock behavior remain unchanged. Phase 6B inventory authority remains inactive and its blockers remain unresolved.
+
+### PostgreSQL uniqueness correction
+
+Phase 6A inventory identity uniqueness is implemented with separate partial unique indexes for NULL-Variant Product rows and non-NULL Variant rows. This replaces the non-portable virtual generated column while preserving nullable Variant semantics and the exact Branch/Product/Variant uniqueness rules. Phase 6B reconciliation and mutation queries now match nullable `product_variant_id` directly.

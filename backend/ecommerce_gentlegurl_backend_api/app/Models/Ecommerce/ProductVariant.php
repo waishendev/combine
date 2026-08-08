@@ -71,6 +71,11 @@ class ProductVariant extends Model
         return $this->hasMany(ProductVariantBundleItem::class, 'component_variant_id');
     }
 
+    public function branchInventories()
+    {
+        return $this->hasMany(StoreLocationProductInventory::class);
+    }
+
     public function derivedAvailableQty(): ?int
     {
         if (! $this->is_bundle) {
