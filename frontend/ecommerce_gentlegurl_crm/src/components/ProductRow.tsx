@@ -89,6 +89,8 @@ export interface ProductRowData {
   images: ProductImage[]
   video?: ProductVideo | null
   variants?: ProductVariant[]
+  storeLocationIds?: number[]
+  storeLocations?: Array<{ id: number; name: string; code?: string }>
 }
 
 interface ProductRowProps {

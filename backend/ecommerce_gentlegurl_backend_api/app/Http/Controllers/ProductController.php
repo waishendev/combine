@@ -19,6 +19,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Services\StoreLocationAccessService;
 
 class ProductController extends Controller
 {
@@ -26,7 +27,13 @@ class ProductController extends Controller
     {
         $perPage = $request->integer('per_page', 15);
 
-        $products = Product::with(['categories', 'images', 'video', 'variants'])
+        $branchId = $request->integer('branch_store_location_id') ?: null;
+        if ($branchId && $request->user()) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
+        }
+        $products = Product::with(['categories', 'images', 'video', 'variants', 'storeLocations:id,name,code,is_active,is_pos_available'])
+            ->when($branchId, fn ($query) => $query->whereHas('storeLocations', fn ($branches) => $branches
+                ->where('store_locations.id', $branchId)->where('store_location_product.is_available', true)))
             ->when($request->filled('search'), function ($query) use ($request) {
                 $term = trim((string) $request->get('search'));
                 if ($term === '') {
@@ -145,6 +152,8 @@ class ProductController extends Controller
             'meta_og_image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'], // 文件上传
             'category_ids' => ['array'],
             'category_ids.*' => ['integer', 'exists:categories,id'],
+            'store_location_ids' => ['required', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'exists:store_locations,id'],
             'images' => ['nullable', 'array'],
             'images.*' => ['image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
@@ -195,6 +204,8 @@ class ProductController extends Controller
             'dummy_sold_count' => $validated['dummy_sold_count'] ?? 0,
         ]);
 
+        $this->syncStoreLocations($request, $product, $validated['store_location_ids']);
+
         if (! empty($validated['category_ids'])) {
             $product->categories()->sync($validated['category_ids']);
         }
@@ -207,12 +218,12 @@ class ProductController extends Controller
 
         $this->syncVariants($product, $request, true);
 
-        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren']), __('Product created successfully.'));
+        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren', 'storeLocations']), __('Product created successfully.'));
     }
 
     public function show(Product $product)
     {
-        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']));
+        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct', 'storeLocations']));
     }
 
     public function update(Request $request, Product $product)
@@ -264,6 +275,8 @@ class ProductController extends Controller
             'meta_og_image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
             'category_ids' => ['sometimes', 'array'],
             'category_ids.*' => ['integer', 'exists:categories,id'],
+            'store_location_ids' => ['sometimes', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'exists:store_locations,id'],
             'images' => ['sometimes', 'array'],
             'images.*' => ['image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
@@ -306,6 +319,10 @@ class ProductController extends Controller
             : ($product->dummy_sold_count ?? 0);
         $product->save();
 
+        if ($request->has('store_location_ids')) {
+            $this->syncStoreLocations($request, $product, $validated['store_location_ids'] ?? []);
+        }
+
         if ($request->has('category_ids')) {
             $product->categories()->sync($validated['category_ids'] ?? []);
         }
@@ -325,7 +342,13 @@ class ProductController extends Controller
 
         $this->syncVariants($product, $request, false);
 
-        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']), __('Product updated successfully.'));
+        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct', 'storeLocations']), __('Product updated successfully.'));
+    }
+
+    private function syncStoreLocations(Request $request, Product $product, array $ids): void
+    {
+        $authorized = app(StoreLocationAccessService::class)->assertCanAssign($request->user(), $ids);
+        $product->storeLocations()->sync(collect($authorized)->mapWithKeys(fn ($id) => [$id => ['is_available' => true]])->all());
     }
 
 

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 
 import PosPageContent from '@/components/PosPageContent'
 import PosCashShiftGate from '@/components/pos/PosCashShiftGate'
+import PosBranchGate from '@/components/pos/PosBranchGate'
 import { getCurrentUser } from '@/lib/auth'
 
 export default async function PosPage() {
@@ -20,7 +21,7 @@ export default async function PosPage() {
 
   return (
     <div className="crm-page-shell pos-checkout-page min-h-0 px-3 py-3 sm:px-4 sm:py-4 md:px-5 lg:px-6">
-      <PosCashShiftGate defaultStaffId={user.staff_id ?? null}>
+      <PosBranchGate><PosCashShiftGate defaultStaffId={user.staff_id ?? null}>
         <PosPageContent
           currentUser={{
             id: user.id,
@@ -30,7 +31,7 @@ export default async function PosPage() {
           }}
           permissions={user.permissions}
         />
-      </PosCashShiftGate>
+      </PosCashShiftGate></PosBranchGate>
     </div>
   )
 }

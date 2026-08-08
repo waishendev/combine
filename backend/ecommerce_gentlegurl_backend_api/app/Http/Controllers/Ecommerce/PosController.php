@@ -5367,6 +5367,11 @@ class PosController extends Controller
             return $this->respondError(__('Product is not sellable.'), 404);
         }
 
+        $cart = $this->resolveCart((int) $request->user()->id);
+        if (! $resolvedProduct->isAvailableAt((int) $cart->store_location_id)) {
+            return $this->respondError(__('Product is not available at this Branch.'), 422);
+        }
+
         if ($variant) {
             $availableQty = $this->resolveVariantAvailableQty($variant);
             if ($availableQty !== null && $availableQty < $qty) {
@@ -5377,8 +5382,6 @@ class PosController extends Controller
         if (! $variant && $resolvedProduct->track_stock && (int) $resolvedProduct->stock < $qty) {
             return $this->respondError(__('Insufficient stock.'), 422);
         }
-
-        $cart = $this->resolveCart((int) $request->user()->id);
 
         $pricing = ProductPricing::build($resolvedProduct, $variant);
         $unitPrice = (float) ($pricing['effective_price'] ?? $variant?->sale_price ?? $variant?->price ?? $resolvedProduct->sale_price ?? $resolvedProduct->price ?? 0);
@@ -5436,6 +5439,7 @@ class PosController extends Controller
 
     public function productSearch(Request $request)
     {
+        $cart = $this->resolveCart((int) $request->user()->id);
         $barcodeQuery = trim((string) $request->query('barcode', ''));
         $query = $barcodeQuery !== '' ? $barcodeQuery : trim((string) $request->query('q', ''));
         $isBarcodeSearch = $barcodeQuery !== '' || $request->boolean('barcode_search');
@@ -5458,7 +5462,9 @@ class PosController extends Controller
         $variants = ProductVariant::query()
             ->with(['product', 'product.images', 'bundleItems.componentVariant'])
             ->where('is_active', true)
-            ->whereHas('product', fn ($builder) => $builder->where('is_active', true)->where('is_reward_only', false))
+            ->whereHas('product', fn ($builder) => $builder->where('is_active', true)->where('is_reward_only', false)
+                ->whereHas('storeLocations', fn ($locations) => $locations->where('store_locations.id', $cart->store_location_id)
+                    ->where('store_location_product.is_available', true)))
             ->when($categoryId > 0, function ($builder) use ($categoryId) {
                 $builder->whereHas('product.categories', fn ($categoryQuery) => $categoryQuery->where('categories.id', $categoryId));
             })
@@ -7413,6 +7419,7 @@ class PosController extends Controller
                 'order_number' => $this->generateOrderNumber(),
                 'customer_id' => $customerId,
                 'created_by_user_id' => $request->user()->id,
+                'store_location_id' => $cart->store_location_id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
                 'payment_method' => $this->orderPaymentMethodForRows($paymentRows),
@@ -9485,9 +9492,29 @@ class PosController extends Controller
 
     protected function resolveCart(int $staffUserId): PosCart
     {
-        return PosCart::firstOrCreate([
-            'staff_user_id' => $staffUserId,
-        ]);
+        $request = request();
+        $branchId = (int) $request->input('store_location_id', $request->query('store_location_id', 0));
+        if ($branchId <= 0) {
+            throw ValidationException::withMessages(['store_location_id' => __('A specific Branch is required for POS; All Branches is not operational.')]);
+        }
+
+        $branch = app(StoreLocationAccessService::class)
+            ->authorizeStoreLocation($request->user(), $branchId, false);
+        if (! $branch->is_pos_available) {
+            throw ValidationException::withMessages(['store_location_id' => __('The selected Branch is not available for POS.')]);
+        }
+
+        $cart = PosCart::firstOrCreate(['staff_user_id' => $staffUserId], ['store_location_id' => $branch->id]);
+        if ($cart->store_location_id === null) {
+            $cart->update(['store_location_id' => $branch->id]);
+        } elseif ((int) $cart->store_location_id !== (int) $branch->id) {
+            if ($cart->hasMeaningfulState()) {
+                throw ValidationException::withMessages(['store_location_id' => __('Clear or close the existing POS cart before switching Branch.')]);
+            }
+            $cart->update(['store_location_id' => $branch->id]);
+        }
+
+        return $cart;
     }
 
     protected function serializeCart(PosCart $cart): array

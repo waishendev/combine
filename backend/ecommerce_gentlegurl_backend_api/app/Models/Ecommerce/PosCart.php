@@ -9,6 +9,7 @@ class PosCart extends Model
 {
     protected $fillable = [
         'staff_user_id',
+        'store_location_id',
         'voucher_id',
         'customer_voucher_id',
         'voucher_code',
@@ -24,6 +25,18 @@ class PosCart extends Model
     public function staffUser()
     {
         return $this->belongsTo(User::class, 'staff_user_id');
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class);
+    }
+
+    public function hasMeaningfulState(): bool
+    {
+        return $this->items()->exists() || $this->serviceItems()->exists()
+            || $this->packageItems()->exists() || $this->appointmentSettlementItems()->exists()
+            || $this->voucher_id !== null || $this->customer_voucher_id !== null;
     }
 
     public function items()
@@ -46,4 +59,3 @@ class PosCart extends Model
         return $this->hasMany(PosCartAppointmentSettlementItem::class, 'pos_cart_id');
     }
 }
-

@@ -131,6 +131,7 @@ export type ProductApiItem = {
       sort_order?: number | string | null
     }> | null
   }> | null
+  store_locations?: Array<{ id?: number | string | null; name?: string | null; code?: string | null }> | null
 }
 
 const normalizeOptionalProductCode = (value: unknown): string => {
@@ -311,6 +312,10 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
   const derivedMinPrice = variantPriceValues.length > 0 ? Math.min(...variantPriceValues) : null
   const derivedMaxPrice = variantPriceValues.length > 0 ? Math.max(...variantPriceValues) : null
 
+  const storeLocations = Array.isArray(item.store_locations) ? item.store_locations.map((branch) => ({
+    id: Number(branch.id), name: String(branch.name ?? ''), code: branch.code ? String(branch.code) : undefined,
+  })).filter((branch) => branch.id > 0) : []
+
   return {
     id: normalizedId,
     name: item.name ?? '-',
@@ -434,5 +439,7 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
         }
       : null,
     variants: normalizedVariants,
+    storeLocations,
+    storeLocationIds: storeLocations.map((branch) => branch.id),
   }
 }

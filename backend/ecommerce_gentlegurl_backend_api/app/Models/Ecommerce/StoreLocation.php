@@ -75,6 +75,17 @@ class StoreLocation extends Model
         return $this->belongsToMany(BookingService::class, 'booking_service_store_location')->withTimestamps();
     }
 
+    public function products()
+    {
+        return $this->belongsToMany(Product::class, 'store_location_product')
+            ->withPivot('is_available')->withTimestamps();
+    }
+
+    public function productInventories()
+    {
+        return $this->hasMany(StoreLocationProductInventory::class);
+    }
+
     /**
      * Prepare a date for array / JSON serialization.
      *

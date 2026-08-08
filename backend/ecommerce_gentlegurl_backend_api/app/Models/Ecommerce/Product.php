@@ -97,6 +97,23 @@ class Product extends Model
             ->orderBy('id');
     }
 
+    public function storeLocations()
+    {
+        return $this->belongsToMany(StoreLocation::class, 'store_location_product')
+            ->withPivot('is_available')->withTimestamps();
+    }
+
+    public function branchInventories()
+    {
+        return $this->hasMany(StoreLocationProductInventory::class);
+    }
+
+    public function isAvailableAt(int|StoreLocation $location): bool
+    {
+        $id = $location instanceof StoreLocation ? $location->getKey() : $location;
+        return $this->storeLocations()->whereKey($id)->wherePivot('is_available', true)->exists();
+    }
+
     public function getCoverImageUrlAttribute(): ?string
     {
         $images = $this->relationLoaded('images')

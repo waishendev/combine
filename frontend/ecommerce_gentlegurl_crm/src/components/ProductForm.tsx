@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch'
 import ErrorBox from './ErrorBox'
 import { collectApiErrorMessages } from '@/lib/api-errors'
 import { compressImages } from '@/lib/compressImage'
+import BranchAssignmentChecklist from './BranchAssignmentChecklist'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface CategoryOption {
   id: number
@@ -414,6 +416,7 @@ export default function ProductForm({
 }: ProductFormProps) {
   const { t } = useI18n()
   const router = useRouter()
+  const { accessibleBranches } = useBranch()
   const isCopyFromTemplate = mode === 'create' && Boolean(copyTemplate)
   const [form, setForm] = useState<ProductFormValues>(() => {
     const seed = mode === 'edit' && product ? product : mode === 'create' && copyTemplate ? copyTemplate : null
@@ -462,6 +465,15 @@ export default function ProductForm({
     }
   })
   const [discountPercentInput, setDiscountPercentInput] = useState('')
+  const [storeLocationIds, setStoreLocationIds] = useState<number[]>(() => {
+    const seed = mode === 'edit' && product ? product : mode === 'create' && copyTemplate ? copyTemplate : null
+    return seed?.storeLocationIds ?? []
+  })
+  useEffect(() => {
+    if (mode === 'create' && storeLocationIds.length === 0 && accessibleBranches.length > 0) {
+      setStoreLocationIds(accessibleBranches.map((branch) => branch.id))
+    }
+  }, [accessibleBranches, mode, storeLocationIds.length])
   const [rewardForm, setRewardForm] = useState<RewardFormValues>({ ...emptyRewardForm })
   const [rewardId, setRewardId] = useState<number | null>(null)
   const [existingImages, setExistingImages] = useState<ProductImage[]>(() => {
@@ -2502,6 +2514,12 @@ export default function ProductForm({
     }
 
     const formData = new FormData()
+    if (storeLocationIds.length === 0) {
+      setError('Select at least one Branch where this Product is available.')
+      setSubmitting(false)
+      return
+    }
+    storeLocationIds.forEach((id) => formData.append('store_location_ids[]', String(id)))
     const resolvedPrice =
       resolvedType === 'variant' ? '1' : rewardOnly ? '1' : form.price || '0'
     formData.append('name', form.name.trim())
@@ -2792,6 +2810,11 @@ export default function ProductForm({
           </p>
         </div>
       ) : null}
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <BranchAssignmentChecklist label="Available at" value={storeLocationIds} onChange={setStoreLocationIds} disabled={submitting} />
+        <p className="mt-2 text-xs text-gray-500">Branch availability controls POS eligibility only. Stock shown below remains global until Phase 6B.</p>
+      </section>
 
       {/* Reward Details Section */}
       {rewardOnly && (
