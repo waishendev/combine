@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useBranch } from '@/contexts/BranchContext'
 
 import BookingStatusBadge from './BookingStatusBadge'
 import BookingPhotosPaymentProofSection from './BookingPhotosPaymentProofSection'
@@ -22,6 +23,8 @@ type StaffOption = { id: number; name: string }
 export type AppointmentHistoryRow = {
   id: number
   booking_code: string
+  store_location_id?: number | null
+  store_location?: { id: number; name: string; code: string } | null
   customer: { id: number; name: string; phone?: string | null; email?: string | null } | null
   customer_display_name: string
   guest_name?: string | null
@@ -450,6 +453,7 @@ export function BookingAppointmentDetailDrawer({
                 <h4 className="font-semibold text-slate-900">Booking Info</h4>
                 <dl className="mt-4 grid gap-4 md:grid-cols-2">
                   <DetailField label="Booking No" value={row.booking_code} />
+                  <DetailField label="Branch" value={row.store_location?.name ?? 'Unassigned'} />
                   <DetailField label="Source" value={row.source ?? '—'} />
                   <DetailField label="Status" value={<BookingStatusBadge status={row.status} label={row.status} />} />
                   <DetailField label="Payment Status" value={<span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(resolvedPaymentStatus(row))}`}>{formatPaymentStatus(resolvedPaymentStatus(row))}</span>} />
@@ -530,6 +534,7 @@ export function BookingAppointmentDetailDrawer({
 }
 
 export default function BookingAppointmentHistoryPage() {
+  const { selectedBranchId } = useBranch()
   const [filters, setFilters] = useState<Filters>({ ...emptyFilters })
   const [appliedFilters, setAppliedFilters] = useState<Filters>({ ...emptyFilters })
   const [staffs, setStaffs] = useState<StaffOption[]>([])
@@ -563,6 +568,8 @@ export default function BookingAppointmentHistoryPage() {
       const qs = new URLSearchParams()
       qs.set('page', String(page))
       qs.set('per_page', String(pageSize))
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       if (appliedFilters.fromDate) qs.set('from_date', appliedFilters.fromDate)
       if (appliedFilters.toDate) qs.set('to_date', appliedFilters.toDate)
       if (appliedFilters.status) qs.set('status', appliedFilters.status)
@@ -588,7 +595,7 @@ export default function BookingAppointmentHistoryPage() {
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters, page, pageSize])
+  }, [appliedFilters, page, pageSize, selectedBranchId])
 
   const loadDetail = useCallback(async (id: number) => {
     setDetailLoading(true)
@@ -696,6 +703,7 @@ export default function BookingAppointmentHistoryPage() {
             <tr>
               <th className="sticky left-0 z-10 bg-slate-100 px-3 py-3 whitespace-nowrap shadow-[1px_0_0_0_rgb(226_232_240)]">Booking No</th>
               <th className="min-w-[10rem] px-3 py-3">Customer</th>
+              <th className="min-w-[8rem] px-3 py-3">Branch</th>
               <th className="min-w-[10rem] px-3 py-3">Service</th>
               <th className="min-w-[8.5rem] px-3 py-3 whitespace-nowrap">Appointment</th>
               <th className="px-3 py-3 whitespace-nowrap">Status</th>
@@ -708,7 +716,7 @@ export default function BookingAppointmentHistoryPage() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <TableLoadingRow colSpan={10} />
+              <TableLoadingRow colSpan={11} />
             ) : rows.length > 0 ? rows.map((row) => {
               const appointmentSlot = formatAppointmentSlot(row.start_at, row.end_at)
 
@@ -719,6 +727,9 @@ export default function BookingAppointmentHistoryPage() {
                 </td>
                 <td className="min-w-[10rem] max-w-[13rem] overflow-hidden px-3 py-3 align-top">
                   <TableCustomerCell row={row} />
+                </td>
+                <td className="min-w-[8rem] px-3 py-3 align-top text-xs text-slate-700">
+                  {row.store_location?.name ?? <span className="text-slate-400">Unassigned</span>}
                 </td>
                 <td className="min-w-[10rem] max-w-[13rem] overflow-hidden px-3 py-3 align-top">
                   <TableServiceCell row={row} />
@@ -755,7 +766,7 @@ export default function BookingAppointmentHistoryPage() {
                 </td>
               </tr>
             )}) : (
-              <TableEmptyState colSpan={10} />
+              <TableEmptyState colSpan={11} />
             )}
           </tbody>
         </table>

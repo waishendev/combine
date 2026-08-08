@@ -13,6 +13,7 @@ use App\Models\Ecommerce\Voucher;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\AppointmentActivityLogService;
+use App\Services\StoreLocationAccessService;
 use App\Services\Ecommerce\StaffSplitNormalizer;
 use App\Support\BookingNotes;
 use App\Models\Booking\BookingPayment;
@@ -34,7 +35,8 @@ class AppointmentController extends Controller
 
     public function index(Request $request)
     {
-        $query = Booking::query()->with(['service', 'staff', 'customer']);
+        $query = Booking::query()->with(['service', 'staff', 'customer', 'storeLocation:id,name,code']);
+        $this->applyBranchScope($query, $request);
 
         if ($request->filled('date')) {
             $query->whereDate('start_at', $request->string('date'));
@@ -104,7 +106,8 @@ class AppointmentController extends Controller
 
     public function history(Request $request)
     {
-        $query = Booking::query()->with(['service', 'staff', 'customer']);
+        $query = Booking::query()->with(['service', 'staff', 'customer', 'storeLocation:id,name,code']);
+        $this->applyBranchScope($query, $request);
 
         if ($request->filled('from_date')) {
             $query->whereDate('created_at', '>=', $request->string('from_date'));
@@ -182,7 +185,9 @@ class AppointmentController extends Controller
             'orderItems:id,order_id,booking_id',
             'orderItems.order:id,payment_method',
             'orderItems.order.uploads:id,order_id,type,file_path,note,status,created_at,updated_at',
+            'storeLocation:id,name,code',
         ])->findOrFail($id);
+        $this->authorizeBookingBranch($booking, request());
         $row = $this->mapHistoryBooking($booking);
         $logs = BookingLog::query()
             ->where('booking_id', $booking->id)
@@ -319,6 +324,8 @@ class AppointmentController extends Controller
 
         return [
             'id' => (int) $booking->id,
+            'store_location_id' => $booking->store_location_id ? (int) $booking->store_location_id : null,
+            'store_location' => $booking->storeLocation ? $booking->storeLocation->only(['id', 'name', 'code']) : null,
             'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
             'customer' => $booking->customer ? [
                 'id' => (int) $booking->customer->id,
@@ -1033,5 +1040,25 @@ class AppointmentController extends Controller
         ]);
 
         return $this->respond($photo);
+    }
+
+    private function applyBranchScope($query, Request $request): void
+    {
+        $access = app(StoreLocationAccessService::class);
+        if ($request->filled('branch_store_location_id')) {
+            $branch = $access->authorizeStoreLocation($request->user(), $request->integer('branch_store_location_id'), false);
+            $query->where('store_location_id', $branch->id); // NULL legacy rows are not pretended to belong to a Branch.
+        } elseif ($request->query('branch_scope') === 'all') {
+            $ids = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+            $query->where(fn ($scope) => $scope->whereIn('store_location_id', $ids)->orWhereNull('store_location_id'));
+        }
+    }
+
+    private function authorizeBookingBranch(Booking $booking, Request $request): void
+    {
+        // Temporary compatibility: NULL historical records retain pre-backfill access.
+        if ($booking->store_location_id !== null) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), (int) $booking->store_location_id);
+        }
     }
 }

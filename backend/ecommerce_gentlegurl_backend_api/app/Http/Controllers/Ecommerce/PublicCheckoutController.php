@@ -268,6 +268,8 @@ class PublicCheckoutController extends Controller
                     'bank_account_id' => $bankAccount?->id,
                     'pickup_or_shipping' => $shippingMethod,
                     'pickup_store_id' => $validated['store_location_id'] ?? null,
+                    // Checkout validation proves this is an active pickup location. Delivery ownership remains unresolved.
+                    'store_location_id' => $shippingMethod !== 'shipping' ? ($validated['store_location_id'] ?? null) : null,
                     'subtotal' => $calculation['subtotal'],
                     'discount_total' => $calculation['discount_total'],
                     'shipping_fee' => $calculation['shipping_fee'],

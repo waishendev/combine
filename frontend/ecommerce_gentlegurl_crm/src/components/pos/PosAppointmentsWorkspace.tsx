@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+import { useBranch } from '@/contexts/BranchContext'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
@@ -426,6 +427,7 @@ export default function PosAppointmentsWorkspace({
   currentUser: PosAppointmentCurrentUser
   permissions?: string[]
 }) {
+  const { selectedBranchId } = useBranch()
   const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const canManageBalance = useMemo(() => permissions.includes('customer_wallet.adjust'), [permissions])
   const canPosCheckout = useMemo(() => permissions.includes('pos.checkout'), [permissions])
@@ -2058,6 +2060,7 @@ export default function PosAppointmentsWorkspace({
         createAppointmentAddonLineTotalOverrides,
       )
       const payload: Record<string, unknown> = {
+        store_location_id: selectedBranchId,
         booking_service_id: createAppointmentServiceDraft.id,
         assigned_staff_id: createAppointmentAssignedStaffId,
         selected_option_ids: createMainAddonIds,

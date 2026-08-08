@@ -19,6 +19,7 @@ use App\Services\Booking\CustomerServicePackageService;
 // use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
+use App\Services\StoreLocationAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +65,7 @@ class OrderController extends Controller
         }
     
         $orders = Order::with([
+            'storeLocation:id,name,code',
             'customer:id,name,email,phone',
             'items:id,order_id,line_type',
             'serviceItems:id,order_id',
@@ -73,6 +75,14 @@ class OrderController extends Controller
             // Only include eCommerce shop orders here.
             // POS orders are created by an admin user and have created_by_user_id set.
             ->whereNull('created_by_user_id')
+            ->when($request->filled('branch_store_location_id'), function ($q) use ($request) {
+                $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $request->integer('branch_store_location_id'), false);
+                $q->where('store_location_id', $branch->id);
+            })
+            ->when($request->query('branch_scope') === 'all', function ($q) use ($request) {
+                $ids = app(StoreLocationAccessService::class)->accessibleStoreLocations($request->user(), false)->pluck('id');
+                $q->where(fn ($scope) => $scope->whereIn('store_location_id', $ids)->orWhereNull('store_location_id'));
+            })
             ->when($orderType === 'booking', fn($q) => $this->applyBookingOrderScope($q))
             ->when($orderType === 'ecommerce', fn($q) => $this->applyNonBookingOrderScope($q))
             ->when($orderType === 'mixed', function ($q) {
@@ -168,6 +178,8 @@ class OrderController extends Controller
                     'grand_total' => $order->grand_total,
                     'net_total' => (float) $order->grand_total - (float) ($order->refund_total ?? 0),
                     'shipping_method' => $order->pickup_or_shipping,
+                    'store_location_id' => $order->store_location_id,
+                    'store_location' => $order->storeLocation,
                     'created_at' => $order->created_at,
                     'refund_total' => $order->refund_total,
                     'return_summary' => $returnSummary,
@@ -180,7 +192,11 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
+        if ($order->store_location_id !== null) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation(request()->user(), (int) $order->store_location_id);
+        }
         $order->load([
+            'storeLocation:id,name,code',
             'items.product.images',
             'items.productVariant',
             'items.booking:id,booking_code,customer_id,guest_name,guest_phone,guest_email,staff_id,service_id,start_at,end_at,status,payment_status,deposit_amount,addon_items_json,settled_service_amount',
@@ -218,6 +234,8 @@ class OrderController extends Controller
             'grand_total' => $order->grand_total,
             'net_total' => (float) $order->grand_total - (float) ($order->refund_total ?? 0),
             'shipping_method' => $order->pickup_or_shipping,
+            'store_location_id' => $order->store_location_id,
+            'store_location' => $order->storeLocation,
             'shipping_courier' => $order->shipping_courier,
             'shipping_tracking_no' => $order->shipping_tracking_no,
             'shipped_at' => $order->shipped_at,

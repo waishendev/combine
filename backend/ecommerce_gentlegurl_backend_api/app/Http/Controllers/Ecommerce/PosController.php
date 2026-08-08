@@ -49,6 +49,7 @@ use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\SettingService;
 use App\Services\AppointmentActivityLogService;
+use App\Services\StoreLocationAccessService;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
@@ -4527,6 +4528,7 @@ class PosController extends Controller
 
         $validated = $request->validate(array_merge([
             'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'store_location_id' => ['required', 'integer', 'exists:store_locations,id'],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:32'],
@@ -4566,6 +4568,12 @@ class PosController extends Controller
             'availability_override' => ['nullable', 'boolean'],
             'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ], $this->posStaffSplitAmountValidationRules()));
+        $transactionBranch = app(StoreLocationAccessService::class)
+            ->authorizeStoreLocation($request->user(), (int) $validated['store_location_id'], false);
+        if (! $transactionBranch->is_booking_available || ! $transactionBranch->is_pos_available) {
+            throw ValidationException::withMessages(['store_location_id' => __('The selected Branch is not available for booking and POS operations.')]);
+        }
+
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
             'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
@@ -4790,8 +4798,10 @@ class PosController extends Controller
             $scheduleOverride,
             $mainItems,
             $staffCommissionRates,
+            $transactionBranch,
         ) {
             $booking = Booking::query()->create([
+                'store_location_id' => $transactionBranch->id,
                 'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                 'source' => 'STAFF',
                 'customer_id' => $customer?->id,
@@ -4838,6 +4848,7 @@ class PosController extends Controller
             $depositReceiptUrl = null;
             if ($depositAmount > 0) {
                 $depositOrder = Order::query()->create([
+                    'store_location_id' => $booking->store_location_id,
                     'order_number' => $this->generateOrderNumber(),
                     'customer_id' => $customer?->id ? (int) $customer->id : null,
                     'created_by_user_id' => (int) $request->user()->id,

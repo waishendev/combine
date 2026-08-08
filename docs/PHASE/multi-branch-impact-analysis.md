@@ -393,3 +393,6 @@ Do not combine schema, authorization, UI, pickup behavior and seeding into one c
 ## 12. Final recommendation
 
 Approve Phase 1 only after questions 1–4 are answered. Implement it as a master-data/lifecycle hardening change, not as implicit multi-branch enablement. Then require Phase 2 authorization before exposing branch context, require transaction attribution before reporting, and defer inventory and entitlement enforcement until their policies and rollback reconciliations are approved. This ordering preserves current contracts, historical records and a future path to tenancy without prematurely building tenant architecture.
+# Phase 4 implementation note (2026-08-08)
+
+Phase 4 was re-audited against the post-Phase-3 code and implemented as an additive nullable attribution foundation. See [the Phase 4 production runbook](phase-4-transaction-branch-runbook.md) for creation-path matrices, explicit read/legacy-NULL semantics, backfill rules, deployment, reconciliation, and rollback. The re-audit confirmed that public booking currently has no deterministic Branch and delivery ownership remains undefined; both stay nullable rather than using an inferred default.
