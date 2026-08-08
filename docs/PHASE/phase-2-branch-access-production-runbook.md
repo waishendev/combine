@@ -40,7 +40,7 @@ php artisan branch-access:backfill --store-code=PNG --dry-run
 php artisan branch-access:backfill --store-code=PNG --force
 ```
 
-Do not run `BranchAccessPermissionSeeder` separately. The non-dry-run `branch-access:backfill` command invokes it automatically before assigning users. The permission setup is idempotent and grants `branch_access.view` and `branch_access.assign` only to `infra_core_x1`.
+Do not run `BranchAccessPermissionSeeder` separately. The non-dry-run `branch-access:backfill` command invokes it automatically before assigning users. That baseline permission setup grants `branch_access.view` and `branch_access.assign` to `infra_core_x1`.
 
 In production, do not use `php artisan branch-access:backfill --store-code=PNG` without `--force`; the command will refuse to write. `--force` is unnecessary for `--dry-run` because preview mode performs no writes.
 
@@ -56,9 +56,31 @@ JOIN store_locations sl ON sl.id = slu.store_location_id
 ORDER BY u.id, sl.code;
 ```
 
-### 6. One-time normal `superAdmin` rollout correction
+### 6. Enable Branch assignment for normal `superAdmin`
 
-Existing production users with the normal application role named `superAdmin` must receive every Branch that is **currently active** at the time of this correction. Preview and then execute:
+First, give the normal application `superAdmin` role access to the Branch assignment controls:
+
+```bash
+php artisan db:seed --class=SuperAdminBranchAccessPermissionSeeder --force
+```
+
+This seeder is additive and idempotent. It creates the two Branch access permissions only if they are missing and attaches only `branch_access.view` and `branch_access.assign` to the existing role named `superAdmin`. It does not create or modify users, Branch assignments, roles, or business records. If the `superAdmin` role is missing, it prints a warning and assigns nothing.
+
+After running the seeder, sign out and sign back in (or refresh the authenticated session) so the frontend receives the updated permission list. A `superAdmin` assigned only to Branch 1 will see only Branch 1 in the Create/Edit Admin checklist. The API also rejects attempts to submit any Branch outside that user's own assignments, so this restriction does not rely on the UI.
+
+Optionally verify the permission rows:
+
+```sql
+SELECT r.name AS role_name, p.slug
+FROM roles r
+JOIN permission_role pr ON pr.role_id = r.id
+JOIN permissions p ON p.id = pr.permission_id
+WHERE r.name = 'superAdmin'
+  AND p.slug IN ('branch_access.view', 'branch_access.assign')
+ORDER BY p.slug;
+```
+
+The following legacy rollout correction is optional and is **not** appropriate when a `superAdmin` must remain limited to Branch 1. Use it only if the business decision is that every existing normal `superAdmin` should receive every Branch that is **currently active**. Preview and then execute:
 
 ```bash
 php artisan branch-access:backfill --all-active-super-admins --dry-run
