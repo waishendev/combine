@@ -14,6 +14,7 @@ class BackfillBranchAccessCommand extends Command
 {
     protected $signature = 'branch-access:backfill
         {--store-code= : Existing StoreLocation code to use as the default Branch}
+        {--all-active-super-admins : Assign existing normal superAdmin users to every Branch active at execution time}
         {--force : Allow execution in production}
         {--dry-run : Show intended changes without writing}';
 
@@ -27,7 +28,18 @@ class BackfillBranchAccessCommand extends Command
             return self::FAILURE;
         }
 
+        $allActiveSuperAdmins = (bool) $this->option('all-active-super-admins');
         $storeCode = trim((string) $this->option('store-code'));
+
+        if ($allActiveSuperAdmins && $storeCode !== '') {
+            $this->error('Use either --store-code or --all-active-super-admins, not both.');
+
+            return self::FAILURE;
+        }
+
+        if ($allActiveSuperAdmins) {
+            return $this->backfillNormalSuperAdmins($backfill);
+        }
 
         if ($storeCode === '') {
             $this->error('The --store-code option is required. Example: php artisan branch-access:backfill --store-code=PNG --dry-run');
@@ -62,6 +74,27 @@ class BackfillBranchAccessCommand extends Command
         $this->line('Users newly assigned: '.($dryRun ? $summary['eligible_users'].' (would assign)' : $summary['newly_assigned']));
         $this->line("Users skipped because already assigned: {$summary['already_assigned']}");
         $this->line("Platform Super Admin users skipped: {$summary['platform_super_admin_skipped']}");
+
+        return self::SUCCESS;
+    }
+
+    private function backfillNormalSuperAdmins(BranchAccessBackfillService $backfill): int
+    {
+        $dryRun = (bool) $this->option('dry-run');
+        if ($dryRun) {
+            $this->warn('DRY RUN: no permissions, pivot assignments, StoreLocation data, or business records will be written.');
+        } else {
+            $this->callSilent('db:seed', ['--class' => BranchAccessPermissionSeeder::class, '--force' => true]);
+        }
+
+        $summary = $backfill->backfillRoleToAllActiveBranches('superAdmin', $dryRun);
+        $this->info('Normal superAdmin active Branch backfill summary');
+        $this->line("Eligible normal superAdmin users: {$summary['eligible_users']}");
+        $this->line("Currently active Branches: {$summary['active_branches']}");
+        $this->line("Existing matching assignments preserved: {$summary['existing_assignments']}");
+        $wouldAdd = ($summary['eligible_users'] * $summary['active_branches']) - $summary['existing_assignments'];
+        $this->line('Assignments added: '.($dryRun ? "{$wouldAdd} (would add)" : $summary['assignments_added']));
+        $this->line('Future Branches are not assigned automatically; assign them explicitly.');
 
         return self::SUCCESS;
     }

@@ -7,8 +7,10 @@ import { AdminRoleOption } from './AdminFilters'
 import { mapAdminApiItemToRow, type AdminApiItem } from './adminUtils'
 import CrmFormModalShell from './CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
+import BranchAccessChecklist, { type BranchAccessOption } from './BranchAccessChecklist'
+import { branchIdsFromAssignments } from './branch-access-selection'
 
-interface BranchOption { id: number; name: string; code?: string; is_active?: boolean }
+type BranchOption = BranchAccessOption
 
 interface AdminEditModalProps {
   adminId: number
@@ -140,9 +142,7 @@ export default function AdminEditModal({
           email: typeof admin.email === 'string' ? admin.email : '',
           roleId: primaryRoleId != null ? String(primaryRoleId) : '',
           isActive: mappedAdmin.isActive ? 'true' : 'false',
-          storeLocationIds: Array.isArray(admin.store_locations)
-            ? admin.store_locations.map((location) => String(location.id ?? '')).filter(Boolean)
-            : [],
+          storeLocationIds: branchIdsFromAssignments(admin.store_locations),
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -165,14 +165,6 @@ export default function AdminEditModal({
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     const { name, value } = event.target
-    if (name === 'storeLocationIds' && event.target instanceof HTMLSelectElement) {
-      const select = event.currentTarget as HTMLSelectElement
-      setForm((prev) => ({
-        ...prev,
-        storeLocationIds: Array.from(select.selectedOptions).map((option) => option.value),
-      }))
-      return
-    }
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -412,22 +404,14 @@ export default function AdminEditModal({
                   <label htmlFor="edit-storeLocationIds" className="block text-sm font-medium text-gray-700 mb-1">
                     Branch access
                   </label>
-                  <select
+                  <BranchAccessChecklist
                     id="edit-storeLocationIds"
-                    name="storeLocationIds"
-                    multiple
-                    value={form.storeLocationIds}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 min-h-28"
+                    options={branchOptions}
+                    selectedIds={form.storeLocationIds}
+                    onChange={(storeLocationIds) => setForm((previous) => ({ ...previous, storeLocationIds }))}
                     disabled={disableForm}
-                  >
-                    {branchOptions.map((location) => (
-                      <option key={location.id} value={String(location.id)}>
-                        {location.name}{location.code ? ` (${location.code})` : ''}{location.is_active === false ? ' — inactive' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-gray-500">Hold Ctrl/Cmd to select multiple branches. Platform Super Admin users do not require branch rows.</p>
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Select every Branch this Admin may access. Platform Super Admin users do not require branch rows.</p>
                 </div>
               )}
 

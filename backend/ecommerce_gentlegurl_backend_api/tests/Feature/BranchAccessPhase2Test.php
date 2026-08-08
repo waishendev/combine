@@ -100,6 +100,22 @@ class BranchAccessPhase2Test extends TestCase
         $this->assertFalse($service->canAccessStoreLocation($normalSuperAdmin, $branchB));
     }
 
+    public function test_normal_super_admin_with_two_assignments_receives_both_branch_options(): void
+    {
+        $role = Role::create(['name' => 'superAdmin', 'is_active' => true, 'is_system' => false, 'is_default' => false]);
+        $user = $this->user(['email' => 'multi-super-admin@example.com']);
+        $user->roles()->sync([$role->id]);
+        $branchA = $this->location('SA');
+        $branchB = $this->location('SB');
+        $user->storeLocations()->sync([$branchA->id, $branchB->id]);
+
+        $this->actingAs($user)->getJson('/api/me/store-locations')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment(['id' => $branchA->id])
+            ->assertJsonFragment(['id' => $branchB->id]);
+    }
+
     public function test_current_user_accessible_store_locations_api(): void
     {
         $user = $this->user();
@@ -113,6 +129,20 @@ class BranchAccessPhase2Test extends TestCase
             ->assertJsonPath('data.0.id', $assigned->id)
             ->assertJsonPath('data.0.name', 'Gentlegurls Nail Salon')
             ->assertJsonMissing(['name' => 'Hidden Branch']);
+    }
+
+    public function test_platform_user_receives_all_branch_options_from_current_user_api(): void
+    {
+        $platform = $this->user(['email' => 'platform-options@example.com']);
+        $platform->roles()->sync([$this->platformRole->id]);
+        $first = $this->location('PNG');
+        $second = $this->location('KL');
+
+        $this->actingAs($platform)->getJson('/api/me/store-locations')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment(['id' => $first->id])
+            ->assertJsonFragment(['id' => $second->id]);
     }
 
     public function test_admin_create_update_branch_assignments_and_unauthorized_attempts(): void
@@ -162,6 +192,24 @@ class BranchAccessPhase2Test extends TestCase
         ]);
 
         $response->assertOk()->assertJsonPath('data.email', 'compat@example.com');
+    }
+
+    public function test_admin_update_expands_one_branch_assignment_to_two(): void
+    {
+        $actor = $this->user(['email' => 'assignment-actor@example.com']);
+        $actor->roles()->sync([$this->platformRole->id]);
+        $admin = $this->user(['email' => 'assignment-target@example.com']);
+        $branchA = $this->location('UA');
+        $branchB = $this->location('UB');
+        $admin->storeLocations()->sync([$branchA->id]);
+
+        $this->actingAs($actor)->putJson("/api/admins/{$admin->id}", [
+            'email' => $admin->email,
+            'role_ids' => [$this->adminRole->id],
+            'store_location_ids' => [$branchA->id, $branchB->id],
+        ])->assertOk()->assertJsonCount(2, 'data.store_locations');
+
+        $this->assertSameCanonicalizing([$branchA->id, $branchB->id], $admin->storeLocations()->pluck('store_locations.id')->all());
     }
 
     public function test_backfill_command_requires_store_code(): void
@@ -240,6 +288,29 @@ class BranchAccessPhase2Test extends TestCase
 
         $this->assertDatabaseMissing('store_location_user', ['user_id' => $user->id]);
         $this->assertSame($permissionCount, Permission::count());
+    }
+
+    public function test_normal_super_admin_active_branch_backfill_is_additive_idempotent_and_not_a_bypass(): void
+    {
+        $this->app->detectEnvironment(fn () => 'production');
+        $normalRole = Role::create(['name' => 'superAdmin', 'is_active' => true, 'is_system' => false, 'is_default' => false]);
+        $normal = $this->user(['email' => 'production-super-admin@example.com']);
+        $normal->roles()->sync([$normalRole->id]);
+        $activeA = $this->location('BA');
+        $activeB = $this->location('BB');
+        $inactive = $this->location('BI', ['is_active' => false]);
+        $normal->storeLocations()->attach($activeA->id);
+
+        $command = 'branch-access:backfill --all-active-super-admins --force';
+        $this->artisan($command)->expectsOutput('Normal superAdmin active Branch backfill summary')->assertExitCode(0);
+        $this->artisan($command)->expectsOutput('Assignments added: 0')->assertExitCode(0);
+
+        $this->assertSameCanonicalizing([$activeA->id, $activeB->id], $normal->storeLocations()->pluck('store_locations.id')->all());
+        $this->assertDatabaseMissing('store_location_user', ['user_id' => $normal->id, 'store_location_id' => $inactive->id]);
+
+        $future = $this->location('BF');
+        $this->assertFalse(app(StoreLocationAccessService::class)->canAccessStoreLocation($normal->fresh(), $future));
+        $this->assertSame(2, $normal->storeLocations()->count());
     }
 
     public function test_default_branch_backfill_seeder_assigns_existing_non_platform_users_idempotently(): void
