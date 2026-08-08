@@ -4,7 +4,7 @@ import { useBranch } from '@/contexts/BranchContext'
 import { branchSelectorOptions } from './branch-selector-options'
 
 function Selector({ mobile }: { mobile: boolean }) {
-  const { accessibleBranches, selectedBranchId, loading, error, setSelectedBranch, refreshBranches } = useBranch()
+  const { accessibleBranches, selectedBranchId, selectedBranch, loading, error, setSelectedBranch, refreshBranches } = useBranch()
   const hasMultiple = accessibleBranches.length > 1
   const options = branchSelectorOptions(accessibleBranches)
   const value = selectedBranchId === null ? 'all' : String(selectedBranchId)
@@ -35,6 +35,7 @@ function Selector({ mobile }: { mobile: boolean }) {
         {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
       {hasMultiple ? <i className="fa-solid fa-chevron-down pointer-events-none absolute right-2 text-[9px] text-slate-400" aria-hidden="true" /> : null}
+      {!mobile ? <span className={`ml-1 hidden max-w-[190px] truncate rounded px-2 py-1 text-[10px] font-semibold lg:inline ${selectedBranch?.inventory_is_authoritative ? 'bg-emerald-100 text-emerald-800' : selectedBranch?.inventory_cutover_status === 'reconciled' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`} title={selectedBranch?.inventory_authority_label ?? 'Global legacy inventory authoritative'} aria-live="polite">{selectedBranch?.inventory_authority_label ?? 'Global stock active'}</span> : null}
     </label>
   )
 }

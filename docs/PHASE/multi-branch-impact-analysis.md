@@ -413,3 +413,7 @@ The audit also confirms a Phase 6B blocker: `ProductStockMovement` is actively w
 ## Phase 6B re-audit refinement (2026-08-08)
 
 Phase 6B confirms `ProductStockMovement` as the candidate canonical Branch ledger and adds the schema/service/reconciliation foundation. Authoritative activation is intentionally blocked: ecommerce currently reserves/releases global Product/Variant fields without deterministic delivery Branch attribution, monetary partial refunds do not identify restock quantities, void/cancel restoration is not centralized, and loyalty reward stock writes lack Branch identity. The cutover state cannot be activated by the backfill command. Existing operational writers remain unchanged until these explicit stop conditions are resolved; no Phase 6C, 7, or 8 behavior is included.
+
+## Phase 6C implementation refinement (2026-08-08)
+
+The POS cash re-audit confirms Cash Shift and the physical carried Cash Pool Account as Branch-operational parents. Ledger children inherit Branch through those parents, avoiding redundant attribution. Structured per-Branch POS printer settings replace global printer writes with a legacy read fallback. Authorized Branch Context exposes cutover status with explicit non-authoritative labels, while global Product/Variant stock and low-stock behavior remain unchanged. Phase 6B inventory authority remains inactive and its blockers remain unresolved.

@@ -10,6 +10,7 @@ import {
   type ThermalPrinterSettings,
 } from '@/lib/thermalPrinterSettings'
 import { testWifiPrinterConnection } from '@/utils/printReceipt'
+import { useBranch } from '@/contexts/BranchContext'
 
 type TestStatus = 'not-tested' | 'testing' | 'sent' | 'failed'
 
@@ -20,6 +21,7 @@ const boolSelectClass =
   'mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500'
 
 export default function ThermalPrinterSettingsForm({ canEdit }: { canEdit: boolean }) {
+  const { selectedBranchId, selectedBranch, loading: branchLoading } = useBranch()
   const [form, setForm] = useState<ThermalPrinterSettings>(defaultThermalPrinterSettings)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -29,11 +31,13 @@ export default function ThermalPrinterSettingsForm({ canEdit }: { canEdit: boole
   const [testMessage, setTestMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    getThermalPrinterSettings()
+    if (!selectedBranchId) { setLoading(false); return }
+    setLoading(true)
+    getThermalPrinterSettings(selectedBranchId)
       .then(setForm)
       .catch((error) => setPageError(errorMessage(error, 'Unable to load thermal printer settings.')))
       .finally(() => setLoading(false))
-  }, [])
+  }, [selectedBranchId])
 
   const update = <K extends keyof ThermalPrinterSettings>(key: K, value: ThermalPrinterSettings[K]) => {
     setForm((current) => ({ ...current, [key]: value }))
@@ -46,7 +50,8 @@ export default function ThermalPrinterSettingsForm({ canEdit }: { canEdit: boole
     setSaving(true)
     setNotice(null)
     try {
-      const response = await saveThermalPrinterSettings(form)
+      if (!selectedBranchId) throw new Error('Select a specific Branch before saving printer settings.')
+      const response = await saveThermalPrinterSettings(form, selectedBranchId)
       setForm(response.data)
       setNotice({ tone: 'success', text: response.message ?? 'Thermal printer settings saved.' })
     } catch (error) {
@@ -61,6 +66,9 @@ export default function ThermalPrinterSettingsForm({ canEdit }: { canEdit: boole
     setTestMessage(null)
     setNotice(null)
     try {
+      if (!selectedBranch?.is_active || !selectedBranch.is_pos_available) {
+        throw new Error('Test printing requires an active, POS-enabled Branch.')
+      }
       if (form.connection_type !== 'network' || !form.ip_address?.trim() || !form.port) {
         throw new Error('Configure a network printer IP and port before testing.')
       }
@@ -73,7 +81,8 @@ export default function ThermalPrinterSettingsForm({ canEdit }: { canEdit: boole
     }
   }
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading printer settings…</div>
+  if (loading || branchLoading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading printer settings…</div>
+  if (!selectedBranchId || !selectedBranch) return <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">Select a specific Branch. All Branches cannot edit operational printer settings.</div>
   if (pageError) return <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{pageError}</div>
 
   const networkReady = form.connection_type === 'network' && Boolean(form.ip_address?.trim()) && Boolean(form.port)
@@ -95,6 +104,7 @@ export default function ThermalPrinterSettingsForm({ canEdit }: { canEdit: boole
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="border-b border-slate-100 pb-5">
           <h3 className="text-lg font-semibold text-slate-900">Printer Configuration</h3>
+          <p className="mt-1 text-sm font-medium text-slate-700">{selectedBranch.name}</p>
           <p className="mt-1 text-sm text-slate-500">
             Network printing sends ESC/POS receipts directly to the configured printer.
           </p>
@@ -228,7 +238,7 @@ export default function ThermalPrinterSettingsForm({ canEdit }: { canEdit: boole
           <button
             type="button"
             onClick={() => void handleTest()}
-            disabled={!canEdit || testStatus === 'testing' || !networkReady}
+            disabled={!canEdit || testStatus === 'testing' || !networkReady || !selectedBranch.is_active || !selectedBranch.is_pos_available}
             className="rounded-lg border border-blue-600 px-5 py-2.5 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {testStatus === 'testing' ? 'Testing…' : 'Test Print'}

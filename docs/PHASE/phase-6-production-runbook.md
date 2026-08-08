@@ -129,3 +129,45 @@ There is no safe zero-downtime promise with the current global reservation write
 Before activation, rollback simply removes the additive cutover-state table and canonical ledger columns; Branch inventory rows produced by an approved force run should be exported before migration rollback. No operational writer depends on them. After a future activation, rollback requires another write freeze, movement-to-balance reconciliation, disabling Branch writers, and restoring a verified global projection before old code resumes.
 
 Phase 6C owns Branch low-stock/UI compatibility. Phase 8 owns public pickup Branch selection, reservations, conflict UX, and deterministic ecommerce attribution. Transfers, cash shifts/pools, printers, pricing, vouchers, packages, points, rewards, broad reporting, Phase 7, and multi-tenancy remain out of scope.
+
+## Phase 6C POS operational Branch foundation
+
+### Cash and printer re-audit
+
+`pos_cash_shifts` stores separate immutable OPEN and CLOSE event records linked by `linked_open_shift_id`. It was previously company-global, and cash sales were calculated only by time window. A shift is clearly an operational Branch parent, so Phase 6C adds nullable `store_location_id`; CLOSE inherits the OPEN Branch, and cash-sale calculation additionally filters `orders.store_location_id`.
+
+`pos_cash_pool_accounts` contains carried physical drawer values (`total_initial_cash` and `total_withdraw`). Open/close shift actions move those balances and immutable `pos_cash_pool_ledger` children reference both the account and shift. Therefore the **account parent is Branch-specific**, while ledger entries inherit Branch through their immutable account/shift parents. No redundant Branch column or cross-Branch transfer behavior was added to the ledger.
+
+Thermal printer connection, enabled state, paper width, copies, and auto-print receipt behavior are operational receipt settings. They now live in one structured `store_location_pos_settings` row per Branch. The previous global `thermal_printer` setting is read only as a legacy fallback when an existing Branch has no structured row; saving creates the Branch row and never creates dynamic setting keys.
+
+### Operational and historical rules
+
+Opening, closing, or querying the current shift requires an explicit existing, active, POS-enabled, actor-accessible Branch. Only one open shift is allowed across the current POS deployment; selecting another Branch cannot reinterpret it. A POS cart request is rejected when its Branch differs from the persisted open shift. POS Orders already inherit the cart Branch, while shift cash totals now include only Orders from the same Branch.
+
+Historical shift reports remain readable for accessible Branches even after POS is disabled. Legacy NULL shift/account history stays explicitly unresolved until backfill; it is never treated as Branch 1, current Header Branch, or All Branches. Cash report All Branches means an overview of accessible attributed Branches, not mutation permission.
+
+Printer configuration can be read and administratively edited for an accessible historical Branch. Auto-print preference changes and test-print operations require an active, POS-enabled Branch. CRM All Branches cannot save printer settings; a specific global Branch Context selection is required.
+
+### POS operational backfill
+
+```bash
+php artisan pos-branch:backfill --store-code=PNG --dry-run
+```
+
+```bash
+php artisan pos-branch:backfill --store-code=PNG --force
+```
+
+Force must not be run automatically. The command reports null/assignable/unresolved shifts, accounts, and ledger entries. It updates only NULL parent attribution, preserves every non-null value, leaves linked-shift or account-code conflicts unresolved, is idempotent, and never creates a Branch. Ledger rows inherit through the attributed parents.
+
+### Inventory read and low-stock compatibility
+
+The authorized Branch Context response exposes only `pending`, `reconciled`, or `active`, an authority boolean, and a plain-language label; it does not expose reconciliation internals. `pending` displays global legacy inventory authority. `reconciled` explicitly says “not yet active.” No Phase 6C endpoint or UI can activate inventory.
+
+Production Product/POS stock and low-stock alerts continue reading global Product/ProductVariant fields. Preparatory Branch balances do not trigger alerts and are not presented as live stock. `BranchInventoryMutationService` remains guarded and disconnected from writers. The Phase 6B ecommerce, partial-refund, void/cancel, and loyalty blockers remain unresolved.
+
+### Fresh install, rollback, and deferrals
+
+Fresh Branch creation and seeding create a zero-valued default physical cash account and default disabled printer row. Rollback requires stopping cash operations, exporting any new Branch cash/printer data, reverting application code, then rolling back the additive migration. Removing Branch attribution does not delete shifts or ledger history, but the rollback recreates the legacy unique global account code and therefore requires consolidating/removing additional Branch account rows first.
+
+No inventory activation, stock writer conversion, transfer workflow, public ecommerce reservation/pickup behavior, Phase 7/8 feature, reporting conversion, or multi-tenant architecture is included.

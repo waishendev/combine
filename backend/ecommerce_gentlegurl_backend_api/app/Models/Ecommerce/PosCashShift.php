@@ -18,6 +18,7 @@ class PosCashShift extends Model
     public const EVENT_CLOSE = 'CLOSE';
 
     protected $fillable = [
+        'store_location_id',
         'event_type',
         'linked_open_shift_id',
         'opening_amount',
@@ -57,6 +58,11 @@ class PosCashShift extends Model
     public function opener()
     {
         return $this->belongsTo(User::class, 'opened_by');
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class);
     }
 
     public function closer()

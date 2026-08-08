@@ -15,6 +15,13 @@ class StoreLocation extends Model
 
     protected static function booted(): void
     {
+        static::created(function (StoreLocation $location): void {
+            PosCashPoolAccount::query()->firstOrCreate(
+                ['store_location_id' => $location->id, 'code' => PosCashPoolAccount::DEFAULT_CODE],
+                ['total_initial_cash' => 0, 'total_withdraw' => 0]
+            );
+            StoreLocationPosSetting::query()->firstOrCreate(['store_location_id' => $location->id]);
+        });
         static::updating(function (StoreLocation $location): void {
             if ($location->isDirty('code')) {
                 throw new \LogicException('Branch code is immutable after creation.');
@@ -84,6 +91,16 @@ class StoreLocation extends Model
     public function productInventories()
     {
         return $this->hasMany(StoreLocationProductInventory::class);
+    }
+
+    public function posSettings()
+    {
+        return $this->hasOne(StoreLocationPosSetting::class);
+    }
+
+    public function cashPoolAccounts()
+    {
+        return $this->hasMany(PosCashPoolAccount::class);
     }
 
     /**

@@ -16,6 +16,7 @@ use App\Models\Ecommerce\OrderItemStaffSplit;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\OrderUpload;
 use App\Models\Ecommerce\PosCart;
+use App\Models\Ecommerce\PosCashShift;
 use App\Models\Ecommerce\PosCartAppointmentSettlementItem;
 use App\Models\Ecommerce\PosCartItem;
 use App\Models\Ecommerce\Product;
@@ -7160,6 +7161,13 @@ class PosController extends Controller
         }
 
         [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds, $checkedOutBookings] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
+            $checkoutShift = PosCashShift::query()
+                ->where('event_type', PosCashShift::EVENT_OPEN)
+                ->whereDoesntHave('closeEvent')
+                ->lockForUpdate()->latest('opened_at')->first();
+            if ($checkoutShift && (int) $checkoutShift->store_location_id !== (int) $cart->store_location_id) {
+                throw ValidationException::withMessages(['store_location_id' => __('POS cart, Order, and open Cash Shift must belong to the same Branch.')]);
+            }
             $confirmedBookingIds = [];
             $packageCustomerIds = $cart->packageItems
                 ->pluck('customer_id')
@@ -9502,6 +9510,14 @@ class PosController extends Controller
             ->authorizeStoreLocation($request->user(), $branchId, false);
         if (! $branch->is_pos_available) {
             throw ValidationException::withMessages(['store_location_id' => __('The selected Branch is not available for POS.')]);
+        }
+
+        $openShift = PosCashShift::query()
+            ->where('event_type', PosCashShift::EVENT_OPEN)
+            ->whereDoesntHave('closeEvent')
+            ->latest('opened_at')->first();
+        if ($openShift && (int) $openShift->store_location_id !== (int) $branch->id) {
+            throw ValidationException::withMessages(['store_location_id' => __('The open cash shift belongs to another Branch. Close it before operating POS here.')]);
         }
 
         $cart = PosCart::firstOrCreate(['staff_user_id' => $staffUserId], ['store_location_id' => $branch->id]);

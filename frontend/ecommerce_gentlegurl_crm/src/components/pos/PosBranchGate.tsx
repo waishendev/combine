@@ -12,7 +12,7 @@ export default function PosBranchGate({ children }: { children: ReactNode }) {
     const nativeFetch = window.fetch
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       const raw = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-      if (!raw.includes('/api/proxy/ecommerce/pos')) return nativeFetch(input, init)
+      if (!raw.includes('/api/proxy/ecommerce/pos') && !raw.includes('/api/proxy/pos/') && !raw.includes('/api/proxy/ecommerce/thermal-printer-settings')) return nativeFetch(input, init)
       const url = new URL(raw, window.location.origin)
       url.searchParams.set('store_location_id', String(selectedBranchId))
       const nextInput = typeof input === 'string' ? `${url.pathname}${url.search}` : url

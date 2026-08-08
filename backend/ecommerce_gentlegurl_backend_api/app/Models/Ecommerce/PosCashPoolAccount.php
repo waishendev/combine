@@ -10,6 +10,7 @@ class PosCashPoolAccount extends Model
     public const DEFAULT_CODE = 'default';
 
     protected $fillable = [
+        'store_location_id',
         'code',
         'total_initial_cash',
         'total_withdraw',
@@ -26,6 +27,11 @@ class PosCashPoolAccount extends Model
     public function ledgerEntries(): HasMany
     {
         return $this->hasMany(PosCashPoolLedger::class);
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class);
     }
 
     public function balancesArray(): array

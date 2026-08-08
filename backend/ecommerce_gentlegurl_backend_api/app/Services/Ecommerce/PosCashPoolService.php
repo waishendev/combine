@@ -12,9 +12,9 @@ class PosCashPoolService
     /**
      * @return array{total_initial_cash: float, total_withdraw: float}
      */
-    public function balances(): array
+    public function balances(int $storeLocationId): array
     {
-        return $this->defaultAccount()->balancesArray();
+        return $this->defaultAccount($storeLocationId)->balancesArray();
     }
 
     /**
@@ -25,7 +25,7 @@ class PosCashPoolService
         $refillPacket = round($refillPacket, 2);
         $atm = round($atm, 2);
 
-        $account = $this->lockDefaultAccount();
+        $account = $this->lockDefaultAccount((int) $shift->store_location_id);
         $this->assertAtmAllowed($account->balancesArray(), $atm);
 
         if ($refillPacket > 0) {
@@ -49,7 +49,7 @@ class PosCashPoolService
         $withdraw = round($withdraw, 2);
         $refillCash = round($refillCash, 2);
 
-        $account = $this->lockDefaultAccount();
+        $account = $this->lockDefaultAccount((int) $shift->store_location_id);
 
         if ($refillCash > (float) $account->total_initial_cash) {
             throw ValidationException::withMessages([
@@ -94,19 +94,29 @@ class PosCashPoolService
         }
     }
 
-    private function lockDefaultAccount(): PosCashPoolAccount
+    private function lockDefaultAccount(int $storeLocationId): PosCashPoolAccount
     {
-        return PosCashPoolAccount::query()
+        $account = PosCashPoolAccount::query()
             ->where('code', PosCashPoolAccount::DEFAULT_CODE)
+            ->where('store_location_id', $storeLocationId)
             ->lockForUpdate()
-            ->firstOrFail();
+            ->first();
+        if (! $account) {
+            throw ValidationException::withMessages(['store_location_id' => [__('Cash Pool Branch attribution is unresolved. Run the reviewed POS Branch backfill before cash operations.')]]);
+        }
+        return $account;
     }
 
-    private function defaultAccount(): PosCashPoolAccount
+    private function defaultAccount(int $storeLocationId): PosCashPoolAccount
     {
-        return PosCashPoolAccount::query()
+        $account = PosCashPoolAccount::query()
             ->where('code', PosCashPoolAccount::DEFAULT_CODE)
-            ->firstOrFail();
+            ->where('store_location_id', $storeLocationId)
+            ->first();
+        if (! $account) {
+            throw ValidationException::withMessages(['store_location_id' => [__('Cash Pool Branch attribution is unresolved. Run the reviewed POS Branch backfill before cash operations.')]]);
+        }
+        return $account;
     }
 
     private function postEntry(

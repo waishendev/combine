@@ -14,6 +14,8 @@ import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type PosCashShift = {
   id: number
+  store_location_id?: number | null
+  store_location?: { id: number; name: string; code: string } | null
   opening_amount: number
   opening_refill_packet?: number | null
   opening_atm?: number | null
@@ -422,6 +424,7 @@ export default function PosCashShiftGate({
             <span><b>Opening:</b> {currency(shift.opening_amount)}</span>
             <span><b>Cash Sales:</b> {currency(shift.cash_sales)}</span>
             <span><b>Opened At:</b> {formatDateTime(shift.opened_at)}</span>
+            <span><b>Branch:</b> {shift.store_location?.name ?? 'Legacy / unresolved'}</span>
             {canManageCashShift ? (
             <button
               type="button"

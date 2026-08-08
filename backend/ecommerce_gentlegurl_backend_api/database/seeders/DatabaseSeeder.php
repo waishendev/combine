@@ -53,6 +53,7 @@ class DatabaseSeeder extends Seeder
             BookingLandingPageSeeder::class,
             BookingBranchAssignmentSeeder::class,
             ProductBranchAssignmentSeeder::class,
+            PosBranchOperationalSeeder::class,
             // EcommerceLandingPageSeeder::class,
             // BookingProductSeeder::class,
             
