@@ -428,6 +428,22 @@ export default function PosAppointmentsWorkspace({
   permissions?: string[]
 }) {
   const { selectedBranchId } = useBranch()
+  const selectedBranchIdRef = useRef<number | null>(selectedBranchId)
+  selectedBranchIdRef.current = selectedBranchId
+  const appointmentFetch = useCallback((input: RequestInfo | URL, init?: RequestInit) => {
+    const raw = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const url = new URL(raw, window.location.origin)
+    const branchId = selectedBranchIdRef.current
+    if (branchId) url.searchParams.set('store_location_id', String(branchId))
+    const nextInput = typeof input === 'string' ? `${url.pathname}${url.search}` : url
+    return fetch(nextInput, init)
+  }, [])
+  const branchScopedUrl = useCallback((raw: string) => {
+    const url = new URL(raw, window.location.origin)
+    const branchId = selectedBranchIdRef.current
+    if (branchId) url.searchParams.set('store_location_id', String(branchId))
+    return `${url.pathname}${url.search}`
+  }, [])
   const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const canManageBalance = useMemo(() => permissions.includes('customer_wallet.adjust'), [permissions])
   const canPosCheckout = useMemo(() => permissions.includes('pos.checkout'), [permissions])
@@ -572,6 +588,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentLineSplitOverwrite, setAppointmentLineSplitOverwrite] = useState(false)
   const [appointmentLineSplitError, setAppointmentLineSplitError] = useState<string | null>(null)
   const [appointments, setAppointments] = useState<PosAppointmentListItem[]>([])
+  const appointmentsRequest = useRef(0)
   const [appointmentsLoading, setAppointmentsLoading] = useState(true)
   const [appointmentsRefreshing, setAppointmentsRefreshing] = useState(false)
   const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
@@ -593,6 +610,7 @@ export default function PosAppointmentsWorkspace({
     [permissions],
   )
   const [appointmentDetail, setAppointmentDetail] = useState<PosAppointmentDetail | null>(null)
+  const appointmentDetailRequest = useRef(0)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [settlementSheetOpen, setSettlementSheetOpen] = useState(false)
   const [settlementBarPulse, setSettlementBarPulse] = useState(false)
@@ -1034,6 +1052,7 @@ export default function PosAppointmentsWorkspace({
   const fetchStaffOptions = useCallback(
     async (search: string) => {
       const params = new URLSearchParams({ page: '1', per_page: '20', is_active: '1' })
+      if (selectedBranchIdRef.current) params.set('store_location_id', String(selectedBranchIdRef.current))
       if (search.trim()) params.set('search', search.trim())
       const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) return [] as StaffOption[]
@@ -1328,6 +1347,7 @@ export default function PosAppointmentsWorkspace({
 
   const fetchActiveStaffs = useCallback(async () => {
     const params = new URLSearchParams({ page: '1', per_page: '200', is_active: '1' })
+    if (selectedBranchIdRef.current) params.set('store_location_id', String(selectedBranchIdRef.current))
     const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
     if (!res.ok) return
     const json = await res.json().catch(() => null)
@@ -1383,10 +1403,12 @@ export default function PosAppointmentsWorkspace({
   )
 
   const fetchAppointments = useCallback(async (options?: { silent?: boolean }) => {
+    const request = ++appointmentsRequest.current
     const silent = options?.silent ?? false
     if (silent) {
       setAppointmentsRefreshing(true)
     } else {
+      setAppointments([])
       setAppointmentsLoading(true)
     }
     try {
@@ -1423,8 +1445,9 @@ export default function PosAppointmentsWorkspace({
         params.set('status', appointmentStatusFilterApiValue(appointmentStatusFilter.trim()))
       }
 
-      const res = await fetch(`/api/proxy/pos/appointments?${params.toString()}`, { cache: 'no-store' })
+      const res = await appointmentFetch(`/api/proxy/pos/appointments?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
+      if (request !== appointmentsRequest.current) return
       if (!res.ok) {
         setAppointments([])
         return
@@ -1437,12 +1460,14 @@ export default function PosAppointmentsWorkspace({
           .filter((row) => appointmentMatchesStatusFilter(row, appointmentStatusFilter)),
       )
     } catch {
-      setAppointments([])
+      if (request === appointmentsRequest.current) setAppointments([])
     } finally {
-      if (silent) {
-        setAppointmentsRefreshing(false)
-      } else {
-        setAppointmentsLoading(false)
+      if (request === appointmentsRequest.current) {
+        if (silent) {
+          setAppointmentsRefreshing(false)
+        } else {
+          setAppointmentsLoading(false)
+        }
       }
     }
   }, [
@@ -1451,15 +1476,21 @@ export default function PosAppointmentsWorkspace({
     appointmentQuery,
     appointmentStaffFilter,
     appointmentStatusFilter,
+    appointmentFetch,
     posApptCalendarMonth,
     posApptViewMode,
     scheduleScope,
+    selectedBranchId,
   ])
 
   const fetchCreateAppointmentServices = useCallback(async () => {
     setCreateAppointmentServicesLoading(true)
     try {
-      const res = await fetch('/api/proxy/booking/services', { cache: 'no-store' })
+      if (!selectedBranchIdRef.current) {
+        setCreateAppointmentServices([])
+        return
+      }
+      const res = await fetch(branchScopedUrl('/api/proxy/booking/services'), { cache: 'no-store' })
       if (!res.ok) {
         setCreateAppointmentServices([])
         return
@@ -1505,7 +1536,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setCreateAppointmentServicesLoading(false)
     }
-  }, [])
+  }, [branchScopedUrl])
 
   const fetchBookingServiceCategories = useCallback(async () => {
     try {
@@ -1533,7 +1564,7 @@ export default function PosAppointmentsWorkspace({
       return
     }
     try {
-      const res = await fetch(`/api/proxy/booking/services/${serviceId}`, { cache: 'no-store' })
+      const res = await fetch(branchScopedUrl(`/api/proxy/booking/services/${serviceId}`), { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
       const mappedQuestions: ServiceAddonQuestion[] = questionsRaw
@@ -1582,7 +1613,7 @@ export default function PosAppointmentsWorkspace({
   const fetchServiceAddonQuestions = useCallback(async (serviceId: number): Promise<ServiceAddonQuestion[]> => {
     if (!serviceId) return []
     try {
-      const res = await fetch(`/api/proxy/booking/services/${serviceId}`, { cache: 'no-store' })
+      const res = await fetch(branchScopedUrl(`/api/proxy/booking/services/${serviceId}`), { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
       return questionsRaw
@@ -1628,6 +1659,10 @@ export default function PosAppointmentsWorkspace({
   }, [])
 
   const openCreateAppointmentModal = useCallback(() => {
+    if (!selectedBranchId) {
+      showMsg('Please select a specific Branch before creating an appointment.', 'warning')
+      return
+    }
     if (cashShiftActionDisabled) {
       showMsg(requireOpenShiftMessage, 'warning')
       return
@@ -1675,7 +1710,7 @@ export default function PosAppointmentsWorkspace({
       void fetchCreateAppointmentServices()
     void fetchBookingServiceCategories()
     }
-  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchCreateAppointmentServices, requireOpenShiftMessage, showMsg, thermalPrinterSettings])
+  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchCreateAppointmentServices, requireOpenShiftMessage, selectedBranchId, showMsg, thermalPrinterSettings])
 
   const closeCreateAppointmentMemberPicker = useCallback(() => {
     setCreateAppointmentMemberPickerOpen(false)
@@ -2128,7 +2163,7 @@ export default function PosAppointmentsWorkspace({
         appointmentBody.append('deposit_qr_payment_proof', appointmentQrProofFile as File)
       }
 
-      const res = await fetch('/api/proxy/pos/appointments', appointmentBody
+      const res = await appointmentFetch('/api/proxy/pos/appointments', appointmentBody
         ? { method: 'POST', body: appointmentBody }
         : {
             method: 'POST',
@@ -2234,7 +2269,7 @@ export default function PosAppointmentsWorkspace({
 
       const createdId = Number(json?.data?.id ?? json?.data?.booking_id ?? 0)
       if (createdId > 0) {
-        const detailRes = await fetch(`/api/proxy/pos/appointments/${createdId}`, { cache: 'no-store' })
+        const detailRes = await appointmentFetch(`/api/proxy/pos/appointments/${createdId}`, { cache: 'no-store' })
         const detailJson = await detailRes.json().catch(() => null)
         if (detailRes.ok) {
           const nextDetail = (detailJson?.data ?? null) as PosAppointmentDetail | null
@@ -2295,6 +2330,7 @@ export default function PosAppointmentsWorkspace({
 
   const openAppointmentDetail = useCallback(
     async (appointmentId: number) => {
+      const request = ++appointmentDetailRequest.current
       setAppointmentDetailLoading(true)
       setAppointmentDetail(null)
       setAppointmentSettlementResult(null)
@@ -2308,15 +2344,16 @@ export default function PosAppointmentsWorkspace({
       setAppointmentQrProofFileName(null)
       setAppointmentReschedulePolicyWarnings([])
       try {
-        const res = await fetch(`/api/proxy/pos/appointments/${appointmentId}`, { cache: 'no-store' })
+        const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentId}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
+        if (request !== appointmentDetailRequest.current) return
         if (!res.ok) {
           showMsg(json?.message ?? 'Unable to load appointment detail.', 'error')
           return
         }
         setAppointmentDetail((json?.data ?? null) as PosAppointmentDetail | null)
       } finally {
-        setAppointmentDetailLoading(false)
+        if (request === appointmentDetailRequest.current) setAppointmentDetailLoading(false)
       }
     },
     [appointmentQrProofPreviewUrl, showMsg],
@@ -2324,7 +2361,7 @@ export default function PosAppointmentsWorkspace({
 
   const refreshOpenedAppointmentDetail = useCallback(async () => {
     if (!appointmentDetail?.id) return
-    const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}`, { cache: 'no-store' })
+    const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}`, { cache: 'no-store' })
     const json = await res.json().catch(() => null)
     if (res.ok) {
       setAppointmentDetail((json?.data ?? null) as PosAppointmentDetail | null)
@@ -2357,7 +2394,7 @@ export default function PosAppointmentsWorkspace({
     setCancellationRequestsLoading(true)
     setCancellationRequestsError(null)
     try {
-      const res = await fetch('/api/proxy/pos/cancellation-requests?status=pending&per_page=50', { cache: 'no-store' })
+      const res = await appointmentFetch('/api/proxy/pos/cancellation-requests?status=pending&per_page=50', { cache: 'no-store' })
       const payload = (await res.json().catch(() => null)) as { data?: { data?: unknown }; message?: string } | null
       if (!res.ok) {
         setCancellationRequestsRows([])
@@ -2386,7 +2423,7 @@ export default function PosAppointmentsWorkspace({
       if (!canReviewCancellationRequests) return
       setCancellationReviewSubmitting(true)
       try {
-        const res = await fetch(`/api/proxy/pos/cancellation-requests/${id}/${action}`, {
+        const res = await appointmentFetch(`/api/proxy/pos/cancellation-requests/${id}/${action}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ admin_note: adminNote }),
@@ -2972,7 +3009,7 @@ export default function PosAppointmentsWorkspace({
     try {
       const [addonRes, servicesRes] = await Promise.all([
         fetch(`/api/proxy/pos/services/${appointmentDetail.service.id}/addon-options`),
-        fetch('/api/proxy/booking/services', { cache: 'no-store' }),
+        fetch(branchScopedUrl('/api/proxy/booking/services'), { cache: 'no-store' }),
       ])
       const addonJson = await addonRes.json().catch(() => null)
       setEditAddonQuestions((addonJson?.data?.questions ?? []) as ServiceAddonQuestion[])
@@ -3419,7 +3456,7 @@ export default function PosAppointmentsWorkspace({
   const submitEditSettlementPayload = useCallback(async (payload: Record<string, unknown>) => {
     if (!appointmentDetail?.id) return
 
-    const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/edit-settlement`, {
+    const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/edit-settlement`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -3747,7 +3784,7 @@ export default function PosAppointmentsWorkspace({
     if (!appointmentDetail?.id) return
     setAppointmentActionLoading(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/apply-package`, { method: 'POST' })
+      const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/apply-package`, { method: 'POST' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         showMsg(json?.message ?? 'Unable to apply package.', 'error')
@@ -3765,7 +3802,7 @@ export default function PosAppointmentsWorkspace({
     if (!appointmentDetail?.id) return
     setAppointmentActionLoading(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/release-package`, { method: 'POST' })
+      const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/release-package`, { method: 'POST' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         showMsg(json?.message ?? 'Unable to release package claim.', 'error')
@@ -3783,7 +3820,7 @@ export default function PosAppointmentsWorkspace({
     if (!appointmentDetail?.id) return
     setAppointmentActionLoading(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/mark-completed`, { method: 'POST' })
+      const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/mark-completed`, { method: 'POST' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         showMsg(json?.message ?? 'Unable to mark completed.', 'error')
@@ -3806,7 +3843,7 @@ export default function PosAppointmentsWorkspace({
     }
     setSendingConfirmationEmail(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/send-confirmation-email`, {
+      const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/send-confirmation-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -3834,7 +3871,7 @@ export default function PosAppointmentsWorkspace({
       if (!appointmentDetail?.id) return
       setAppointmentActionLoading(true)
       try {
-        const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/status`, {
+        const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3893,7 +3930,7 @@ export default function PosAppointmentsWorkspace({
     if (!appointmentDetail?.id) return
     setAppointmentActionLoading(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/approve-hold`, {
+      const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/approve-hold`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ admin_note: holdReviewNote.trim() || null }),
@@ -3917,7 +3954,7 @@ export default function PosAppointmentsWorkspace({
     if (!appointmentDetail?.id) return
     setAppointmentActionLoading(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/cancel-hold`, {
+      const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/cancel-hold`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: holdCancelReason.trim() || null }),
@@ -3946,7 +3983,7 @@ export default function PosAppointmentsWorkspace({
     }
     setAppointmentActionLoading(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/reject-hold-payment-proof`, {
+      const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/reject-hold-payment-proof`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ admin_note: note }),
@@ -4005,7 +4042,7 @@ export default function PosAppointmentsWorkspace({
 
     setAppointmentRescheduleSubmitting(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/reschedule`, {
+      const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/reschedule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4209,6 +4246,26 @@ export default function PosAppointmentsWorkspace({
     createAppointmentServiceDraft?.duration_min,
     createAppointmentServiceDraft?.id,
   ])
+
+  useEffect(() => {
+    appointmentsRequest.current += 1
+    appointmentDetailRequest.current += 1
+    setAppointments([])
+    setAppointmentDetail(null)
+    setSettlementSheetOpen(false)
+    setCreateAppointmentModalOpen(false)
+    setCancellationRequestsModalOpen(false)
+    setAppointmentSettlementResult(null)
+    setAppointmentListRefreshCountdown(5)
+    setActiveStaffs([])
+    setAppointmentStaffOptions([])
+    setCreateAppointmentServices([])
+    if (selectedBranchId) {
+      void fetchActiveStaffs()
+      void fetchAppointmentStaffs('')
+      void fetchCreateAppointmentServices()
+    }
+  }, [fetchActiveStaffs, fetchAppointmentStaffs, fetchCreateAppointmentServices, selectedBranchId])
 
   useEffect(() => {
     void fetchAppointments()
@@ -5299,6 +5356,11 @@ export default function PosAppointmentsWorkspace({
                         {appointmentDetail.booking_code}
                       </span>
                       <div className="flex flex-wrap items-center justify-end gap-2">
+                        <span className="rounded-md bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800 ring-1 ring-blue-200">
+                          {appointmentDetail.store_location
+                            ? `${appointmentDetail.store_location.name}${appointmentDetail.store_location.code ? ` (${appointmentDetail.store_location.code})` : ''}`
+                            : 'Legacy / unresolved Branch'}
+                        </span>
                         <BookingStatusBadge
                           status={
                             appointmentStatusUpper === 'COMPLETED'

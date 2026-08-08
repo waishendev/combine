@@ -22,9 +22,17 @@ class StaffController extends Controller
     {
         $perPage = min(50, max(1, $request->integer('per_page', 15)));
         $search = trim((string) $request->input('search', ''));
+        $storeLocationId = $request->integer('store_location_id');
+        if ($storeLocationId > 0) {
+            $this->storeLocationAccess->authorizeStoreLocation($request->user(), $storeLocationId, false);
+        }
 
         $staffs = Staff::query()
             ->with(['admin:id,staff_id,username,email', 'storeLocations:id,name,code'])
+            ->when($storeLocationId > 0, fn ($query) => $query->whereHas(
+                'storeLocations',
+                fn ($locations) => $locations->where('store_locations.id', $storeLocationId),
+            ))
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'ilike', "%{$search}%")

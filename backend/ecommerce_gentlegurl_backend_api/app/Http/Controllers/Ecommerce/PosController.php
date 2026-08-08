@@ -446,7 +446,8 @@ class PosController extends Controller
         $perPageCap = $hasRange ? 500 : 100;
         $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
-        $builder = Booking::query()->with(['customer:id,name,phone,email', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'staff:id,name']);
+        $builder = Booking::query()->with(['customer:id,name,phone,email', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'staff:id,name', 'storeLocation:id,name,code']);
+        $this->applyPosAppointmentBranchScope($builder, $request);
 
         if ($query !== '') {
             $builder->where(function ($q) use ($query) {
@@ -522,6 +523,12 @@ class PosController extends Controller
 
             return [
                 'id' => (int) $booking->id,
+                'store_location_id' => $booking->store_location_id ? (int) $booking->store_location_id : null,
+                'store_location' => $booking->storeLocation ? [
+                    'id' => (int) $booking->storeLocation->id,
+                    'name' => (string) $booking->storeLocation->name,
+                    'code' => (string) $booking->storeLocation->code,
+                ] : null,
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
                 'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
@@ -584,6 +591,9 @@ class PosController extends Controller
         $lastPage = max(1, (int) ceil($totalRows / $perPage));
 
         $pendingCancellationRequestsCount = BookingCancellationRequest::query()
+            ->whereHas('booking', function ($query) use ($request) {
+                $this->applyPosAppointmentBranchScope($query, $request);
+            })
             ->where('status', 'pending')
             ->count();
 
@@ -633,6 +643,7 @@ class PosController extends Controller
                 'orderItems.order.uploads',
             ])
             ->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, request());
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
         $packageClaims = $this->resolvePerLinePackageClaims($booking, $summary);
@@ -646,6 +657,12 @@ class PosController extends Controller
 
         return $this->respond([
             'id' => (int) $booking->id,
+            'store_location_id' => $booking->store_location_id ? (int) $booking->store_location_id : null,
+            'store_location' => $booking->storeLocation ? [
+                'id' => (int) $booking->storeLocation->id,
+                'name' => (string) $booking->storeLocation->name,
+                'code' => (string) $booking->storeLocation->code,
+            ] : null,
             'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
             'status' => (string) $booking->status,
             'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
@@ -755,6 +772,7 @@ class PosController extends Controller
         $booking = Booking::query()
             ->with(['service', 'staff', 'customer'])
             ->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
 
         if ((string) $booking->status !== 'CONFIRMED') {
             return $this->respondError(__('Only CONFIRMED bookings can receive a confirmation email.'), 422);
@@ -802,6 +820,7 @@ class PosController extends Controller
     public function applyPackageToAppointment(Request $request, int $id)
     {
         $booking = Booking::query()->with('service')->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         if (! $booking->customer_id || ! $booking->service_id) {
             return $this->respondError(__('Appointment must have customer and service to apply package.'), 422);
         }
@@ -830,6 +849,7 @@ class PosController extends Controller
     public function releasePackageForAppointment(Request $request, int $id)
     {
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         if (! $booking->customer_id || ! $booking->service_id) {
             return $this->respondError(__('Appointment must have customer and service to release package.'), 422);
         }
@@ -845,6 +865,7 @@ class PosController extends Controller
     public function eligiblePackagesForAppointment(Request $request, int $id)
     {
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
 
         if (! $booking->customer_id) {
             return $this->respond(['packages' => [], 'current_claims' => [], 'appointment_lines' => []]);
@@ -1341,6 +1362,8 @@ class PosController extends Controller
 
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
 
+        $this->authorizePosAppointmentBranch($booking, $request);
+
         if (! $booking->customer_id) {
             return $this->respondError(__('Package can only be applied for members.'), 422);
         }
@@ -1398,6 +1421,8 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
+
+        $this->authorizePosAppointmentBranch($booking, $request);
         $usageIds = collect($validated['releases'])->pluck('usage_id')->map(fn ($v) => (int) $v)->all();
 
         $released = $this->customerServicePackageService->releaseClaimsForBookingByUsageIds(
@@ -1437,6 +1462,8 @@ class PosController extends Controller
         ], $this->posStaffSplitAmountValidationRules()));
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+
+        $this->authorizePosAppointmentBranch($booking, $request);
         if (! $this->bookingEligibleForPosSettlement($booking)) {
             return $this->respondError(__('This appointment needs a linked member or guest, and a service, before settlement.'), 422);
         }
@@ -1818,6 +1845,8 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+
+        $this->authorizePosAppointmentBranch($booking, $request);
         if (! $this->bookingEligibleForPosSettlement($booking)) {
             return $this->respondError(__('This appointment needs a linked member or guest, and a service, before settlement.'), 422);
         }
@@ -1912,6 +1941,7 @@ class PosController extends Controller
     public function editAppointmentSettlement(Request $request, int $id)
     {
         $booking = Booking::query()->with(['service.questions.options.linkedBookingService', 'customer', 'staff'])->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         if (! $booking->service_id) {
             return $this->respondError(__('Appointment must have a service.'), 422);
         }
@@ -2516,6 +2546,7 @@ class PosController extends Controller
     public function addAppointmentDeposit(Request $request, int $id)
     {
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         if (in_array(strtoupper((string) $booking->status), ['CANCELLED', 'VOID', 'VOIDED'], true)) {
             return $this->respondError(__('Cannot add deposit to a cancelled appointment.'), 422);
         }
@@ -2608,6 +2639,7 @@ class PosController extends Controller
     public function editAppointmentDepositTransaction(Request $request, int $id, int $orderItemId)
     {
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         $depositItem = OrderItem::query()
             ->with(['order.payments'])
             ->where('id', $orderItemId)
@@ -2744,6 +2776,7 @@ class PosController extends Controller
     public function addAppointmentRefund(Request $request, int $id)
     {
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         if (in_array(strtoupper((string) $booking->status), ['CANCELLED', 'VOID', 'VOIDED'], true)) {
             return $this->respondError(__('Cannot add refund to a cancelled appointment.'), 422);
         }
@@ -2809,6 +2842,7 @@ class PosController extends Controller
     public function editAppointmentRefundTransaction(Request $request, int $id, int $refundId)
     {
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         if (in_array(strtoupper((string) $booking->status), ['CANCELLED', 'VOID', 'VOIDED'], true)) {
             return $this->respondError(__('Cannot edit refund on a cancelled appointment.'), 422);
         }
@@ -2975,6 +3009,7 @@ class PosController extends Controller
     public function markAppointmentCompleted(Request $request, int $id)
     {
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
         $balanceDue = (float) ($summary['balance_due'] ?? 0);
         $hasOutstandingBalance = $balanceDue > 0.0001;
@@ -3023,6 +3058,8 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()->with(['customer', 'service', 'staff'])->findOrFail($id);
+
+        $this->authorizePosAppointmentBranch($booking, $request);
         $targetStatus = (string) $validated['status'];
         $voidDeposit = (bool) ($validated['void_deposit'] ?? false);
         $voidRefundToBalance = (bool) ($validated['void_refund_to_balance'] ?? false);
@@ -3129,6 +3166,8 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()->with(['customer', 'service', 'staff'])->findOrFail($id);
+
+        $this->authorizePosAppointmentBranch($booking, $request);
         if ((string) $booking->status !== 'HOLD') {
             return $this->respondError(__('Only HOLD appointments can be approved here.'), 422);
         }
@@ -3194,6 +3233,7 @@ class PosController extends Controller
         $reason = trim((string) ($validated['reason'] ?? '')) ?: 'Cancelled from POS';
 
         $booking = Booking::query()->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         if ((string) $booking->status !== 'HOLD') {
             return $this->respondError(__('Only HOLD appointments can be cancelled here.'), 422);
         }
@@ -3244,6 +3284,7 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()->findOrFail($id);
+        $this->authorizePosAppointmentBranch($booking, $request);
         if ((string) $booking->status !== 'HOLD') {
             return $this->respondError(__('Only HOLD appointments can reject payment proof here.'), 422);
         }
@@ -3334,6 +3375,8 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
+
+        $this->authorizePosAppointmentBranch($booking, $request);
         if ((string) $booking->status !== 'CONFIRMED') {
             return $this->respondError(__('Only CONFIRMED appointment can be rescheduled from POS.'), 422);
         }
@@ -4179,6 +4222,9 @@ class PosController extends Controller
 
         $serviceIds = $mainServicePayload->pluck('booking_service_id')->unique()->values();
         $servicesById = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->whereIn('id', $serviceIds->all())->get()->keyBy('id');
+        if ($servicesById->contains(fn (BookingService $candidate) => ! $candidate->isAvailableAt((int) $transactionBranch->id))) {
+            throw ValidationException::withMessages(['booking_service_id' => __('One or more selected services are not available at this Branch.')]);
+        }
         $service = $servicesById->get((int) $mainServicePayload[0]['booking_service_id']);
         if (! $service) {
             return $this->respondError(__('Main service is unavailable.'), 422);
@@ -4211,6 +4257,9 @@ class PosController extends Controller
 
         if (! (bool) ($staff->is_active ?? true)) {
             return $this->respondError(__('Selected staff is inactive.'), 422, ['reason_code' => 'staff_inactive']);
+        }
+        if (! $staff->worksAt((int) $transactionBranch->id)) {
+            throw ValidationException::withMessages(['assigned_staff_id' => __('Selected staff does not work at this Branch.')]);
         }
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
@@ -4315,6 +4364,9 @@ class PosController extends Controller
         $staffIds = collect($normalizedResult['splits'])->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
 
         foreach ($staffIds as $splitStaffId) {
+            if (! Staff::query()->findOrFail((int) $splitStaffId)->worksAt((int) $transactionBranch->id)) {
+                throw ValidationException::withMessages(['staff_splits' => __('Selected staff split contains staff outside this Branch.')]);
+            }
             if (! $service->isStaffAllowed((int) $splitStaffId)) {
                 return $this->respondError(__('Selected staff split contains staff not allowed for this service.'), 422);
             }
@@ -13101,6 +13153,44 @@ class PosController extends Controller
         }
 
         return null;
+    }
+
+    private function applyPosAppointmentBranchScope($query, Request $request): void
+    {
+        $access = app(StoreLocationAccessService::class);
+        if ($request->filled('store_location_id')) {
+            $branch = $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false);
+            $query->where('store_location_id', $branch->id);
+            return;
+        }
+
+        $ids = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+        // NULL remains visible only in the accessible All Branches compatibility overview.
+        $query->where(fn ($scope) => $scope->whereIn('store_location_id', $ids)->orWhereNull('store_location_id'));
+    }
+
+    private function authorizePosAppointmentBranch(Booking $booking, Request $request): void
+    {
+        $requestedBranchId = null;
+        if ($request->filled('store_location_id')) {
+            $requestedBranchId = (int) app(StoreLocationAccessService::class)
+                ->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false)
+                ->id;
+        }
+        if ($booking->store_location_id === null) {
+            if ($requestedBranchId !== null) {
+                abort(404);
+            }
+            return;
+        }
+
+        app(StoreLocationAccessService::class)->authorizeStoreLocation(
+            $request->user(),
+            (int) $booking->store_location_id,
+        );
+        if ($requestedBranchId !== null && $requestedBranchId !== (int) $booking->store_location_id) {
+            abort(404);
+        }
     }
 
     /**

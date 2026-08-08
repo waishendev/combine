@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -26,6 +27,7 @@ class CancellationRequestController extends Controller
                 'reviewer:id,name',
             ])
             ->orderByDesc('requested_at');
+        $this->applyBranchScope($query, $request);
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->string('status'));
@@ -62,6 +64,7 @@ class CancellationRequestController extends Controller
         $adminId = optional($request->user())->id;
 
         $record = BookingCancellationRequest::query()->with('booking')->findOrFail($id);
+        $this->authorizeBookingBranch($record->booking, $request);
 
         if ($record->status !== 'pending') {
             return $this->respondError('Only pending requests can be approved.', 422);
@@ -117,6 +120,7 @@ class CancellationRequestController extends Controller
         $adminId = optional($request->user())->id;
 
         $record = BookingCancellationRequest::query()->with('booking')->findOrFail($id);
+        $this->authorizeBookingBranch($record->booking, $request);
 
         if ($record->status !== 'pending') {
             return $this->respondError('Only pending requests can be rejected.', 422);
@@ -142,5 +146,29 @@ class CancellationRequestController extends Controller
         ]);
 
         return $this->respond($record->fresh(['booking', 'booking.customer', 'booking.service', 'booking.staff', 'reviewer']));
+    }
+
+    private function applyBranchScope($query, Request $request): void
+    {
+        $access = app(StoreLocationAccessService::class);
+        $query->whereHas('booking', function ($booking) use ($access, $request) {
+            if ($request->filled('store_location_id')) {
+                $branch = $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false);
+                $booking->where('store_location_id', $branch->id);
+                return;
+            }
+            $ids = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+            $booking->where(fn ($scope) => $scope->whereIn('store_location_id', $ids)->orWhereNull('store_location_id'));
+        });
+    }
+
+    private function authorizeBookingBranch($booking, Request $request): void
+    {
+        if (! $booking || $booking->store_location_id === null) {
+            if ($request->filled('store_location_id')) abort(404);
+            return;
+        }
+        app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), (int) $booking->store_location_id);
+        if ($request->filled('store_location_id') && $request->integer('store_location_id') !== (int) $booking->store_location_id) abort(404);
     }
 }
