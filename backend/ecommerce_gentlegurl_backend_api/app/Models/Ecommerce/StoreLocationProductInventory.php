@@ -9,7 +9,7 @@ class StoreLocationProductInventory extends Model
 {
     protected $fillable = ['store_location_id', 'product_id', 'product_variant_id', 'quantity'];
 
-    protected $casts = ['quantity' => 'integer', 'variant_identity' => 'integer'];
+    protected $casts = ['quantity' => 'integer', 'product_variant_id' => 'integer'];
 
     protected static function booted(): void
     {

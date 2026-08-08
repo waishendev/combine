@@ -417,3 +417,7 @@ Phase 6B confirms `ProductStockMovement` as the candidate canonical Branch ledge
 ## Phase 6C implementation refinement (2026-08-08)
 
 The POS cash re-audit confirms Cash Shift and the physical carried Cash Pool Account as Branch-operational parents. Ledger children inherit Branch through those parents, avoiding redundant attribution. Structured per-Branch POS printer settings replace global printer writes with a legacy read fallback. Authorized Branch Context exposes cutover status with explicit non-authoritative labels, while global Product/Variant stock and low-stock behavior remain unchanged. Phase 6B inventory authority remains inactive and its blockers remain unresolved.
+
+### PostgreSQL uniqueness correction
+
+Phase 6A inventory identity uniqueness is implemented with separate partial unique indexes for NULL-Variant Product rows and non-NULL Variant rows. This replaces the non-portable virtual generated column while preserving nullable Variant semantics and the exact Branch/Product/Variant uniqueness rules. Phase 6B reconciliation and mutation queries now match nullable `product_variant_id` directly.

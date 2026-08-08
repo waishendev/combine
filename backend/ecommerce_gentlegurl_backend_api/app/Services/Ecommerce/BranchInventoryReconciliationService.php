@@ -14,7 +14,7 @@ class BranchInventoryReconciliationService
     {
         $targets = $this->legacyTargets();
         $existing = StoreLocationProductInventory::query()->where('store_location_id', $branch->id)->get()
-            ->keyBy(fn ($row) => $row->product_id.':'.$row->variant_identity);
+            ->keyBy(fn ($row) => $row->product_id.':'.($row->product_variant_id ?? 0));
         $missing = collect();
         $matching = 0;
         $mismatches = collect();

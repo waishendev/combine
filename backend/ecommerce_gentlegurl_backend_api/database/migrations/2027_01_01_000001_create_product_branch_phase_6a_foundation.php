@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -22,14 +23,24 @@ return new class extends Migration
             $table->foreignId('store_location_id')->constrained()->restrictOnDelete();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
             $table->foreignId('product_variant_id')->nullable()->constrained()->cascadeOnDelete();
-            // Zero represents the product-level row. A non-zero value must mirror product_variant_id.
-            // Unlike a nullable composite unique key, this also prevents duplicate non-variant rows.
-            $table->unsignedBigInteger('variant_identity')->virtualAs('coalesce(product_variant_id, 0)');
             $table->integer('quantity')->default(0);
             $table->timestamps();
-            $table->unique(['store_location_id', 'product_id', 'variant_identity'], 'slpi_branch_product_variant_unique');
             $table->index(['product_id', 'product_variant_id']);
         });
+
+        // PostgreSQL and SQLite both treat NULL values as distinct in a regular
+        // UNIQUE constraint. Partial indexes enforce the two inventory identities
+        // without a generated column or a fake ProductVariant foreign key.
+        DB::statement(<<<'SQL'
+            CREATE UNIQUE INDEX slpi_branch_product_no_variant_unique
+            ON store_location_product_inventories (store_location_id, product_id)
+            WHERE product_variant_id IS NULL
+        SQL);
+        DB::statement(<<<'SQL'
+            CREATE UNIQUE INDEX slpi_branch_product_variant_unique
+            ON store_location_product_inventories (store_location_id, product_id, product_variant_id)
+            WHERE product_variant_id IS NOT NULL
+        SQL);
 
         Schema::table('pos_carts', function (Blueprint $table) {
             $table->foreignId('store_location_id')->nullable()->after('staff_user_id')

@@ -20,7 +20,7 @@ Do not guess a canonical ledger. Before Phase 6B, reconcile why ecommerce paymen
 ## Schema
 
 * `store_location_product`: Branch, global Product, `is_available`, timestamps, and a unique Branch/Product key. Availability is Product-level; variants inherit it.
-* `store_location_product_inventories`: Branch, Product, optional ProductVariant, `variant_identity`, quantity, and timestamps. `variant_identity=0` uniquely identifies the non-variant Product row; otherwise it mirrors the Variant ID, preventing nullable-unique ambiguity. The model rejects variants belonging to another Product.
+* `store_location_product_inventories`: Branch, Product, nullable ProductVariant, quantity, and timestamps. PostgreSQL-compatible partial unique indexes independently enforce one Branch/Product row where Variant is NULL and one Branch/Product/Variant row where Variant is present. No generated identity column or fake Variant ID is used. The model rejects variants belonging to another Product.
 * `pos_carts.store_location_id`: nullable, indexed, historical-safe FK (`nullOnDelete`). Legacy null carts remain readable and acquire a validated Branch on their next operational use.
 
 ## Product availability rollout
@@ -171,3 +171,25 @@ Production Product/POS stock and low-stock alerts continue reading global Produc
 Fresh Branch creation and seeding create a zero-valued default physical cash account and default disabled printer row. Rollback requires stopping cash operations, exporting any new Branch cash/printer data, reverting application code, then rolling back the additive migration. Removing Branch attribution does not delete shifts or ledger history, but the rollback recreates the legacy unique global account code and therefore requires consolidating/removing additional Branch account rows first.
 
 No inventory activation, stock writer conversion, transfer workflow, public ecommerce reservation/pickup behavior, Phase 7/8 feature, reporting conversion, or multi-tenant architecture is included.
+
+## PostgreSQL migration compatibility correction
+
+Laravel 12.40.2 compiled the former `virtualAs(coalesce(product_variant_id, 0))` definition to MySQL-style `GENERATED ALWAYS AS (...) VIRTUAL`, which PostgreSQL rejects. Phase 6 now uses two PostgreSQL-native partial unique indexes instead: `(store_location_id, product_id) WHERE product_variant_id IS NULL` and `(store_location_id, product_id, product_variant_id) WHERE product_variant_id IS NOT NULL`. `product_variant_id` remains nullable; `variant_identity` was removed entirely.
+
+PostgreSQL normally executes Laravel migrations transactionally, so the failed CREATE TABLE statement should roll back the earlier Phase 6A DDL and leave no migration row. Before retrying, verify rather than assume:
+
+```sql
+SELECT to_regclass('public.store_location_product'),
+       to_regclass('public.store_location_product_inventories');
+SELECT migration FROM migrations
+WHERE migration = '2027_01_01_000001_create_product_branch_phase_6a_foundation';
+```
+
+If both relations are NULL and the migration row is absent, simply rerun `php artisan migrate`. If an unusual non-transactional/manual run left Phase 6A relations while the migration row is absent, first inspect row counts and ownership. Only when both tables are confirmed empty and created solely by this failed pre-deployment migration, use:
+
+```sql
+DROP TABLE store_location_product_inventories;
+DROP TABLE store_location_product;
+```
+
+Do not run those DROP statements against populated or deployed data. Export/rename and reconcile any non-empty table instead. Phase 6B/6C were also reviewed: their `after()` placement hints are ignored by PostgreSQL, unsigned integer declarations map through Laravel's PostgreSQL grammar, JSON has no incompatible default, index names fit PostgreSQL limits, and FK actions/nullable morphs use supported syntax. No other Phase 6 PostgreSQL-specific blocker was identified.

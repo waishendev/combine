@@ -59,7 +59,11 @@ class BranchInventoryMutationService
                 $row = StoreLocationProductInventory::query()
                     ->where('store_location_id', $storeLocationId)
                     ->where('product_id', $item['product_id'])
-                    ->where('variant_identity', $item['product_variant_id'] ?? 0)
+                    ->when(
+                        $item['product_variant_id'],
+                        fn ($query, $variantId) => $query->where('product_variant_id', $variantId),
+                        fn ($query) => $query->whereNull('product_variant_id')
+                    )
                     ->lockForUpdate()->first();
                 if (! $row) {
                     throw ValidationException::withMessages(['inventory' => 'Branch inventory is unresolved for one or more items.']);

@@ -8,11 +8,28 @@ use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\StoreLocationProductInventory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class ProductBranchPhase6ATest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_inventory_migration_uses_nullable_variant_partial_unique_indexes(): void
+    {
+        $this->assertTrue(Schema::hasColumn('store_location_product_inventories', 'product_variant_id'));
+        $this->assertFalse(Schema::hasColumn('store_location_product_inventories', 'variant_identity'));
+
+        if (DB::getDriverName() === 'pgsql') {
+            $indexes = collect(DB::select("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'store_location_product_inventories'"))->keyBy('indexname');
+            $this->assertStringContainsString('product_variant_id IS NULL', $indexes['slpi_branch_product_no_variant_unique']->indexdef);
+            $this->assertStringContainsString('product_variant_id IS NOT NULL', $indexes['slpi_branch_product_variant_unique']->indexdef);
+        } else {
+            $indexes = collect(DB::select("PRAGMA index_list('store_location_product_inventories')"))->pluck('name');
+            $this->assertContains('slpi_branch_product_no_variant_unique', $indexes);
+            $this->assertContains('slpi_branch_product_variant_unique', $indexes);
+        }
+    }
 
     public function test_global_product_has_independent_unique_branch_assignments(): void
     {
@@ -41,6 +58,36 @@ class ProductBranchPhase6ATest extends TestCase
         $this->assertSame(5, (int) $product->fresh()->stock);
         $this->expectException(\Illuminate\Database\QueryException::class);
         StoreLocationProductInventory::create(['store_location_id' => $branch->id, 'product_id' => $product->id, 'quantity' => 9]);
+    }
+
+    public function test_nullable_variant_inventory_identities_allow_products_branches_and_distinct_variants(): void
+    {
+        [$a, $b] = [$this->branch('A'), $this->branch('B')];
+        $first = $this->product();
+        $second = $this->product();
+        $red = ProductVariant::create(['product_id' => $first->id, 'sku' => uniqid('RED-'), 'title' => 'Red']);
+        $blue = ProductVariant::create(['product_id' => $first->id, 'sku' => uniqid('BLUE-'), 'title' => 'Blue']);
+
+        $nonVariant = StoreLocationProductInventory::create(['store_location_id' => $a->id, 'product_id' => $first->id, 'quantity' => 1]);
+        StoreLocationProductInventory::create(['store_location_id' => $a->id, 'product_id' => $second->id, 'quantity' => 2]);
+        StoreLocationProductInventory::create(['store_location_id' => $b->id, 'product_id' => $first->id, 'quantity' => 3]);
+        StoreLocationProductInventory::create(['store_location_id' => $a->id, 'product_id' => $first->id, 'product_variant_id' => $red->id, 'quantity' => 4]);
+        StoreLocationProductInventory::create(['store_location_id' => $a->id, 'product_id' => $first->id, 'product_variant_id' => $blue->id, 'quantity' => 5]);
+        StoreLocationProductInventory::create(['store_location_id' => $b->id, 'product_id' => $first->id, 'product_variant_id' => $red->id, 'quantity' => 6]);
+
+        $this->assertNull($nonVariant->fresh()->product_variant_id);
+        $this->assertDatabaseCount('store_location_product_inventories', 6);
+    }
+
+    public function test_duplicate_branch_product_variant_inventory_is_rejected(): void
+    {
+        $branch = $this->branch('A');
+        $product = $this->product();
+        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => uniqid('V-'), 'title' => 'Variant']);
+        StoreLocationProductInventory::create(['store_location_id' => $branch->id, 'product_id' => $product->id, 'product_variant_id' => $variant->id, 'quantity' => 1]);
+
+        $this->expectException(\Illuminate\Database\QueryException::class);
+        StoreLocationProductInventory::create(['store_location_id' => $branch->id, 'product_id' => $product->id, 'product_variant_id' => $variant->id, 'quantity' => 2]);
     }
 
     public function test_backfill_dry_run_is_zero_write_and_force_is_idempotent_without_inventory(): void
