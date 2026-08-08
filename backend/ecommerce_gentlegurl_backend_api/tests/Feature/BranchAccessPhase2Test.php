@@ -115,6 +115,20 @@ class BranchAccessPhase2Test extends TestCase
             ->assertJsonMissing(['name' => 'Hidden Branch']);
     }
 
+    public function test_platform_user_receives_all_branch_options_from_current_user_api(): void
+    {
+        $platform = $this->user(['email' => 'platform-options@example.com']);
+        $platform->roles()->sync([$this->platformRole->id]);
+        $first = $this->location('PNG');
+        $second = $this->location('KL');
+
+        $this->actingAs($platform)->getJson('/api/me/store-locations')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment(['id' => $first->id])
+            ->assertJsonFragment(['id' => $second->id]);
+    }
+
     public function test_admin_create_update_branch_assignments_and_unauthorized_attempts(): void
     {
         $actor = $this->user(['email' => 'actor@example.com']);

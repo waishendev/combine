@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom'
 
 import { useI18n } from '@/lib/i18n'
 import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
+import BranchSelector from '@/components/BranchSelector'
 
 type HeaderProps = {
   onLogout: () => Promise<void> | void
@@ -177,6 +178,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
       </div>
 
       <div className="relative z-10 flex min-h-0 min-w-0 flex-1 items-center justify-end gap-1 overflow-visible sm:gap-3">
+        <BranchSelector />
         <div className="min-w-0 flex-1 overflow-visible lg:flex-none lg:overflow-hidden">
           <div
             className="flex touch-pan-x justify-end overflow-x-auto overflow-y-visible py-0.5 pl-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:py-0 [&::-webkit-scrollbar]:hidden"

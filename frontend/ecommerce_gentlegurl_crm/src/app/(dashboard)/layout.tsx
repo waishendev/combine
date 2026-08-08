@@ -8,6 +8,7 @@ import DashboardNavigationProgress from '@/components/DashboardNavigationProgres
 import Sidebar from '@/components/Sidebar'
 import { LogoLoader } from '@/components/LogoLoader'
 import { clearLoginPortal, getLoginPagePath } from '@/lib/login-portal'
+import { BranchProvider } from '@/contexts/BranchContext'
 
 type ProfileResponse = {
   success?: boolean
@@ -33,6 +34,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [permissions, setPermissions] = useState<string[]>([])
   const [staffId, setStaffId] = useState<number | null>(null)
+  const [userId, setUserId] = useState<number | null>(null)
 
   useEffect(() => {
     const authCookieNames = [
@@ -122,6 +124,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         }
 
         if (isActive) {
+          if (typeof data.data?.id !== 'number') throw new Error('Invalid authenticated user')
+          setUserId(data.data.id)
           setUserEmail(data?.data?.email ?? '')
           setStaffId(typeof data?.data?.staff_id === 'number' ? data.data.staff_id : (data?.data?.staff_id ?? null))
           const permissionsData = data.data?.permissions
@@ -166,6 +170,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       console.error('Logout failed', error)
     } finally {
       setUserEmail('')
+      setUserId(null)
       setPermissions([])
       const postLogout = getLoginPagePath()
       clearSessionCookiesOnClient()
@@ -174,7 +179,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }
 
-  if (checkingAuth) {
+  if (checkingAuth || userId === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
         <span className="text-sm text-slate-500">Loading dashboard...</span>
@@ -183,28 +188,30 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <LogoLoader>
-      <div className="crm-dashboard-root flex h-[100dvh] min-h-0 flex-col overflow-hidden">
-      <Header
-        userEmail={userEmail}
-        onLogout={handleLogout}
-        onToggleSidebar={toggleSidebar}
-        permissions={permissions}
-        staffId={staffId}
-      />
-      <div className="crm-dashboard-shell flex min-h-0 flex-1 pt-16">
-          <Sidebar
-            collapsed={collapsed}
+    <BranchProvider userId={userId}>
+      <LogoLoader>
+        <div className="crm-dashboard-root flex h-[100dvh] min-h-0 flex-col overflow-hidden">
+          <Header
+            userEmail={userEmail}
+            onLogout={handleLogout}
+            onToggleSidebar={toggleSidebar}
             permissions={permissions}
             staffId={staffId}
-            onToggleSidebar={toggleSidebar}
           />
-          <main className="crm-dashboard-main relative min-h-0 min-w-0 flex-1 bg-slate-100">
-            <DashboardNavigationProgress />
-            {children}
-          </main>
+          <div className="crm-dashboard-shell flex min-h-0 flex-1 pt-16">
+            <Sidebar
+              collapsed={collapsed}
+              permissions={permissions}
+              staffId={staffId}
+              onToggleSidebar={toggleSidebar}
+            />
+            <main className="crm-dashboard-main relative min-h-0 min-w-0 flex-1 bg-slate-100">
+              <DashboardNavigationProgress />
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
-    </LogoLoader>
+      </LogoLoader>
+    </BranchProvider>
   )
 }
