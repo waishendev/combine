@@ -180,6 +180,50 @@ class BranchAccessPhase2Test extends TestCase
         ])->assertOk()->assertJsonCount(1, 'data.store_locations');
     }
 
+    public function test_super_admin_permission_patch_is_idempotent_and_assignment_remains_branch_scoped(): void
+    {
+        $superAdminRole = Role::create([
+            'name' => 'superAdmin',
+            'is_active' => true,
+            'is_system' => false,
+            'is_default' => false,
+        ]);
+        $unrelatedRole = Role::create([
+            'name' => 'unrelated-role',
+            'is_active' => true,
+            'is_system' => false,
+            'is_default' => true,
+        ]);
+        $actor = $this->user(['email' => 'scoped-super-admin@example.com']);
+        $actor->roles()->sync([$superAdminRole->id]);
+        $branchA = $this->location('SAA');
+        $branchB = $this->location('SAB');
+        $actor->storeLocations()->sync([$branchA->id]);
+        $target = $this->user(['email' => 'scoped-target@example.com']);
+
+        $this->seed(\Database\Seeders\SuperAdminBranchAccessPermissionSeeder::class);
+        $this->seed(\Database\Seeders\SuperAdminBranchAccessPermissionSeeder::class);
+
+        $this->assertTrue($superAdminRole->fresh()->permissions()->where('slug', 'branch_access.view')->exists());
+        $this->assertTrue($superAdminRole->fresh()->permissions()->where('slug', 'branch_access.assign')->exists());
+        $this->assertFalse($unrelatedRole->fresh()->permissions()->whereIn('slug', ['branch_access.view', 'branch_access.assign'])->exists());
+        $this->assertSame(2, $superAdminRole->fresh()->permissions()->whereIn('slug', ['branch_access.view', 'branch_access.assign'])->count());
+
+        $this->actingAs($actor)->putJson("/api/admins/{$target->id}", [
+            'email' => $target->email,
+            'role_ids' => [$this->adminRole->id],
+            'store_location_ids' => [$branchA->id],
+        ])->assertOk()->assertJsonPath('data.store_locations.0.id', $branchA->id);
+
+        $this->actingAs($actor)->putJson("/api/admins/{$target->id}", [
+            'email' => $target->email,
+            'role_ids' => [$this->adminRole->id],
+            'store_location_ids' => [$branchB->id],
+        ])->assertForbidden();
+
+        $this->assertSame([$branchA->id], $target->storeLocations()->pluck('store_locations.id')->all());
+    }
+
     public function test_existing_admin_api_remains_backward_compatible_without_branch_payload(): void
     {
         $actor = $this->user(['email' => 'actor2@example.com']);
