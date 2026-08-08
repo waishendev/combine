@@ -48,10 +48,6 @@ class PosCashShiftController extends Controller
         $atm = round((float) ($validated['opening_atm'] ?? 0), 2);
 
         $shift = DB::transaction(function () use ($request, $validated, $openingAmount, $refillPacket, $atm, $branch) {
-            $otherOpenShift = $this->openShiftQuery()->lockForUpdate()->first();
-            if ($otherOpenShift && (int) $otherOpenShift->store_location_id !== (int) $branch->id) {
-                throw ValidationException::withMessages(['store_location_id' => [__('Close the open cash shift at its original Branch before switching Branch.')]]);
-            }
             $existing = $this->openShiftQuery($branch->id)->lockForUpdate()->first();
             if ($existing) {
                 throw ValidationException::withMessages([

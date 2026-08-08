@@ -17,7 +17,7 @@ class PosBranchOperationsPhase6CTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_shift_is_branch_scoped_and_another_branch_cannot_reinterpret_it(): void
+    public function test_current_shift_is_scoped_to_the_requested_branch(): void
     {
         $actor = $this->actor(); [$a, $b] = [$this->branch('A'), $this->branch('B')];
         $actor->storeLocations()->sync([$a->id, $b->id]);
@@ -27,10 +27,18 @@ class PosBranchOperationsPhase6CTest extends TestCase
         ])->assertOk()->assertJsonPath('data.shift.store_location_id', $a->id);
         $this->actingAs($actor)->getJson('/api/pos/cash-shifts/current?store_location_id='.$b->id)
             ->assertOk()->assertJsonPath('data.shift', null);
+        $this->actingAs($actor)->postJson('/api/pos/cash-shifts/close', [
+            'store_location_id' => $b->id, 'closed_staff_id' => $staff->id, 'closing_amount' => 100,
+        ])->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
+        $this->assertDatabaseHas('pos_cash_shifts', ['store_location_id' => $a->id, 'event_type' => 'OPEN']);
         $this->actingAs($actor)->postJson('/api/pos/cash-shifts/open', [
             'store_location_id' => $b->id, 'opened_staff_id' => $staff->id, 'opening_amount' => 50,
-        ])->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
-        $this->assertDatabaseCount('pos_cash_shifts', 1);
+        ])->assertOk()->assertJsonPath('data.shift.store_location_id', $b->id);
+        $this->actingAs($actor)->getJson('/api/pos/cash-shifts/current?store_location_id='.$a->id)
+            ->assertOk()->assertJsonPath('data.shift.opening_amount', 100);
+        $this->actingAs($actor)->getJson('/api/pos/cash-shifts/current?store_location_id='.$b->id)
+            ->assertOk()->assertJsonPath('data.shift.opening_amount', 50);
+        $this->assertDatabaseCount('pos_cash_shifts', 2);
     }
 
     public function test_inaccessible_inactive_and_pos_disabled_branches_cannot_open_shift(): void
@@ -43,6 +51,8 @@ class PosBranchOperationsPhase6CTest extends TestCase
         foreach ([[$inaccessible, 403], [$inactive, 403], [$disabled, 422]] as [$branch, $status]) {
             $this->actingAs($actor)->postJson('/api/pos/cash-shifts/open?store_location_id='.$branch->id, ['opened_staff_id' => $staff->id, 'opening_amount' => 0])->assertStatus($status);
         }
+        $this->actingAs($actor)->getJson('/api/pos/cash-shifts/current?store_location_id='.$inaccessible->id)->assertForbidden();
+        $this->actingAs($actor)->getJson('/api/pos/cash-shifts/current')->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
         $this->actingAs($actor)->postJson('/api/pos/cash-shifts/open', ['opened_staff_id' => $staff->id, 'opening_amount' => 0])->assertUnprocessable();
     }
 

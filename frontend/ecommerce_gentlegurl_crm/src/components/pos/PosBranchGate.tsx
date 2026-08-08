@@ -14,7 +14,12 @@ export default function PosBranchGate({ children }: { children: ReactNode }) {
       const raw = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (!raw.includes('/api/proxy/ecommerce/pos') && !raw.includes('/api/proxy/pos/') && !raw.includes('/api/proxy/ecommerce/thermal-printer-settings')) return nativeFetch(input, init)
       const url = new URL(raw, window.location.origin)
-      url.searchParams.set('store_location_id', String(selectedBranchId))
+      // Explicit entity/component attribution wins. This also prevents the
+      // previous Branch interceptor from rewriting the first request rendered
+      // immediately after a Header Branch change.
+      if (!url.searchParams.has('store_location_id')) {
+        url.searchParams.set('store_location_id', String(selectedBranchId))
+      }
       const nextInput = typeof input === 'string' ? `${url.pathname}${url.search}` : url
       return nativeFetch(nextInput, init)
     }
