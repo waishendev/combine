@@ -54,10 +54,14 @@ class StaffScheduleController extends Controller
             'break_end' => ['nullable', 'date_format:H:i'],
             'is_active' => ['nullable', 'boolean'],
         ]);
-        $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $data['store_location_id']);
+        $data['is_active'] = $data['is_active'] ?? true;
+        if ($data['is_active']) {
+            $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $data['store_location_id']);
+        } else {
+            $this->branchSchedules->authorizeHistoricalBranch($request->user(), (int) $data['store_location_id']);
+        }
         $this->branchSchedules->assertStaffAssigned((int) $data['staff_id'], (int) $data['store_location_id']);
         $this->validateScheduleTimes($data['start_time'], $data['end_time'], $data['break_start'] ?? null, $data['break_end'] ?? null);
-        $data['is_active'] = $data['is_active'] ?? true;
         $this->branchSchedules->assertScheduleDoesNotOverlap((int) $data['staff_id'], (int) $data['day_of_week'], $data['start_time'], $data['end_time'], (bool) $data['is_active']);
         return $this->respond(BookingStaffSchedule::create($data)->load(['staff:id,name','storeLocation:id,name,code,is_active,is_booking_available']), null, true, 201);
     }
@@ -333,9 +337,10 @@ class StaffScheduleController extends Controller
                     if ($requiresOperationalBranch) {
                         $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $validated['store_location_id']);
                     }
-                } else {
-                    // CSV creation follows the same rule as the create form: only operational Branches are accepted.
+                } elseif ($validated['is_active']) {
                     $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $validated['store_location_id']);
+                } else {
+                    $this->branchSchedules->authorizeHistoricalBranch($request->user(), (int) $validated['store_location_id']);
                 }
                 $this->branchSchedules->assertStaffAssigned((int) $validated['staff_id'], (int) $validated['store_location_id']);
                 if (($validated['break_start'] && ! $validated['break_end']) || (! $validated['break_start'] && $validated['break_end'])) {

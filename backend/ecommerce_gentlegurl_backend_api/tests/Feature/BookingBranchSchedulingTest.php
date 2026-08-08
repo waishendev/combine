@@ -85,6 +85,15 @@ class BookingBranchSchedulingTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
         $this->actingAs($actor)->postJson('/api/admin/booking/staff-schedules', $this->schedule($staff, $branch, 2, '10:00', '18:00'))
             ->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
+
+        $prepared = $this->actingAs($actor)->postJson('/api/admin/booking/staff-schedules', array_merge(
+            $this->schedule($staff, $branch, 2, '10:00', '18:00'),
+            ['is_active' => false],
+        ))->assertCreated()->assertJsonPath('data.is_active', false)->json('data');
+
+        $branch->update(['is_booking_available' => true]);
+        $this->actingAs($actor)->putJson('/api/admin/booking/staff-schedules/'.$prepared['id'], ['is_active' => true])
+            ->assertOk()->assertJsonPath('data.is_active', true);
     }
 
     public function test_inactive_schedules_do_not_participate_in_overlap_validation_or_slots(): void

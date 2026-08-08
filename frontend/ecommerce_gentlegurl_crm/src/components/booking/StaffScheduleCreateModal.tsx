@@ -63,10 +63,17 @@ export default function StaffScheduleCreateModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [staffs, setStaffs] = useState<StaffOption[]>([])
+  const selectedBranch = accessibleBranches.find((branch) => branch.id === Number(form.store_location_id))
 
   useEffect(() => {
     if (selectedBranchId) setForm((current) => current.store_location_id ? current : { ...current, store_location_id: String(selectedBranchId) })
   }, [selectedBranchId])
+
+  useEffect(() => {
+    if (selectedBranch && !selectedBranch.is_booking_available) {
+      setForm((current) => current.is_active ? { ...current, is_active: false } : current)
+    }
+  }, [selectedBranch])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -104,8 +111,8 @@ export default function StaffScheduleCreateModal({
   const validate = (): string | null => {
     if (!form.staff_id) return 'Staff is required.'
     if (!form.store_location_id) return 'A specific Branch is required; All Branches cannot be saved.'
-    const selectedBranch = accessibleBranches.find((branch) => branch.id === Number(form.store_location_id))
-    if (!selectedBranch?.is_active || !selectedBranch.is_booking_available) return 'New schedules require an active, booking-enabled Branch, including inactive draft schedules.'
+    if (!selectedBranch) return 'Select a Branch you are authorized to access.'
+    if (form.is_active && (!selectedBranch.is_active || !selectedBranch.is_booking_available)) return 'Active schedules require an active, booking-enabled Branch.'
     const startMin = timeToMinutes(form.start_time)
     const endMin = timeToMinutes(form.end_time)
     if (!Number.isFinite(startMin) || !Number.isFinite(endMin)) {
@@ -259,8 +266,13 @@ export default function StaffScheduleCreateModal({
             <label htmlFor="store_location_id" className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
             <select id="store_location_id" name="store_location_id" value={form.store_location_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting}>
               <option value="">Select a specific Branch</option>
-              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id} disabled={!branch.is_active || !branch.is_booking_available}>{branch.name}{!branch.is_booking_available ? ' — Booking unavailable' : ''}</option>)}
+              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}{!branch.is_booking_available ? ' — Booking unavailable' : ''}</option>)}
             </select>
+            {selectedBranch && !selectedBranch.is_booking_available && (
+              <p className="mt-1 text-xs text-amber-700" role="status">
+                This Branch is currently unavailable for booking. The schedule will be saved as inactive.
+              </p>
+            )}
           </div>
 
           <div>
@@ -353,7 +365,7 @@ export default function StaffScheduleCreateModal({
               checked={form.is_active}
               onChange={handleChange}
               className="h-4 w-4 rounded border-gray-300 text-blue-600"
-              disabled={submitting}
+              disabled={submitting || Boolean(selectedBranch && !selectedBranch.is_booking_available)}
             />
             <span>
               Active — staff can be booked on this day when status is on
