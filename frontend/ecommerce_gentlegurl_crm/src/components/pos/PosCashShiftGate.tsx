@@ -11,6 +11,7 @@ import {
   type CashShiftPoolBalances,
 } from '@/lib/cashShiftPools'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { useBranch } from '@/contexts/BranchContext'
 
 type PosCashShift = {
   id: number
@@ -133,6 +134,7 @@ export default function PosCashShiftGate({
   cashShiftRequired = true,
   canManageCashShift = true,
 }: PosCashShiftGateProps) {
+  const { selectedBranchId, selectedBranch } = useBranch()
   const [shift, setShift] = useState<PosCashShift | null>(null)
   const [poolBalances, setPoolBalances] = useState<CashShiftPoolBalances>(EMPTY_POOLS)
   const [closeModalShift, setCloseModalShift] = useState<PosCashShift | null>(null)
@@ -172,9 +174,15 @@ export default function PosCashShiftGate({
   }, [defaultStaffId])
 
   const loadCurrentShift = useCallback(async () => {
+    if (!selectedBranchId) {
+      setShift(null)
+      setPoolBalances(EMPTY_POOLS)
+      setCashShiftLoading(false)
+      return null
+    }
     setCashShiftLoading(true)
     try {
-      const res = await fetch('/api/proxy/pos/cash-shifts/current', { cache: 'no-store' })
+      const res = await fetch(`/api/proxy/pos/cash-shifts/current?store_location_id=${selectedBranchId}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to check current cash shift.')
       const currentShift = (json?.data?.shift ?? null) as PosCashShift | null
@@ -190,7 +198,7 @@ export default function PosCashShiftGate({
     } finally {
       setCashShiftLoading(false)
     }
-  }, [])
+  }, [selectedBranchId])
 
   useEffect(() => {
     if (!cashShiftRequired) return
@@ -274,6 +282,10 @@ export default function PosCashShiftGate({
   }), [cashShiftLoading, cashShiftRequired, hasOpenShift, requireOpenShiftMessage, shift])
 
   const openShift = async () => {
+    if (!selectedBranchId || !selectedBranch) {
+      setError('Please select a specific Branch before opening a Cash Shift.')
+      return
+    }
     const amount = parseCashShiftAmount(openingAmount)
     const refillPacket = openRefillPacketAmount
     const atm = openAtmAmount
@@ -298,6 +310,7 @@ export default function PosCashShiftGate({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          store_location_id: selectedBranchId,
           opened_staff_id: staffId,
           opening_amount: amount,
           opening_refill_packet: refillPacket > 0 ? refillPacket : null,
@@ -322,6 +335,15 @@ export default function PosCashShiftGate({
   }
 
   const closeShift = async () => {
+    const shiftBranchId = shift?.store_location_id ?? null
+    if (!shiftBranchId) {
+      setError('The open Cash Shift has no Branch attribution and cannot be closed from POS.')
+      return
+    }
+    if (selectedBranchId !== shiftBranchId) {
+      setError('Return to the Cash Shift Branch before closing this shift.')
+      return
+    }
     const amount = Number(closingAmountInput)
     const withdraw = closeWithdrawAmount
     const refillCash = closeRefillCashAmount
@@ -346,6 +368,7 @@ export default function PosCashShiftGate({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          store_location_id: shiftBranchId,
           closed_staff_id: staffId,
           closing_amount: amount,
           closing_withdraw: withdraw > 0 ? withdraw : null,
@@ -501,6 +524,10 @@ export default function PosCashShiftGate({
         >
           <div className="space-y-4 p-6">
             {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Branch</p>
+              <p className="mt-1 font-black text-blue-950">{selectedBranch?.name ?? 'No specific Branch selected'}{selectedBranch?.code ? ` (${selectedBranch.code})` : ''}</p>
+            </div>
             <CarriedPoolCards balances={openPreviewPools} carried={poolBalances} />
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block text-sm font-semibold text-gray-700">

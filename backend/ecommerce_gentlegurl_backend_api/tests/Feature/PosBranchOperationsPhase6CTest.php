@@ -22,13 +22,13 @@ class PosBranchOperationsPhase6CTest extends TestCase
         $actor = $this->actor(); [$a, $b] = [$this->branch('A'), $this->branch('B')];
         $actor->storeLocations()->sync([$a->id, $b->id]);
         $staff = Staff::create(['name' => 'Cashier', 'email' => 'cashier@example.test', 'is_active' => true]);
-        $this->actingAs($actor)->postJson('/api/pos/cash-shifts/open?store_location_id='.$a->id, [
-            'opened_staff_id' => $staff->id, 'opening_amount' => 100,
+        $this->actingAs($actor)->postJson('/api/pos/cash-shifts/open', [
+            'store_location_id' => $a->id, 'opened_staff_id' => $staff->id, 'opening_amount' => 100,
         ])->assertOk()->assertJsonPath('data.shift.store_location_id', $a->id);
         $this->actingAs($actor)->getJson('/api/pos/cash-shifts/current?store_location_id='.$b->id)
             ->assertOk()->assertJsonPath('data.shift', null);
-        $this->actingAs($actor)->postJson('/api/pos/cash-shifts/open?store_location_id='.$b->id, [
-            'opened_staff_id' => $staff->id, 'opening_amount' => 50,
+        $this->actingAs($actor)->postJson('/api/pos/cash-shifts/open', [
+            'store_location_id' => $b->id, 'opened_staff_id' => $staff->id, 'opening_amount' => 50,
         ])->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
         $this->assertDatabaseCount('pos_cash_shifts', 1);
     }

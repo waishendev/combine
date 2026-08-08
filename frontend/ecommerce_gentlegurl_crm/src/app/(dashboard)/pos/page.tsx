@@ -1,11 +1,14 @@
 export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
+import type { Metadata } from 'next'
 
 import PosPageContent from '@/components/PosPageContent'
 import PosCashShiftGate from '@/components/pos/PosCashShiftGate'
 import PosBranchGate from '@/components/pos/PosBranchGate'
 import { getCurrentUser } from '@/lib/auth'
+
+export const metadata: Metadata = { title: 'POS Checkout' }
 
 export default async function PosPage() {
   const user = await getCurrentUser()
@@ -21,17 +24,19 @@ export default async function PosPage() {
 
   return (
     <div className="crm-page-shell pos-checkout-page min-h-0 px-3 py-3 sm:px-4 sm:py-4 md:px-5 lg:px-6">
-      <PosBranchGate><PosCashShiftGate defaultStaffId={user.staff_id ?? null}>
-        <PosPageContent
-          currentUser={{
-            id: user.id,
-            name: user.name,
-            staff_id: user.staff_id ?? null,
-            staff_name: user.staff_name ?? null,
-          }}
-          permissions={user.permissions}
-        />
-      </PosCashShiftGate></PosBranchGate>
+      <PosBranchGate>
+        <PosCashShiftGate defaultStaffId={user.staff_id ?? null}>
+          <PosPageContent
+            currentUser={{
+              id: user.id,
+              name: user.name,
+              staff_id: user.staff_id ?? null,
+              staff_name: user.staff_name ?? null,
+            }}
+            permissions={user.permissions}
+          />
+        </PosCashShiftGate>
+      </PosBranchGate>
     </div>
   )
 }
