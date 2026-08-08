@@ -10,6 +10,7 @@ use App\Models\Ecommerce\PosCartServiceItem;
 use App\Models\Booking\BookingStaffSchedule;
 use App\Models\Booking\BookingStaffTimeoff;
 use App\Models\Booking\BookingLeaveRequest;
+use App\Models\Ecommerce\StoreLocation;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Builder;
@@ -45,6 +46,9 @@ class BookingAvailabilityService
      */
     public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15, int $extraDurationMin = 0, bool $applyPrimarySlotPolicy = true, ?int $storeLocationId = null): array
     {
+        if ($storeLocationId !== null && ! StoreLocation::query()->whereKey($storeLocationId)->where('is_active', true)->where('is_booking_available', true)->exists()) {
+            return [];
+        }
         $timezone = $this->businessTimezone();
         $day = Carbon::parse($date, $timezone);
         $schedules = BookingStaffSchedule::query()

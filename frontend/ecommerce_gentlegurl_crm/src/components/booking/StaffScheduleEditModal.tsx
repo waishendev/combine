@@ -156,6 +156,10 @@ export default function StaffScheduleEditModal({
   const validate = (): string | null => {
     if (!form.staff_id) return 'Staff is required.'
     if (!form.store_location_id) return 'A specific Branch is required.'
+    const selectedBranch = accessibleBranches.find((branch) => branch.id === Number(form.store_location_id))
+    const activating = !loadedSchedule?.is_active && form.is_active
+    const changingBranch = Number(form.store_location_id) !== loadedSchedule?.store_location_id
+    if (form.is_active && (activating || changingBranch) && (!selectedBranch?.is_active || !selectedBranch.is_booking_available)) return 'This Branch is not available for activating a schedule.'
     const startMin = timeToMinutes(form.start_time)
     const endMin = timeToMinutes(form.end_time)
     if (!Number.isFinite(startMin) || !Number.isFinite(endMin)) {
@@ -233,6 +237,8 @@ export default function StaffScheduleEditModal({
             staff_id: Number(form.staff_id),
             store_location_id: Number(form.store_location_id),
             branch_name: accessibleBranches.find((b) => b.id === Number(form.store_location_id))?.name || `Branch #${form.store_location_id}`,
+            branch_is_active: loadedSchedule?.branch_is_active ?? true,
+            branch_is_booking_available: loadedSchedule?.branch_is_booking_available ?? true,
             staff_name: staffs.find(s => s.id === Number(form.staff_id))?.name || `Staff #${form.staff_id}`,
             day_of_week: Number(form.day_of_week),
             start_time: form.start_time,
@@ -289,7 +295,10 @@ export default function StaffScheduleEditModal({
             <label htmlFor="edit-store-location" className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
             <select id="edit-store-location" name="store_location_id" value={form.store_location_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting || loading}>
               <option value="">Select a specific Branch</option>
-              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+              {loadedSchedule?.store_location_id && !accessibleBranches.some((branch) => branch.id === loadedSchedule.store_location_id) ? (
+                <option value={loadedSchedule.store_location_id}>{loadedSchedule.branch_name} — {loadedSchedule.branch_is_active ? 'Booking unavailable' : 'Inactive Branch'}</option>
+              ) : null}
+              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id} disabled={branch.id !== loadedSchedule?.store_location_id && (!branch.is_active || !branch.is_booking_available)}>{branch.name}{!branch.is_booking_available ? ' — Booking unavailable' : ''}</option>)}
             </select>
           </div>
           {loading ? (

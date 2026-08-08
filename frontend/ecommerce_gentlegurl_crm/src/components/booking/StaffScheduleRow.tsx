@@ -19,6 +19,8 @@ export interface StaffScheduleRowData {
   staff_name: string
   store_location_id: number | null
   branch_name: string
+  branch_is_active: boolean
+  branch_is_booking_available: boolean
   day_of_week: number
   start_time: string
   end_time: string
@@ -72,7 +74,10 @@ export default function StaffScheduleRow({
         </td>
       )}
       <td className="px-4 py-2 border border-gray-200">{schedule.staff_name}</td>
-      <td className="px-4 py-2 border border-gray-200">{schedule.branch_name}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        <div>{schedule.branch_name}</div>
+        {!schedule.branch_is_active ? <span className="text-xs text-red-700">Inactive Branch</span> : !schedule.branch_is_booking_available ? <span className="text-xs text-amber-700">Booking unavailable</span> : null}
+      </td>
       <td className="px-4 py-2 border border-gray-200">{formatDay(schedule.day_of_week)}</td>
       <td className="px-4 py-2 border border-gray-200">{formatTime12Hour(schedule.start_time) || schedule.start_time || '—'}</td>
       <td className="px-4 py-2 border border-gray-200">{formatTime12Hour(schedule.end_time) || schedule.end_time || '—'}</td>

@@ -4,7 +4,7 @@ export type StaffScheduleApiItem = {
   id: number | string
   staff_id?: number | string | null
   store_location_id?: number | string | null
-  store_location?: { id: number; name: string; code?: string } | null
+  store_location?: { id: number; name: string; code?: string; is_active?: boolean; is_booking_available?: boolean } | null
   day_of_week?: number | string | null
   start_time?: string | null
   end_time?: string | null
@@ -47,6 +47,8 @@ export const mapStaffScheduleApiItemToRow = (
     staff_name: staffName,
     store_location_id: item.store_location_id ? Number(item.store_location_id) : null,
     branch_name: item.store_location?.name ?? (item.store_location_id ? `Branch #${item.store_location_id}` : 'Legacy / unresolved'),
+    branch_is_active: item.store_location?.is_active !== false,
+    branch_is_booking_available: item.store_location?.is_booking_available === true,
     day_of_week: typeof item.day_of_week === 'number' ? item.day_of_week : (item.day_of_week ? Number(item.day_of_week) : 0),
     start_time: item.start_time ?? '',
     end_time: item.end_time ?? '',

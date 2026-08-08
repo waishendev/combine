@@ -104,6 +104,8 @@ export default function StaffScheduleCreateModal({
   const validate = (): string | null => {
     if (!form.staff_id) return 'Staff is required.'
     if (!form.store_location_id) return 'A specific Branch is required; All Branches cannot be saved.'
+    const selectedBranch = accessibleBranches.find((branch) => branch.id === Number(form.store_location_id))
+    if (!selectedBranch?.is_active || !selectedBranch.is_booking_available) return 'New schedules require an active, booking-enabled Branch, including inactive draft schedules.'
     const startMin = timeToMinutes(form.start_time)
     const endMin = timeToMinutes(form.end_time)
     if (!Number.isFinite(startMin) || !Number.isFinite(endMin)) {
@@ -180,6 +182,8 @@ export default function StaffScheduleCreateModal({
             staff_id: Number(form.staff_id),
             store_location_id: Number(form.store_location_id),
             branch_name: accessibleBranches.find((b) => b.id === Number(form.store_location_id))?.name || `Branch #${form.store_location_id}`,
+            branch_is_active: true,
+            branch_is_booking_available: true,
             staff_name: staffs.find(s => s.id === Number(form.staff_id))?.name || `Staff #${form.staff_id}`,
             day_of_week: Number(form.day_of_week),
             start_time: form.start_time,
@@ -255,7 +259,7 @@ export default function StaffScheduleCreateModal({
             <label htmlFor="store_location_id" className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
             <select id="store_location_id" name="store_location_id" value={form.store_location_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting}>
               <option value="">Select a specific Branch</option>
-              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id} disabled={!branch.is_active || !branch.is_booking_available}>{branch.name}{!branch.is_booking_available ? ' — Booking unavailable' : ''}</option>)}
             </select>
           </div>
 

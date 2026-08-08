@@ -19,13 +19,13 @@ class StaffScheduleController extends Controller
 
     public function index(Request $request)
     {
-        $accessibleIds = $this->storeAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
-        $query = BookingStaffSchedule::query()->with(['staff:id,name', 'storeLocation:id,name,code'])
+        $accessibleIds = $this->storeAccess->accessibleStoreLocations($request->user(), true)->pluck('id');
+        $query = BookingStaffSchedule::query()->with(['staff:id,name', 'storeLocation:id,name,code,is_active,is_booking_available'])
             ->where(fn ($scope) => $scope->whereIn('store_location_id', $accessibleIds)
                 ->when($this->storeAccess->hasPlatformBypass($request->user()), fn ($legacy) => $legacy->orWhereNull('store_location_id')));
 
         if ($request->filled('branch_store_location_id')) {
-            $branch = $this->branchSchedules->authorizeOperationalBranch($request->user(), $request->integer('branch_store_location_id'));
+            $branch = $this->branchSchedules->authorizeHistoricalBranch($request->user(), $request->integer('branch_store_location_id'));
             $query->where('store_location_id', $branch->id);
         }
 
@@ -42,7 +42,7 @@ class StaffScheduleController extends Controller
 
         return $this->respond($query->paginate(50));
     }
-    public function show(Request $request, int $id) { $item = BookingStaffSchedule::with(['staff:id,name','storeLocation:id,name,code'])->findOrFail($id); $this->authorizeRecord($request, $item); return $this->respond($item); }
+    public function show(Request $request, int $id) { $item = BookingStaffSchedule::with(['staff:id,name','storeLocation:id,name,code,is_active,is_booking_available'])->findOrFail($id); $this->authorizeRecord($request, $item); return $this->respond($item); }
     public function store(Request $request) {
         $data = $request->validate([
             'staff_id' => ['required', 'integer', 'exists:staffs,id'],
@@ -57,9 +57,9 @@ class StaffScheduleController extends Controller
         $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $data['store_location_id']);
         $this->branchSchedules->assertStaffAssigned((int) $data['staff_id'], (int) $data['store_location_id']);
         $this->validateScheduleTimes($data['start_time'], $data['end_time'], $data['break_start'] ?? null, $data['break_end'] ?? null);
-        $this->branchSchedules->assertScheduleDoesNotOverlap((int) $data['staff_id'], (int) $data['day_of_week'], $data['start_time'], $data['end_time']);
         $data['is_active'] = $data['is_active'] ?? true;
-        return $this->respond(BookingStaffSchedule::create($data)->load(['staff:id,name','storeLocation:id,name,code']), null, true, 201);
+        $this->branchSchedules->assertScheduleDoesNotOverlap((int) $data['staff_id'], (int) $data['day_of_week'], $data['start_time'], $data['end_time'], (bool) $data['is_active']);
+        return $this->respond(BookingStaffSchedule::create($data)->load(['staff:id,name','storeLocation:id,name,code,is_active,is_booking_available']), null, true, 201);
     }
     public function update(Request $request, int $id) {
         $item = BookingStaffSchedule::findOrFail($id);
@@ -76,12 +76,18 @@ class StaffScheduleController extends Controller
         ]);
         $staffId = (int) ($data['staff_id'] ?? $item->staff_id);
         $branchId = (int) ($data['store_location_id'] ?? $item->store_location_id);
-        $this->branchSchedules->authorizeOperationalBranch($request->user(), $branchId);
+        $this->branchSchedules->authorizeHistoricalBranch($request->user(), $branchId);
+        $willBeActive = (bool) ($data['is_active'] ?? $item->is_active);
+        $isActivating = ! $item->is_active && $willBeActive;
+        $isChangingBranch = $branchId !== (int) $item->store_location_id;
+        if (($isActivating || $isChangingBranch) && $willBeActive) {
+            $this->branchSchedules->authorizeOperationalBranch($request->user(), $branchId);
+        }
         $this->branchSchedules->assertStaffAssigned($staffId, $branchId);
         $this->validateScheduleTimes((string) ($data['start_time'] ?? $item->start_time), (string) ($data['end_time'] ?? $item->end_time), $data['break_start'] ?? $item->break_start, $data['break_end'] ?? $item->break_end);
-        $this->branchSchedules->assertScheduleDoesNotOverlap($staffId, (int) ($data['day_of_week'] ?? $item->day_of_week), (string) ($data['start_time'] ?? $item->start_time), (string) ($data['end_time'] ?? $item->end_time), $item->id);
+        $this->branchSchedules->assertScheduleDoesNotOverlap($staffId, (int) ($data['day_of_week'] ?? $item->day_of_week), (string) ($data['start_time'] ?? $item->start_time), (string) ($data['end_time'] ?? $item->end_time), $willBeActive, $item->id);
         $item->update($data);
-        return $this->respond($item->load(['staff:id,name','storeLocation:id,name,code']));
+        return $this->respond($item->load(['staff:id,name','storeLocation:id,name,code,is_active,is_booking_available']));
     }
 
     public function bulkUpdate(Request $request)
@@ -142,7 +148,11 @@ class StaffScheduleController extends Controller
                         }
                     }
 
-                    $this->branchSchedules->assertScheduleDoesNotOverlap((int) $schedule->staff_id, (int) $schedule->day_of_week, (string) $start, (string) $end, (int) $schedule->id);
+                    $willBeActive = $hasIsActive ? (bool) $data['is_active'] : (bool) $schedule->is_active;
+                    if (! $schedule->is_active && $willBeActive) {
+                        $this->branchSchedules->authorizeOperationalBranch(request()->user(), (int) $schedule->store_location_id);
+                    }
+                    $this->branchSchedules->assertScheduleDoesNotOverlap((int) $schedule->staff_id, (int) $schedule->day_of_week, (string) $start, (string) $end, $willBeActive, (int) $schedule->id);
 
                     $payload = [];
                     if ($hasStart) {
@@ -189,8 +199,8 @@ class StaffScheduleController extends Controller
     public function exportCsv(Request $request)
     {
         $rows = BookingStaffSchedule::query()
-            ->with(['staff:id,name','storeLocation:id,name,code'])
-            ->whereIn('store_location_id', $this->storeAccess->accessibleStoreLocations($request->user(), false)->pluck('id'))
+            ->with(['staff:id,name','storeLocation:id,name,code,is_active,is_booking_available'])
+            ->whereIn('store_location_id', $this->storeAccess->accessibleStoreLocations($request->user(), true)->pluck('id'))
             ->orderBy('id')
             ->get();
 
@@ -314,7 +324,19 @@ class StaffScheduleController extends Controller
             $id = isset($payload['id']) && is_numeric($payload['id']) ? (int) $payload['id'] : null;
 
             try {
-                $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $validated['store_location_id']);
+                $record = $id ? BookingStaffSchedule::query()->find($id) : null;
+                if ($record) {
+                    $this->authorizeRecord($request, $record);
+                    $this->branchSchedules->authorizeHistoricalBranch($request->user(), (int) $validated['store_location_id']);
+                    $requiresOperationalBranch = (bool) $validated['is_active']
+                        && (! $record->is_active || (int) $record->store_location_id !== (int) $validated['store_location_id']);
+                    if ($requiresOperationalBranch) {
+                        $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $validated['store_location_id']);
+                    }
+                } else {
+                    // CSV creation follows the same rule as the create form: only operational Branches are accepted.
+                    $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $validated['store_location_id']);
+                }
                 $this->branchSchedules->assertStaffAssigned((int) $validated['staff_id'], (int) $validated['store_location_id']);
                 if (($validated['break_start'] && ! $validated['break_end']) || (! $validated['break_start'] && $validated['break_end'])) {
                     throw new \InvalidArgumentException('Break start/end must both be set, or both left empty.');
@@ -332,9 +354,7 @@ class StaffScheduleController extends Controller
                     }
                 }
 
-                $record = $id ? BookingStaffSchedule::query()->find($id) : null;
-                if ($record) $this->authorizeRecord($request, $record);
-                $this->branchSchedules->assertScheduleDoesNotOverlap((int) $validated['staff_id'], (int) $validated['day_of_week'], $validated['start_time'], $validated['end_time'], $record?->id);
+                $this->branchSchedules->assertScheduleDoesNotOverlap((int) $validated['staff_id'], (int) $validated['day_of_week'], $validated['start_time'], $validated['end_time'], (bool) $validated['is_active'], $record?->id);
                 if (! $record) {
                     BookingStaffSchedule::query()->create($validated);
                     $summary['created']++;
@@ -368,7 +388,7 @@ class StaffScheduleController extends Controller
 
     private function authorizeRecord(Request $request, BookingStaffSchedule $item): void
     {
-        if ($item->store_location_id !== null) $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $item->store_location_id);
+        if ($item->store_location_id !== null) $this->branchSchedules->authorizeHistoricalBranch($request->user(), (int) $item->store_location_id);
         elseif (! $this->storeAccess->hasPlatformBypass($request->user())) abort(403, 'Legacy unattributed schedules require platform reconciliation access.');
     }
 }

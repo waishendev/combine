@@ -22,6 +22,11 @@ class BookingBranchScheduleService
         return $branch;
     }
 
+    public function authorizeHistoricalBranch(User $actor, int $storeLocationId): StoreLocation
+    {
+        return $this->access->authorizeStoreLocation($actor, $storeLocationId, true);
+    }
+
     public function assertStaffAssigned(int $staffId, int $storeLocationId): Staff
     {
         $staff = Staff::query()->findOrFail($staffId);
@@ -31,10 +36,14 @@ class BookingBranchScheduleService
         return $staff;
     }
 
-    public function assertScheduleDoesNotOverlap(int $staffId, int $dayOfWeek, string $startTime, string $endTime, ?int $ignoreId = null): void
+    public function assertScheduleDoesNotOverlap(int $staffId, int $dayOfWeek, string $startTime, string $endTime, bool $willBeActive, ?int $ignoreId = null): void
     {
         if ($this->minutes($startTime) >= $this->minutes($endTime)) {
             throw ValidationException::withMessages(['end_time' => 'End time must be later than start time.']);
+        }
+
+        if (! $willBeActive) {
+            return;
         }
 
         $overlap = BookingStaffSchedule::query()
