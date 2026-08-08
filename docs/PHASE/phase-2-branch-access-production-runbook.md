@@ -56,6 +56,17 @@ JOIN store_locations sl ON sl.id = slu.store_location_id
 ORDER BY u.id, sl.code;
 ```
 
+### 6. One-time normal `superAdmin` rollout correction
+
+Existing production users with the normal application role named `superAdmin` must receive every Branch that is **currently active** at the time of this correction. Preview and then execute:
+
+```bash
+php artisan branch-access:backfill --all-active-super-admins --dry-run
+php artisan branch-access:backfill --all-active-super-admins --force
+```
+
+This mode is additive and idempotent: it preserves every existing assignment and inserts only missing `store_location_user` pairs. It excludes inactive Branches, creates no StoreLocations, and skips any user who also has the `infra_core_x1` platform role. The active Branch IDs are snapshotted only when the command runs. A Branch created or activated later is **not** automatically accessible to normal `superAdmin` users and must be assigned explicitly through Admin Management. This is not a bypass; `infra_core_x1` remains the only permanent all-Branch bypass.
+
 ## Safety notes
 
 - `--store-code` is required and must match an existing active `store_locations.code` exactly.

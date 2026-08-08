@@ -1,4 +1,4 @@
-import type { StoreLocation } from '@/types/storeLocation'
+import type { StoreLocation } from '../types/storeLocation'
 
 export const ALL_BRANCHES = 'all' as const
 

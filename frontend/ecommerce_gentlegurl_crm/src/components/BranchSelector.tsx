@@ -1,10 +1,12 @@
 'use client'
 
 import { useBranch } from '@/contexts/BranchContext'
+import { branchSelectorOptions } from './branch-selector-options'
 
 function Selector({ mobile }: { mobile: boolean }) {
   const { accessibleBranches, selectedBranchId, loading, error, setSelectedBranch, refreshBranches } = useBranch()
   const hasMultiple = accessibleBranches.length > 1
+  const options = branchSelectorOptions(accessibleBranches)
   const value = selectedBranchId === null ? 'all' : String(selectedBranchId)
 
   if (loading) {
@@ -30,8 +32,7 @@ function Selector({ mobile }: { mobile: boolean }) {
         onChange={(event) => setSelectedBranch(event.target.value === 'all' ? null : Number(event.target.value))}
         className={`${mobile ? 'max-w-[72px] text-xs' : 'max-w-[220px] text-sm'} min-w-0 appearance-none truncate bg-transparent py-2 pr-5 font-semibold outline-none disabled:cursor-default`}
       >
-        {hasMultiple ? <option value="all">All Branches</option> : null}
-        {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
       {hasMultiple ? <i className="fa-solid fa-chevron-down pointer-events-none absolute right-2 text-[9px] text-slate-400" aria-hidden="true" /> : null}
     </label>

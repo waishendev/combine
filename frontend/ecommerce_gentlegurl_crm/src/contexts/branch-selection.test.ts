@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { ALL_BRANCHES, parsePersistedBranchSelection, resolveBranchSelection } from './branch-selection'
-import type { StoreLocation } from '@/types/storeLocation'
+import type { StoreLocation } from '../types/storeLocation'
 
 const branch = (id: number, isActive = true): StoreLocation => ({
   id,

@@ -8,6 +8,66 @@ use Illuminate\Support\Facades\DB;
 class BranchAccessBackfillService
 {
     /**
+     * One-time rollout helper for the normal application superAdmin role.
+     * Active Branch IDs are snapshotted when the command runs; this grants no future bypass.
+     *
+     * @return array{role:string, active_branches:int, eligible_users:int, existing_assignments:int, assignments_added:int, dry_run:bool}
+     */
+    public function backfillRoleToAllActiveBranches(string $roleName, bool $dryRun = false): array
+    {
+        if ($roleName === StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE) {
+            throw new \InvalidArgumentException('The Platform Super Admin role must use its permanent bypass, not pivot backfill rows.');
+        }
+
+        $branchIds = StoreLocation::query()->where('is_active', true)->pluck('id')->map(fn ($id) => (int) $id);
+        $userIds = DB::table('users')
+            ->whereExists(function ($query) use ($roleName) {
+                $query->select(DB::raw(1))
+                    ->from('role_user')
+                    ->join('roles', 'roles.id', '=', 'role_user.role_id')
+                    ->whereColumn('role_user.user_id', 'users.id')
+                    ->where('roles.name', $roleName);
+            })
+            ->whereNotExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('role_user')
+                    ->join('roles', 'roles.id', '=', 'role_user.role_id')
+                    ->whereColumn('role_user.user_id', 'users.id')
+                    ->where('roles.name', StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE);
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id);
+
+        $existingAssignments = $userIds->isEmpty() || $branchIds->isEmpty()
+            ? 0
+            : DB::table('store_location_user')->whereIn('user_id', $userIds)->whereIn('store_location_id', $branchIds)->count();
+        $missingAssignments = ($userIds->count() * $branchIds->count()) - $existingAssignments;
+        $added = 0;
+
+        if (! $dryRun && $missingAssignments > 0) {
+            $now = now();
+            foreach ($userIds->chunk(250) as $userChunk) {
+                $rows = [];
+                foreach ($userChunk as $userId) {
+                    foreach ($branchIds as $branchId) {
+                        $rows[] = ['user_id' => $userId, 'store_location_id' => $branchId, 'created_at' => $now, 'updated_at' => $now];
+                    }
+                }
+                $added += DB::table('store_location_user')->insertOrIgnore($rows);
+            }
+        }
+
+        return [
+            'role' => $roleName,
+            'active_branches' => $branchIds->count(),
+            'eligible_users' => $userIds->count(),
+            'existing_assignments' => (int) $existingAssignments,
+            'assignments_added' => $dryRun ? 0 : (int) $added,
+            'dry_run' => $dryRun,
+        ];
+    }
+
+    /**
      * @return array{selected_branch: array{id:int,name:string,code:string}, eligible_users:int, newly_assigned:int, already_assigned:int, platform_super_admin_skipped:int, dry_run:bool}
      */
     public function backfill(StoreLocation $storeLocation, bool $dryRun = false): array
