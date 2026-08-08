@@ -79,7 +79,7 @@ type CheckoutErrorField =
   | "summary"
   | "general";
 
-const ADDRESS_FORM_FIELD_ORDER = ["name", "phone", "line1", "city", "state", "postcode"] as const;
+const ADDRESS_FORM_FIELD_ORDER = ["label", "name", "phone", "line1", "city", "state", "postcode"] as const;
 
 const normalizeCountryValue = (country?: string | null) => {
   if (!country) return "";
@@ -199,6 +199,7 @@ export default function CheckoutForm() {
     is_default: false,
   });
   const [addressFormErrors, setAddressFormErrors] = useState<Record<string, string[]>>({});
+  const [addressModalError, setAddressModalError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     shipping_name: "",
@@ -917,14 +918,15 @@ export default function CheckoutForm() {
     const normalizedAddressPhone = normalizeInternationalPhone(addressForm.phone);
     const payload: AddressPayload = {
       ...addressForm,
+      type: "shipping",
       phone: normalizedAddressPhone,
       line2: addressForm.line2 || null,
       postcode: addressForm.postcode || null,
     };
 
-    // Clear previous errors
+    // Clear previous address-modal errors only (do not touch page checkout error banner)
     setAddressFormErrors({});
-    clearCheckoutError();
+    setAddressModalError(null);
 
     try {
       if (editingAddress) {
@@ -943,6 +945,7 @@ export default function CheckoutForm() {
       // Keep the current temp selection, don't auto-select the new/edited address
       setTempSelectedAddressId(tempSelectedAddressId);
       setAddressFormErrors({});
+      setAddressModalError(null);
     } catch (err: unknown) {
       // Check if error has validation errors structure
       if (err && typeof err === "object" && "data" in err) {
@@ -962,17 +965,17 @@ export default function CheckoutForm() {
           
           setAddressFormErrors(formattedErrors);
           
-          // Also set general error message if available
+          // Keep "Validation failed" inside the modal only — not the page banner
           if ("message" in errorData && typeof errorData.message === "string") {
-            setError(errorData.message);
+            setAddressModalError(errorData.message);
           }
           return;
         }
       }
       
-      // Fallback to generic error
+      // Fallback to generic error (modal only)
       const message = err instanceof Error ? err.message : "Unable to save address.";
-      setError(message);
+      setAddressModalError(message);
     }
   };
 
@@ -980,7 +983,7 @@ export default function CheckoutForm() {
     setEditingAddress(address);
     setAddressForm({
       label: address.label,
-      type: address.type,
+      type: "shipping",
       name: address.name,
       phone: address.phone,
       line1: address.line1,
@@ -992,7 +995,7 @@ export default function CheckoutForm() {
       is_default: address.is_default,
     });
     setAddressFormErrors({});
-    setError(null);
+    setAddressModalError(null);
     setAddressMode("form");
   };
 
@@ -1012,7 +1015,7 @@ export default function CheckoutForm() {
       is_default: addresses.length === 0,
     });
     setAddressFormErrors({});
-    setError(null);
+    setAddressModalError(null);
     setAddressMode("form");
   };
 
@@ -1932,6 +1935,8 @@ export default function CheckoutForm() {
                 onClick={() => {
                   setShowAddressModal(false);
                   setTempSelectedAddressId(selectedAddressId);
+                  setAddressModalError(null);
+                  setAddressFormErrors({});
                 }}
                 className="text-sm text-[var(--foreground)]/70"
               >
@@ -2066,29 +2071,33 @@ export default function CheckoutForm() {
               </div>
             ) : (
               <div className="space-y-3">
-                {error && (
+                {addressModalError && (
                   <div className="rounded bg-[var(--status-error-bg)] border border-[var(--status-error-border)] px-4 py-3 text-sm text-[var(--status-error)]">
-                    {error}
+                    {addressModalError}
                   </div>
                 )}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <FieldLabel required={false}>Label</FieldLabel>
+                  <div ref={(el) => { fieldRefs.current.address_label = el; }}>
+                    <FieldLabel>Label</FieldLabel>
                     <input
                       value={addressForm.label ?? ""}
                       onChange={(e) => updateAddressForm("label", e.target.value)}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                      className={`w-full rounded border px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input ${
+                        addressFormErrors.label ? "border-[var(--status-error)]" : "border-[var(--muted)]"
+                      }`}
                     />
+                    {addressFormErrors.label && (
+                      <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.label[0]}</p>
+                    )}
                   </div>
                   <div>
                     <FieldLabel required={false}>Type</FieldLabel>
                     <select
-                      value={addressForm.type}
-                      onChange={(e) => updateAddressForm("type", e.target.value as AddressPayload["type"])}
-                      className="w-full rounded border border-[var(--muted)] px-3 py-2 text-base outline-none focus:border-[var(--accent)] ios-input"
+                      value="shipping"
+                      disabled
+                      className="w-full rounded border border-[var(--muted)] bg-[var(--muted)]/30 px-3 py-2 text-base outline-none ios-input"
                     >
                       <option value="shipping">Shipping</option>
-                      <option value="billing">Billing</option>
                     </select>
                   </div>
                 </div>
@@ -2245,6 +2254,8 @@ export default function CheckoutForm() {
                       setAddressMode("list");
                       setEditingAddress(null);
                       setTempSelectedAddressId(selectedAddressId);
+                      setAddressModalError(null);
+                      setAddressFormErrors({});
                     }}
                     className="rounded border border-[var(--muted)] px-4 py-2 text-sm text-[var(--foreground)]"
                   >

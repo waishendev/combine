@@ -77,6 +77,23 @@ function Modal({ open, title, onClose, children, footer }: ModalProps) {
   );
 }
 
+function RequiredMark() {
+  return (
+    <span className="ml-0.5 text-[var(--status-error)]" aria-hidden="true">
+      *
+    </span>
+  );
+}
+
+function FieldLabel({ children, required = true }: { children: ReactNode; required?: boolean }) {
+  return (
+    <span className="text-[var(--accent-stronger)]">
+      {children}
+      {required ? <RequiredMark /> : null}
+    </span>
+  );
+}
+
 type ProfileFormState = {
   name: string;
   phone: string;
@@ -147,6 +164,8 @@ export default function AccountPage() {
   const [savingAddress, setSavingAddress] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [addressModalError, setAddressModalError] = useState<string | null>(null);
+  const [addressFormErrors, setAddressFormErrors] = useState<Record<string, string[]>>({});
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const avatarUrl = useMemo(
@@ -279,12 +298,14 @@ export default function AccountPage() {
   const openAddressModal = (address?: CustomerAddress) => {
     setFeedback(null);
     setError(null);
+    setAddressModalError(null);
+    setAddressFormErrors({});
 
     if (address) {
       setEditingAddress(address);
       setAddressForm({
         label: address.label ?? "",
-        type: address.type,
+        type: "shipping",
         name: address.name,
         phone: address.phone,
         line1: address.line1,
@@ -297,22 +318,35 @@ export default function AccountPage() {
       });
     } else {
       setEditingAddress(null);
-      setAddressForm({ ...emptyAddress });
+      setAddressForm({ ...emptyAddress, type: "shipping" });
     }
 
     setAddressModalOpen(true);
   };
 
+  const updateAddressField = <K extends keyof AddressFormState>(field: K, value: AddressFormState[K]) => {
+    setAddressForm((prev) => ({ ...prev, [field]: value }));
+    if (addressFormErrors[field as string]) {
+      setAddressFormErrors((prev) => {
+        const next = { ...prev };
+        delete next[field as string];
+        return next;
+      });
+    }
+  };
+
   const handleAddressSave = async () => {
     setSavingAddress(true);
-    setError(null);
+    setAddressModalError(null);
+    setAddressFormErrors({});
     setFeedback(null);
 
     const normalizedAddressPhone = normalizeInternationalPhone(addressForm.phone);
     const payload: AddressPayload = {
       ...addressForm,
+      type: "shipping",
       phone: normalizedAddressPhone,
-      label: addressForm.label?.trim() || null,
+      label: addressForm.label?.trim() || "",
       line2: addressForm.line2?.trim() || null,
       state: addressForm.state?.trim() || null,
       postcode: addressForm.postcode?.trim() || null,
@@ -327,9 +361,18 @@ export default function AccountPage() {
 
       await refreshProfile();
       setAddressModalOpen(false);
+      setAddressModalError(null);
+      setAddressFormErrors({});
       setFeedback(editingAddress ? "Address updated successfully." : "Address added successfully.");
     } catch (err) {
-      setError(extractError(err));
+      const fieldErrors = extractFieldErrors(err);
+      if (Object.keys(fieldErrors).length > 0) {
+        setAddressFormErrors(fieldErrors);
+        const apiMessage = (err as { data?: ApiErrorShape })?.data?.message;
+        setAddressModalError(apiMessage || "Validation failed");
+      } else {
+        setAddressModalError(extractError(err));
+      }
     } finally {
       setSavingAddress(false);
     }
@@ -791,12 +834,20 @@ export default function AccountPage() {
       <Modal
         open={addressModalOpen}
         title={editingAddress ? "Edit Address" : "Add Address"}
-        onClose={() => setAddressModalOpen(false)}
+        onClose={() => {
+          setAddressModalOpen(false);
+          setAddressModalError(null);
+          setAddressFormErrors({});
+        }}
         footer={(
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => setAddressModalOpen(false)}
+              onClick={() => {
+                setAddressModalOpen(false);
+                setAddressModalError(null);
+                setAddressFormErrors({});
+              }}
               className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/40"
             >
               Cancel
@@ -813,114 +864,178 @@ export default function AccountPage() {
         )}
       >
         <div className="space-y-4">
+          {addressModalError && (
+            <div className="rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm text-[var(--status-error)]">
+              {addressModalError}
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">Label</span>
+              <FieldLabel>Label</FieldLabel>
               <input
                 type="text"
                 value={addressForm.label ?? ""}
-                onChange={(e) => setAddressForm({ ...addressForm, label: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(e) => updateAddressField("label", e.target.value)}
+                className={`w-full rounded-lg border bg-[var(--input-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                  addressFormErrors.label
+                    ? "border-[var(--status-error)] focus:border-[var(--status-error)] focus:ring-[var(--status-error)]/20"
+                    : "border-[var(--input-border)] focus:border-[var(--accent-strong)] focus:ring-[var(--ring)]/20"
+                }`}
                 placeholder="e.g. Home"
               />
+              {addressFormErrors.label?.[0] ? (
+                <p className="text-xs text-[var(--status-error)]">{addressFormErrors.label[0]}</p>
+              ) : null}
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">Type</span>
+              <FieldLabel required={false}>Type</FieldLabel>
               <select
-                value={addressForm.type}
-                onChange={(e) => setAddressForm({ ...addressForm, type: e.target.value as AddressFormState["type"] })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                value="shipping"
+                disabled
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--muted)]/30 px-3 py-2 text-sm text-[var(--foreground)]/80"
               >
                 <option value="shipping">Shipping</option>
-                <option value="billing">Billing</option>
               </select>
             </label>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">Recipient Name</span>
+              <FieldLabel>Recipient Name</FieldLabel>
               <input
                 type="text"
                 value={addressForm.name}
-                onChange={(e) => setAddressForm({ ...addressForm, name: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(e) => updateAddressField("name", e.target.value)}
+                className={`w-full rounded-lg border bg-[var(--input-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                  addressFormErrors.name
+                    ? "border-[var(--status-error)] focus:border-[var(--status-error)] focus:ring-[var(--status-error)]/20"
+                    : "border-[var(--input-border)] focus:border-[var(--accent-strong)] focus:ring-[var(--ring)]/20"
+                }`}
               />
+              {addressFormErrors.name?.[0] ? (
+                <p className="text-xs text-[var(--status-error)]">{addressFormErrors.name[0]}</p>
+              ) : null}
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">Phone</span>
+              <FieldLabel>Phone</FieldLabel>
               <InternationalPhoneInput
                 value={addressForm.phone}
-                onChange={(phone) => setAddressForm({ ...addressForm, phone })}
+                onChange={(phone) => updateAddressField("phone", phone)}
+                error={Boolean(addressFormErrors.phone)}
               />
+              {addressFormErrors.phone?.[0] ? (
+                <p className="text-xs text-[var(--status-error)]">{addressFormErrors.phone[0]}</p>
+              ) : null}
             </label>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">Address Line 1</span>
+              <FieldLabel>Address Line 1</FieldLabel>
               <input
                 type="text"
                 value={addressForm.line1}
-                onChange={(e) => setAddressForm({ ...addressForm, line1: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(e) => updateAddressField("line1", e.target.value)}
+                className={`w-full rounded-lg border bg-[var(--input-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                  addressFormErrors.line1
+                    ? "border-[var(--status-error)] focus:border-[var(--status-error)] focus:ring-[var(--status-error)]/20"
+                    : "border-[var(--input-border)] focus:border-[var(--accent-strong)] focus:ring-[var(--ring)]/20"
+                }`}
               />
+              {addressFormErrors.line1?.[0] ? (
+                <p className="text-xs text-[var(--status-error)]">{addressFormErrors.line1[0]}</p>
+              ) : null}
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">Address Line 2</span>
+              <FieldLabel required={false}>Address Line 2 (Optional)</FieldLabel>
               <input
                 type="text"
                 value={addressForm.line2 ?? ""}
-                onChange={(e) => setAddressForm({ ...addressForm, line2: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(e) => updateAddressField("line2", e.target.value)}
+                className={`w-full rounded-lg border bg-[var(--input-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                  addressFormErrors.line2
+                    ? "border-[var(--status-error)] focus:border-[var(--status-error)] focus:ring-[var(--status-error)]/20"
+                    : "border-[var(--input-border)] focus:border-[var(--accent-strong)] focus:ring-[var(--ring)]/20"
+                }`}
               />
+              {addressFormErrors.line2?.[0] ? (
+                <p className="text-xs text-[var(--status-error)]">{addressFormErrors.line2[0]}</p>
+              ) : null}
             </label>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">City</span>
+              <FieldLabel>City</FieldLabel>
               <input
                 type="text"
                 value={addressForm.city}
-                onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(e) => updateAddressField("city", e.target.value)}
+                className={`w-full rounded-lg border bg-[var(--input-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                  addressFormErrors.city
+                    ? "border-[var(--status-error)] focus:border-[var(--status-error)] focus:ring-[var(--status-error)]/20"
+                    : "border-[var(--input-border)] focus:border-[var(--accent-strong)] focus:ring-[var(--ring)]/20"
+                }`}
               />
+              {addressFormErrors.city?.[0] ? (
+                <p className="text-xs text-[var(--status-error)]">{addressFormErrors.city[0]}</p>
+              ) : null}
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">State</span>
+              <FieldLabel>State</FieldLabel>
               <input
                 type="text"
                 value={addressForm.state ?? ""}
-                onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(e) => updateAddressField("state", e.target.value)}
+                className={`w-full rounded-lg border bg-[var(--input-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                  addressFormErrors.state
+                    ? "border-[var(--status-error)] focus:border-[var(--status-error)] focus:ring-[var(--status-error)]/20"
+                    : "border-[var(--input-border)] focus:border-[var(--accent-strong)] focus:ring-[var(--ring)]/20"
+                }`}
               />
+              {addressFormErrors.state?.[0] ? (
+                <p className="text-xs text-[var(--status-error)]">{addressFormErrors.state[0]}</p>
+              ) : null}
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">Postcode</span>
+              <FieldLabel>Postcode</FieldLabel>
               <input
                 type="text"
                 value={addressForm.postcode ?? ""}
-                onChange={(e) => setAddressForm({ ...addressForm, postcode: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(e) => updateAddressField("postcode", e.target.value)}
+                className={`w-full rounded-lg border bg-[var(--input-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                  addressFormErrors.postcode
+                    ? "border-[var(--status-error)] focus:border-[var(--status-error)] focus:ring-[var(--status-error)]/20"
+                    : "border-[var(--input-border)] focus:border-[var(--accent-strong)] focus:ring-[var(--ring)]/20"
+                }`}
               />
+              {addressFormErrors.postcode?.[0] ? (
+                <p className="text-xs text-[var(--status-error)]">{addressFormErrors.postcode[0]}</p>
+              ) : null}
             </label>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1 text-sm">
-              <span className="text-[var(--accent-stronger)]">Country</span>
+              <FieldLabel>Country</FieldLabel>
               <input
                 type="text"
                 value={addressForm.country}
-                onChange={(e) => setAddressForm({ ...addressForm, country: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(e) => updateAddressField("country", e.target.value)}
+                className={`w-full rounded-lg border bg-[var(--input-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                  addressFormErrors.country
+                    ? "border-[var(--status-error)] focus:border-[var(--status-error)] focus:ring-[var(--status-error)]/20"
+                    : "border-[var(--input-border)] focus:border-[var(--accent-strong)] focus:ring-[var(--ring)]/20"
+                }`}
               />
+              {addressFormErrors.country?.[0] ? (
+                <p className="text-xs text-[var(--status-error)]">{addressFormErrors.country[0]}</p>
+              ) : null}
             </label>
             <label className="mt-6 flex items-center gap-2 text-sm text-[var(--accent-stronger)]">
               <input
                 type="checkbox"
                 checked={!!addressForm.is_default}
-                onChange={(e) => setAddressForm({ ...addressForm, is_default: e.target.checked })}
+                onChange={(e) => updateAddressField("is_default", e.target.checked)}
                 className="h-4 w-4 rounded border-[var(--muted)] text-[var(--accent-strong)] focus:ring-[var(--accent-strong)]"
               />
               Set as default address
@@ -930,6 +1045,22 @@ export default function AccountPage() {
       </Modal>
     </div>
   );
+}
+
+function extractFieldErrors(error: unknown): Record<string, string[]> {
+  const apiError = error as { data?: ApiErrorShape };
+  const errors = apiError?.data?.errors;
+  if (!errors || typeof errors !== "object") return {};
+
+  const formatted: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(errors)) {
+    if (Array.isArray(value)) {
+      formatted[key] = value;
+    } else if (typeof value === "string") {
+      formatted[key] = [value];
+    }
+  }
+  return formatted;
 }
 
 function extractError(error: unknown) {
