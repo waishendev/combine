@@ -11,9 +11,11 @@ class PublicStoreLocationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $availabilityColumn = $request->query('for') === 'reviews'
-            ? 'is_review_available'
-            : 'is_pickup_available';
+        $availabilityColumn = match ($request->query('for')) {
+            'reviews' => 'is_review_available',
+            'booking' => 'is_booking_available',
+            default => 'is_pickup_available',
+        };
 
         $locations = StoreLocation::query()
             ->where('is_active', true)
@@ -36,18 +38,45 @@ class PublicStoreLocationController extends Controller
                 'opening_hours',
             ]);
 
+        if ($request->query('for') === 'booking') {
+            return $this->respond($locations->map(fn (StoreLocation $location) => $this->publicPayload($location))->values());
+        }
+
         return $this->respond($locations);
     }
 
     public function show(Request $request, StoreLocation $storeLocation): JsonResponse
     {
-        $isAvailable = $request->query('for') === 'reviews'
-            ? $storeLocation->is_review_available
-            : $storeLocation->is_pickup_available;
+        $isAvailable = match ($request->query('for')) {
+            'reviews' => $storeLocation->is_review_available,
+            'booking' => $storeLocation->is_booking_available,
+            default => $storeLocation->is_pickup_available,
+        };
         abort_unless($storeLocation->is_active && $isAvailable, 404);
 
         $storeLocation->load('images');
 
-        return $this->respond($storeLocation);
+        return $this->respond($request->query('for') === 'booking' ? $this->publicPayload($storeLocation) : $storeLocation);
+    }
+
+    private function publicPayload(StoreLocation $location): array
+    {
+        return [
+            'id' => (int) $location->id,
+            'name' => (string) $location->name,
+            'code' => (string) $location->code,
+            'address_line1' => $location->address_line1,
+            'address_line2' => $location->address_line2,
+            'city' => $location->city,
+            'state' => $location->state,
+            'postcode' => $location->postcode,
+            'country' => $location->country,
+            'phone' => $location->phone,
+            'opening_hours' => $location->opening_hours,
+            'images' => $location->images->map(fn ($image) => [
+                'id' => (int) $image->id,
+                'image_url' => $image->image_url,
+            ])->values(),
+        ];
     }
 }

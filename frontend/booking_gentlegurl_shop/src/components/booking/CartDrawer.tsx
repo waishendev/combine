@@ -453,6 +453,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
       const checkoutResponse = await checkoutCart(
         {
+          store_location_id: cart?.store_location_id ?? undefined,
           guest_name: guestName.trim(),
           guest_phone: normalizedGuestPhone,
           guest_email: guestEmail.trim(),

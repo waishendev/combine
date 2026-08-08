@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 /** Date & time before stylist: pick a slot first, then an available staff member. Checkout is via cart icon, not a wizard step. */
-const STEP_LABELS = ["Choose service", "Select add-ons", "Choose date & time", "Choose nail technician"];
+const STEP_LABELS = ["Choose branch", "Choose service", "Select add-ons", "Choose date & time", "Choose nail technician"];
 
 type BookingProgressProps = {
   step: number;
@@ -33,7 +33,7 @@ export function BookingProgress({ step, loading, backHref, backLabel = "Back" }:
           <div className="h-3 w-40 max-w-[85vw] animate-pulse rounded bg-[var(--muted)]" />
         </div>
         <div
-          className="mb-10 hidden items-center justify-center gap-2 px-5 sm:flex sm:gap-3"
+          className="mb-10 hidden items-center justify-center gap-1.5 px-2 sm:flex lg:gap-3 lg:px-5"
           aria-busy="true"
           aria-label="Loading booking steps"
         >
@@ -44,7 +44,7 @@ export function BookingProgress({ step, loading, backHref, backLabel = "Back" }:
                 <div className="mt-2 hidden h-3 w-14 max-w-[3.5rem] animate-pulse rounded bg-[var(--muted)] sm:block" />
               </div>
               {index < steps.length - 1 && (
-                <div className="h-[1.5px] w-12 shrink-0 animate-pulse bg-[var(--card-border)] sm:w-14" />
+                <div className="h-[1.5px] w-6 shrink-0 animate-pulse bg-[var(--card-border)] md:w-9 lg:w-12" />
               )}
             </div>
           ))}
@@ -95,7 +95,7 @@ export function BookingProgress({ step, loading, backHref, backLabel = "Back" }:
         </div>
       </div>
 
-      <div className="mb-10 hidden items-center justify-center gap-2 px-5 sm:flex sm:gap-3">
+      <div className="mb-10 hidden items-center justify-center gap-1.5 px-2 sm:flex lg:gap-3 lg:px-5">
         {steps.map((label, index) => {
           const num = index + 1;
           const isDone = num < activeStep;
@@ -124,7 +124,7 @@ export function BookingProgress({ step, loading, backHref, backLabel = "Back" }:
               </div>
               {index < steps.length - 1 && (
                 <div
-                  className={`h-[1.5px] w-12 shrink-0 sm:w-14 ${
+                  className={`h-[1.5px] w-6 shrink-0 md:w-9 lg:w-12 ${
                     isDone ? "bg-[var(--accent-strong)]" : "bg-[var(--card-border)]"
                   }`}
                 />

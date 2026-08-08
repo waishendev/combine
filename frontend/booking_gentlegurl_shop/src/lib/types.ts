@@ -10,6 +10,21 @@ export type BookingServiceCategory = {
   sort_order: number;
 };
 
+export type PublicBookingStoreLocation = {
+  id: number;
+  name: string;
+  code: string;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postcode?: string | null;
+  country?: string | null;
+  phone?: string | null;
+  opening_hours?: Record<string, unknown> | null;
+  images?: Array<{ id: number; image_url?: string | null }>;
+};
+
 export type Service = {
   id: number;
   name: string;
@@ -152,6 +167,7 @@ export type BookingCartPackageClaim = {
 
 export type BookingCart = {
   id: string | null;
+  store_location_id?: number | null;
   status: string;
   items: BookingCartItem[];
   package_items: BookingCartPackageItem[];

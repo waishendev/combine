@@ -47,6 +47,7 @@ export default function ServiceStaffPage() {
   const id = params.id;
   const selectedOptionIdsParam = searchParams.get("selected_option_ids") || "";
   const categoryId = searchParams.get("category_id");
+  const storeLocationId = searchParams.get("store_location_id");
   const remarksParam = searchParams.get("remarks") || "";
   const slotDate = searchParams.get("date") || "";
   const startAt = searchParams.get("start_at") || "";
@@ -64,6 +65,7 @@ export default function ServiceStaffPage() {
   );
 
   const slotsBackQs = new URLSearchParams();
+  if (storeLocationId) slotsBackQs.set("store_location_id", storeLocationId);
   if (selectedOptionIdsParam) slotsBackQs.set("selected_option_ids", selectedOptionIdsParam);
   if (categoryId) slotsBackQs.set("category_id", categoryId);
   if (remarksParam) slotsBackQs.set("remarks", remarksParam);
@@ -147,7 +149,7 @@ export default function ServiceStaffPage() {
 
     let cancelled = false;
     setVerifyingAvailability(true);
-    getAvailabilityPooled(id, slotDate, extraDuration)
+    getAvailabilityPooled(id, slotDate, extraDuration, storeLocationId ? Number(storeLocationId) : undefined)
       .then((payload) => {
         if (cancelled) return;
         const allSlots = Array.isArray(payload?.visible_slots)
@@ -182,7 +184,7 @@ export default function ServiceStaffPage() {
     return () => {
       cancelled = true;
     };
-  }, [confirmStaff, extraDuration, id, service, slotDate, startAt]);
+  }, [confirmStaff, extraDuration, id, service, slotDate, startAt, storeLocationId]);
 
   const effectiveAvailableStaffIds = verifiedAvailableStaffIds ?? availableStaffIds;
   const eligibleStaff = useMemo(() => {
@@ -231,6 +233,7 @@ export default function ServiceStaffPage() {
     setConfirmErrorIsSlotTaken(false);
     try {
       let updatedCart = await addCartItem({
+        store_location_id: Number(storeLocationId),
         service_id: Number(id),
         staff_id: confirmStaff.id,
         start_at: startAt,
@@ -274,11 +277,11 @@ export default function ServiceStaffPage() {
     } finally {
       setAdding(false);
     }
-  }, [confirmStaff, draftDataUrlToFile, endAt, id, remarksParam, selectedOptionIds, service?.allow_photo_upload, startAt]);
+  }, [confirmStaff, draftDataUrlToFile, endAt, id, remarksParam, selectedOptionIds, service?.allow_photo_upload, startAt, storeLocationId]);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 pb-24 sm:py-10">
-      <BookingProgress step={4} backHref={slotsBackHref} />
+      <BookingProgress step={5} backHref={slotsBackHref} />
       <div className="space-y-5 sm:space-y-6">
        
         <div className="hidden items-center justify-start sm:flex">
@@ -684,7 +687,7 @@ export default function ServiceStaffPage() {
                 type="button"
                 onClick={() => {
                   setCartAddSuccessOpen(false);
-                  router.push("/booking");
+                  router.push(`/booking${storeLocationId ? `?store_location_id=${encodeURIComponent(storeLocationId)}` : ""}`);
                 }}
                 className="mt-6 w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-base font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)]"
               >

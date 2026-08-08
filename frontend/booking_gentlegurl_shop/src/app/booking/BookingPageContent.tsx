@@ -4,19 +4,27 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getBookingServiceCategories, getBookingServices } from "@/lib/apiClient";
-import { BookingServiceCategory, Service } from "@/lib/types";
+import { getBookingServiceCategories, getBookingServices, getPublicBookingStoreLocations } from "@/lib/apiClient";
+import { BookingServiceCategory, PublicBookingStoreLocation, Service } from "@/lib/types";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 
 export default function BookingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const categoryIdParam = searchParams.get("category_id");
+  const storeLocationIdParam = searchParams.get("store_location_id");
+  const [storeLocations, setStoreLocations] = useState<PublicBookingStoreLocation[]>([]);
   const [categories, setCategories] = useState<BookingServiceCategory[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [locationsLoaded, setLocationsLoaded] = useState(false);
+
+  const selectedStoreLocation = useMemo(() => {
+    const id = Number(storeLocationIdParam);
+    return Number.isInteger(id) && id > 0 ? storeLocations.find((location) => location.id === id) ?? null : null;
+  }, [storeLocationIdParam, storeLocations]);
 
   const selectedCategory = useMemo((): BookingServiceCategory | null => {
     if (!categoryIdParam || categories.length === 0) return null;
@@ -30,6 +38,24 @@ export default function BookingPageContent() {
       setLoading(true);
       setError(null);
       try {
+        const locations = await getPublicBookingStoreLocations();
+        setStoreLocations(locations);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to load booking Branches");
+      } finally {
+        setLocationsLoaded(true);
+        setLoading(false);
+      }
+    };
+    run();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedStoreLocation) return;
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
         const categoryData = await getBookingServiceCategories();
         setCategories(categoryData);
       } catch (err) {
@@ -39,10 +65,10 @@ export default function BookingPageContent() {
       }
     };
     run();
-  }, []);
+  }, [selectedStoreLocation]);
 
   useEffect(() => {
-    if (!selectedCategory) return;
+    if (!selectedCategory || !selectedStoreLocation) return;
 
     const run = async () => {
       setLoading(true);
@@ -57,17 +83,68 @@ export default function BookingPageContent() {
       }
     };
     run();
-  }, [search, selectedCategory]);
+  }, [search, selectedCategory, selectedStoreLocation]);
+
+  const branchAddress = (location: PublicBookingStoreLocation) =>
+    [location.address_line1, location.address_line2, location.postcode, location.city, location.state]
+      .filter(Boolean)
+      .join(", ");
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
       <BookingProgress
-        step={1}
-        loading={loading && categories.length === 0}
-        backHref={selectedCategory ? "/booking" : undefined}
+        step={selectedStoreLocation ? 2 : 1}
+        loading={!locationsLoaded}
+        backHref={selectedCategory ? `/booking?store_location_id=${selectedStoreLocation?.id}` : selectedStoreLocation ? "/booking" : undefined}
       />
 
-      {selectedCategory ? (
+      {!selectedStoreLocation ? (
+        <section aria-labelledby="choose-branch-heading">
+          <div className="text-center">
+            <h1 id="choose-branch-heading" className="font-[var(--font-heading)] text-2xl font-semibold sm:text-3xl">Choose Branch</h1>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">Select where your appointment will take place.</p>
+          </div>
+          {locationsLoaded && storeLocations.length === 0 ? (
+            <div className="mx-auto mt-8 max-w-xl rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center shadow-sm">
+              <p className="font-semibold">Online booking is currently unavailable.</p>
+              <p className="mt-2 text-sm text-[var(--text-muted)]">Please contact us for assistance or try again later.</p>
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-4 sm:mt-8 sm:grid-cols-2">
+              {storeLocations.map((location) => {
+                const imageUrl = location.images?.find((image) => image.image_url)?.image_url;
+                return (
+                  <button
+                    key={location.id}
+                    type="button"
+                    onClick={() => router.replace(`/booking?store_location_id=${location.id}`)}
+                    className="group overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
+                  >
+                    {imageUrl ? (
+                      <div className="relative aspect-[16/7] w-full overflow-hidden bg-gray-100">
+                        <Image src={imageUrl} alt="" fill sizes="(max-width: 640px) 100vw, 50vw" className="object-cover transition duration-300 group-hover:scale-[1.02]" />
+                      </div>
+                    ) : null}
+                    <div className="p-5">
+                      <h2 className="font-[var(--font-heading)] text-lg font-semibold">{location.name}</h2>
+                      {branchAddress(location) ? <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">{branchAddress(location)}</p> : null}
+                      {location.phone ? <p className="mt-2 text-sm text-[var(--text-muted)]"><i className="fa-solid fa-phone mr-2" aria-hidden />{location.phone}</p> : null}
+                      <span className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent-strong)]">Choose this Branch <i className="fa-solid fa-arrow-right text-xs" aria-hidden /></span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ) : (
+        <div className="mb-6 flex flex-col items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-3 text-center shadow-sm sm:flex-row sm:text-left">
+          <div><p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Your Branch</p><p className="font-semibold">{selectedStoreLocation.name}</p></div>
+          <button type="button" onClick={() => router.replace("/booking")} className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm font-semibold">Change Branch</button>
+        </div>
+      )}
+
+      {selectedStoreLocation && selectedCategory ? (
         <>
           <div className="mt-4 sm:mt-6">
             {/* Desktop: Back + title on same row */}
@@ -77,7 +154,7 @@ export default function BookingPageContent() {
                 onClick={() => {
                   setSearch("");
                   setServices([]);
-                  router.replace("/booking");
+                  router.replace(`/booking?store_location_id=${selectedStoreLocation.id}`);
                 }}
                 className="absolute left-0 inline-flex w-fit items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm shadow-sm"
               >
@@ -119,14 +196,14 @@ export default function BookingPageContent() {
       {loading ? <p className="mt-4">Loading...</p> : null}
       {error ? <p className="mt-4 text-[var(--status-error)]">{error}</p> : null}
 
-      {!selectedCategory ? (
+      {selectedStoreLocation && !selectedCategory ? (
         <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:gap-4 md:grid-cols-3">
           {categories.map((category) => (
             <button
               key={category.id}
               type="button"
               onClick={() => {
-                router.replace(`/booking?category_id=${category.id}`);
+                router.replace(`/booking?store_location_id=${selectedStoreLocation.id}&category_id=${category.id}`);
               }}
               className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] text-left shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
             >
@@ -161,12 +238,12 @@ export default function BookingPageContent() {
             </button>
           ))}
         </div>
-      ) : (
+      ) : selectedStoreLocation && selectedCategory ? (
         <div className="mt-6 grid grid-cols-1 gap-3 sm:mt-8 sm:grid-cols-2 sm:gap-4 md:grid-cols-3">
           {services.map((service) => (
             <Link
               key={service.id}
-              href={`/booking/service/${service.id}?category_id=${selectedCategory.id}`}
+              href={`/booking/service/${service.id}?store_location_id=${selectedStoreLocation.id}&category_id=${selectedCategory.id}`}
               className="group relative flex h-full flex-col gap-0 overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-0 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
             >
               <div className="relative w-full shrink-0 overflow-hidden bg-gray-100 aspect-[1080/680]">
@@ -233,7 +310,7 @@ export default function BookingPageContent() {
             </Link>
           ))}
         </div>
-      )}
+      ) : null}
     </main>
   );
 }

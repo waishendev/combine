@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingCart;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\StoreLocation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -17,12 +18,15 @@ class TransactionBranchPhase4Test extends TestCase
     {
         $this->assertTrue(Schema::hasColumn('orders', 'store_location_id'));
         $this->assertTrue(Schema::hasColumn('bookings', 'store_location_id'));
+        $this->assertTrue(Schema::hasColumn('booking_carts', 'store_location_id'));
         $branch = $this->branch('P4');
         $order = Order::create(['order_number' => 'P4-1', 'store_location_id' => $branch->id, 'pickup_store_id' => $branch->id]);
         $booking = Booking::create(['booking_code' => 'P4-B', 'source' => 'STAFF', 'store_location_id' => $branch->id]);
+        $cart = BookingCart::create(['guest_token' => 'phase-4-branch-cart', 'store_location_id' => $branch->id, 'status' => 'active']);
         $this->assertTrue($order->storeLocation->is($branch));
         $this->assertTrue($order->pickupStore->is($branch));
         $this->assertTrue($booking->storeLocation->is($branch));
+        $this->assertSame($branch->id, $cart->store_location_id);
         $this->assertNull((new Order)->store_location_id);
         $this->assertNull((new Booking)->store_location_id);
     }

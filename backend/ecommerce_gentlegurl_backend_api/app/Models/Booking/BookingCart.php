@@ -12,7 +12,7 @@ class BookingCart extends Model
     public $incrementing = false;
     protected $keyType = 'string';
 
-    protected $fillable = ['customer_id', 'guest_token', 'status'];
+    protected $fillable = ['customer_id', 'guest_token', 'store_location_id', 'status'];
 
     public function items()
     {
