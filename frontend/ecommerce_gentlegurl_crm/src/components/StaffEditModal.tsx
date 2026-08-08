@@ -9,6 +9,7 @@ import InternationalPhoneInput from '@/components/common/InternationalPhoneInput
 import { useI18n } from '@/lib/i18n'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { IMAGE_ACCEPT } from './mediaAccept'
+import BranchAssignmentChecklist from './BranchAssignmentChecklist'
 
 interface StaffEditModalProps {
   staffId: number
@@ -55,6 +56,7 @@ export default function StaffEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadedStaff, setLoadedStaff] = useState<StaffRowData | null>(null)
+  const [storeLocationIds, setStoreLocationIds] = useState<number[]>([])
 
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [phoneTouched, setPhoneTouched] = useState(false)
@@ -103,6 +105,7 @@ export default function StaffEditModal({
         }
 
         const mappedStaff = mapStaffApiItemToRow(staff)
+        setStoreLocationIds(Array.isArray(staff.store_location_ids) ? staff.store_location_ids.map(Number) : Array.isArray(staff.store_locations) ? staff.store_locations.map((branch) => Number(branch.id)) : [])
         setLoadedStaff(mappedStaff)
         setAvatarPreview(mappedStaff.avatarUrl || null)
 
@@ -179,6 +182,8 @@ export default function StaffEditModal({
       return
     }
 
+    if (storeLocationIds.length === 0) { setError('Select at least one Branch.'); return }
+
     setSubmitting(true)
     setError(null)
 
@@ -205,6 +210,7 @@ export default function StaffEditModal({
         String(Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0),
       )
       fd.append('is_active', form.isActive === 'true' ? '1' : '0')
+      storeLocationIds.forEach((id) => fd.append('store_location_ids[]', String(id)))
 
       const trimmedPassword = form.password.trim()
       if (trimmedPassword) {
@@ -496,6 +502,8 @@ export default function StaffEditModal({
                   </div>
                   <div className="flex-1" />
                 </div>
+
+                <BranchAssignmentChecklist label="Works at" value={storeLocationIds} onChange={setStoreLocationIds} disabled={disableForm} />
 
                 <div>
                   <label

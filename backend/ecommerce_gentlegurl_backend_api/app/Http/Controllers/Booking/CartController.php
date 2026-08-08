@@ -19,6 +19,7 @@ use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\PaymentGateway;
 use App\Models\Ecommerce\StoreLocation;
+use App\Models\Staff;
 use App\Services\BillplzService;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
@@ -71,8 +72,15 @@ class CartController extends Controller
         }
 
         $service = BookingService::query()->with('allowedStaffs:id')->findOrFail($validated['service_id']);
+        if (! $service->isAvailableAt((int) $storeLocation->id)) {
+            return $this->respondError('The selected service is not available at this Branch.', 422);
+        }
         if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
             return $this->respondError('Selected staff is not allowed for this service.', 422);
+        }
+        if (! Staff::query()->whereKey((int) $validated['staff_id'])
+            ->whereHas('storeLocations', fn ($query) => $query->where('store_locations.id', $storeLocation->id))->exists()) {
+            return $this->respondError('Selected staff does not work at this Branch.', 422);
         }
         $startAt = Carbon::parse($validated['start_at']);
         if ($message = $this->advanceBookingLimitError($startAt)) {
@@ -122,7 +130,7 @@ class CartController extends Controller
                 $cart->update(['store_location_id' => $storeLocation->id]);
             }
 
-            if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt)
+            if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt, (int) $storeLocation->id)
                 || $this->availabilityService->hasConflict(
                     (int) $validated['staff_id'],
                     $startAt,
@@ -131,6 +139,9 @@ class CartController extends Controller
                     null,
                     null,
                     BookingAvailabilityService::SCOPE_CUSTOMER,
+                    [],
+                    [],
+                    (int) $storeLocation->id,
                 )) {
                 return $this->respondError(self::SLOT_UNAVAILABLE_MESSAGE, 409);
             }
@@ -521,6 +532,13 @@ class CartController extends Controller
                 : null;
             if ($activeItems->isNotEmpty() && ! $storeLocation) {
                 return $this->respondError('The selected Branch is no longer available for booking. Please choose another Branch.', 422);
+            }
+            foreach ($activeItems as $item) {
+                if (! $item->service?->isAvailableAt((int) $storeLocation->id)
+                    || ! $item->service?->isStaffAllowed((int) $item->staff_id)
+                    || ! Staff::query()->whereKey($item->staff_id)->whereHas('storeLocations', fn ($query) => $query->where('store_locations.id', $storeLocation->id))->exists()) {
+                    return $this->respondError('A selected service or staff is no longer eligible at this Branch. Please restart your booking selection.', 422);
+                }
             }
 
             if ($activeItems->contains(fn ($item) => $item->expires_at->lte(now()))) {
@@ -1195,7 +1213,7 @@ class CartController extends Controller
 
     private function resolveCheckoutSlotAvailabilityError(BookingCartItem $item, int $bufferMin, array $ignoreCartItemIds): ?string
     {
-        if (! $this->availabilityService->isWithinStaffAvailability((int) $item->staff_id, $item->start_at, $item->end_at)) {
+        if (! $this->availabilityService->isWithinStaffAvailability((int) $item->staff_id, $item->start_at, $item->end_at, (int) $item->bookingCart?->store_location_id)) {
             return self::SLOT_UNAVAILABLE_MESSAGE;
         }
 
@@ -1208,6 +1226,8 @@ class CartController extends Controller
             null,
             BookingAvailabilityService::SCOPE_CUSTOMER,
             $ignoreCartItemIds,
+            [],
+            (int) $item->bookingCart?->store_location_id,
         );
 
         if (! (bool) ($diagnostics['has_conflict'] ?? false)) {

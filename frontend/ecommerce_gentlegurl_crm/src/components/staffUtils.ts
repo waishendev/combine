@@ -12,6 +12,8 @@ export type StaffApiItem = {
   service_commission_rate?: number | string | null
   is_active?: boolean | number | string | null
   created_at?: string | null
+  store_location_ids?: number[]
+  store_locations?: Array<{ id: number; name: string; code?: string }>
   admin?: {
     id?: number | string | null
     username?: string | null

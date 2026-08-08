@@ -35,9 +35,11 @@ class ServiceController extends Controller
 
     public function index(Request $request)
     {
+        $storeLocationId = $this->validatedBookingBranchId($request);
         $services = BookingService::query()
             ->with(['categories' => fn ($query) => $query->where('is_active', true)])
             ->where('is_active', true)
+            ->whereHas('storeLocations', fn ($query) => $query->where('store_locations.id', $storeLocationId))
             ->when($request->filled('category_id'), function ($query) use ($request) {
                 $categoryId = (int) $request->integer('category_id');
                 if ($categoryId > 0) {
@@ -79,15 +81,16 @@ class ServiceController extends Controller
         return $this->respond($payload);
     }
 
-    public function show(int $id)
+    public function show(Request $request, int $id)
     {
+        $storeLocationId = $this->validatedBookingBranchId($request);
         $service = BookingService::query()->with([
             'primarySlots',
             'categories' => fn ($query) => $query->where('is_active', true),
             'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount',
-        ])->findOrFail($id);
+        ])->whereHas('storeLocations', fn ($query) => $query->where('store_locations.id', $storeLocationId))->findOrFail($id);
 
-        return $this->respond($this->mapService($service, true));
+        return $this->respond($this->mapService($service, true, null, $storeLocationId));
     }
 
     /**
@@ -123,8 +126,10 @@ class ServiceController extends Controller
 
         $staffPayloadById = [];
         if ($allStaffIds !== []) {
+            $storeLocationId = request()->integer('store_location_id');
             $staffPayloadById = Staff::query()
                 ->whereIn('id', array_values($allStaffIds))
+                ->whereHas('storeLocations', fn ($query) => $query->where('store_locations.id', $storeLocationId))
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name', 'position', 'description', 'avatar_path'])
@@ -170,7 +175,7 @@ class ServiceController extends Controller
     /**
      * @param  list<array{id:int,name:mixed,position:mixed,description:mixed,avatar_path:mixed,avatar_url:mixed}>|null  $preloadedStaffs
      */
-    private function mapService(BookingService $service, bool $includeDescription, ?array $preloadedStaffs = null): array
+    private function mapService(BookingService $service, bool $includeDescription, ?array $preloadedStaffs = null, ?int $storeLocationId = null): array
     {
         if ($preloadedStaffs !== null) {
             $staffs = $preloadedStaffs;
@@ -183,6 +188,7 @@ class ServiceController extends Controller
             $staffIds = $staffRows->pluck('staff_id')->unique()->values()->all();
             $staffs = Staff::query()
                 ->whereIn('id', $staffIds)
+                ->when($storeLocationId, fn ($query) => $query->whereHas('storeLocations', fn ($locations) => $locations->where('store_locations.id', $storeLocationId)))
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name', 'position', 'description', 'avatar_path'])
@@ -278,6 +284,16 @@ class ServiceController extends Controller
         }
 
         return $payload;
+    }
+
+    private function validatedBookingBranchId(Request $request): int
+    {
+        $validated = $request->validate(['store_location_id' => ['required', 'integer']]);
+        $id = (int) $validated['store_location_id'];
+        $exists = \App\Models\Ecommerce\StoreLocation::query()->whereKey($id)
+            ->where('is_active', true)->where('is_booking_available', true)->exists();
+        abort_unless($exists, 422, 'The selected Branch is not available for booking.');
+        return $id;
     }
 
     private function mapCategoryFields(BookingService $service): array

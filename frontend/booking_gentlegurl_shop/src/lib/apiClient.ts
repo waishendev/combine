@@ -166,25 +166,27 @@ export async function getBookingServiceCategories() {
   return unwrapData<BookingServiceCategory[]>(response);
 }
 
-export async function getBookingServices(search?: string, categoryId?: number) {
+export async function getBookingServices(search?: string, categoryId?: number, storeLocationId?: number) {
   const qs = new URLSearchParams();
   if (search) qs.set("search", search);
   if (categoryId) qs.set("category_id", String(categoryId));
+  if (storeLocationId) qs.set("store_location_id", String(storeLocationId));
   const query = qs.toString();
   const response = await request<{ data: Service[] } | Service[]>(`/booking/services${query ? `?${query}` : ""}`);
   return unwrapData<Service[]>(response);
 }
 
-export async function getBookingServiceDetail(id: string) {
-  const response = await request<{ data: Service & { staffs?: Staff[] } } | (Service & { staffs?: Staff[] })>(`/booking/services/${id}`);
+export async function getBookingServiceDetail(id: string, storeLocationId: number) {
+  const response = await request<{ data: Service & { staffs?: Staff[] } } | (Service & { staffs?: Staff[] })>(`/booking/services/${id}?store_location_id=${storeLocationId}`);
   return unwrapData<Service & { staffs?: Staff[] }>(response);
 }
 
-export async function getAvailability(serviceId: string, staffId: string, date: string, extraDurationMin?: number) {
+export async function getAvailability(serviceId: string, staffId: string, date: string, extraDurationMin?: number, storeLocationId?: number) {
   const qs = new URLSearchParams();
   qs.set("service_id", serviceId);
   qs.set("staff_id", staffId);
   qs.set("date", date);
+  if (storeLocationId) qs.set("store_location_id", String(storeLocationId));
   if (typeof extraDurationMin === "number" && extraDurationMin > 0) {
     qs.set("extra_duration_min", String(extraDurationMin));
   }

@@ -33,6 +33,8 @@ import { compressImage } from '@/lib/compressImage'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import FormErrorAnchor from '@/components/FormErrorAnchor'
+import BranchAssignmentChecklist from '@/components/BranchAssignmentChecklist'
+import { useBranch } from '@/contexts/BranchContext'
 
 const bookingServiceCreateFormId = 'booking-service-create-form'
 
@@ -64,6 +66,7 @@ interface FormState {
   allow_photo_upload: boolean
   imageFile: File | null
   allowed_staff_ids: number[]
+  store_location_ids: number[]
   primary_slots: string
   questions: QuestionForm[]
 }
@@ -102,11 +105,13 @@ const initialFormState: FormState = {
   allow_photo_upload: false,
   imageFile: null,
   allowed_staff_ids: [],
+  store_location_ids: [],
   primary_slots: '',
   questions: [],
 }
 
 type BookingServiceApiItemWithRelations = BookingServiceApiItem & {
+  store_location_ids?: number[]
   questions?: Array<{
     id?: number
     title?: string
@@ -191,6 +196,7 @@ function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWit
       service.allow_photo_upload === 1,
     imageFile: null,
     allowed_staff_ids,
+    store_location_ids: Array.isArray(service.store_location_ids) ? service.store_location_ids.map(Number) : [],
     primary_slots: Array.isArray(service.primary_slots)
       ? (service.primary_slots ?? []).map((slot) => slot?.start_time ?? '').filter(Boolean).join(', ')
       : '',
@@ -204,11 +210,13 @@ export default function BookingServiceCreateModal({
   copyFromServiceId = null,
 }: BookingServiceCreateModalProps) {
   const { t } = useI18n()
+  const { accessibleBranches } = useBranch()
   const copySourceId = (() => {
     const n = Number(copyFromServiceId)
     return Number.isFinite(n) && n > 0 ? n : null
   })()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
+  useEffect(() => { setForm((prev) => prev.store_location_ids.length ? prev : ({ ...prev, store_location_ids: accessibleBranches.map((b) => b.id) })) }, [accessibleBranches])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -525,6 +533,7 @@ export default function BookingServiceCreateModal({
       return
     }
 
+    if (form.store_location_ids.length === 0) { setError('Select at least one Branch.'); return }
     if (form.allowed_staff_ids.length === 0) {
       setError('Please assign at least 1 allowed staff')
       return
@@ -561,6 +570,7 @@ export default function BookingServiceCreateModal({
       fd.append('is_active', form.is_active ? '1' : '0')
       fd.append('allow_photo_upload', form.allow_photo_upload ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
+      form.store_location_ids.forEach((id) => fd.append('store_location_ids[]', String(id)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       form.questions.forEach((question, questionIndex) => {
         fd.append(`questions[${questionIndex}][title]`, question.title.trim())
@@ -965,6 +975,8 @@ export default function BookingServiceCreateModal({
                 disabled={disableForm}
               />
             </div>
+
+            <BranchAssignmentChecklist label="Available at" value={form.store_location_ids} onChange={(ids) => setForm((prev) => ({ ...prev, store_location_ids: ids }))} disabled={disableForm} />
 
             <div className="min-w-0">
               <BookingServiceAllowedStaffPicker

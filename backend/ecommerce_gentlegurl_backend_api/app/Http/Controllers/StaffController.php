@@ -12,16 +12,19 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use App\Services\StoreLocationAccessService;
 
 class StaffController extends Controller
 {
+    public function __construct(private readonly StoreLocationAccessService $storeLocationAccess) {}
+
     public function index(Request $request)
     {
         $perPage = min(50, max(1, $request->integer('per_page', 15)));
         $search = trim((string) $request->input('search', ''));
 
         $staffs = Staff::query()
-            ->with(['admin:id,staff_id,username,email'])
+            ->with(['admin:id,staff_id,username,email', 'storeLocations:id,name,code'])
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'ilike', "%{$search}%")
@@ -305,7 +308,10 @@ class StaffController extends Controller
             'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'is_active' => ['sometimes', 'boolean'],
+            'store_location_ids' => ['required', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
         ]);
+        $storeLocationIds = $this->storeLocationAccess->assertCanAssign($request->user(), $validated['store_location_ids'], false);
 
         $username = isset($validated['username']) ? trim((string) $validated['username']) : null;
         if ($username === '') {
@@ -322,7 +328,7 @@ class StaffController extends Controller
 
         $staffRole = $this->ensureStaffRole();
 
-        $result = DB::transaction(function () use ($validated, $username, $staffRole, $avatarPath) {
+        $result = DB::transaction(function () use ($validated, $username, $staffRole, $avatarPath, $storeLocationIds) {
             $staff = Staff::create([
                 'code' => $validated['code'] ?? null,
                 'name' => $validated['name'],
@@ -346,9 +352,10 @@ class StaffController extends Controller
             ]);
 
             $user->roles()->sync([$staffRole->id]);
+            $staff->storeLocations()->sync($storeLocationIds);
 
             return [
-                'staff' => $staff->load('admin:id,staff_id,username,email'),
+                'staff' => $staff->load(['admin:id,staff_id,username,email', 'storeLocations:id,name,code']),
                 'user' => [
                     'id' => $user->id,
                     'email' => $user->email,
@@ -363,7 +370,7 @@ class StaffController extends Controller
 
     public function show(Staff $staff)
     {
-        return $this->respond($staff->load('admin:id,staff_id,username,email'));
+        return $this->respond($staff->load(['admin:id,staff_id,username,email', 'storeLocations:id,name,code']));
     }
 
     public function update(Request $request, Staff $staff)
@@ -381,7 +388,12 @@ class StaffController extends Controller
             'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'is_active' => ['sometimes', 'boolean'],
+            'store_location_ids' => ['sometimes', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
         ]);
+        $storeLocationIds = array_key_exists('store_location_ids', $validated)
+            ? $this->storeLocationAccess->assertCanAssign($request->user(), $validated['store_location_ids'], false)
+            : null;
 
         $newAvatarPath = $request->hasFile('avatar')
             ? $request->file('avatar')->storeAs(
@@ -393,8 +405,8 @@ class StaffController extends Controller
 
         $oldAvatarPath = $staff->avatar_path;
 
-        $result = DB::transaction(function () use ($staff, $validated, $newAvatarPath) {
-            $staffPayload = collect($validated)->except(['password', 'username'])->toArray();
+        $result = DB::transaction(function () use ($staff, $validated, $newAvatarPath, $storeLocationIds) {
+            $staffPayload = collect($validated)->except(['password', 'username', 'store_location_ids'])->toArray();
             if ($newAvatarPath) {
                 $staffPayload['avatar_path'] = $newAvatarPath;
             }
@@ -428,7 +440,11 @@ class StaffController extends Controller
                 }
             }
 
-            return $staff->load('admin:id,staff_id,username,email');
+            if ($storeLocationIds !== null) {
+                $staff->storeLocations()->sync($storeLocationIds);
+            }
+
+            return $staff->load(['admin:id,staff_id,username,email', 'storeLocations:id,name,code']);
         });
 
         if ($newAvatarPath && $oldAvatarPath && $oldAvatarPath !== $newAvatarPath && Storage::disk('public')->exists($oldAvatarPath)) {

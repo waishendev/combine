@@ -27,6 +27,7 @@ import { compressImage } from '@/lib/compressImage'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import FormErrorAnchor from '@/components/FormErrorAnchor'
+import BranchAssignmentChecklist from '@/components/BranchAssignmentChecklist'
 
 const bookingServiceEditFormId = 'booking-service-edit-form'
 
@@ -62,6 +63,7 @@ interface FormState {
   allow_photo_upload: 'true' | 'false'
   imageFile: File | null
   allowed_staff_ids: number[]
+  store_location_ids: number[]
   primary_slots: string
   questions: QuestionForm[]
 }
@@ -100,6 +102,7 @@ const initialFormState: FormState = {
   allow_photo_upload: 'false',
   imageFile: null,
   allowed_staff_ids: [],
+  store_location_ids: [],
   primary_slots: '',
   questions: [],
 }
@@ -305,6 +308,7 @@ export default function BookingServiceEditModal({
                   : [emptyQuestionOption()],
               }))
             : [],
+          store_location_ids: Array.isArray((service as { store_location_ids?: unknown }).store_location_ids) ? ((service as { store_location_ids?: unknown[] }).store_location_ids ?? []).map(Number) : [],
           allowed_staff_ids: Array.isArray((service as { allowed_staff_ids?: unknown }).allowed_staff_ids)
             ? ((service as { allowed_staff_ids?: unknown[] }).allowed_staff_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
             : Array.isArray((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs)
@@ -559,6 +563,7 @@ export default function BookingServiceEditModal({
       return
     }
 
+    if (form.store_location_ids.length === 0) { setError('Select at least one Branch.'); return }
     if (form.allowed_staff_ids.length === 0) {
       setError('Please assign at least 1 allowed staff')
       return
@@ -596,6 +601,7 @@ export default function BookingServiceEditModal({
       fd.append('is_active', form.is_active === 'true' ? '1' : '0')
       fd.append('allow_photo_upload', form.allow_photo_upload === 'true' ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
+      form.store_location_ids.forEach((id) => fd.append('store_location_ids[]', String(id)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       form.questions.forEach((question, questionIndex) => {
         fd.append(`questions[${questionIndex}][title]`, question.title.trim())
@@ -1065,6 +1071,8 @@ export default function BookingServiceEditModal({
                   disabled={disableForm}
                 />
               </div>
+
+              <BranchAssignmentChecklist label="Available at" value={form.store_location_ids} onChange={(ids) => setForm((prev) => ({ ...prev, store_location_ids: ids }))} disabled={disableForm} />
 
               <div className="min-w-0">
                 <BookingServiceAllowedStaffPicker

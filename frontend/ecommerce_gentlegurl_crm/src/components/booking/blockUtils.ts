@@ -4,6 +4,8 @@ export type BlockApiItem = {
   id: number | string
   scope?: 'STORE' | 'STAFF' | string | null
   staff_id?: number | string | null
+  store_location_id?: number | string | null
+  store_location?: { id: number; name: string; code?: string } | null
   start_at?: string | null
   end_at?: string | null
   reason?: string | null
@@ -36,6 +38,8 @@ export const mapBlockApiItemToRow = (
     scope,
     staff_id: staffId,
     staff_name: staffName,
+    store_location_id: item.store_location_id ? Number(item.store_location_id) : null,
+    branch_name: item.store_location?.name ?? (item.store_location_id ? `Branch #${item.store_location_id}` : 'Legacy / unresolved'),
     start_at: item.start_at ?? '',
     end_at: item.end_at ?? '',
     reason: item.reason ?? null,

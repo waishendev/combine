@@ -3,6 +3,7 @@
 namespace App\Models\Booking;
 
 use App\Models\Staff;
+use App\Models\Ecommerce\StoreLocation;
 use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
@@ -66,6 +67,16 @@ class BookingService extends Model
     public function linkedBookingProduct()
     {
         return $this->belongsTo(BookingProduct::class, 'linked_booking_product_id');
+    }
+
+    public function storeLocations()
+    {
+        return $this->belongsToMany(StoreLocation::class, 'booking_service_store_location')->withTimestamps();
+    }
+
+    public function isAvailableAt(int $storeLocationId): bool
+    {
+        return $this->storeLocations()->whereKey($storeLocationId)->exists();
     }
 
     public function isStaffAllowed(int $staffId): bool

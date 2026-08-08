@@ -102,7 +102,7 @@ export default function ServiceAddonsPage() {
   useEffect(() => {
     const run = async () => {
       try {
-        const [detail, note] = await Promise.all([getBookingServiceDetail(id), getBookingServiceDepositNote()]);
+        const [detail, note] = await Promise.all([getBookingServiceDetail(id, Number(storeLocationId)), getBookingServiceDepositNote()]);
         setService(detail as Service);
         setDepositNote(note);
       } catch (err) {
