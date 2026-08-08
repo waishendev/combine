@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useBranch } from '@/contexts/BranchContext'
 
 import OrderFiltersWrapper from './OrderFiltersWrapper'
 import TableEmptyState from './TableEmptyState'
@@ -144,7 +145,8 @@ export default function OrdersTable({
     active: boolean
     dir: 'asc' | 'desc' | null
     className?: string
-  }) {
+}) {
+  const { selectedBranchId } = useBranch()
     const activeColor = '#122350ff'
     const inactiveColor = '#afb2b8ff'
     const up = active && dir === 'asc' ? activeColor : inactiveColor
@@ -178,6 +180,8 @@ export default function OrdersTable({
         if (dateFrom) qs.set('date_from', dateFrom)
         if (dateTo) qs.set('date_to', dateTo)
         if (filters.orderNo) qs.set('order_no', filters.orderNo)
+        if (selectedBranchId === null) qs.set('branch_scope', 'all')
+        else qs.set('branch_store_location_id', String(selectedBranchId))
         if (filters.customerName) qs.set('customer_name', filters.customerName)
         if (filters.customerEmail) qs.set('customer_email', filters.customerEmail)
         if (filters.orderType) qs.set('order_type', filters.orderType)
@@ -295,7 +299,7 @@ export default function OrdersTable({
 
     fetchOrders()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize, queryFilters, refreshTrigger, extraQueryParams, initialStatusFilters])
+  }, [filters, currentPage, pageSize, queryFilters, refreshTrigger, extraQueryParams, initialStatusFilters, selectedBranchId])
 
   const handleSort = (column: keyof OrderRowData) => {
     if (sortColumn === column) {

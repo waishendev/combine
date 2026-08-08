@@ -18,6 +18,7 @@ use App\Models\BillplzPaymentGatewayOption;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\PaymentGateway;
+use App\Models\Ecommerce\StoreLocation;
 use App\Services\BillplzService;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
@@ -51,6 +52,7 @@ class CartController extends Controller
     public function add(Request $request)
     {
         $validated = $request->validate([
+            'store_location_id' => ['required', 'integer'],
             'service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'start_at' => ['required', 'date'],
@@ -58,6 +60,15 @@ class CartController extends Controller
             'selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $storeLocation = StoreLocation::query()
+            ->whereKey((int) $validated['store_location_id'])
+            ->where('is_active', true)
+            ->where('is_booking_available', true)
+            ->first();
+        if (! $storeLocation) {
+            return $this->respondError('The selected Branch is no longer available for booking. Please choose another Branch.', 422);
+        }
 
         $service = BookingService::query()->with('allowedStaffs:id')->findOrFail($validated['service_id']);
         if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
@@ -99,9 +110,17 @@ class CartController extends Controller
         }), 2);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min + $addonDurationMin);
 
-        return DB::transaction(function () use ($request, $validated, $service, $startAt, $endAt, $addonDurationMin, $addonPrice, $selectedOptions, $selectedOptionIds, $customerRemarks) {
+        return DB::transaction(function () use ($request, $validated, $service, $startAt, $endAt, $addonDurationMin, $addonPrice, $selectedOptions, $selectedOptionIds, $customerRemarks, $storeLocation) {
             $cart = $this->resolveActiveCart($request);
             $this->cleanupExpiredItems($cart);
+
+            $hasActiveItems = $cart->items()->where('status', 'active')->exists();
+            if ($hasActiveItems && (int) $cart->store_location_id !== (int) $storeLocation->id) {
+                return $this->respondError('Your cart contains bookings for another Branch. Complete or clear that cart before changing Branch.', 422);
+            }
+            if (! $hasActiveItems && (int) $cart->store_location_id !== (int) $storeLocation->id) {
+                $cart->update(['store_location_id' => $storeLocation->id]);
+            }
 
             if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt)
                 || $this->availabilityService->hasConflict(
@@ -452,6 +471,7 @@ class CartController extends Controller
     {
         $customer = $request->user('customer');
         $validated = $request->validate([
+            'store_location_id' => ['nullable', 'integer'],
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:50', 'regex:/^\+?[0-9]{8,15}$/'],
             'guest_email' => ['nullable', 'email', 'max:255'],
@@ -490,6 +510,17 @@ class CartController extends Controller
 
             if ($activeItems->isEmpty() && $activePackageItems->isEmpty()) {
                 return $this->respondError('Cart is empty or all items have expired.', 422);
+            }
+
+            if ($activeItems->isNotEmpty() && (int) ($validated['store_location_id'] ?? 0) !== (int) $cart->store_location_id) {
+                return $this->respondError('The selected Branch does not match this booking cart. Please restart your booking selection.', 422);
+            }
+
+            $storeLocation = $activeItems->isNotEmpty()
+                ? StoreLocation::query()->whereKey($cart->store_location_id)->where('is_active', true)->where('is_booking_available', true)->first()
+                : null;
+            if ($activeItems->isNotEmpty() && ! $storeLocation) {
+                return $this->respondError('The selected Branch is no longer available for booking. Please choose another Branch.', 422);
             }
 
             if ($activeItems->contains(fn ($item) => $item->expires_at->lte(now()))) {
@@ -559,6 +590,7 @@ class CartController extends Controller
             $order = null;
 
             $order = Order::query()->create([
+                'store_location_id' => $storeLocation?->id,
                 'order_number' => $this->generateOrderNumber(),
                 'customer_id' => $customer?->id,
                 'status' => 'pending',
@@ -616,6 +648,7 @@ class CartController extends Controller
                     : $item->expires_at;
 
                 $booking = Booking::create([
+                    'store_location_id' => $storeLocation->id,
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => $customer ? 'CUSTOMER' : 'GUEST',
                     'customer_id' => $customer?->id,
@@ -975,6 +1008,19 @@ class CartController extends Controller
             return;
         }
 
+        $guestHasBookings = $guestCart->items()->where('status', 'active')->exists();
+        $customerHasBookings = $customerCart->items()->where('status', 'active')->exists();
+        if ($guestHasBookings && $customerHasBookings && (int) $guestCart->store_location_id !== (int) $customerCart->store_location_id) {
+            abort(response()->json([
+                'success' => false,
+                'message' => 'Your signed-in cart contains bookings for another Branch. Complete or clear it before merging this booking.',
+                'data' => null,
+            ], 409));
+        }
+        if ($guestHasBookings && ! $customerHasBookings) {
+            $customerCart->update(['store_location_id' => $guestCart->store_location_id]);
+        }
+
         BookingCartItem::query()
             ->where('booking_cart_id', $guestCart->id)
             ->where('status', 'active')
@@ -1058,6 +1104,7 @@ class CartController extends Controller
 
         return [
             'id' => $cart->id,
+            'store_location_id' => $cart->store_location_id ? (int) $cart->store_location_id : null,
             'status' => $cart->status,
             'items' => $activeItems->map(fn (BookingCartItem $item) => [
                 'id' => (int) $item->id,

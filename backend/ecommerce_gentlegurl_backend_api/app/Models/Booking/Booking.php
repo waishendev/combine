@@ -4,6 +4,7 @@ namespace App\Models\Booking;
 
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\StoreLocation;
 use App\Models\Staff;
 use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +14,7 @@ class Booking extends Model
     use LogsActivity;
 
     protected $fillable = [
-        'booking_code', 'source', 'customer_id', 'guest_name', 'guest_phone', 'guest_email',
+        'booking_code', 'source', 'store_location_id', 'customer_id', 'guest_name', 'guest_phone', 'guest_email',
         'billing_name', 'billing_phone', 'billing_email',
         'staff_id', 'service_id', 'start_at', 'end_at', 'buffer_min', 'addon_duration_min', 'status', 'deposit_amount', 'addon_price', 'addon_items_json', 'settled_service_amount',
         'payment_status', 'hold_expires_at', 'completed_at', 'commission_counted_at', 'created_by_staff_id', 'cancelled_at', 'cancellation_type', 'notes', 'settlement_notes',
@@ -76,5 +77,9 @@ class Booking extends Model
     {
         return $this->hasMany(OrderItem::class, 'booking_id')->orderBy('id');
     }
-}
 
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class, 'store_location_id');
+    }
+}

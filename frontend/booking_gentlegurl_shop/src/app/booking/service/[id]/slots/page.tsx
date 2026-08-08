@@ -89,6 +89,8 @@ function SlotPageContent() {
   const serviceId = params.id;
   const selectedOptionIdsParam = searchParams.get("selected_option_ids") || "";
   const categoryId = searchParams.get("category_id");
+  const storeLocationId = searchParams.get("store_location_id");
+  const branchMode = searchParams.get("branch_mode") === "multi" ? "multi" : "single";
   const remarksParam = searchParams.get("remarks") || "";
   const selectedOptionIds = useMemo(
     () => selectedOptionIdsParam.split(",").map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0),
@@ -116,7 +118,7 @@ function SlotPageContent() {
     setError(null);
 
     try {
-      const payload = await getAvailabilityPooled(serviceId, date, extraDuration);
+      const payload = await getAvailabilityPooled(serviceId, date, extraDuration, storeLocationId ? Number(storeLocationId) : undefined);
       const visibleSlots = Array.isArray(payload?.visible_slots)
         ? payload.visible_slots
         : Array.isArray(payload?.slots)
@@ -130,7 +132,7 @@ function SlotPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [canLoad, serviceId, date, extraDuration]);
+  }, [canLoad, serviceId, date, extraDuration, storeLocationId]);
 
   useEffect(() => {
     const run = async () => {
@@ -303,6 +305,8 @@ function SlotPageContent() {
     const end = slot.end_at ?? slot.end_time;
     if (!start || !end) return;
     const qs = new URLSearchParams();
+    if (storeLocationId) qs.set("store_location_id", storeLocationId);
+    qs.set("branch_mode", branchMode);
     qs.set("date", date);
     qs.set("start_at", start);
     qs.set("end_at", end);
@@ -319,6 +323,8 @@ function SlotPageContent() {
   const durationMin = (service?.duration_minutes ?? 60) + extraDurationMin;
 
   const addonsBackQs = new URLSearchParams();
+  if (storeLocationId) addonsBackQs.set("store_location_id", storeLocationId);
+  addonsBackQs.set("branch_mode", branchMode);
   if (selectedOptionIdsParam) addonsBackQs.set("selected_option_ids", selectedOptionIdsParam);
   if (categoryId) addonsBackQs.set("category_id", categoryId);
   if (remarksParam) addonsBackQs.set("remarks", remarksParam);
@@ -327,7 +333,7 @@ function SlotPageContent() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 pb-28 sm:py-10 sm:pb-32">
-      <BookingProgress step={3} backHref={addonsBackHref} />
+      <BookingProgress step={branchMode === "multi" ? 4 : 3} branchStepRequired={branchMode === "multi"} backHref={addonsBackHref} />
 
       <div className="mt-4 sm:mt-6">
         {/* Desktop: Back + title on same row */}

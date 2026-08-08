@@ -11,6 +11,7 @@ import {
   CustomerAddress, 
   CustomerProfileWithAddresses, 
   MyServicePackage, 
+  PublicBookingStoreLocation,
   Service, 
   ServicePackage, 
   ServicePackageAvailability, 
@@ -192,14 +193,23 @@ export async function getAvailability(serviceId: string, staffId: string, date: 
   );
 }
 
+export async function getPublicBookingStoreLocations() {
+  const response = await request<{ data: PublicBookingStoreLocation[] } | PublicBookingStoreLocation[]>(
+    "/public/shop/store-locations?for=booking",
+  );
+  return unwrapData<PublicBookingStoreLocation[]>(response);
+}
+
 /** All staff merged — pick time first, then choose stylist. Same slot rules as getAvailability (primary slots, etc.). */
-export async function getAvailabilityPooled(serviceId: string, date: string, extraDurationMin?: number) {
+export async function getAvailabilityPooled(serviceId: string, date: string, extraDurationMin?: number, storeLocationId?: number) {
   const qs = new URLSearchParams();
   qs.set("service_id", serviceId);
   qs.set("date", date);
   if (typeof extraDurationMin === "number" && extraDurationMin > 0) {
     qs.set("extra_duration_min", String(extraDurationMin));
   }
+  // Phase 4 carries attribution context forward; availability remains global until Phase 5.
+  if (typeof storeLocationId === "number" && storeLocationId > 0) qs.set("store_location_id", String(storeLocationId));
   const response = await request<{
     success?: boolean;
     message?: string;
@@ -209,6 +219,7 @@ export async function getAvailabilityPooled(serviceId: string, date: string, ext
 }
 
 export async function addCartItem(payload: {
+  store_location_id: number;
   service_id: number;
   staff_id: number;
   start_at: string;
@@ -306,6 +317,7 @@ export async function updateBookingPackageCartItemQty(itemId: number, qty: numbe
 }
 
 export async function checkoutCart(payload?: {
+  store_location_id?: number;
   guest_name?: string;
   guest_phone?: string;
   guest_email?: string;

@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
-import { addCartItem, ApiError, getAvailabilityPooled, getBookingServiceDetail, uploadBookingCartItemPhotos } from "@/lib/apiClient";
+import { addCartItem, ApiError, getAvailabilityPooled, getBookingServiceDetail, getPublicBookingStoreLocations, uploadBookingCartItemPhotos } from "@/lib/apiClient";
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
 import { clearBookingPhotoDraft, loadBookingPhotoDraft } from "@/lib/bookingPhotoDraft";
 import { Service, Staff } from "@/lib/types";
@@ -47,6 +47,8 @@ export default function ServiceStaffPage() {
   const id = params.id;
   const selectedOptionIdsParam = searchParams.get("selected_option_ids") || "";
   const categoryId = searchParams.get("category_id");
+  const storeLocationId = searchParams.get("store_location_id");
+  const branchMode = searchParams.get("branch_mode") === "multi" ? "multi" : "single";
   const remarksParam = searchParams.get("remarks") || "";
   const slotDate = searchParams.get("date") || "";
   const startAt = searchParams.get("start_at") || "";
@@ -64,6 +66,8 @@ export default function ServiceStaffPage() {
   );
 
   const slotsBackQs = new URLSearchParams();
+  if (storeLocationId) slotsBackQs.set("store_location_id", storeLocationId);
+  slotsBackQs.set("branch_mode", branchMode);
   if (selectedOptionIdsParam) slotsBackQs.set("selected_option_ids", selectedOptionIdsParam);
   if (categoryId) slotsBackQs.set("category_id", categoryId);
   if (remarksParam) slotsBackQs.set("remarks", remarksParam);
@@ -147,7 +151,7 @@ export default function ServiceStaffPage() {
 
     let cancelled = false;
     setVerifyingAvailability(true);
-    getAvailabilityPooled(id, slotDate, extraDuration)
+    getAvailabilityPooled(id, slotDate, extraDuration, storeLocationId ? Number(storeLocationId) : undefined)
       .then((payload) => {
         if (cancelled) return;
         const allSlots = Array.isArray(payload?.visible_slots)
@@ -182,7 +186,7 @@ export default function ServiceStaffPage() {
     return () => {
       cancelled = true;
     };
-  }, [confirmStaff, extraDuration, id, service, slotDate, startAt]);
+  }, [confirmStaff, extraDuration, id, service, slotDate, startAt, storeLocationId]);
 
   const effectiveAvailableStaffIds = verifiedAvailableStaffIds ?? availableStaffIds;
   const eligibleStaff = useMemo(() => {
@@ -230,7 +234,15 @@ export default function ServiceStaffPage() {
     setConfirmError(null);
     setConfirmErrorIsSlotTaken(false);
     try {
+      const currentBranches = await getPublicBookingStoreLocations();
+      if (!currentBranches.some((branch) => branch.id === Number(storeLocationId))) {
+        setConfirmStaff(null);
+        setConfirmError({ line1: "This booking Branch is no longer available.", line2: "Please restart your booking and choose an available Branch." });
+        router.replace("/booking");
+        return;
+      }
       let updatedCart = await addCartItem({
+        store_location_id: Number(storeLocationId),
         service_id: Number(id),
         staff_id: confirmStaff.id,
         start_at: startAt,
@@ -274,11 +286,11 @@ export default function ServiceStaffPage() {
     } finally {
       setAdding(false);
     }
-  }, [confirmStaff, draftDataUrlToFile, endAt, id, remarksParam, selectedOptionIds, service?.allow_photo_upload, startAt]);
+  }, [confirmStaff, draftDataUrlToFile, endAt, id, remarksParam, router, selectedOptionIds, service?.allow_photo_upload, startAt, storeLocationId]);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 pb-24 sm:py-10">
-      <BookingProgress step={4} backHref={slotsBackHref} />
+      <BookingProgress step={branchMode === "multi" ? 5 : 4} branchStepRequired={branchMode === "multi"} backHref={slotsBackHref} />
       <div className="space-y-5 sm:space-y-6">
        
         <div className="hidden items-center justify-start sm:flex">
@@ -684,7 +696,7 @@ export default function ServiceStaffPage() {
                 type="button"
                 onClick={() => {
                   setCartAddSuccessOpen(false);
-                  router.push("/booking");
+                  router.push(`/booking${storeLocationId ? `?store_location_id=${encodeURIComponent(storeLocationId)}&branch_mode=${branchMode}` : ""}`);
                 }}
                 className="mt-6 w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-base font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)]"
               >

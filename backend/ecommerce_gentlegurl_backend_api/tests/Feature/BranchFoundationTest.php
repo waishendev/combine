@@ -40,6 +40,40 @@ class BranchFoundationTest extends TestCase
             ->assertJsonPath('data.0.id', $included->id);
     }
 
+    public function test_public_booking_api_only_returns_active_booking_enabled_branches(): void
+    {
+        $included = $this->branch(['code' => 'BOOKING', 'is_booking_available' => true]);
+        $this->branch(['code' => 'NO-BOOKING', 'is_booking_available' => false]);
+        $this->branch(['code' => 'INACTIVE-BOOKING', 'is_active' => false, 'is_booking_available' => true]);
+
+        $this->getJson('/api/public/shop/store-locations?for=booking')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $included->id)
+            ->assertJsonMissingPath('data.0.is_booking_available');
+    }
+
+    public function test_public_booking_location_detail_rejects_missing_inactive_or_disabled_branches(): void
+    {
+        $disabled = $this->branch(['code' => 'DETAIL-DISABLED', 'is_booking_available' => false]);
+        $inactive = $this->branch(['code' => 'DETAIL-INACTIVE', 'is_active' => false, 'is_booking_available' => true]);
+
+        $this->getJson("/api/public/shop/store-locations/{$disabled->id}?for=booking")->assertNotFound();
+        $this->getJson("/api/public/shop/store-locations/{$inactive->id}?for=booking")->assertNotFound();
+        $this->getJson('/api/public/shop/store-locations/999999?for=booking')->assertNotFound();
+    }
+
+    public function test_public_booking_location_count_supports_zero_one_and_multiple_branch_ux(): void
+    {
+        $this->getJson('/api/public/shop/store-locations?for=booking')->assertOk()->assertJsonCount(0, 'data');
+
+        $this->branch(['code' => 'ONLY-BOOKING', 'is_booking_available' => true]);
+        $this->getJson('/api/public/shop/store-locations?for=booking')->assertOk()->assertJsonCount(1, 'data');
+
+        $this->branch(['code' => 'SECOND-BOOKING', 'is_booking_available' => true]);
+        $this->getJson('/api/public/shop/store-locations?for=booking')->assertOk()->assertJsonCount(2, 'data');
+    }
+
     public function test_review_branch_availability_is_independent_from_pickup(): void
     {
         $reviewOnly = $this->branch([

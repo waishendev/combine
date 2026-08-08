@@ -38,6 +38,7 @@ class Order extends Model
         'promotion_snapshot',
         'pickup_or_shipping',
         'pickup_store_id',
+        'store_location_id',
         'shipping_name',
         'shipping_phone',
         'shipping_address_line1',
@@ -166,6 +167,11 @@ class Order extends Model
     public function pickupStore()
     {
         return $this->belongsTo(StoreLocation::class, 'pickup_store_id');
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class, 'store_location_id');
     }
 
     /**
