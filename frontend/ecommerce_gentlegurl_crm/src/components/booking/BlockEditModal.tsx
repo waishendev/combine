@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import type { BlockRowData } from './BlockRow'
 import { mapBlockApiItemToRow, type BlockApiItem, type StaffOption } from './blockUtils'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface BlockEditModalProps {
   blockId: number
@@ -14,6 +15,7 @@ interface BlockEditModalProps {
 
 interface FormState {
   scope: 'STORE' | 'STAFF'
+  store_location_id: string
   staff_id: string
   start_at: string
   end_at: string
@@ -26,8 +28,10 @@ export default function BlockEditModal({
   onSuccess,
 }: BlockEditModalProps) {
   const { t } = useI18n()
+  const { accessibleBranches } = useBranch()
   const [form, setForm] = useState<FormState>({
     scope: 'STORE',
+    store_location_id: '',
     staff_id: '',
     start_at: '',
     end_at: '',
@@ -98,6 +102,7 @@ export default function BlockEditModal({
 
         setForm({
           scope: mappedBlock.scope,
+          store_location_id: mappedBlock.store_location_id ? String(mappedBlock.store_location_id) : '',
           staff_id: mappedBlock.staff_id ? String(mappedBlock.staff_id) : '',
           start_at: mappedBlock.start_at ? new Date(mappedBlock.start_at).toISOString().slice(0, 16) : '',
           end_at: mappedBlock.end_at ? new Date(mappedBlock.end_at).toISOString().slice(0, 16) : '',
@@ -122,6 +127,7 @@ export default function BlockEditModal({
   }
 
   const validate = (): string | null => {
+    if (!form.store_location_id) return 'A specific Branch is required.'
     if (!form.start_at || !form.end_at) return 'Start and end datetime are required.'
     const start = new Date(form.start_at)
     const end = new Date(form.end_at)
@@ -153,6 +159,7 @@ export default function BlockEditModal({
         },
         body: JSON.stringify({
           scope: form.scope,
+          store_location_id: Number(form.store_location_id),
           staff_id: form.scope === 'STAFF' ? Number(form.staff_id) : null,
           start_at: new Date(form.start_at).toISOString(),
           end_at: new Date(form.end_at).toISOString(),
@@ -178,6 +185,8 @@ export default function BlockEditModal({
         : {
             id: loadedBlock?.id ?? blockId,
             scope: form.scope,
+            store_location_id: Number(form.store_location_id),
+            branch_name: accessibleBranches.find((b) => b.id === Number(form.store_location_id))?.name || `Branch #${form.store_location_id}`,
             staff_id: form.scope === 'STAFF' ? Number(form.staff_id) : null,
             staff_name: form.scope === 'STAFF' ? (staffs.find(s => s.id === Number(form.staff_id))?.name || null) : null,
             start_at: form.start_at,
@@ -221,6 +230,13 @@ export default function BlockEditModal({
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          <div>
+            <label htmlFor="edit-block-store-location" className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
+            <select id="edit-block-store-location" name="store_location_id" value={form.store_location_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting || loading}>
+              <option value="">Select a specific Branch</option>
+              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+            </select>
+          </div>
           {loading ? (
             <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
           ) : (

@@ -43,59 +43,40 @@ class BookingAvailabilityService
      *   is_fallback?:bool
      * }>
      */
-    public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15, int $extraDurationMin = 0, bool $applyPrimarySlotPolicy = true): array
+    public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15, int $extraDurationMin = 0, bool $applyPrimarySlotPolicy = true, ?int $storeLocationId = null): array
     {
-        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+        $timezone = $this->businessTimezone();
         $day = Carbon::parse($date, $timezone);
-        $schedule = BookingStaffSchedule::where('staff_id', $staffId)
+        $schedules = BookingStaffSchedule::query()
+            ->where('staff_id', $staffId)
             ->where('day_of_week', $day->dayOfWeek)
             ->where('is_active', true)
-            ->first();
+            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
+            ->orderBy('start_time')->get();
+        if ($schedules->isEmpty()) return [];
 
-        if (!$schedule) {
-            return [];
-        }
-
-        $startWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->start_time, $timezone);
-        $endWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->end_time, $timezone);
-        $nowInBusinessTz = Carbon::now($timezone);
-        $isTodayInBusinessTz = $day->isSameDay($nowInBusinessTz);
         $durationMin = (int) $service->duration_min + max(0, $extraDurationMin);
+        if ($durationMin <= 0) return [];
         $bufferMin = (int) $service->buffer_min;
-
-        if ($durationMin <= 0) {
-            return [];
-        }
-
+        $now = Carbon::now($timezone);
         $slots = [];
-        $period = CarbonPeriod::create($startWindow, $stepMin . ' minutes', $endWindow->copy()->subMinutes($durationMin));
 
-        foreach ($period as $candidateStart) {
-            if ($isTodayInBusinessTz && $candidateStart->lessThanOrEqualTo($nowInBusinessTz)) {
-                continue;
+        foreach ($schedules as $schedule) {
+            $startWindow = Carbon::parse($day->toDateString().' '.$schedule->start_time, $timezone);
+            $endWindow = Carbon::parse($day->toDateString().' '.$schedule->end_time, $timezone);
+            if ($endWindow->diffInMinutes($startWindow) < $durationMin) continue;
+            $period = CarbonPeriod::create($startWindow, max(1, $stepMin).' minutes', $endWindow->copy()->subMinutes($durationMin));
+            foreach ($period as $candidateStart) {
+                if ($day->isSameDay($now) && $candidateStart->lessThanOrEqualTo($now)) continue;
+                $candidateEnd = $candidateStart->copy()->addMinutes($durationMin);
+                if ($this->hitsBreak($schedule->break_start, $schedule->break_end, $day, $candidateStart, $candidateEnd)) continue;
+                if ($this->hasConflict($staffId, $candidateStart, $candidateEnd, $bufferMin, null, null, self::SCOPE_CUSTOMER, [], [], $storeLocationId)) continue;
+                $slots[$candidateStart->toIso8601String()] = ['start_at'=>$candidateStart->toIso8601String(),'end_at'=>$candidateEnd->toIso8601String(),'is_available'=>true];
             }
-
-            $candidateEnd = $candidateStart->copy()->addMinutes($durationMin);
-            if ($this->hitsBreak($schedule->break_start, $schedule->break_end, $day, $candidateStart, $candidateEnd)) {
-                continue;
-            }
-
-            if ($this->hasConflict($staffId, $candidateStart, $candidateEnd, $bufferMin)) {
-                continue;
-            }
-
-            $slots[] = [
-                'start_at' => $candidateStart->toIso8601String(),
-                'end_at' => $candidateEnd->toIso8601String(),
-                'is_available' => true,
-            ];
         }
-
-        if ($applyPrimarySlotPolicy) {
-            $slots = $this->applyPrimarySlotDisplayPolicy($service, $slots);
-        }
-
-        return $slots;
+        ksort($slots);
+        $slots = array_values($slots);
+        return $applyPrimarySlotPolicy ? $this->applyPrimarySlotDisplayPolicy($service, $slots) : $slots;
     }
 
     /**
@@ -180,6 +161,7 @@ class BookingAvailabilityService
         string $conflictScope = self::SCOPE_CUSTOMER,
         array $ignoreCartItemIds = [],
         array $ignorePosCartServiceItemIds = [],
+        ?int $storeLocationId = null,
     ): bool {
         return $this->getConflictDiagnostics(
             $staffId,
@@ -191,6 +173,7 @@ class BookingAvailabilityService
             $conflictScope,
             $ignoreCartItemIds,
             $ignorePosCartServiceItemIds,
+            $storeLocationId,
         )['has_conflict'];
     }
 
@@ -250,6 +233,7 @@ class BookingAvailabilityService
         string $conflictScope = self::SCOPE_CUSTOMER,
         array $ignoreCartItemIds = [],
         array $ignorePosCartServiceItemIds = [],
+        ?int $storeLocationId = null,
     ): array {
         $blockEnd = $endAt->copy()->addMinutes($bufferMin);
         $queryStartAt = $this->normalizeForStorage($startAt);
@@ -349,10 +333,11 @@ class BookingAvailabilityService
             ->all();
 
         $timeoffConflicts = BookingStaffTimeoff::where('staff_id', $staffId)
+            ->when($storeLocationId !== null, fn ($query) => $query->where(fn ($branch) => $branch->where('store_location_id', $storeLocationId)->orWhereNull('store_location_id')))
             ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
                 $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
             })
-            ->get(['id', 'start_at', 'end_at'])
+            ->get(['id', 'store_location_id', 'start_at', 'end_at'])
             ->map(fn (BookingStaffTimeoff $timeoff) => [
                 'id' => (int) $timeoff->id,
                 'start_at' => optional($timeoff->start_at)?->toDateTimeString(),
@@ -396,7 +381,9 @@ class BookingAvailabilityService
             ->values()
             ->all();
 
-        $blockConflicts = BookingBlock::where(function ($query) use ($staffId) {
+        $blockConflicts = BookingBlock::query()
+            ->when($storeLocationId !== null, fn ($query) => $query->where(fn ($branch) => $branch->where('store_location_id', $storeLocationId)->orWhereNull('store_location_id')))
+            ->where(function ($query) use ($staffId) {
             $query->where('scope', 'STORE')
                 ->orWhere(function ($nested) use ($staffId) {
                     $nested->where('scope', 'STAFF')->where('staff_id', $staffId);
@@ -405,7 +392,7 @@ class BookingAvailabilityService
             ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
                 $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
             })
-            ->get(['id', 'scope', 'staff_id', 'start_at', 'end_at'])
+            ->get(['id', 'scope', 'staff_id', 'store_location_id', 'start_at', 'end_at'])
             ->map(fn (BookingBlock $block) => [
                 'id' => (int) $block->id,
                 'scope' => (string) ($block->scope ?? ''),
@@ -474,102 +461,35 @@ class BookingAvailabilityService
         return $diagnostics;
     }
 
-    public function getStaffAvailabilityDiagnostics(int $staffId, Carbon $startAt, Carbon $endAt): array
+    public function getStaffAvailabilityDiagnostics(int $staffId, Carbon $startAt, Carbon $endAt, ?int $storeLocationId = null): array
     {
-        if ($staffId <= 0) {
-            return ['is_available' => false, 'failure_reason' => 'invalid_staff_id'];
-        }
-
-        if ($endAt->lessThanOrEqualTo($startAt)) {
-            return ['is_available' => false, 'failure_reason' => 'end_not_after_start'];
-        }
-
-        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+        if ($staffId <= 0 || $endAt->lessThanOrEqualTo($startAt)) return ['is_available'=>false,'failure_reason'=>'invalid_range'];
+        $timezone = $this->businessTimezone();
         $start = $startAt->copy()->setTimezone($timezone);
         $end = $endAt->copy()->setTimezone($timezone);
+        if (! $start->isSameDay($end)) return ['is_available'=>false,'failure_reason'=>'range_crosses_business_day'];
 
-        if (! $start->isSameDay($end)) {
-            return [
-                'is_available' => false,
-                'failure_reason' => 'range_crosses_business_day',
-                'business_timezone' => $timezone,
-                'localized_start' => $start->toDateTimeString(),
-                'localized_end' => $end->toDateTimeString(),
-            ];
-        }
-
-        $schedule = BookingStaffSchedule::where('staff_id', $staffId)
-            ->where('day_of_week', $start->dayOfWeek)
-            ->first();
-
-        if (! $schedule) {
-            return [
-                'is_available' => false,
-                'failure_reason' => 'no_staff_schedule',
-                'business_timezone' => $timezone,
-                'day_of_week' => $start->dayOfWeek,
-                'localized_start' => $start->toDateTimeString(),
-                'localized_end' => $end->toDateTimeString(),
-            ];
-        }
-
-        if (! $schedule->is_active) {
-            return [
-                'is_available' => false,
-                'failure_reason' => 'schedule_inactive',
-                'business_timezone' => $timezone,
-                'schedule_id' => (int) $schedule->id,
-                'day_of_week' => $start->dayOfWeek,
-                'localized_start' => $start->toDateTimeString(),
-                'localized_end' => $end->toDateTimeString(),
-            ];
-        }
-
+        $schedules = BookingStaffSchedule::query()->where('staff_id',$staffId)
+            ->where('day_of_week',$start->dayOfWeek)->where('is_active',true)
+            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id',$storeLocationId))
+            ->orderBy('start_time')->get();
         $day = $start->copy()->startOfDay();
-        $startWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->start_time, $timezone);
-        $endWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->end_time, $timezone);
-
-        if ($start->lt($startWindow) || $end->gt($endWindow)) {
-            return [
-                'is_available' => false,
-                'failure_reason' => 'outside_staff_schedule',
-                'business_timezone' => $timezone,
-                'schedule_id' => (int) $schedule->id,
-                'schedule_start' => $startWindow->toDateTimeString(),
-                'schedule_end' => $endWindow->toDateTimeString(),
-                'localized_start' => $start->toDateTimeString(),
-                'localized_end' => $end->toDateTimeString(),
-            ];
+        $breakHit = null;
+        foreach ($schedules as $schedule) {
+            $windowStart = Carbon::parse($day->toDateString().' '.$schedule->start_time,$timezone);
+            $windowEnd = Carbon::parse($day->toDateString().' '.$schedule->end_time,$timezone);
+            if ($start->gte($windowStart) && $end->lte($windowEnd)) {
+                if ($this->hitsBreak($schedule->break_start,$schedule->break_end,$day,$start,$end)) { $breakHit = $schedule; continue; }
+                return ['is_available'=>true,'failure_reason'=>null,'business_timezone'=>$timezone,'schedule_id'=>(int)$schedule->id,'store_location_id'=>$schedule->store_location_id ? (int)$schedule->store_location_id : null,'schedule_start'=>$windowStart->toDateTimeString(),'schedule_end'=>$windowEnd->toDateTimeString(),'localized_start'=>$start->toDateTimeString(),'localized_end'=>$end->toDateTimeString()];
+            }
         }
-
-        if ($this->hitsBreak($schedule->break_start, $schedule->break_end, $day, $start, $end)) {
-            return [
-                'is_available' => false,
-                'failure_reason' => 'hits_staff_break',
-                'business_timezone' => $timezone,
-                'schedule_id' => (int) $schedule->id,
-                'break_start' => $schedule->break_start,
-                'break_end' => $schedule->break_end,
-                'localized_start' => $start->toDateTimeString(),
-                'localized_end' => $end->toDateTimeString(),
-            ];
-        }
-
-        return [
-            'is_available' => true,
-            'failure_reason' => null,
-            'business_timezone' => $timezone,
-            'schedule_id' => (int) $schedule->id,
-            'schedule_start' => $startWindow->toDateTimeString(),
-            'schedule_end' => $endWindow->toDateTimeString(),
-            'localized_start' => $start->toDateTimeString(),
-            'localized_end' => $end->toDateTimeString(),
-        ];
+        if ($breakHit) return ['is_available'=>false,'failure_reason'=>'hits_staff_break','business_timezone'=>$timezone,'schedule_id'=>(int)$breakHit->id,'break_start'=>$breakHit->break_start,'break_end'=>$breakHit->break_end];
+        return ['is_available'=>false,'failure_reason'=>$schedules->isEmpty() ? ($storeLocationId === null ? 'no_staff_schedule' : 'no_staff_schedule_at_branch') : 'outside_staff_schedule','business_timezone'=>$timezone,'localized_start'=>$start->toDateTimeString(),'localized_end'=>$end->toDateTimeString()];
     }
 
-    public function isWithinStaffAvailability(int $staffId, Carbon $startAt, Carbon $endAt): bool
+    public function isWithinStaffAvailability(int $staffId, Carbon $startAt, Carbon $endAt, ?int $storeLocationId = null): bool
     {
-        return (bool) ($this->getStaffAvailabilityDiagnostics($staffId, $startAt, $endAt)['is_available'] ?? false);
+        return (bool) ($this->getStaffAvailabilityDiagnostics($staffId,$startAt,$endAt,$storeLocationId)['is_available'] ?? false);
     }
 
     private function hitsBreak(?string $breakStart, ?string $breakEnd, Carbon $day, Carbon $candidateStart, Carbon $candidateEnd): bool

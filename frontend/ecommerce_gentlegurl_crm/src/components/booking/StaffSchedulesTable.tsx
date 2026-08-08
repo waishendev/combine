@@ -21,6 +21,7 @@ import {
   type StaffOption,
 } from './staffScheduleUtils'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface StaffSchedulesTableProps {
   permissions: string[]
@@ -67,6 +68,7 @@ export default function StaffSchedulesTable({
   permissions,
 }: StaffSchedulesTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<StaffScheduleFilterValues>({ ...emptyStaffScheduleFilters })
@@ -168,6 +170,7 @@ export default function StaffSchedulesTable({
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
       if (filters.staff_id) qs.set('staff_id', filters.staff_id)
+      if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
       if (filters.day_of_week) qs.set('day_of_week', filters.day_of_week)
       if (filters.is_active) qs.set('is_active', filters.is_active)
 
@@ -239,7 +242,7 @@ export default function StaffSchedulesTable({
     } finally {
       setLoading(false)
     }
-  }, [currentPage, filters, pageSize, staffNameMap])
+  }, [currentPage, filters, pageSize, staffNameMap, selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -341,7 +344,7 @@ export default function StaffSchedulesTable({
   const allVisibleSelected =
     visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedIds.has(id))
   const hasSelection = selectedIds.size > 0
-  const colCount = (showSelection ? 1 : 0) + (showActions ? 7 : 6)
+  const colCount = (showSelection ? 1 : 0) + (showActions ? 8 : 7)
 
   const totalPages = meta.last_page || 1
 
@@ -749,6 +752,7 @@ export default function StaffSchedulesTable({
               {(
                 [
                   { key: 'staff_name', label: 'Staff' },
+                  { key: 'branch_name', label: 'Branch' },
                   { key: 'day_of_week', label: 'Day' },
                   { key: 'start_time', label: 'Start' },
                   { key: 'end_time', label: 'End' },

@@ -20,6 +20,7 @@ import {
   type StaffOption,
 } from './blockUtils'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface BlocksTableProps {
   permissions: string[]
@@ -52,6 +53,7 @@ export default function BlocksTable({
   permissions,
 }: BlocksTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<BlockFilterValues>({ ...emptyBlockFilters })
@@ -144,6 +146,7 @@ export default function BlocksTable({
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
       if (filters.scope) qs.set('scope', filters.scope)
+      if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
       if (filters.staff_id) qs.set('staff_id', filters.staff_id)
       if (filters.from) qs.set('from', new Date(filters.from).toISOString())
       if (filters.to) qs.set('to', new Date(filters.to).toISOString())
@@ -216,7 +219,7 @@ export default function BlocksTable({
     } finally {
       setLoading(false)
     }
-  }, [currentPage, filters, pageSize, staffNameMap])
+  }, [currentPage, filters, pageSize, staffNameMap, selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -302,7 +305,7 @@ export default function BlocksTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 6 : 5
+  const colCount = showActions ? 7 : 6
 
   const totalPages = meta.last_page || 1
 
@@ -484,6 +487,7 @@ export default function BlocksTable({
             <tr>
               {(
                 [
+                  { key: 'branch_name', label: 'Branch' },
                   { key: 'scope', label: 'Scope' },
                   { key: 'staff_name', label: 'Staff' },
                   { key: 'start_at', label: 'Start' },

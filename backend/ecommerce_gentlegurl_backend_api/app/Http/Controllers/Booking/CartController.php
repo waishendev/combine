@@ -130,7 +130,7 @@ class CartController extends Controller
                 $cart->update(['store_location_id' => $storeLocation->id]);
             }
 
-            if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt)
+            if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt, (int) $storeLocation->id)
                 || $this->availabilityService->hasConflict(
                     (int) $validated['staff_id'],
                     $startAt,
@@ -139,6 +139,9 @@ class CartController extends Controller
                     null,
                     null,
                     BookingAvailabilityService::SCOPE_CUSTOMER,
+                    [],
+                    [],
+                    (int) $storeLocation->id,
                 )) {
                 return $this->respondError(self::SLOT_UNAVAILABLE_MESSAGE, 409);
             }
@@ -1210,7 +1213,7 @@ class CartController extends Controller
 
     private function resolveCheckoutSlotAvailabilityError(BookingCartItem $item, int $bufferMin, array $ignoreCartItemIds): ?string
     {
-        if (! $this->availabilityService->isWithinStaffAvailability((int) $item->staff_id, $item->start_at, $item->end_at)) {
+        if (! $this->availabilityService->isWithinStaffAvailability((int) $item->staff_id, $item->start_at, $item->end_at, (int) $item->bookingCart?->store_location_id)) {
             return self::SLOT_UNAVAILABLE_MESSAGE;
         }
 
@@ -1223,6 +1226,8 @@ class CartController extends Controller
             null,
             BookingAvailabilityService::SCOPE_CUSTOMER,
             $ignoreCartItemIds,
+            [],
+            (int) $item->bookingCart?->store_location_id,
         );
 
         if (! (bool) ($diagnostics['has_conflict'] ?? false)) {

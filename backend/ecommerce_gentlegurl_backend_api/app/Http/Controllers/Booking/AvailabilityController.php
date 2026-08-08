@@ -69,7 +69,7 @@ class AvailabilityController extends Controller
         }
 
         $extraDurationMin = (int) ($validated['extra_duration_min'] ?? 0);
-        $slots = $this->availabilityService->getAvailableSlots($service, (int) $validated['staff_id'], $validated['date'], 15, $extraDurationMin);
+        $slots = $this->availabilityService->getAvailableSlots($service, (int) $validated['staff_id'], $validated['date'], 15, $extraDurationMin, true, (int) $validated['store_location_id']);
 
         $configuredPrimarySlots = $service->primarySlots
             ->where('is_active', true)
@@ -158,7 +158,7 @@ class AvailabilityController extends Controller
 
         $mergedByStart = [];
         foreach ($staffIds as $staffId) {
-            $slots = $this->availabilityService->getAvailableSlots($service, $staffId, $validated['date'], 15, $extraDurationMin);
+            $slots = $this->availabilityService->getAvailableSlots($service, $staffId, $validated['date'], 15, $extraDurationMin, true, (int) $validated['store_location_id']);
             foreach ($slots as $slot) {
                 $key = $slot['start_at'];
                 if (! isset($mergedByStart[$key])) {
@@ -245,6 +245,7 @@ class AvailabilityController extends Controller
         foreach ($staffs as $staff) {
             $schedule = \App\Models\Booking\BookingStaffSchedule::where('staff_id', $staff->id)
                 ->where('day_of_week', $day->dayOfWeek)
+                ->where('store_location_id', (int) $validated['store_location_id'])
                 ->where('is_active', true)
                 ->first();
 
@@ -271,8 +272,8 @@ class AvailabilityController extends Controller
             
             $staffAvailability = [];
             foreach ($staffs as $staff) {
-                $isAvailable = $this->availabilityService->isWithinStaffAvailability($staff->id, $startAt, $endAt)
-                    && ! $this->availabilityService->hasConflict($staff->id, $startAt, $endAt, (int) $service->buffer_min);
+                $isAvailable = $this->availabilityService->isWithinStaffAvailability($staff->id, $startAt, $endAt, (int) $validated['store_location_id'])
+                    && ! $this->availabilityService->hasConflict($staff->id, $startAt, $endAt, (int) $service->buffer_min, null, null, BookingAvailabilityService::SCOPE_CUSTOMER, [], [], (int) $validated['store_location_id']);
                 $staffAvailability[] = [
                     'staff_id' => (int) $staff->id,
                     'staff_name' => $staff->name,

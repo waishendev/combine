@@ -5,6 +5,8 @@ import { useI18n } from '@/lib/i18n'
 export interface BlockRowData {
   id: number
   scope: 'STORE' | 'STAFF'
+  store_location_id: number | null
+  branch_name: string
   staff_id: number | null
   staff_name: string | null
   start_at: string
@@ -39,6 +41,7 @@ export default function BlockRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
+      <td className="px-4 py-2 border border-gray-200">{block.branch_name}</td>
       <td className="px-4 py-2 border border-gray-200">{block.scope}</td>
       <td className="px-4 py-2 border border-gray-200">{block.staff_name || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">{formatDateTime(block.start_at)}</td>

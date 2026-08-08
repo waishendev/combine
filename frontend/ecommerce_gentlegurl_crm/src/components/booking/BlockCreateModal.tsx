@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import type { BlockRowData } from './BlockRow'
 import { mapBlockApiItemToRow, type BlockApiItem, type StaffOption } from './blockUtils'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface BlockCreateModalProps {
   onClose: () => void
@@ -14,6 +15,7 @@ interface BlockCreateModalProps {
 
 interface FormState {
   scope: 'STORE' | 'STAFF'
+  store_location_id: string
   staff_id: string
   start_at: string
   end_at: string
@@ -22,6 +24,7 @@ interface FormState {
 
 const initialFormState: FormState = {
   scope: 'STORE',
+  store_location_id: '',
   staff_id: '',
   start_at: '',
   end_at: '',
@@ -34,10 +37,15 @@ export default function BlockCreateModal({
   defaultScope,
 }: BlockCreateModalProps) {
   const { t } = useI18n()
-  const [form, setForm] = useState<FormState>({ ...initialFormState, scope: defaultScope || 'STORE' })
+  const { accessibleBranches, selectedBranchId } = useBranch()
+  const [form, setForm] = useState<FormState>({ ...initialFormState, scope: defaultScope || 'STORE', store_location_id: selectedBranchId ? String(selectedBranchId) : '' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [staffs, setStaffs] = useState<StaffOption[]>([])
+
+  useEffect(() => {
+    if (selectedBranchId) setForm((current) => current.store_location_id ? current : { ...current, store_location_id: String(selectedBranchId) })
+  }, [selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -69,6 +77,7 @@ export default function BlockCreateModal({
   }
 
   const validate = (): string | null => {
+    if (!form.store_location_id) return 'A specific Branch is required; All Branches cannot be saved.'
     if (!form.start_at || !form.end_at) return 'Start and end datetime are required.'
     const start = new Date(form.start_at)
     const end = new Date(form.end_at)
@@ -100,6 +109,7 @@ export default function BlockCreateModal({
         },
         body: JSON.stringify({
           scope: form.scope,
+          store_location_id: Number(form.store_location_id),
           staff_id: form.scope === 'STAFF' ? Number(form.staff_id) : null,
           start_at: new Date(form.start_at).toISOString(),
           end_at: new Date(form.end_at).toISOString(),
@@ -124,6 +134,8 @@ export default function BlockCreateModal({
         : {
             id: 0,
             scope: form.scope,
+            store_location_id: Number(form.store_location_id),
+            branch_name: accessibleBranches.find((b) => b.id === Number(form.store_location_id))?.name || `Branch #${form.store_location_id}`,
             staff_id: form.scope === 'STAFF' ? Number(form.staff_id) : null,
             staff_name: form.scope === 'STAFF' ? (staffs.find(s => s.id === Number(form.staff_id))?.name || null) : null,
             start_at: form.start_at,
@@ -165,6 +177,14 @@ export default function BlockCreateModal({
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          <div>
+            <label htmlFor="store_location_id" className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
+            <select id="store_location_id" name="store_location_id" value={form.store_location_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting}>
+              <option value="">Select a specific Branch</option>
+              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+            </select>
+          </div>
+
           <div>
             <label htmlFor="scope" className="block text-sm font-medium text-gray-700 mb-1">
               Scope <span className="text-red-500">*</span>

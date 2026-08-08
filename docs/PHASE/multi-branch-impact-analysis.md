@@ -2,6 +2,8 @@
 
 > **Phase 5A implementation refinement (2026-08-08):** global `Staff` and `BookingService` identities use explicit `staff_store_location` and `booking_service_store_location` pivots. Public discovery and cart submission require explicit Branch assignment plus existing service/staff eligibility. Schedules, time off, leave, blocks, collisions, commissions, and commercial fields remain unchanged pending Phase 5B. See `phase-5a-booking-branch-runbook.md`.
 
+> **Phase 5B implementation refinement (2026-08-08):** weekly Staff schedules and operational Booking Blocks are Branch-specific; schedule overlap and Booking collision remain global by Staff/time. `BookingStaffTimeoff` is also used as an approved Leave artifact, so leave-linked NULL rows remain Staff-global while non-leave operational rows can be Branch-attributed. Legacy NULL operational blockers are temporarily honored globally during reconciliation, but NULL schedules never create Branch availability.
+
 **Status:** Phase 0 architecture audit and planning only  
 **Audit date:** 2026-08-02  
 **Projects inspected:** Laravel backend, Next.js CRM, Next.js ecommerce shop, Next.js booking shop  

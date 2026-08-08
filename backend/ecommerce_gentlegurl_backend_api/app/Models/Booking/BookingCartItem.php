@@ -23,6 +23,11 @@ class BookingCartItem extends Model
         return $this->belongsTo(BookingService::class, 'service_id');
     }
 
+    public function bookingCart()
+    {
+        return $this->belongsTo(BookingCart::class, 'booking_cart_id');
+    }
+
     public function staff()
     {
         return $this->belongsTo(\App\Models\Staff::class, 'staff_id');
@@ -33,4 +38,3 @@ class BookingCartItem extends Model
         return $this->hasMany(BookingItemPhoto::class, 'booking_cart_item_id')->orderBy('sort_order')->orderBy('id');
     }
 }
-
