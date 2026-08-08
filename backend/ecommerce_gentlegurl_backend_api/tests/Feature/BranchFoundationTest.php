@@ -63,6 +63,17 @@ class BranchFoundationTest extends TestCase
         $this->getJson('/api/public/shop/store-locations/999999?for=booking')->assertNotFound();
     }
 
+    public function test_public_booking_location_count_supports_zero_one_and_multiple_branch_ux(): void
+    {
+        $this->getJson('/api/public/shop/store-locations?for=booking')->assertOk()->assertJsonCount(0, 'data');
+
+        $this->branch(['code' => 'ONLY-BOOKING', 'is_booking_available' => true]);
+        $this->getJson('/api/public/shop/store-locations?for=booking')->assertOk()->assertJsonCount(1, 'data');
+
+        $this->branch(['code' => 'SECOND-BOOKING', 'is_booking_available' => true]);
+        $this->getJson('/api/public/shop/store-locations?for=booking')->assertOk()->assertJsonCount(2, 'data');
+    }
+
     public function test_review_branch_availability_is_independent_from_pickup(): void
     {
         $reviewOnly = $this->branch([

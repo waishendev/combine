@@ -74,9 +74,11 @@ export default function ServiceAddonsPage() {
   const searchParams = useSearchParams();
   const categoryId = searchParams.get("category_id");
   const storeLocationId = searchParams.get("store_location_id");
+  const branchMode = searchParams.get("branch_mode") === "multi" ? "multi" : "single";
   const id = params.id;
   const backParams = new URLSearchParams();
   if (storeLocationId) backParams.set("store_location_id", storeLocationId);
+  backParams.set("branch_mode", branchMode);
   if (categoryId) backParams.set("category_id", categoryId);
   const backHref = `/booking${backParams.toString() ? `?${backParams.toString()}` : ""}`;
   const photoInputRef = useRef<HTMLInputElement | null>(null);
@@ -217,13 +219,14 @@ export default function ServiceAddonsPage() {
 
     const qs = new URLSearchParams();
     if (storeLocationId) qs.set("store_location_id", storeLocationId);
+    qs.set("branch_mode", branchMode);
     if (selectedOptionIds.length) qs.set("selected_option_ids", selectedOptionIds.join(","));
     if (categoryId) qs.set("category_id", categoryId);
     const trimmedRemarks = customerRemarks.trim();
     if (trimmedRemarks) qs.set("remarks", trimmedRemarks);
     const q = qs.toString();
     router.push(`/booking/service/${id}/slots${q ? `?${q}` : ""}`);
-  }, [categoryId, customerRemarks, getFirstMissingRequiredQuestionId, id, router, selectedOptionIds, storeLocationId]);
+  }, [branchMode, categoryId, customerRemarks, getFirstMissingRequiredQuestionId, id, router, selectedOptionIds, storeLocationId]);
 
 
   const onPhotoSelect = useCallback((event: ChangeEvent<HTMLInputElement>) => {
@@ -293,7 +296,7 @@ export default function ServiceAddonsPage() {
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 pb-24 sm:py-10">
-      <BookingProgress step={3} loading={!service} backHref={backHref} />
+      <BookingProgress step={branchMode === "multi" ? 3 : 2} branchStepRequired={branchMode === "multi"} loading={!service} backHref={backHref} />
 
       <div className="mt-4 space-y-5 sm:mt-6 sm:space-y-6">
         <div className="hidden items-center justify-start sm:flex">

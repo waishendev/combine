@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 /** Date & time before stylist: pick a slot first, then an available staff member. Checkout is via cart icon, not a wizard step. */
-const STEP_LABELS = ["Choose branch", "Choose service", "Select add-ons", "Choose date & time", "Choose nail technician"];
+const BOOKING_STEPS = ["Choose service", "Select add-ons", "Choose date & time", "Choose nail technician"];
 
 type BookingProgressProps = {
   step: number;
@@ -10,10 +10,11 @@ type BookingProgressProps = {
   /** Mobile-only back button (keeps headers clean on small screens). */
   backHref?: string;
   backLabel?: string;
+  branchStepRequired?: boolean;
 };
 
-export function BookingProgress({ step, loading, backHref, backLabel = "Back" }: BookingProgressProps) {
-  const steps = STEP_LABELS;
+export function BookingProgress({ step, loading, backHref, backLabel = "Back", branchStepRequired = true }: BookingProgressProps) {
+  const steps = branchStepRequired ? ["Choose branch", ...BOOKING_STEPS] : BOOKING_STEPS;
   const activeStep = Math.min(Math.max(step, 1), steps.length);
   const currentLabel = steps[activeStep - 1];
 
