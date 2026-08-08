@@ -95,7 +95,8 @@ import {
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
-import { defaultThermalPrinterSettings, getThermalPrinterAvailability, getThermalPrinterSettings, type ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
+import { getThermalPrinterAvailability } from '@/lib/thermalPrinterSettings'
+import { useOptionalThermalPrinterSettings } from '@/hooks/useOptionalThermalPrinterSettings'
 import { printThermalReceiptCopies, type ReceiptData } from '@/utils/printReceipt'
 
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
@@ -470,25 +471,19 @@ export default function PosAppointmentsWorkspace({
     },
     [dismissToast],
   )
-  const [thermalPrinterSettings, setThermalPrinterSettings] = useState<ThermalPrinterSettings>(defaultThermalPrinterSettings)
-  const [thermalPrinterLoading, setThermalPrinterLoading] = useState(true)
+  const {
+    settings: thermalPrinterSettings,
+    setSettings: setThermalPrinterSettings,
+    loading: thermalPrinterLoading,
+    state: thermalPrinterState,
+    error: thermalPrinterError,
+  } = useOptionalThermalPrinterSettings()
   const [createAppointmentAutoPrint, setCreateAppointmentAutoPrint] = useState(false)
   const [appointmentCheckoutAutoPrint, setAppointmentCheckoutAutoPrint] = useState(false)
 
   useEffect(() => {
-    let active = true
-    getThermalPrinterSettings()
-      .then((settings) => {
-        if (active) setThermalPrinterSettings(settings)
-      })
-      .catch(() => {
-        if (active) pushToast('warning', 'Printer settings are unavailable. Appointments can continue without printing.')
-      })
-      .finally(() => {
-        if (active) setThermalPrinterLoading(false)
-      })
-    return () => { active = false }
-  }, [pushToast])
+    if (thermalPrinterError) pushToast('warning', 'Printer unavailable. Appointments can continue without printing.')
+  }, [pushToast, thermalPrinterError])
 
   const printAppointmentReceipt = useCallback((enabled: boolean, receipt: ReceiptData) => {
     if (!enabled) return
@@ -6822,6 +6817,7 @@ export default function PosAppointmentsWorkspace({
                       onCheckedChange={setCreateAppointmentAutoPrint}
                       settings={thermalPrinterSettings}
                       loading={thermalPrinterLoading}
+                      state={thermalPrinterState}
                       onSettingsChange={setThermalPrinterSettings}
                       onPreferenceSaved={(message) => pushToast('success', message)}
                       onPreferenceError={(message) => pushToast('error', message)}
@@ -9144,6 +9140,7 @@ export default function PosAppointmentsWorkspace({
                 onCheckedChange={setAppointmentCheckoutAutoPrint}
                 settings={thermalPrinterSettings}
                 loading={thermalPrinterLoading}
+                state={thermalPrinterState}
                 onSettingsChange={setThermalPrinterSettings}
                 onPreferenceSaved={(message) => pushToast('success', message)}
                 onPreferenceError={(message) => pushToast('error', message)}

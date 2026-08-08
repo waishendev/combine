@@ -1,23 +1,38 @@
 'use client'
 
 import { useState } from 'react'
+import { useBranch } from '@/contexts/BranchContext'
 import type { ThermalPrinterSettings } from '@/lib/thermalPrinterSettings'
 import { getThermalPrinterAvailability, saveThermalPrinterAutoPrint } from '@/lib/thermalPrinterSettings'
+import type { OptionalPrinterState } from '@/hooks/useOptionalThermalPrinterSettings'
 
 type Props = {
   checked: boolean
   onCheckedChange: (checked: boolean) => void
   settings: ThermalPrinterSettings
   loading?: boolean
+  state?: OptionalPrinterState
   onSettingsChange?: (settings: ThermalPrinterSettings) => void
   onPreferenceSaved?: (message: string) => void
   onPreferenceError?: (message: string) => void
 }
 
-export default function ThermalPrinterCheckoutOption({ checked, onCheckedChange, settings, loading = false, onSettingsChange, onPreferenceSaved, onPreferenceError }: Props) {
+export default function ThermalPrinterCheckoutOption({ checked, onCheckedChange, settings, loading = false, state, onSettingsChange, onPreferenceSaved, onPreferenceError }: Props) {
+  const { selectedBranchId } = useBranch()
   const [savingPreference, setSavingPreference] = useState(false)
   const availability = getThermalPrinterAvailability(settings)
   const disabled = loading || savingPreference || !availability.available
+  const statusLabel = loading
+    ? 'Loading'
+    : state === 'error'
+      ? 'Unavailable'
+      : state === 'idle'
+        ? 'Select Branch'
+        : state === 'not_configured'
+          ? 'Not Configured'
+          : state === 'disabled'
+            ? 'Disabled'
+            : availability.label
 
   const updatePreference = async (nextChecked: boolean) => {
     if (savingPreference) return
@@ -25,7 +40,8 @@ export default function ThermalPrinterCheckoutOption({ checked, onCheckedChange,
     onCheckedChange(nextChecked)
     setSavingPreference(true)
     try {
-      const response = await saveThermalPrinterAutoPrint(nextChecked)
+      if (!selectedBranchId) throw new Error('Select a specific Branch before changing printer preferences.')
+      const response = await saveThermalPrinterAutoPrint(nextChecked, selectedBranchId)
       onSettingsChange?.(response.data)
       onPreferenceSaved?.(response.message ?? 'Auto Print Receipt preference updated.')
     } catch (error) {
@@ -54,7 +70,7 @@ export default function ThermalPrinterCheckoutOption({ checked, onCheckedChange,
         <span className="text-gray-500">Connection</span><span className="text-right font-medium capitalize text-gray-800">{settings.connection_type}</span>
         {settings.connection_type === 'network' ? <><span className="text-gray-500">Address</span><span className="text-right font-medium text-gray-800">{settings.ip_address && settings.port ? `${settings.ip_address}:${settings.port}` : 'Not configured'}</span></> : null}
         <span className="text-gray-500">Printer Status</span>
-        <span className={`text-right font-semibold ${availability.available ? 'text-emerald-700' : 'text-amber-700'}`}>{loading ? 'Loading' : availability.label}</span>
+        <span className={`text-right font-semibold ${availability.available ? 'text-emerald-700' : 'text-slate-600'}`}>{statusLabel}</span>
       </div>
       {/* <a href="/settings/thermal-printer" className="mt-3 inline-block text-xs font-semibold text-blue-600 hover:underline">Manage Printer Settings</a> */}
     </div>

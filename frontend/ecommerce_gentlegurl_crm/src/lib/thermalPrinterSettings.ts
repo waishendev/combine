@@ -35,8 +35,8 @@ export function getThermalPrinterAvailability(settings: ThermalPrinterSettings):
 
 const branchQuery = (storeLocationId?: number) => storeLocationId ? `?store_location_id=${storeLocationId}` : ''
 
-export async function getThermalPrinterSettings(storeLocationId?: number) {
-  const response = await apiFetch<ApiResponse<Partial<ThermalPrinterSettings>>>(`/api/proxy/ecommerce/thermal-printer-settings${branchQuery(storeLocationId)}`)
+export async function getThermalPrinterSettings(storeLocationId?: number, signal?: AbortSignal) {
+  const response = await apiFetch<ApiResponse<Partial<ThermalPrinterSettings>>>(`/api/proxy/ecommerce/thermal-printer-settings${branchQuery(storeLocationId)}`, { signal })
   return { ...defaultThermalPrinterSettings, ...response.data }
 }
 
