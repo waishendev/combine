@@ -12,6 +12,7 @@ export interface AdminRowData {
   roleId: number | null
   createdAt: string
   updatedAt: string
+  storeLocations?: { id: number; name: string; code?: string; isActive?: boolean }[]
 }
 
 interface AdminRowProps {

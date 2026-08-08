@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\MeStoreLocationController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerTypeController;
@@ -310,6 +311,8 @@ $protectedRoutes = function () {
         ->middleware('permission:booking.appointments.update_status|pos.checkout|pos.appointments.manage|ecommerce.daily-sales-reports.view');
     Route::delete('/admin/bookings/{booking}/service-photos/{photo}', [\App\Http\Controllers\Admin\Booking\ServicePhotoController::class, 'destroy'])
         ->middleware('permission:booking.appointments.update_status|pos.checkout|pos.appointments.manage|ecommerce.daily-sales-reports.view');
+
+    Route::get('/me/store-locations', MeStoreLocationController::class);
 
     // Admins (users)
     Route::get('/admins', [AdminController::class, 'index'])

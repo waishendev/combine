@@ -189,7 +189,7 @@ Each phase below lists exact current files or new filenames likely affected. New
 
 ### Phase 0 — audit only (this document)
 
-- **Files:** only `docs/multi-branch-impact-analysis.md`.
+- **Files:** only `docs/PHASE/multi-branch-impact-analysis.md`.
 - **DB/data/backend/frontend/auth:** none.
 - **Compatibility/tests:** review document against schema (`rg` reference inventory, route review, migration review); stakeholder sign-off on unresolved decisions.
 - **Rollback:** remove/revert this document only.

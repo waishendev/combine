@@ -11,6 +11,7 @@ use Illuminate\Support\Collection;
 use Laravel\Sanctum\HasApiTokens;
 use DateTimeInterface;
 use App\Models\Permission;
+use App\Models\Ecommerce\StoreLocation;
 
 class User extends Authenticatable
 {
@@ -66,6 +67,12 @@ class User extends Authenticatable
     public function roles()
     {
         return $this->belongsToMany(Role::class);
+    }
+
+    public function storeLocations()
+    {
+        return $this->belongsToMany(StoreLocation::class, 'store_location_user')
+            ->withTimestamps();
     }
 
     public function getAllPermissions(): Collection

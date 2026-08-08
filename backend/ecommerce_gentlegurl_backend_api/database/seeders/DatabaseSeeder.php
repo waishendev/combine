@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             SalesReportWithVoidPermissionSeeder::class,
             AppointmentActivityLogPermissionSeeder::class,
             SuperAdminSeeder::class,
+            BranchAccessPermissionSeeder::class,
             StaffPermissionSeeder::class,
 
 
@@ -35,6 +36,7 @@ class DatabaseSeeder extends Seeder
             MembershipTiersSeeder::class,
             LoyaltyRewardSeederReal::class,
             StoreLocationsSeederReal::class,
+            BranchAccessDefaultStoreLocationSeeder::class,
             FooterWidgetSeederReal::class,
             ServicesMenuAndPagesSeeder::class,
             CustomerTypeSeeder::class,
