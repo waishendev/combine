@@ -62,3 +62,70 @@ The CRM blocks All Branches and POS-disabled selections. Every POS API request c
 8. Only then plan branch-aware low-stock, inventory reports, transfers, and stock restoration.
 
 Unresolved decisions include canonical ledger retirement, order/refund restoration unification, negative-stock policy, bundle movement representation, cost valuation per Branch, and historical null-cart treatment. Cash shifts/pools, printers, pricing, ecommerce pickup inventory, Phase 7+, and multi-tenancy are outside Phase 6A.
+
+## Phase 6B controlled-cutover foundation and stop decision
+
+### Re-audit mutation matrix
+
+| Flow | Current balance / ledger | Variant and bundle behavior | Restore behavior | Deterministic Branch | Safe Phase 6B target |
+|---|---|---|---|---|---|
+| CRM adjustment | Product/Variant global fields; `ProductStockMovement` | Variant-aware; bundle direct adjustment prohibited | Revokes global fields using movement | No Branch persisted before 6B | Candidate canonical service after explicit Branch activation |
+| POS add/update | Global Product/Variant fields | Bundle availability derived from components | None at cart stage | Yes, persisted cart Branch | Branch inventory reads, but only after cutover blockers resolve |
+| POS checkout | Global fields; `ProductStockMovement` | Components are locked one-by-one and clamped with `max(0, …)` | No general inventory restoration in monetary refund/void | Yes, persisted cart/order Branch | Atomic deterministic component mutation service |
+| Ecommerce order placement | Global fields through `OrderReserveService` | Variant/component-aware reserve and release | Expiry/cancel release global fields | Pickup may have a Branch; delivery is not deterministic | Phase 8 must define attribution/reservation before global authority can be frozen |
+| Ecommerce paid callback | `StockMovement` audit write only | No Variant identity | No corresponding canonical reversal | Not reliably deterministic | Freeze this legacy write only after ecommerce reservation redesign |
+| Order refund | Monetary amount only | No refunded line quantities | No inventory restoration; partial refund cannot identify units | Order may have Branch, but quantity is unknowable | Add line-level, idempotent restoration contract before cutover |
+| Offline void/cancel | Order/booking/payment state | Product inventory restoration is not centralized | No single idempotent Product restore record | Mixed historical attribution | Central restoration reference required before cutover |
+| Loyalty reward claim | Direct global Product decrement | Product-only | Separate flow | No operational Branch source | Must gain deterministic Branch or remain blocked |
+| Low-stock | Global Product/Variant fields | Variant-aware, globally aggregated | N/A | None | Phase 6C Branch-specific conversion |
+
+### Confirmed decisions
+
+`store_location_product_inventories` is the intended authoritative balance and `ProductStockMovement` is the **candidate canonical ledger** because it can represent Product/Variant, before/delta/after, actor, reversal, Branch, source reference, and an idempotency key. Phase 6B adds nullable `store_location_id`, polymorphic reference columns, explicit signed `quantity_delta`, and unique `idempotency_key`; historical rows remain intact. `StockMovement` history is retained and its writer is not removed until ecommerce compatibility is resolved.
+
+The atomic `BranchInventoryMutationService` locks rows in deterministic Product/Variant order, validates every result before mutation, updates balances and movements in one transaction, retries deadlocks, rejects missing rows/negative results, and makes operation replay idempotent. Bundle helpers aggregate repeated component requirements and never create bundle balance rows.
+
+### Mandatory stop condition
+
+**Branch inventory authority is not enabled by this release.** The re-audit found three explicit user-defined stop conditions:
+
+1. Ecommerce reserves/releases global fields before payment and delivery orders have no deterministic Branch; switching POS alone would leave two independent authorities.
+2. Monetary partial refunds do not identify Product/Variant quantities and current void/cancel paths do not provide one centralized idempotent inventory restoration record.
+3. Loyalty reward claims directly decrement global Product stock without a deterministic Branch.
+
+Accordingly, no existing POS, adjustment, revoke, refund, ecommerce, loyalty, or low-stock writer is connected to the new service. `branch_inventory_cutover_states.status` remains `pending` or `reconciled`; the backfill command deliberately cannot set `active`. This reduces ambiguity without pretending a safe cutover occurred.
+
+### Reconciliation command
+
+Zero-write analysis:
+
+```bash
+php artisan branch-inventory:backfill --store-code=PNG --dry-run
+```
+
+Explicit mapping write (do not run without an approved write freeze, and **do not run as part of deployment automation**):
+
+```bash
+php artisan branch-inventory:backfill --store-code=PNG --force
+```
+
+The report includes non-variant and Variant row counts, legacy and target totals, missing/matching/mismatched/extra rows, and bundle/component implications. Force inserts missing rows once, refuses mismatches or extra rows, verifies the result transactionally, and marks only `reconciled`. It never creates a Branch, overwrites a row, duplicates quantity, or activates authority.
+
+### Required cutover window after blockers are fixed
+
+1. Deploy additive schema, reconciliation tooling, and converted-but-disabled writers.
+2. Pause POS, CRM adjustment, ecommerce ordering/payment callbacks, expiry releases, reward claims, refunds, voids, and cancellations.
+3. Run the dry-run; archive totals and movement discrepancy output.
+4. Resolve every mismatch/extra/missing identity and bundle component anomaly.
+5. Run force once; run dry-run again and require zero discrepancies.
+6. Verify ecommerce line-level restore/idempotency and deterministic Branch attribution are deployed.
+7. In one controlled release, convert all remaining global writers, set the reviewed Branch state to `active`, and make legacy global fields derived compatibility projections only.
+8. Resume traffic and verify Branch balances against signed canonical movement sums.
+
+There is no safe zero-downtime promise with the current global reservation writers. After activation, `products.stock`, `products.stock_quantity`, and `product_variants.stock` must be synchronized derived projections for bounded old-reader compatibility, never independent inputs. That projection and activation command are intentionally not implemented until every writer above is converted.
+
+### Rollback and deferrals
+
+Before activation, rollback simply removes the additive cutover-state table and canonical ledger columns; Branch inventory rows produced by an approved force run should be exported before migration rollback. No operational writer depends on them. After a future activation, rollback requires another write freeze, movement-to-balance reconciliation, disabling Branch writers, and restoring a verified global projection before old code resumes.
+
+Phase 6C owns Branch low-stock/UI compatibility. Phase 8 owns public pickup Branch selection, reservations, conflict UX, and deterministic ecommerce attribution. Transfers, cash shifts/pools, printers, pricing, vouchers, packages, points, rewards, broad reporting, Phase 7, and multi-tenancy remain out of scope.
