@@ -13,6 +13,7 @@ use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
 use App\Services\Booking\BookingServiceProductLinkService;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,7 @@ class ServiceController extends Controller
 {
     public function __construct(
         private readonly BookingServiceProductLinkService $productLinkService,
+        private readonly StoreLocationAccessService $storeLocationAccess,
     ) {
     }
 
@@ -34,7 +36,7 @@ class ServiceController extends Controller
         $perPage = max(1, min(200, $perPage));
 
         $services = BookingService::query()
-            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->with(['allowedStaffs:id,name', 'storeLocations:id,name,code', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
             ->when($request->filled('name'), function ($query) use ($request) {
                 $term = '%' . trim((string) $request->get('name')) . '%';
                 $query->where(function ($inner) use ($term) {
@@ -72,7 +74,7 @@ class ServiceController extends Controller
     public function show(int $id)
     {
         $service = BookingService::query()
-            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->with(['allowedStaffs:id,name,position,avatar_path', 'storeLocations:id,name,code', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
             ->findOrFail($id);
 
         return $this->respond($this->formatService($service));
@@ -109,6 +111,8 @@ class ServiceController extends Controller
             'rules_json' => ['nullable', 'array'],
             'allowed_staff_ids' => ['required', 'array', 'min:1'],
             'allowed_staff_ids.*' => ['integer', 'distinct'],
+            'store_location_ids' => ['required', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
             'primary_slots' => ['nullable', 'array'],
             'primary_slots.*' => ['date_format:H:i'],
             'questions' => ['nullable', 'array'],
@@ -154,12 +158,13 @@ class ServiceController extends Controller
         }
 
         $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
+        $storeLocationIds = $this->storeLocationAccess->assertCanAssign($request->user(), $data['store_location_ids'] ?? [], false);
         $primarySlots = $data['primary_slots'] ?? [];
         $questions = $data['questions'] ?? [];
         $categoryIds = $this->resolveCategoryIds($request, $data);
         $createLinkedProduct = $request->boolean('create_linked_product');
         $linkedProductId = isset($data['linked_booking_product_id']) ? (int) $data['linked_booking_product_id'] : null;
-        unset($data['allowed_staff_ids'], $data['primary_slots'], $data['questions'], $data['questions_json'], $data['create_linked_product'], $data['linked_booking_product_id'], $data['category_ids'], $data['category_id']);
+        unset($data['store_location_ids'], $data['allowed_staff_ids'], $data['primary_slots'], $data['questions'], $data['questions_json'], $data['create_linked_product'], $data['linked_booking_product_id'], $data['category_ids'], $data['category_id']);
 
         $uploadedServiceImagePath = $data['image_path'] ?? null;
 
@@ -168,6 +173,7 @@ class ServiceController extends Controller
                 $request,
                 $data,
                 $allowedStaffIds,
+                $storeLocationIds,
                 $primarySlots,
                 $questions,
                 $categoryIds,
@@ -177,6 +183,7 @@ class ServiceController extends Controller
                 $service = BookingService::create($data);
                 $this->syncCategories($service, $categoryIds);
                 $this->syncAllowedStaffs($service, $allowedStaffIds);
+                $service->storeLocations()->sync($storeLocationIds);
                 $this->syncPrimarySlots($service, $primarySlots);
                 $this->syncQuestions($service, $questions);
                 $this->productLinkService->handleCreateLink($service, $createLinkedProduct, $linkedProductId ?: null);
@@ -197,6 +204,7 @@ class ServiceController extends Controller
             return $this->respond(
                 $this->formatService($service->fresh([
                     'allowedStaffs:id,name,position,avatar_path',
+                    'storeLocations:id,name,code',
                     'primarySlots',
                     'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
                     'categories:id,name,cn_name',
@@ -253,6 +261,8 @@ class ServiceController extends Controller
             'rules_json' => ['nullable', 'array'],
             'allowed_staff_ids' => ['required', 'array', 'min:1'],
             'allowed_staff_ids.*' => ['integer', 'distinct'],
+            'store_location_ids' => ['required', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
             'primary_slots' => ['nullable', 'array'],
             'primary_slots.*' => ['date_format:H:i'],
             'questions' => ['nullable', 'array'],
@@ -300,6 +310,7 @@ class ServiceController extends Controller
         }
 
         $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
+        $storeLocationIds = $this->storeLocationAccess->assertCanAssign($request->user(), $data['store_location_ids'] ?? [], false);
         $primarySlots = $data['primary_slots'] ?? [];
         $questions = $data['questions'] ?? [];
         $hasCategoryIdsInput = $request->has('category_ids') || $request->has('category_id');
@@ -312,6 +323,7 @@ class ServiceController extends Controller
             ? (($data['linked_booking_product_id'] ?? null) !== null ? (int) $data['linked_booking_product_id'] : null)
             : null;
         unset(
+            $data['store_location_ids'],
             $data['allowed_staff_ids'],
             $data['primary_slots'],
             $data['questions'],
@@ -332,6 +344,7 @@ class ServiceController extends Controller
                 $service,
                 $data,
                 $allowedStaffIds,
+                $storeLocationIds,
                 $primarySlots,
                 $questions,
                 $hasCategoryIdsInput,
@@ -347,6 +360,7 @@ class ServiceController extends Controller
                     $this->syncCategories($service, $categoryIds);
                 }
                 $this->syncAllowedStaffs($service, $allowedStaffIds);
+                $service->storeLocations()->sync($storeLocationIds);
                 $this->syncPrimarySlots($service, $primarySlots);
                 $this->syncQuestions($service, $questions);
 
@@ -586,7 +600,7 @@ class ServiceController extends Controller
         }
 
         return $this->respond(
-            $services->load(['allowedStaffs:id,name', 'primarySlots', 'categories:id,name,cn_name']),
+            $services->load(['allowedStaffs:id,name', 'storeLocations:id,name,code', 'primarySlots', 'categories:id,name,cn_name']),
             __('Services updated successfully.')
         );
     }
@@ -1149,6 +1163,8 @@ class ServiceController extends Controller
             'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
             'allowed_staff_count' => count($allowedStaffs),
             'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
+            'store_locations' => $service->storeLocations->values()->all(),
+            'store_location_ids' => $service->storeLocations->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
             'category_id' => $firstCategory ? (int) $firstCategory['id'] : null,
             'category' => $firstCategory,
             'categories' => $categoryPayload,

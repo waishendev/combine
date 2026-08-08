@@ -86,7 +86,7 @@ export default function ServiceStaffPage() {
   useEffect(() => {
     const run = async () => {
       try {
-        const detail = await getBookingServiceDetail(id);
+        const detail = await getBookingServiceDetail(id, Number(storeLocationId));
         setService(detail as ServiceDetail);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load service");

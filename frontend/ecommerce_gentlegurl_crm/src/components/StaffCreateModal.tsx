@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { StaffRowData } from './staffUtils'
 import { mapStaffApiItemToRow, type StaffApiItem } from './staffUtils'
@@ -9,6 +9,8 @@ import InternationalPhoneInput from '@/components/common/InternationalPhoneInput
 import { useI18n } from '@/lib/i18n'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { IMAGE_ACCEPT } from './mediaAccept'
+import BranchAssignmentChecklist from './BranchAssignmentChecklist'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface StaffCreateModalProps {
   onClose: () => void
@@ -46,6 +48,9 @@ export default function StaffCreateModal({
   onSuccess,
 }: StaffCreateModalProps) {
   const { t } = useI18n()
+  const { accessibleBranches } = useBranch()
+  const [storeLocationIds, setStoreLocationIds] = useState<number[]>([])
+  useEffect(() => { if (storeLocationIds.length === 0) setStoreLocationIds(accessibleBranches.map((b) => b.id)) }, [accessibleBranches, storeLocationIds.length])
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -99,6 +104,8 @@ export default function StaffCreateModal({
       return
     }
 
+    if (storeLocationIds.length === 0) { setError('Select at least one Branch.'); return }
+
     setSubmitting(true)
     setError(null)
 
@@ -117,6 +124,7 @@ export default function StaffCreateModal({
         commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
         service_commission_rate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
         is_active: true,
+        store_location_ids: storeLocationIds,
       }
 
       const useMultipart = Boolean(form.avatarFile)
@@ -139,6 +147,8 @@ export default function StaffCreateModal({
                 }
                 fd.append(key, String(value))
               })
+              fd.delete('store_location_ids')
+              storeLocationIds.forEach((id) => fd.append('store_location_ids[]', String(id)))
               if (form.avatarFile) {
                 fd.append('avatar', form.avatarFile)
               }
@@ -402,6 +412,8 @@ export default function StaffCreateModal({
                 </div>
                 <div className="flex-1" />
               </div>
+
+              <BranchAssignmentChecklist label="Works at" value={storeLocationIds} onChange={setStoreLocationIds} disabled={submitting} />
 
               <div>
                 <label

@@ -6,6 +6,7 @@ use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
+use App\Models\Ecommerce\StoreLocation;
 
 class Staff extends Model
 {
@@ -39,6 +40,16 @@ class Staff extends Model
     public function admin()
     {
         return $this->hasOne(User::class, 'staff_id');
+    }
+
+    public function storeLocations()
+    {
+        return $this->belongsToMany(StoreLocation::class, 'staff_store_location')->withTimestamps();
+    }
+
+    public function worksAt(int $storeLocationId): bool
+    {
+        return $this->storeLocations()->whereKey($storeLocationId)->exists();
     }
 
     public function getAvatarUrlAttribute(): ?string

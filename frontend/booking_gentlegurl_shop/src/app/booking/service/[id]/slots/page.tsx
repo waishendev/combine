@@ -137,7 +137,7 @@ function SlotPageContent() {
   useEffect(() => {
     const run = async () => {
       try {
-        const detail = await getBookingServiceDetail(serviceId);
+        const detail = await getBookingServiceDetail(serviceId, Number(storeLocationId));
         setService(detail as ServiceDetail);
       } catch {
         setService(null);

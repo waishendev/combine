@@ -51,6 +51,7 @@ class DatabaseSeeder extends Seeder
             PaymentGatewaySeeder::class,
             BillplzPaymentGatewayOptionSeeder::class,
             BookingLandingPageSeeder::class,
+            BookingBranchAssignmentSeeder::class,
             // EcommerceLandingPageSeeder::class,
             // BookingProductSeeder::class,
             

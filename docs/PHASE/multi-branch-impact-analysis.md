@@ -1,5 +1,7 @@
 # Gentlegurls multi-branch impact analysis
 
+> **Phase 5A implementation refinement (2026-08-08):** global `Staff` and `BookingService` identities use explicit `staff_store_location` and `booking_service_store_location` pivots. Public discovery and cart submission require explicit Branch assignment plus existing service/staff eligibility. Schedules, time off, leave, blocks, collisions, commissions, and commercial fields remain unchanged pending Phase 5B. See `phase-5a-booking-branch-runbook.md`.
+
 **Status:** Phase 0 architecture audit and planning only  
 **Audit date:** 2026-08-02  
 **Projects inspected:** Laravel backend, Next.js CRM, Next.js ecommerce shop, Next.js booking shop  

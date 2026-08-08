@@ -86,7 +86,7 @@ export default function BookingPageContent() {
       setLoading(true);
       setError(null);
       try {
-        const serviceData = await getBookingServices(search, selectedCategory.id);
+        const serviceData = await getBookingServices(search, selectedCategory.id, selectedStoreLocation?.id);
         setServices(serviceData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load services");

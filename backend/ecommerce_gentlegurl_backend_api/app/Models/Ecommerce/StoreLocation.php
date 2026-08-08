@@ -4,6 +4,8 @@ namespace App\Models\Ecommerce;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\User;
+use App\Models\Staff;
+use App\Models\Booking\BookingService;
 use Illuminate\Database\Eloquent\Model;
 use DateTimeInterface;
 
@@ -61,6 +63,16 @@ class StoreLocation extends Model
     {
         return $this->belongsToMany(User::class, 'store_location_user')
             ->withTimestamps();
+    }
+
+    public function staffs()
+    {
+        return $this->belongsToMany(Staff::class, 'staff_store_location')->withTimestamps();
+    }
+
+    public function bookingServices()
+    {
+        return $this->belongsToMany(BookingService::class, 'booking_service_store_location')->withTimestamps();
     }
 
     /**
