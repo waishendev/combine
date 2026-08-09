@@ -10,6 +10,7 @@ use App\Models\Booking\ServicePackage;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderItemStaffSplit;
+use App\Models\Ecommerce\PosCartServiceItem;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -24,6 +25,7 @@ class CustomerServicePackageService
             $customerPackage = CustomerServicePackage::create([
                 'customer_id' => $customerId,
                 'service_package_id' => $package->id,
+                'purchase_store_location_id' => $this->resolvePurchaseBranch(strtoupper($source), $sourceRefId),
                 'purchased_from' => strtoupper($source),
                 'purchased_ref_id' => $sourceRefId,
                 'started_at' => $startedAt,
@@ -82,6 +84,7 @@ class CustomerServicePackageService
                 'customer_service_package_id' => $balance->customer_service_package_id,
                 'customer_id' => $customerId,
                 'booking_id' => null,
+                'store_location_id' => $this->resolveUsageBranch(strtoupper($source), $sourceRefId),
                 'booking_service_id' => $bookingServiceId,
                 'used_qty' => $usedQty,
                 'used_from' => strtoupper($source),
@@ -140,6 +143,7 @@ class CustomerServicePackageService
                 'customer_service_package_id' => $customerServicePackageId,
                 'customer_id' => $customerId,
                 'booking_id' => $resolvedBookingId,
+                'store_location_id' => $this->resolveUsageBranch(strtoupper($source), $sourceRefId, $resolvedBookingId),
                 'booking_service_id' => $bookingServiceId,
                 'used_qty' => $usedQty,
                 'used_from' => strtoupper($source),
@@ -178,6 +182,7 @@ class CustomerServicePackageService
             $usage = CustomerServicePackageUsage::create([
                 'customer_service_package_id' => $balance->customer_service_package_id,
                 'customer_id' => $customerId,
+                'store_location_id' => $this->resolveUsageBranch(strtoupper($source), $sourceRefId),
                 'booking_service_id' => $bookingServiceId,
                 'used_qty' => $usedQty,
                 'used_from' => strtoupper($source),
@@ -195,6 +200,8 @@ class CustomerServicePackageService
 
     public function attachReservedClaimsToBooking(int $customerId, int $bookingServiceId, string $source, int $sourceRefId, int $bookingId): int
     {
+        $branchId = Booking::query()->whereKey($bookingId)->value('store_location_id');
+
         return (int) CustomerServicePackageUsage::query()
             ->where('customer_id', $customerId)
             ->where('booking_service_id', $bookingServiceId)
@@ -207,8 +214,42 @@ class CustomerServicePackageService
             })
             ->update([
                 'booking_id' => $bookingId,
+                'store_location_id' => $branchId,
                 'updated_at' => now(),
             ]);
+    }
+
+    private function resolveUsageBranch(string $source, ?int $sourceRefId, ?int $bookingId = null): ?int
+    {
+        if ($bookingId) {
+            return Booking::query()->whereKey($bookingId)->value('store_location_id');
+        }
+        if (!$sourceRefId) {
+            return null;
+        }
+        if ($source === 'BOOKING') {
+            return Booking::query()->whereKey($sourceRefId)->value('store_location_id');
+        }
+        if ($source === 'POS') {
+            return PosCartServiceItem::query()->whereKey($sourceRefId)->with('cart:id,store_location_id')->first()?->cart?->store_location_id;
+        }
+
+        return null;
+    }
+
+    private function resolvePurchaseBranch(string $source, ?int $sourceRefId): ?int
+    {
+        if (!$sourceRefId) {
+            return null;
+        }
+        if ($source === 'POS') {
+            return Order::query()->whereKey($sourceRefId)->value('store_location_id');
+        }
+        if ($source === 'BOOKING') {
+            return Booking::query()->whereKey($sourceRefId)->value('store_location_id');
+        }
+
+        return null;
     }
 
     public function resolvePosCartServiceItemIdsForBooking(int $bookingId): array

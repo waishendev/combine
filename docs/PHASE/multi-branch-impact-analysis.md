@@ -421,3 +421,15 @@ The POS cash re-audit confirms Cash Shift and the physical carried Cash Pool Acc
 ### PostgreSQL uniqueness correction
 
 Phase 6A inventory identity uniqueness is implemented with separate partial unique indexes for NULL-Variant Product rows and non-NULL Variant rows. This replaces the non-portable virtual generated column while preserving nullable Variant semantics and the exact Branch/Product/Variant uniqueness rules. Phase 6B reconciliation and mutation queries now match nullable `product_variant_id` directly.
+
+## Phase 7 implementation refinement (2026-08-08)
+
+The current-code re-audit confirms global Customer identity, global FIFO point balance, global Package definitions/ownership/balances, global Voucher identities, and global Loyalty Reward identities. Phase 7 adds nullable transaction attribution without partitioning any master or entitlement. Package applicability was not needed because packages already restrict eligible Booking Services and their shared balance is concurrency locked. The initially proposed Voucher/reward applicability was removed by the correction below.
+
+Redeem Product has no redundant Branch pivot and persists the actual claim Branch when known. Initial Ecommerce redemption is global; Phase 6A Product availability remains available for POS and later fulfilment validation. Quantity checks/mutations intentionally remain on current global Product stock. Branch Inventory authority remains inactive, ecommerce inventory/reservations are unchanged, and no multi-tenant concepts are introduced. See [the Phase 7 runbook](phase-7-benefit-branch-runbook.md) for write paths, safe backfill, reconciliation, rollback, legacy NULL semantics, and Phase 8/9 deferrals.
+
+## Phase 7 global-benefit correction (2026-08-09)
+
+The first-version business decision is revised for the single shared Ecommerce website: Voucher, Redeem Voucher, and Redeem Product eligibility are global. Branch is recorded as transaction attribution when POS, Booking, Order, or fulfilment provides a deterministic Branch; genuinely unresolved Ecommerce attribution remains NULL without a default. Voucher/Reward Branch enforcement, applicability pivots, and CRM checklists are removed rather than retained as inactive-looking architecture.
+
+Redeem Product no longer consults Phase 6 Product availability during the initial global reward claim. This does not remove or weaken `store_location_product`: POS continues to enforce Product availability, and later Ecommerce fulfilment/Branch Inventory work will validate the actual fulfilment Branch at the appropriate stage. Global stock remains authoritative, Branch Inventory stays inactive, and Phase 8 is not started. See the corrected [Phase 7 runbook](phase-7-benefit-branch-runbook.md).

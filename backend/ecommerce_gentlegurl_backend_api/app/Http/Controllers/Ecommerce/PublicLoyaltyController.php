@@ -10,6 +10,7 @@ use App\Services\Ecommerce\MembershipTierService;
 use App\Services\Ecommerce\LoyaltySummaryService;
 use App\Services\Loyalty\PointsService;
 use Illuminate\Http\Request;
+use App\Models\Ecommerce\StoreLocation;
 
 class PublicLoyaltyController extends Controller
 {
@@ -111,11 +112,22 @@ class PublicLoyaltyController extends Controller
 
         $validated = $request->validate([
             'reward_id' => ['required', 'integer', 'exists:loyalty_rewards,id'],
+            'store_location_id' => ['nullable', 'integer', 'exists:store_locations,id'],
+            'idempotency_key' => ['nullable', 'string', 'max:100'],
         ]);
+
+        if (!empty($validated['store_location_id'])) {
+            StoreLocation::query()->whereKey($validated['store_location_id'])->where('is_active', true)->firstOrFail();
+        }
 
         $reward = LoyaltyReward::findOrFail($validated['reward_id']);
 
-        $redemption = $pointsService->redeemPointsForReward($customer, $reward);
+        $redemption = $pointsService->redeemPointsForReward(
+            $customer,
+            $reward,
+            $validated['store_location_id'] ?? null,
+            $validated['idempotency_key'] ?? null,
+        );
         $summary = $pointsService->getSummaryForCustomer($customer);
 
         return $this->respond([

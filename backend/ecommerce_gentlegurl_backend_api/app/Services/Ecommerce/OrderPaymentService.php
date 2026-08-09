@@ -77,6 +77,7 @@ class OrderPaymentService
 
         PointsTransaction::create([
             'customer_id' => $order->customer_id,
+            'store_location_id' => $order->store_location_id,
             'type' => 'earn',
             'points_change' => $points,
             'source_type' => Order::class,

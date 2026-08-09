@@ -14,6 +14,7 @@ class VoucherUsage extends Model
         'customer_id',
         'order_id',
         'customer_voucher_id',
+        'store_location_id',
         'discount_amount',
         'used_at',
     ];
@@ -44,5 +45,10 @@ class VoucherUsage extends Model
     public function customerVoucher()
     {
         return $this->belongsTo(CustomerVoucher::class);
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class);
     }
 }

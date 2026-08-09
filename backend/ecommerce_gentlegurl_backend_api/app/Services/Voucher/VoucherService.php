@@ -135,11 +135,13 @@ class VoucherService
 
     public function recordUsage(int $voucherId, ?int $customerId, int $orderId, ?int $customerVoucherId = null, ?float $discountAmount = null): void
     {
+        $storeLocationId = \App\Models\Ecommerce\Order::query()->whereKey($orderId)->value('store_location_id');
         $usage = VoucherUsage::create([
             'voucher_id' => $voucherId,
             'customer_id' => $customerId,
             'order_id' => $orderId,
             'customer_voucher_id' => $customerVoucherId,
+            'store_location_id' => $storeLocationId,
             'discount_amount' => $discountAmount,
             'used_at' => Carbon::now(),
         ]);

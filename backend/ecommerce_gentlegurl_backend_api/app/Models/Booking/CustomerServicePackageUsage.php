@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class CustomerServicePackageUsage extends Model
 {
     protected $fillable = [
-        'customer_service_package_id', 'customer_id', 'booking_id', 'booking_service_id',
+        'customer_service_package_id', 'customer_id', 'booking_id', 'store_location_id', 'booking_service_id',
         'service_name_snapshot', 'used_qty', 'redemption_value_snapshot', 'used_from', 'used_ref_id',
         'status', 'reserved_at', 'consumed_at', 'released_at', 'notes',
     ];
@@ -38,5 +38,10 @@ class CustomerServicePackageUsage extends Model
     public function bookingService()
     {
         return $this->belongsTo(BookingService::class);
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(\App\Models\Ecommerce\StoreLocation::class);
     }
 }
