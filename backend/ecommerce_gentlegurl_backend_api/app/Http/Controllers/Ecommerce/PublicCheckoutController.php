@@ -27,6 +27,7 @@ use App\Services\Voucher\VoucherService;
 use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\CustomerWalletService;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\Ecommerce\PickupFulfillmentService;
 use Carbon\Carbon;
 use App\Support\Pricing\ProductPricing;
 use App\Support\WorkspaceType;
@@ -56,6 +57,7 @@ class PublicCheckoutController extends Controller
         protected ShippingService $shippingService,
         protected CustomerWalletService $customerWalletService,
         protected OrderPaymentService $orderPaymentService,
+        protected PickupFulfillmentService $pickupFulfillmentService,
     )
     {
     }
@@ -86,6 +88,9 @@ class PublicCheckoutController extends Controller
             true,
         );
 
+        if ($shippingMethod === 'pickup') {
+            $this->pickupFulfillmentService->validate((int) $validated['store_location_id'], $calculation['items']);
+        }
         $this->orderReserveService->validateStockForItems($calculation['items']);
 
         return $this->respond([
@@ -143,6 +148,10 @@ class PublicCheckoutController extends Controller
             $validated['shipping_country'] ?? null,
             $validated['shipping_state'] ?? null,
         );
+
+        if ($shippingMethod === 'pickup') {
+            $this->pickupFulfillmentService->validate((int) $validated['store_location_id'], $calculation['items']);
+        }
 
         if ((!empty($validated['voucher_code']) || !empty($validated['customer_voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']['is_valid'])) {
             return $this->respond(null, $calculation['voucher_error'] ?? __('Invalid voucher'), false, 422);
@@ -251,6 +260,11 @@ class PublicCheckoutController extends Controller
 
         try {
             [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod, $billingSameAsShipping, $billingName, $billingPhone, $billingAddressLine1, $billingAddressLine2, $billingCity, $billingState, $billingPostcode, $billingCountry, $type, $selectedGatewayOption) {
+                if ($shippingMethod === 'pickup') {
+                    // Revalidate and lock every exact Branch inventory row in the same
+                    // transaction as the legacy global reservation and Order creation.
+                    $this->pickupFulfillmentService->validate((int) $validated['store_location_id'], $calculation['items'], true);
+                }
                 $this->orderReserveService->reserveStockForItems($calculation['items']);
 
                 $order = Order::create([
@@ -267,7 +281,7 @@ class PublicCheckoutController extends Controller
                     'billplz_gateway_option_id' => $selectedGatewayOption?->id,
                     'bank_account_id' => $bankAccount?->id,
                     'pickup_or_shipping' => $shippingMethod,
-                    'pickup_store_id' => $validated['store_location_id'] ?? null,
+                    'pickup_store_id' => $shippingMethod === 'pickup' ? ($validated['store_location_id'] ?? null) : null,
                     // Checkout validation proves this is an active pickup location. Delivery ownership remains unresolved.
                     'store_location_id' => $shippingMethod !== 'shipping' ? ($validated['store_location_id'] ?? null) : null,
                     'subtotal' => $calculation['subtotal'],
@@ -332,6 +346,9 @@ class PublicCheckoutController extends Controller
                             $meta['order_item_id'] = $orderItem->id;
                             $redemption->meta = $meta;
                             $redemption->status = 'completed';
+                            $redemption->store_location_id = $shippingMethod === 'pickup'
+                                ? (int) $validated['store_location_id']
+                                : null;
                             $redemption->save();
                         }
                     }
