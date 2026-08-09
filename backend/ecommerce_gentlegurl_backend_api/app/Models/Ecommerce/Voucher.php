@@ -68,6 +68,18 @@ class Voucher extends Model
         return $this->belongsToMany(Category::class, 'voucher_categories');
     }
 
+    public function storeLocations()
+    {
+        return $this->belongsToMany(StoreLocation::class, 'voucher_store_location')->withTimestamps();
+    }
+
+    public function isApplicableAt(int|StoreLocation $location): bool
+    {
+        $id = $location instanceof StoreLocation ? $location->getKey() : $location;
+
+        return $this->storeLocations()->whereKey($id)->exists();
+    }
+
     /**
      * Prepare a date for array / JSON serialization.
      *

@@ -175,8 +175,17 @@ class PointsService
         });
     }
 
-    public function redeemPointsForReward(Customer $customer, LoyaltyReward $reward): LoyaltyRedemption
+    public function redeemPointsForReward(Customer $customer, LoyaltyReward $reward, ?int $storeLocationId = null, ?string $idempotencyKey = null): LoyaltyRedemption
     {
+        if ($idempotencyKey) {
+            $existing = LoyaltyRedemption::query()
+                ->where('customer_id', $customer->id)
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+        }
         if (!$reward->is_active) {
             throw ValidationException::withMessages([
                 'reward_id' => __('Selected reward is not active.'),
@@ -187,6 +196,15 @@ class PointsService
             throw ValidationException::withMessages([
                 'reward_id' => __('Selected voucher reward is not configured correctly.'),
             ]);
+        }
+
+        if ($storeLocationId !== null && $reward->type === 'voucher') {
+            if (!$reward->storeLocations()->whereKey($storeLocationId)->exists()
+                || !$reward->voucher?->isApplicableAt($storeLocationId)) {
+                throw ValidationException::withMessages([
+                    'store_location_id' => __('This voucher reward is not available at the selected Branch.'),
+                ]);
+            }
         }
 
         if ($reward->type === 'product') {
@@ -202,6 +220,11 @@ class PointsService
                     'reward_id' => __('Reward product must be reward-only.'),
                 ]);
             }
+            if ($storeLocationId !== null && !$product->isAvailableAt($storeLocationId)) {
+                throw ValidationException::withMessages([
+                    'store_location_id' => __('This product is not available at the selected Branch.'),
+                ]);
+            }
         }
 
         $availablePoints = $this->getAvailablePoints($customer, Carbon::now());
@@ -213,7 +236,7 @@ class PointsService
             ])->status(422);
         }
 
-        return DB::transaction(function () use ($customer, $reward, $required) {
+        return DB::transaction(function () use ($customer, $reward, $required, $storeLocationId, $idempotencyKey) {
             $now = Carbon::now();
             $remaining = $required;
 
@@ -289,6 +312,8 @@ class PointsService
             $redemption = LoyaltyRedemption::create([
                 'customer_id' => $customer->id,
                 'reward_id' => $reward->id,
+                'store_location_id' => $storeLocationId,
+                'idempotency_key' => $idempotencyKey,
                 'points_spent' => $required,
                 'status' => 'pending',
                 'reward_title_snapshot' => $reward->title,
@@ -298,6 +323,7 @@ class PointsService
 
             PointsTransaction::create([
                 'customer_id' => $customer->id,
+                'store_location_id' => $storeLocationId,
                 'type' => 'redeem',
                 'points_change' => -1 * $required,
                 'source_type' => 'loyalty_reward',

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Voucher;
+use App\Services\StoreLocationAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,11 +13,13 @@ use Illuminate\Validation\ValidationException;
 
 class VoucherController extends Controller
 {
+    public function __construct(private readonly StoreLocationAccessService $storeLocationAccess) {}
+
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 15);
 
-        $vouchers = Voucher::query()
+        $vouchers = Voucher::query()->with('storeLocations:id,name,code')
             ->when($request->filled('code'), fn($q) => $q->where('code', 'like', '%' . $request->string('code')->toString() . '%'))
             ->when($request->filled('type'), fn($q) => $q->where('type', $request->string('type')))
             ->when($request->filled('is_active'), fn($q) => $q->where('is_active', $request->boolean('is_active')))
@@ -32,6 +35,7 @@ class VoucherController extends Controller
         $voucher->load([
             'products:id,name,sku',
             'categories:id,name',
+            'storeLocations:id,name,code',
         ]);
 
         return $this->respond($voucher);
@@ -79,7 +83,11 @@ class VoucherController extends Controller
             'product_ids.*' => ['integer', 'exists:products,id'],
             'category_ids' => ['array'],
             'category_ids.*' => ['integer', 'exists:categories,id'],
+            'store_location_ids' => ['required', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
         ]);
+
+        $validated['store_location_ids'] = $this->storeLocationAccess->assertCanAssign($request->user(), $validated['store_location_ids'], false);
 
         $payload = $validated + [
             'is_active' => $validated['is_active'] ?? true,
@@ -93,11 +101,12 @@ class VoucherController extends Controller
             $voucher = Voucher::create($payload);
 
             $this->syncVoucherScopeRelations($voucher, $validated);
+            $voucher->storeLocations()->sync($validated['store_location_ids']);
 
             return $voucher;
         });
 
-        $voucher->load(['products:id,name,sku', 'categories:id,name']);
+        $voucher->load(['products:id,name,sku', 'categories:id,name', 'storeLocations:id,name,code']);
 
         return $this->respond($voucher, __('Voucher created.'));
     }
@@ -123,7 +132,13 @@ class VoucherController extends Controller
             'product_ids.*' => ['integer', 'exists:products,id'],
             'category_ids' => ['array'],
             'category_ids.*' => ['integer', 'exists:categories,id'],
+            'store_location_ids' => ['sometimes', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
         ]);
+
+        if (array_key_exists('store_location_ids', $validated)) {
+            $validated['store_location_ids'] = $this->storeLocationAccess->assertCanAssign($request->user(), $validated['store_location_ids'], false);
+        }
 
         $payload = $validated;
 
@@ -140,11 +155,14 @@ class VoucherController extends Controller
             $voucher->save();
 
             $this->syncVoucherScopeRelations($voucher, $validated);
+            if (array_key_exists('store_location_ids', $validated)) {
+                $voucher->storeLocations()->sync($validated['store_location_ids']);
+            }
 
             return $voucher;
         });
 
-        $voucher->load(['products:id,name,sku', 'categories:id,name']);
+        $voucher->load(['products:id,name,sku', 'categories:id,name', 'storeLocations:id,name,code']);
 
         return $this->respond($voucher, __('Voucher updated.'));
     }

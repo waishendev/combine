@@ -12,6 +12,8 @@ class LoyaltyRedemption extends Model
     protected $fillable = [
         'customer_id',
         'reward_id',
+        'store_location_id',
+        'idempotency_key',
         'points_spent',
         'status',
         'reward_title_snapshot',
@@ -36,5 +38,10 @@ class LoyaltyRedemption extends Model
     public function reward()
     {
         return $this->belongsTo(LoyaltyReward::class, 'reward_id');
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class);
     }
 }

@@ -46,4 +46,10 @@ class LoyaltyReward extends Model
     {
         return $this->hasMany(LoyaltyRedemption::class, 'reward_id');
     }
+
+    /** Branch applicability is only used for voucher rewards; product rewards use Product::storeLocations(). */
+    public function storeLocations()
+    {
+        return $this->belongsToMany(StoreLocation::class, 'loyalty_reward_store_location')->withTimestamps();
+    }
 }

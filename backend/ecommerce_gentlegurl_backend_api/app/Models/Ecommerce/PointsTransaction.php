@@ -11,6 +11,7 @@ class PointsTransaction extends Model
 
     protected $fillable = [
         'customer_id',
+        'store_location_id',
         'type',
         'points_change',
         'source_type',
@@ -29,5 +30,10 @@ class PointsTransaction extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class);
     }
 }

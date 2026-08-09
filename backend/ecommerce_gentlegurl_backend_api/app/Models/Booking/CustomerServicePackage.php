@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class CustomerServicePackage extends Model
 {
     protected $fillable = [
-        'customer_id', 'service_package_id', 'package_name_snapshot', 'selling_price_snapshot',
+        'customer_id', 'service_package_id', 'purchase_store_location_id', 'package_name_snapshot', 'selling_price_snapshot',
         'purchase_amount_snapshot', 'refunded_amount_snapshot', 'purchase_reference_snapshot',
         'purchased_from', 'purchased_ref_id', 'started_at', 'expires_at', 'status',
     ];
@@ -36,5 +36,10 @@ class CustomerServicePackage extends Model
     public function usages()
     {
         return $this->hasMany(CustomerServicePackageUsage::class);
+    }
+
+    public function purchaseStoreLocation()
+    {
+        return $this->belongsTo(\App\Models\Ecommerce\StoreLocation::class, 'purchase_store_location_id');
     }
 }

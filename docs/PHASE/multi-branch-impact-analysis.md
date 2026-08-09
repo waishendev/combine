@@ -421,3 +421,9 @@ The POS cash re-audit confirms Cash Shift and the physical carried Cash Pool Acc
 ### PostgreSQL uniqueness correction
 
 Phase 6A inventory identity uniqueness is implemented with separate partial unique indexes for NULL-Variant Product rows and non-NULL Variant rows. This replaces the non-portable virtual generated column while preserving nullable Variant semantics and the exact Branch/Product/Variant uniqueness rules. Phase 6B reconciliation and mutation queries now match nullable `product_variant_id` directly.
+
+## Phase 7 implementation refinement (2026-08-08)
+
+The current-code re-audit confirms global Customer identity, global FIFO point balance, global Package definitions/ownership/balances, global Voucher identities, and global Loyalty Reward identities. Phase 7 adds explicit Voucher and voucher-reward Branch applicability plus nullable transaction attribution; it does not partition any master or entitlement. Package applicability was not needed because packages already restrict eligible Booking Services and their shared balance is concurrency locked.
+
+Redeem Product has no redundant Branch pivot: it uses Phase 6A Product availability and persists the actual claim Branch. Quantity checks/mutations intentionally remain on current global Product stock. Branch Inventory authority remains inactive, ecommerce inventory/reservations are unchanged, and no multi-tenant concepts are introduced. See [the Phase 7 runbook](phase-7-benefit-branch-runbook.md) for write paths, safe backfill, reconciliation, rollback, legacy NULL semantics, and Phase 8/9 deferrals.

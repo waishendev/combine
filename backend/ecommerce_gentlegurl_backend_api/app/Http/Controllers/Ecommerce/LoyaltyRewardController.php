@@ -6,15 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\LoyaltyReward;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use App\Services\StoreLocationAccessService;
+use Illuminate\Support\Facades\DB;
 
 class LoyaltyRewardController extends Controller
 {
+    public function __construct(private readonly StoreLocationAccessService $storeLocationAccess) {}
     public function index(Request $request)
     {
         $rewards = LoyaltyReward::query()
             ->with([
                 'product:id,name,sku,stock',
                 'voucher:id,code,value,min_order_amount,start_at,end_at,is_active',
+                'storeLocations:id,name,code',
             ])
             ->when($request->filled('is_active'), fn($q) => $q->where('is_active', $request->boolean('is_active')))
             ->when($request->filled('type'), fn($q) => $q->where('type', $request->string('type')->toString()))
@@ -29,10 +33,15 @@ class LoyaltyRewardController extends Controller
     {
         $validated = $this->validatePayload($request);
 
-        $reward = LoyaltyReward::create($validated);
+        $reward = DB::transaction(function () use ($validated) {
+            $reward = LoyaltyReward::create($validated);
+            $reward->storeLocations()->sync($validated['store_location_ids'] ?? []);
+            return $reward;
+        });
         $reward->load([
             'product:id,name,sku,stock',
             'voucher:id,code,value,min_order_amount,start_at,end_at,is_active',
+            'storeLocations:id,name,code',
         ]);
 
         return $this->respond($reward, __('Reward created successfully.'));
@@ -43,6 +52,7 @@ class LoyaltyRewardController extends Controller
         $reward->load([
             'product:id,name,sku,stock',
             'voucher:id,code,value,min_order_amount,start_at,end_at,is_active',
+            'storeLocations:id,name,code',
         ]);
         return $this->respond($reward);
     }
@@ -51,11 +61,17 @@ class LoyaltyRewardController extends Controller
     {
         $validated = $this->validatePayload($request, $reward);
 
-        $reward->fill($validated);
-        $reward->save();
+        DB::transaction(function () use ($reward, $validated) {
+            $reward->fill($validated);
+            $reward->save();
+            if (array_key_exists('store_location_ids', $validated)) {
+                $reward->storeLocations()->sync($validated['store_location_ids']);
+            }
+        });
         $reward->load([
             'product:id,name,sku,stock',
             'voucher:id,code,value,min_order_amount,start_at,end_at,is_active',
+            'storeLocations:id,name,code',
         ]);
 
         return $this->respond($reward, __('Reward updated successfully.'));
@@ -72,7 +88,7 @@ class LoyaltyRewardController extends Controller
     {
         $type = $request->string('type')->toString();
 
-        return $request->validate([
+        $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'type' => ['required', Rule::in(['product', 'voucher', 'custom'])],
@@ -83,6 +99,25 @@ class LoyaltyRewardController extends Controller
             'quota_used' => ['sometimes', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer'],
+            'store_location_ids' => [$type === 'voucher' ? 'required' : 'prohibited', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
         ]);
+
+        if ($type === 'voucher') {
+            $validated['store_location_ids'] = $this->storeLocationAccess->assertCanAssign($request->user(), $validated['store_location_ids'], false);
+            $voucherBranchIds = \App\Models\Ecommerce\Voucher::query()
+                ->findOrFail($validated['voucher_id'])
+                ->storeLocations()
+                ->pluck('store_locations.id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            if (array_diff($validated['store_location_ids'], $voucherBranchIds)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'store_location_ids' => __('Redeem Voucher Branches must be a subset of the generated Voucher applicability.'),
+                ]);
+            }
+        }
+
+        return $validated;
     }
 }
