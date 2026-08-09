@@ -25,7 +25,6 @@ interface FormState {
   scopeType: 'all' | 'products' | 'categories'
   productIds: number[]
   categoryIds: number[]
-  storeLocationIds: number[]
 }
 
 const initialFormState: FormState = {
@@ -39,7 +38,6 @@ const initialFormState: FormState = {
   scopeType: 'all',
   productIds: [],
   categoryIds: [],
-  storeLocationIds: [],
 }
 
 export default function VoucherCreateModal({
@@ -57,14 +55,13 @@ export default function VoucherCreateModal({
   const [productSearch, setProductSearch] = useState('')
   const [categorySearch, setCategorySearch] = useState('')
   const [loadingOptions, setLoadingOptions] = useState(false)
-  const [branchOptions, setBranchOptions] = useState<Array<{ id: number; name: string }>>([])
 
   useEffect(() => {
     const controller = new AbortController()
     const fetchOptions = async () => {
       setLoadingOptions(true)
       try {
-        const [productsRes, categoriesRes, branchesRes] = await Promise.all([
+        const [productsRes, categoriesRes] = await Promise.all([
           fetch('/api/proxy/ecommerce/products?page=1&per_page=200', {
             cache: 'no-store',
             signal: controller.signal,
@@ -73,7 +70,6 @@ export default function VoucherCreateModal({
             cache: 'no-store',
             signal: controller.signal,
           }),
-          fetch('/api/proxy/me/store-locations', { cache: 'no-store', signal: controller.signal }),
         ])
 
         if (!productsRes.ok || !categoriesRes.ok) {
@@ -82,7 +78,6 @@ export default function VoucherCreateModal({
 
         const productsData = await productsRes.json().catch(() => ({}))
         const categoriesData = await categoriesRes.json().catch(() => ({}))
-        const branchesData = await branchesRes.json().catch(() => ({}))
 
         if (productsData?.success === false && productsData?.message === 'Unauthorized') {
           window.location.replace('/dashboard')
@@ -125,12 +120,6 @@ export default function VoucherCreateModal({
             }))
             .filter((item: { id: number; name: string }) => item.id > 0 && item.name)
         )
-        const branchList = normalizeList(branchesData?.data)
-        const branches = branchList
-          .map((item: { id?: number | string; name?: string }) => ({ id: Number(item.id), name: item.name ?? '' }))
-          .filter((item: { id: number; name: string }) => item.id > 0 && item.name)
-        setBranchOptions(branches)
-        setForm((prev) => ({ ...prev, storeLocationIds: prev.storeLocationIds.length ? prev.storeLocationIds : branches.map((item) => item.id) }))
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           console.error(err)
@@ -216,10 +205,6 @@ export default function VoucherCreateModal({
       setError('Please select at least one category.')
       return
     }
-    if (form.storeLocationIds.length === 0) {
-      setError('Please select at least one applicable Branch.')
-      return
-    }
     if (maxUsesNum !== undefined && !Number.isFinite(maxUsesNum)) {
       setError(t('common.allFieldsRequired'))
       return
@@ -249,7 +234,6 @@ export default function VoucherCreateModal({
           value: valueNum,
           min_order_amount: minOrderAmountNum,
           scope_type: form.scopeType,
-          store_location_ids: form.storeLocationIds,
           ...(form.scopeType === 'products' ? { product_ids: form.productIds } : {}),
           ...(form.scopeType === 'categories' ? { category_ids: form.categoryIds } : {}),
           ...(maxUsesNum !== undefined ? { max_uses: maxUsesNum } : {}),
@@ -349,18 +333,6 @@ export default function VoucherCreateModal({
       }
     >
         <form id="voucher-create-form" onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          <fieldset className="rounded-md border border-gray-200 p-3">
-            <legend className="px-1 text-sm font-medium text-gray-700">Applicable at <span className="text-red-500">*</span></legend>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {branchOptions.map((branch) => (
-                <label key={branch.id} className="flex items-center gap-2 text-sm text-gray-700">
-                  <input type="checkbox" checked={form.storeLocationIds.includes(branch.id)} disabled={submitting}
-                    onChange={() => setForm((prev) => ({ ...prev, storeLocationIds: prev.storeLocationIds.includes(branch.id) ? prev.storeLocationIds.filter((id) => id !== branch.id) : [...prev.storeLocationIds, branch.id] }))} />
-                  {branch.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
           <div>
             <label
               htmlFor="code"

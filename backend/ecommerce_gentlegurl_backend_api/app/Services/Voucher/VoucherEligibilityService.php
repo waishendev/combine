@@ -17,7 +17,6 @@ class VoucherEligibilityService
         array $items,
         float $cartSubtotal,
         ?CustomerVoucher $customerVoucher = null,
-        ?int $storeLocationId = null,
     ): array {
         $reasons = [];
         $voucher = $customerVoucher?->voucher ?: Voucher::query()
@@ -39,12 +38,6 @@ class VoucherEligibilityService
 
         if (!$voucher->is_active) {
             return $this->invalidResult('Voucher is not active.', $reasons, $voucher);
-        }
-
-        // A NULL branch is retained for genuinely global ecommerce flows. Every
-        // deterministic POS/booking caller must pass its persisted transaction branch.
-        if ($storeLocationId !== null && !$voucher->isApplicableAt($storeLocationId)) {
-            return $this->invalidResult('Voucher is not applicable at this Branch.', $reasons, $voucher, $customerVoucher);
         }
 
         $now = Carbon::now();

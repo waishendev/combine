@@ -198,15 +198,6 @@ class PointsService
             ]);
         }
 
-        if ($storeLocationId !== null && $reward->type === 'voucher') {
-            if (!$reward->storeLocations()->whereKey($storeLocationId)->exists()
-                || !$reward->voucher?->isApplicableAt($storeLocationId)) {
-                throw ValidationException::withMessages([
-                    'store_location_id' => __('This voucher reward is not available at the selected Branch.'),
-                ]);
-            }
-        }
-
         if ($reward->type === 'product') {
             $product = $reward->product;
             if (!$product) {
@@ -218,11 +209,6 @@ class PointsService
             if (!$product->is_reward_only) {
                 throw ValidationException::withMessages([
                     'reward_id' => __('Reward product must be reward-only.'),
-                ]);
-            }
-            if ($storeLocationId !== null && !$product->isAvailableAt($storeLocationId)) {
-                throw ValidationException::withMessages([
-                    'store_location_id' => __('This product is not available at the selected Branch.'),
                 ]);
             }
         }

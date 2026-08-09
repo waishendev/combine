@@ -15,7 +15,6 @@ export type VoucherApiItem = {
   is_active?: boolean | number | string | null
   products?: Array<{ id: number; name?: string | null; sku?: string | null }> | null
   categories?: Array<{ id: number; name?: string | null }> | null
-  store_locations?: Array<{ id: number; name?: string | null; code?: string | null }> | null
 }
 
 export const mapVoucherApiItemToRow = (item: VoucherApiItem): VoucherRowData => {

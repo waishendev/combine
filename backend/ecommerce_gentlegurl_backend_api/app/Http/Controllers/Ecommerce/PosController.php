@@ -6365,7 +6365,6 @@ class PosController extends Controller
             $cartItems,
             (float) $subtotal,
             $customerVoucher,
-            (int) $cart->store_location_id,
         );
 
         if (!$result['is_valid']) {
@@ -7369,7 +7368,6 @@ class PosController extends Controller
                     $this->serializeCartItemsForVoucher($cart),
                     (float) $subtotal,
                     $customerVoucher,
-                    (int) $cart->store_location_id,
                 );
 
                 if ($voucherResult['is_valid']) {
