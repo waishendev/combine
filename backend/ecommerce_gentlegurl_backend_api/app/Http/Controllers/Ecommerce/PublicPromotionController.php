@@ -13,7 +13,7 @@ class PublicPromotionController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Promotion::query();
+            $query = Promotion::query()->online();
 
             $activeOnly = $request->boolean('active_only', true);
             $currentOnly = $request->boolean('current_only', true);

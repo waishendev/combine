@@ -28,6 +28,8 @@ use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\CustomerWalletService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Ecommerce\PickupFulfillmentService;
+use App\Services\Ecommerce\ShippingFulfillmentService;
+use App\Services\Ecommerce\OrderBranchInventoryService;
 use Carbon\Carbon;
 use App\Support\Pricing\ProductPricing;
 use App\Support\WorkspaceType;
@@ -58,6 +60,8 @@ class PublicCheckoutController extends Controller
         protected CustomerWalletService $customerWalletService,
         protected OrderPaymentService $orderPaymentService,
         protected PickupFulfillmentService $pickupFulfillmentService,
+        protected ShippingFulfillmentService $shippingFulfillmentService,
+        protected OrderBranchInventoryService $orderBranchInventoryService,
     )
     {
     }
@@ -90,6 +94,8 @@ class PublicCheckoutController extends Controller
 
         if ($shippingMethod === 'pickup') {
             $this->pickupFulfillmentService->validate((int) $validated['store_location_id'], $calculation['items']);
+        } else {
+            $this->shippingFulfillmentService->selectBranch($calculation['items']);
         }
         $this->orderReserveService->validateStockForItems($calculation['items']);
 
@@ -149,8 +155,12 @@ class PublicCheckoutController extends Controller
             $validated['shipping_state'] ?? null,
         );
 
+        $fulfillmentBranchId = null;
         if ($shippingMethod === 'pickup') {
+            $fulfillmentBranchId = (int) $validated['store_location_id'];
             $this->pickupFulfillmentService->validate((int) $validated['store_location_id'], $calculation['items']);
+        } else {
+            $fulfillmentBranchId = (int) $this->shippingFulfillmentService->selectBranch($calculation['items'])->id;
         }
 
         if ((!empty($validated['voucher_code']) || !empty($validated['customer_voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']['is_valid'])) {
@@ -259,14 +269,16 @@ class PublicCheckoutController extends Controller
         $billplzId = null;
 
         try {
-            [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod, $billingSameAsShipping, $billingName, $billingPhone, $billingAddressLine1, $billingAddressLine2, $billingCity, $billingState, $billingPostcode, $billingCountry, $type, $selectedGatewayOption) {
+            [$order, $billplzUrl, $billplzId] = DB::transaction(function () use ($validated, $customer, $calculation, $paymentMethod, $paymentProvider, $shippingAddressLine1, $shippingName, $shippingPhone, $bankAccount, $shippingMethod, $billingSameAsShipping, $billingName, $billingPhone, $billingAddressLine1, $billingAddressLine2, $billingCity, $billingState, $billingPostcode, $billingCountry, $type, $selectedGatewayOption, $fulfillmentBranchId) {
                 if ($shippingMethod === 'pickup') {
                     // Revalidate and lock every exact Branch inventory row in the same
                     // transaction as the legacy global reservation and Order creation.
                     $this->pickupFulfillmentService->validate((int) $validated['store_location_id'], $calculation['items'], true);
+                } else {
+                    // Priority is re-evaluated under locks so a stale candidate is
+                    // never persisted when a later configured Branch can fulfil.
+                    $fulfillmentBranchId = (int) $this->shippingFulfillmentService->selectBranch($calculation['items'], true)->id;
                 }
-                $this->orderReserveService->reserveStockForItems($calculation['items']);
-
                 $order = Order::create([
                     'order_number' => $this->generateOrderNumber(),
                     'customer_id' => $customer?->id,
@@ -282,8 +294,9 @@ class PublicCheckoutController extends Controller
                     'bank_account_id' => $bankAccount?->id,
                     'pickup_or_shipping' => $shippingMethod,
                     'pickup_store_id' => $shippingMethod === 'pickup' ? ($validated['store_location_id'] ?? null) : null,
-                    // Checkout validation proves this is an active pickup location. Delivery ownership remains unresolved.
-                    'store_location_id' => $shippingMethod !== 'shipping' ? ($validated['store_location_id'] ?? null) : null,
+                    // Pickup is customer-selected; shipping is system-selected by
+                    // configured priority. Both are deterministic before reserve.
+                    'store_location_id' => $fulfillmentBranchId,
                     'subtotal' => $calculation['subtotal'],
                     'discount_total' => $calculation['discount_total'],
                     'shipping_fee' => $calculation['shipping_fee'],
@@ -346,12 +359,22 @@ class PublicCheckoutController extends Controller
                             $meta['order_item_id'] = $orderItem->id;
                             $redemption->meta = $meta;
                             $redemption->status = 'completed';
-                            $redemption->store_location_id = $shippingMethod === 'pickup'
-                                ? (int) $validated['store_location_id']
-                                : null;
+                            $redemption->store_location_id = $fulfillmentBranchId;
                             $redemption->save();
                         }
                     }
+                }
+
+                if ($this->orderBranchInventoryService->isActive($fulfillmentBranchId)) {
+                    $this->orderBranchInventoryService->reserve(
+                        $order,
+                        $calculation['items'],
+                        $this->orderReserveService->getReserveMinutes(),
+                    );
+                } else {
+                    // Pre-cutover compatibility. Activation remains guarded until
+                    // every operational writer uses the Branch boundary.
+                    $this->orderReserveService->reserveStockForItems($calculation['items']);
                 }
 
                 if (!empty($calculation['voucher']) && $calculation['voucher']['discount_amount'] > 0) {

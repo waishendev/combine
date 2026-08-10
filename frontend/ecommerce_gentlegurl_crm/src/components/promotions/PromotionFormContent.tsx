@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+
 import type {
   ProductOption,
   PromotionFormState,
@@ -38,6 +40,19 @@ export default function PromotionFormContent({
 }: PromotionFormContentProps) {
   const { t } = useI18n()
   const locked = isReadOnly || formDisabled
+  const [branches, setBranches] = useState<Array<{ id: number; name: string; code: string }>>([])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetch('/api/proxy/ecommerce/store-locations?per_page=100', { cache: 'no-store' })
+      .then((response) => response.json())
+      .then((json) => {
+        const rows = json?.data?.data ?? json?.data ?? []
+        if (!cancelled && Array.isArray(rows)) setBranches(rows)
+      })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
 
   const discountOptionLabel = (value: TierDiscountType) => {
     const key = `promotions.discountType.${value}`
@@ -121,6 +136,38 @@ export default function PromotionFormContent({
           </select>
         </div>
       </div>
+
+      <fieldset className="rounded-lg border border-gray-200 p-4">
+        <legend className="px-1 text-sm font-medium text-gray-700">Promotion channels</legend>
+        <label className="mt-2 flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={form.is_online_enabled}
+            disabled={locked}
+            onChange={(event) => setForm((prev) => ({ ...prev, is_online_enabled: event.target.checked }))}
+          />
+          Online Ecommerce (shared website)
+        </label>
+        <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-500">Offline POS Branches</p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {branches.map((branch) => (
+            <label key={branch.id} className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={form.offline_store_location_ids.includes(branch.id)}
+                disabled={locked}
+                onChange={(event) => setForm((prev) => ({
+                  ...prev,
+                  offline_store_location_ids: event.target.checked
+                    ? [...prev.offline_store_location_ids, branch.id]
+                    : prev.offline_store_location_ids.filter((id) => id !== branch.id),
+                }))}
+              />
+              {branch.name}
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <div>
         <PromotionProductMultiSelect

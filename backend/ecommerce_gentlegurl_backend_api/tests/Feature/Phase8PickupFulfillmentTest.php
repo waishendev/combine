@@ -7,6 +7,7 @@ use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\ProductVariantBundleItem;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\StoreLocationProductInventory;
+use App\Models\Ecommerce\BranchInventoryCutoverState;
 use App\Services\Ecommerce\PickupFulfillmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
@@ -95,7 +96,9 @@ class Phase8PickupFulfillmentTest extends TestCase
 
     private function branch(string $code, bool $active = true, bool $pickup = true): StoreLocation
     {
-        return StoreLocation::create(['name' => "Branch {$code}", 'code' => $code, 'address_line1' => 'x', 'city' => 'x', 'state' => 'x', 'postcode' => '1', 'is_active' => $active, 'is_pickup_available' => $pickup]);
+        $branch = StoreLocation::create(['name' => "Branch {$code}", 'code' => $code, 'address_line1' => 'x', 'city' => 'x', 'state' => 'x', 'postcode' => '1', 'is_active' => $active, 'is_pickup_available' => $pickup]);
+        BranchInventoryCutoverState::create(['store_location_id' => $branch->id, 'status' => BranchInventoryCutoverState::ACTIVE, 'activated_at' => now()]);
+        return $branch;
     }
 
     private function product(string $sku): Product

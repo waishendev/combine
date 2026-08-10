@@ -6,6 +6,7 @@ use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\StoreLocationProductInventory;
+use App\Models\Ecommerce\BranchInventoryCutoverState;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
@@ -23,10 +24,16 @@ class PickupFulfillmentService
      */
     public function assess(int $storeLocationId, array $items, bool $lockInventory = false): array
     {
+        return $this->assessAtBranch($storeLocationId, $items, $lockInventory, true);
+    }
+
+    /** @param array<int, array<string, mixed>> $items */
+    public function assessAtBranch(int $storeLocationId, array $items, bool $lockInventory = false, bool $requirePickup = false): array
+    {
         $location = StoreLocation::query()
             ->whereKey($storeLocationId)
             ->where('is_active', true)
-            ->where('is_pickup_available', true)
+            ->when($requirePickup, fn ($query) => $query->where('is_pickup_available', true))
             ->first();
 
         if (! $location) {
@@ -36,7 +43,17 @@ class PickupFulfillmentService
             ]]);
         }
 
-        $requirements = $this->requirements($items);
+        if (! BranchInventoryCutoverState::query()
+            ->where('store_location_id', $storeLocationId)
+            ->where('status', BranchInventoryCutoverState::ACTIVE)
+            ->exists()) {
+            return $this->result($storeLocationId, [[
+                'code' => 'branch_inventory_not_active',
+                'message' => __('This Branch is temporarily unavailable for Product fulfilment.'),
+            ]]);
+        }
+
+        $requirements = $this->inventoryRequirements($items);
         $errors = [];
 
         $products = Product::query()
@@ -87,7 +104,7 @@ class PickupFulfillmentService
     }
 
     /** @param array<int, array<string, mixed>> $items */
-    private function requirements(array $items): Collection
+    public function inventoryRequirements(array $items): Collection
     {
         $variants = ProductVariant::query()
             ->with('bundleItems.componentVariant')

@@ -10682,6 +10682,12 @@ class PosController extends Controller
 
         $promotions = Promotion::query()
             ->where('is_active', true)
+            ->offlineAt((int) $cart->store_location_id)
+            ->where(function ($query) {
+                $now = now();
+                $query->where(fn ($dates) => $dates->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
+                    ->where(fn ($dates) => $dates->whereNull('ends_at')->orWhere('ends_at', '>=', $now));
+            })
             ->whereIn('id', DB::table('promotion_products')->select('promotion_id')->distinct())
             ->with(['promotionProducts', 'promotionTiers'])
             ->get();

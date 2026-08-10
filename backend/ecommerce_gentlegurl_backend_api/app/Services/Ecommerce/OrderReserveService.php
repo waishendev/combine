@@ -320,6 +320,10 @@ class OrderReserveService
 
     public function releaseStockForOrder(Order $order): void
     {
+        if (app(OrderBranchInventoryService::class)->release($order)) {
+            return;
+        }
+
         $order->loadMissing('items');
 
         foreach ($order->items as $item) {

@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 
 import ShopSettingsPageContent from '@/components/ShopSettingsPageContent'
 import PaymentProofNotificationSettingsCard from '@/components/PaymentProofNotificationSettingsCard'
+import ShippingFulfillmentPriorityCard from '@/components/ShippingFulfillmentPriorityCard'
 import { getCurrentUser } from '@/lib/auth'
 import type { LangCode } from '@/lib/i18n'
 import { getTranslator } from '@/lib/i18n-server'
@@ -48,6 +49,9 @@ export default async function ShopSettingsPage() {
       </div>
 
       <ShopSettingsPageContent canEdit={canUpdate} />
+      <div className="mt-6">
+        <ShippingFulfillmentPriorityCard canEdit={canUpdate} />
+      </div>
       <div className="mt-6">
         <PaymentProofNotificationSettingsCard
           canEdit={canUpdate}

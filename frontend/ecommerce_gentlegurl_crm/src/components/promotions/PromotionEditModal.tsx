@@ -121,6 +121,8 @@ export default function PromotionEditModal({
           body: JSON.stringify({
             name: form.name.trim(),
             is_active: form.is_active,
+            is_online_enabled: form.is_online_enabled,
+            offline_store_location_ids: form.offline_store_location_ids,
             trigger_type: form.trigger_type,
             product_ids: form.product_ids,
             tiers: form.tiers.map((tier) => ({

@@ -12,7 +12,7 @@ class PromotionController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Promotion::query()->with(['promotionProducts.product:id,name', 'promotionTiers']);
+        $query = Promotion::query()->with(['promotionProducts.product:id,name', 'promotionTiers', 'offlineStoreLocations:id,name,code']);
 
         if ($request->filled('is_active')) {
             $query->where('is_active', (bool) $request->boolean('is_active'));
@@ -53,6 +53,7 @@ class PromotionController extends Controller
                 'code' => $data['code'] ?? null,
                 'description' => $data['description'] ?? null,
                 'is_active' => (bool) ($data['is_active'] ?? true),
+                'is_online_enabled' => (bool) ($data['is_online_enabled'] ?? false),
                 'trigger_type' => $data['trigger_type'],
                 'priority' => (int) ($data['priority'] ?? 0),
                 'starts_at' => $data['starts_at'] ?? null,
@@ -60,14 +61,15 @@ class PromotionController extends Controller
             ]);
 
             $this->syncProductsAndTiers($promotion, $data);
+            $promotion->offlineStoreLocations()->sync($data['offline_store_location_ids'] ?? []);
         });
 
-        return $this->respond($promotion->load(['promotionProducts.product:id,name', 'promotionTiers']), __('Promotion created successfully.'), true, 201);
+        return $this->respond($promotion->load(['promotionProducts.product:id,name', 'promotionTiers', 'offlineStoreLocations:id,name,code']), __('Promotion created successfully.'), true, 201);
     }
 
     public function show(Promotion $promotion)
     {
-        return $this->respond($promotion->load(['promotionProducts.product:id,name,is_active', 'promotionTiers']));
+        return $this->respond($promotion->load(['promotionProducts.product:id,name,is_active', 'promotionTiers', 'offlineStoreLocations:id,name,code']));
     }
 
     public function update(Request $request, Promotion $promotion)
@@ -86,6 +88,7 @@ class PromotionController extends Controller
                 'code' => $data['code'] ?? null,
                 'description' => $data['description'] ?? null,
                 'is_active' => (bool) ($data['is_active'] ?? true),
+                'is_online_enabled' => (bool) ($data['is_online_enabled'] ?? false),
                 'trigger_type' => $data['trigger_type'],
                 'priority' => (int) ($data['priority'] ?? 0),
                 'starts_at' => $data['starts_at'] ?? null,
@@ -93,9 +96,10 @@ class PromotionController extends Controller
             ]);
 
             $this->syncProductsAndTiers($promotion, $data);
+            $promotion->offlineStoreLocations()->sync($data['offline_store_location_ids'] ?? []);
         });
 
-        return $this->respond($promotion->load(['promotionProducts.product:id,name', 'promotionTiers']), __('Promotion updated successfully.'));
+        return $this->respond($promotion->load(['promotionProducts.product:id,name', 'promotionTiers', 'offlineStoreLocations:id,name,code']), __('Promotion updated successfully.'));
     }
 
     public function destroy(Promotion $promotion)
@@ -160,6 +164,9 @@ class PromotionController extends Controller
             'content_html' => ['nullable', 'string'],
             'display_position' => ['nullable', 'string', 'max:50'],
             'is_active' => ['boolean'],
+            'is_online_enabled' => ['required', 'boolean'],
+            'offline_store_location_ids' => ['sometimes', 'array'],
+            'offline_store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
             'trigger_type' => ['required', Rule::in(['quantity', 'amount'])],
             'priority' => ['nullable', 'integer'],
             'starts_at' => ['nullable', 'date'],
@@ -172,6 +179,12 @@ class PromotionController extends Controller
             'tiers.*.discount_type' => ['required', Rule::in(['bundle_fixed_price', 'percentage_discount', 'fixed_discount'])],
             'tiers.*.discount_value' => ['required', 'numeric', 'gt:0'],
         ]);
+
+        if (! $data['is_online_enabled'] && empty($data['offline_store_location_ids'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'channels' => [__('Enable Online Ecommerce or select at least one Offline Branch.')],
+            ]);
+        }
 
         $productIds = array_values(array_unique(array_map('intval', $data['product_ids'])));
 
