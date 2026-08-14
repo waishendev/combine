@@ -2,7 +2,7 @@
 
 ## Deployment decision and stop condition
 
-Phase 8 delivers deterministic pickup and shipping fulfilment, but **does not activate Branch Inventory in production**. Shipping ownership is now resolved by configured priority and active-state Ecommerce reservations are Branch-aware and idempotent. POS stock checkout and CRM stock adjustment still contain legacy global writers, so coordinated activation remains blocked. Operators must not edit `branch_inventory_cutover_states.status` manually.
+Phase 8 delivers deterministic pickup and shipping fulfilment and Phase 8C converts the final deterministic POS/CRM writers, but **does not activate Branch Inventory in production**. Activation requires independently reviewed complete physical counts, a write freeze, and the explicit coordinated readiness workflow. Operators must not edit `branch_inventory_cutover_states.status` manually.
 
 The system remains one shared Ecommerce website. Browsing, Product identity, Voucher, Redeem Voucher, Package entitlement, and Points are global. Customers browse and build a cart before choosing fulfilment. No tenant, organization, or `tenant_id` was added.
 
@@ -18,7 +18,7 @@ The system remains one shared Ecommerce website. Browsing, Product identity, Vou
 | Customer/admin cancellation | original reservation Branch | n/a | persisted reservation | exact Product/Variant/components | centralized reserve service | locked Order and reservation status | repeated cancellation cannot restore twice |
 | Monetary refund | global fields unchanged | n/a | may be known | no line quantities | no automatic restock | payment ledger behavior | intentionally no guessed stock restoration |
 | Redeem Product | no stock mutation at initial claim; final fulfilment authority at checkout | physical checkout | final pickup or shipping Branch | exact reward Product/Variant | same Order release path | Order reservation identity | initial claim stays Branch-free; physical stock is deducted once |
-| POS/CRM adjustments | legacy global fields and movement paths | operation-specific | POS/CRM Branch known | Product/Variant/bundle paths differ | operation-specific | incomplete across writers | unchanged; cutover blocker |
+| POS/CRM adjustments | Branch inventory when active; legacy global before cutover | POS checkout / explicit adjustment | persisted POS cart or required CRM Header Branch | exact Product/Variant; POS bundle components | original movement Branch | Order/line or movement identity | converted in Phase 8C; active paths use the canonical Branch boundary |
 
 ## Self-pickup rules
 
@@ -50,7 +50,7 @@ Promotion remains one global identity and retains its existing Product, tier, ac
 
 ## Ledger and compatibility status
 
-`ProductStockMovement` is the active-Branch canonical balance ledger and legacy `StockMovement` history is preserved. Legacy global fields become aggregate projections across active inventory locations after canonical mutations. Because POS and CRM adjustment writers are not fully converted, activation is still refused operationally and those global fields remain pre-cutover authority until a coordinated later deployment step.
+`ProductStockMovement` is the active-Branch canonical balance ledger and legacy `StockMovement` history is preserved. Legacy global fields become aggregate projections across active inventory locations after canonical mutations. Before coordinated activation, those global fields remain pre-cutover compatibility authority.
 
 ## Reconciliation and write-freeze procedure
 
@@ -62,7 +62,7 @@ Do this on a production-like copy first. A maintenance/write-freeze window is re
 4. Review Product, exact Variant, bundle-component, open reservation, and both-ledger totals.
 5. Resolve every discrepancy; tolerance is zero.
 6. Do not run `--force` for multiple physical Branches: it can duplicate the global total into each Branch.
-7. **Stop. Do not activate.** POS/CRM writer conversion remains unresolved.
+7. Run the Phase 8C coordinated activation readiness dry-run; activate only after reviewed physical initialization and approved change control.
 8. Resume traffic only on the pre-cutover authority and verify balances.
 
 Apply the same procedure per real Branch code; never assume PNG is the only Branch.
@@ -81,7 +81,7 @@ Approved reconciliation write (documented, not executed by this implementation):
 php artisan branch-inventory:backfill --store-code=PNG --force
 ```
 
-Activation command: **none is shipped while stop conditions remain**. A future guarded command may use `php artisan branch-inventory:activate --store-code=PNG --dry-run` and `--force`, but those are reserved interface proposals, not executable Phase 8 commands. Never use SQL to bypass the guard.
+The shipped coordinated activation command is documented below. It fails closed unless every active physical Branch has reviewed counts and is reconciled; never use SQL to bypass that guard.
 
 ## Rollback
 
@@ -89,11 +89,93 @@ Disable the new deployment and restore the prior application release; no Phase 8
 
 ## Compatibility risks and remaining blockers
 
-- Candidate Branch balances can drift while the remaining POS/CRM legacy writers mutate only global fields; reconciliation and a write freeze are mandatory.
 - Monetary partial refunds lack line quantities.
-- POS/CRM ledger migration is incomplete; mixed cutover states are unsafe.
+- Mixed activation states are unsafe and rejected; coordinated physical initialization is mandatory.
 - Full frontend disabled-Branch explanations are not introduced; backend preview is authoritative.
 
 ## Phase 9 deferrals
 
-Dashboard and Sales Report aggregation, broad commission reporting, active-Branch low-stock UI, Branch-aware CRM/POS display migration, stock transfer workflow/approval, per-Branch pricing, and the final POS/CRM all-writer ledger cutover remain deferred. No Phase 9 work, multi-tenancy, organizations, or tenant IDs are included.
+Dashboard and Sales Report aggregation, broad commission reporting, active-Branch low-stock UI, broader Branch-aware CRM/POS reporting displays, stock transfer workflow/approval, per-Branch pricing, and an explicit physical Return/Restock workflow remain deferred. No Phase 9 work, multi-tenancy, organizations, or tenant IDs are included.
+
+## Phase 8C final writer conversion
+
+### Final physical writer matrix
+
+| Path | Persisted Branch source | Before ACTIVE | After coordinated ACTIVE | Canonical movement / reversal |
+|---|---|---|---|---|
+| Ecommerce pickup Product/Variant/bundle/reward | `Order.store_location_id = pickup_store_id` | legacy global reservation | exact Branch reservation rows | `ProductStockMovement`, Order identity keys; release to original reservation Branch |
+| Ecommerce shipping Product/Variant/bundle/reward | priority-selected `Order.store_location_id` | legacy global reservation | exact selected Branch reservation rows | same canonical Order lifecycle; `pickup_store_id` remains NULL |
+| POS checkout | persisted `PosCart.store_location_id`, copied to Order | legacy global checkout writer | atomic exact Product/Variant/component mutation | Order-referenced, idempotent `ProductStockMovement`; paid handling skips `StockMovement` duplication |
+| POS staff consumable | persisted POS cart Branch, copied to Order | legacy global consumable writer | exact Branch Product/Variant/component mutation | Order/line idempotency keys |
+| POS cart add/update | persisted `PosCart.store_location_id` | global compatibility validation | Phase 6A availability plus exact Branch inventory validation | final checkout always revalidates under locks |
+| CRM adjustment | required Header-derived `store_location_id`, authorized by `StoreLocationAccessService` | global compatibility write with Branch-attributed history | canonical exact Branch mutation only | `ProductStockMovement` stores Branch/delta/before/after/actor/idempotency |
+| CRM movement revoke | original `ProductStockMovement.store_location_id` | reverses legacy balance after authorizing original Branch | canonical inverse mutation at original Branch | unique `stock-movement-reversal:{id}` and reversal relationship |
+| Payment success/callback | persisted Order and existing reservation | no second quantity deduction | no second quantity deduction | legacy `StockMovement` is skipped when canonical Order movements/reservations exist |
+| Customer/admin cancellation and expiry | original Order reservation | legacy global release | original Branch release | reservation status plus release movement key prevents double restore |
+| Monetary refund | monetary Order/return record | no automatic stock change | no automatic stock change | exact return quantities require a future explicit Return/Restock workflow |
+
+`ProductStockMovement` is canonical for every converted ACTIVE writer. Historical `StockMovement` records remain readable. Its only remaining bounded new writer is `OrderPaymentService` for pre-activation Orders that have neither canonical Order movements nor Branch reservation records.
+
+### POS and CRM authority rules
+
+POS never derives an operational Branch after cart creation: add/update and checkout use `PosCart.store_location_id`; the resulting Order persists the same Branch. Active checkout expands bundles, sorts/locks canonical inventory identities, validates all requirements, and changes only that Branch. Purely monetary POS refund/void flows do not invent returned quantities.
+
+CRM Stock Adjustment now requires `store_location_id`. The CRM sends the global Header Branch, shows it read-only, and disables adjustment for All Branches. The backend verifies active Branch access. Revoke always authorizes and mutates the original movement Branch, even if the Header later points elsewhere.
+
+### Independent physical-count initialization
+
+The legacy single-Branch backfill remains diagnostic only. Multi-Branch production initialization uses an explicitly reviewed JSON array:
+
+```json
+[
+  {"store_code":"A","product_id":1,"product_variant_id":null,"quantity":5},
+  {"store_code":"B","product_id":1,"product_variant_id":null,"quantity":10}
+]
+```
+
+Dry-run validates Branch/Product/Variant identities, non-negative quantities, duplicates, and ACTIVE overwrite protection with zero writes:
+
+```bash
+php artisan branch-inventory:initialize --file=/secure/reviewed-physical-counts.json --dry-run
+```
+
+Approved initialization (never run by this implementation):
+
+```bash
+php artisan branch-inventory:initialize --file=/secure/reviewed-physical-counts.json --force
+```
+
+Safe re-runs update the same exact identities while authority is not ACTIVE, record the input SHA-256, and leave each imported Branch RECONCILED.
+
+### Coordinated activation readiness
+
+Mixed ACTIVE/legacy operation is unsafe because shipping may route across Branches and legacy fields become aggregate projections. Phase 8C therefore chooses **all-or-none coordinated activation of every active physical Branch**. Readiness fails closed when any active Branch lacks a reviewed import, is not RECONCILED, lacks an inventory identity for an available Product/Variant, or an ACTIVE mixed state already exists.
+
+Readiness and activation dry-run (zero authority writes):
+
+```bash
+php artisan branch-inventory:activate --dry-run
+```
+
+Explicit coordinated activation command (implemented, never executed here):
+
+```bash
+php artisan branch-inventory:activate --force --confirm=ACTIVATE_BRANCH_INVENTORY
+```
+
+Activation changes all active physical Branch states in one transaction and immediately derives legacy Product/Variant aggregate projections. It never redistributes stock.
+
+### Staged production cutover
+
+1. Deploy Phase 8C with Branch Inventory inactive.
+2. Verify Product-to-Branch assignments and Shipping priority.
+3. Prepare and independently approve complete physical counts for every Branch.
+4. Pause Ecommerce, POS, reward fulfilment, CRM adjustments/revokes, cancellations, and expiry jobs; zero downtime is not promised.
+5. Run initialization `--dry-run`; resolve every error and review every quantity.
+6. Run approved initialization `--force`; rerun dry-run/reconciliation.
+7. Run activation `--dry-run`; require `ready: true` and review writer checks.
+8. Run the explicit confirmed activation command under change control.
+9. Verify Branch balances, aggregate projections, canonical movements, POS, Shipping, Pickup, CRM adjustment and release behavior.
+10. Resume traffic and monitor canonical balance/movement drift.
+
+Rollback before activation is application rollback plus no authority change. After activation, pause writers, restore the prior application release only if it understands ACTIVE states, reverse the activation state for all Branches together under an approved database runbook, restore legacy projections from Branch totals, and reconcile before resuming. Never copy aggregate stock into each Branch.

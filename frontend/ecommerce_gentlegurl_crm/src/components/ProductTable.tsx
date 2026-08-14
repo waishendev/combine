@@ -18,6 +18,7 @@ import {
 import BulkUpdateModal from './BulkUpdateModal'
 import { useI18n } from '@/lib/i18n'
 import { getApiErrorMessage } from '@/lib/api-errors'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface ProductTableProps {
   permissions: string[]
@@ -137,6 +138,7 @@ export default function ProductTable({
   showCategories = true,
 }: ProductTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId, selectedBranch, isAllBranches } = useBranch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -262,7 +264,7 @@ export default function ProductTable({
 
   const fetchProducts = useCallback(async (signal?: AbortSignal) => {
     const gen = ++productsFetchGenRef.current
-    const fetchKey = `${currentPage}|${pageSize}|${rewardOnly}|${filters.name.trim()}|${filters.sku.trim()}|${filters.category_id}|${filters.status}`
+    const fetchKey = `${currentPage}|${pageSize}|${rewardOnly}|${filters.name.trim()}|${filters.sku.trim()}|${filters.category_id}|${filters.status}|${selectedBranchId ?? 'all'}`
     const isNewQuery = lastProductFetchKeyRef.current !== fetchKey
     lastProductFetchKeyRef.current = fetchKey
     if (isNewQuery) {
@@ -283,6 +285,7 @@ export default function ProductTable({
       } else {
         qs.set('is_reward_only', 'false')
       }
+      if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
 
       const res = await fetch(`/api/proxy/ecommerce/products?${qs.toString()}`, {
         cache: 'no-store',
@@ -348,7 +351,7 @@ export default function ProductTable({
         setLoading(false)
       }
     }
-  }, [currentPage, filters, pageSize, rewardOnly])
+  }, [currentPage, filters, pageSize, rewardOnly, selectedBranchId])
 
   const handleExportCsv = async () => {
     setIsExporting(true)
@@ -701,6 +704,11 @@ export default function ProductTable({
 
     if (!stockAdjustment) return
 
+    if (!selectedBranchId || isAllBranches) {
+      window.alert('Please select a specific Branch before adjusting stock.')
+      return
+    }
+
     const selectedVariant = getSelectedVariant(stockAdjustment)
     const hasVariants = (stockAdjustment.product.variants?.length ?? 0) > 0
     const targetStock = resolveStockAdjustmentTarget(stockAdjustment.product, selectedVariant)
@@ -736,6 +744,7 @@ export default function ProductTable({
     setIsSubmittingAdjustment(true)
     try {
       const payload: Record<string, unknown> = {
+        store_location_id: selectedBranchId,
         adjustment_type: stockAdjustment.adjustmentType,
         quantity,
         remark: stockAdjustment.remark.trim() || null,
@@ -844,6 +853,9 @@ export default function ProductTable({
               return (
                 <>
                   <p className="mb-3 text-sm text-gray-600">Product: {stockAdjustment.product.name}</p>
+                  <div className={`mb-4 rounded border px-3 py-2 text-sm ${selectedBranchId ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                    {selectedBranchId ? `Operating Branch: ${selectedBranch?.name ?? `#${selectedBranchId}`}` : 'Please select a specific Branch before adjusting stock.'}
+                  </div>
                   {hasVariants && (
                     <div className="mb-4">
                       <label className="mb-1 block text-sm font-medium text-gray-700">Variant <span className="text-red-500">*</span></label>
@@ -951,7 +963,7 @@ export default function ProductTable({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmittingAdjustment || !!getSelectedVariant(stockAdjustment)?.isBundle}
+                  disabled={isSubmittingAdjustment || !selectedBranchId || isAllBranches || !!getSelectedVariant(stockAdjustment)?.isBundle}
                   className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {isSubmittingAdjustment ? 'Saving...' : 'Save Adjustment'}

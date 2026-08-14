@@ -19,6 +19,7 @@ class OrderBranchInventoryService
         return BranchInventoryCutoverState::query()
             ->where('store_location_id', $storeLocationId)
             ->where('status', BranchInventoryCutoverState::ACTIVE)
+            ->whereHas('storeLocation', fn ($branch) => $branch->where('is_active', true))
             ->exists();
     }
 

@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class BranchInventoryMutationService
 {
+    public function __construct(private BranchInventoryProjectionService $projection) {}
     /**
      * @param array<int, array{product_id:int, product_variant_id?:int|null, delta:int, type:string, remark?:string|null, idempotency_key:string}> $mutations
      */
@@ -112,22 +113,7 @@ class BranchInventoryMutationService
             // Legacy fields are a bounded compatibility projection only after
             // activation; operational deductions never target the aggregate.
             foreach ($normalized as $item) {
-                $aggregate = (int) StoreLocationProductInventory::query()
-                    ->join('branch_inventory_cutover_states as cutover', function ($join) {
-                        $join->on('cutover.store_location_id', '=', 'store_location_product_inventories.store_location_id')
-                            ->where('cutover.status', BranchInventoryCutoverState::ACTIVE);
-                    })
-                    ->where('product_id', $item['product_id'])
-                    ->when(
-                        $item['product_variant_id'],
-                        fn ($query, $variantId) => $query->where('product_variant_id', $variantId),
-                        fn ($query) => $query->whereNull('product_variant_id'),
-                    )->sum('quantity');
-                if ($item['product_variant_id']) {
-                    ProductVariant::query()->whereKey($item['product_variant_id'])->update(['stock' => $aggregate]);
-                } else {
-                    Product::query()->whereKey($item['product_id'])->update(['stock' => $aggregate, 'stock_quantity' => $aggregate]);
-                }
+                $this->projection->project($item['product_id'], $item['product_variant_id']);
             }
 
             return $movements;

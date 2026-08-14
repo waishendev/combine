@@ -104,6 +104,18 @@ class PickupFulfillmentService
     }
 
     /** @param array<int, array<string, mixed>> $items */
+    public function validateAtBranch(int $storeLocationId, array $items, bool $lockInventory = false): void
+    {
+        $assessment = $this->assessAtBranch($storeLocationId, $items, $lockInventory);
+        if (! $assessment['available']) {
+            throw ValidationException::withMessages([
+                'inventory' => [__('The selected Branch cannot fulfil all Product quantities.')],
+                'unavailable_items' => $assessment['unavailable_items'],
+            ])->status(422);
+        }
+    }
+
+    /** @param array<int, array<string, mixed>> $items */
     public function inventoryRequirements(array $items): Collection
     {
         $variants = ProductVariant::query()

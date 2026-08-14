@@ -10,6 +10,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Services\StoreLocationAccessService;
+use App\Services\Ecommerce\BranchInventoryMutationService;
+use App\Models\Ecommerce\BranchInventoryCutoverState;
 
 class ProductStockMovementController extends Controller
 {
@@ -17,6 +20,7 @@ class ProductStockMovementController extends Controller
     {
         $validated = $request->validate([
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'store_location_id' => ['nullable', 'integer', 'exists:store_locations,id'],
             'type' => ['nullable', Rule::in(['stock_in', 'stock_out', 'reversal'])],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
@@ -35,7 +39,12 @@ class ProductStockMovementController extends Controller
                 'revokedBy:id,name,email',
                 'originalMovement:id,type,quantity_change,created_at',
                 'reversalMovement:id,type,quantity_change,created_at',
+                'storeLocation:id,name,code',
             ])
+            ->when(isset($validated['store_location_id']), function ($builder) use ($validated, $request) {
+                app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), (int) $validated['store_location_id']);
+                $builder->where('store_location_id', (int) $validated['store_location_id']);
+            })
             ->when(isset($validated['product_id']), function ($builder) use ($validated) {
                 $builder->where('product_id', (int) $validated['product_id']);
             })
@@ -82,6 +91,28 @@ class ProductStockMovementController extends Controller
             }
 
             $this->ensureMovementCanBeRevoked($movement);
+
+            if ($movement->store_location_id) {
+                app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), (int) $movement->store_location_id, false);
+            }
+
+            if ($movement->store_location_id && BranchInventoryCutoverState::query()
+                ->where('store_location_id', $movement->store_location_id)->where('status', BranchInventoryCutoverState::ACTIVE)->exists()) {
+                $originalDelta = $movement->quantity_delta ?? ($movement->type === 'stock_in' ? (int) $movement->quantity_change : -1 * (int) $movement->quantity_change);
+                $actorId = $request->user()?->id;
+                $reason = trim($validated['reason']);
+                $reversal = app(BranchInventoryMutationService::class)->mutateMany((int) $movement->store_location_id, [[
+                    'product_id' => (int) $movement->product_id,
+                    'product_variant_id' => $movement->product_variant_id ? (int) $movement->product_variant_id : null,
+                    'delta' => -1 * (int) $originalDelta,
+                    'type' => 'reversal',
+                    'remark' => __('Reversal for stock movement #:id. Reason: :reason', ['id' => $movement->id, 'reason' => $reason]),
+                    'idempotency_key' => 'stock-movement-reversal:'.$movement->id,
+                ]], $actorId, $movement)->first();
+                $reversal->forceFill(['reversal_of_movement_id' => $movement->id])->save();
+                $movement->forceFill(['is_revoked' => true, 'revoked_at' => now(), 'revoked_by' => $actorId, 'revoke_reason' => $reason])->save();
+                return $reversal->load(['product:id,name,cn_name,sku', 'variant:id,title,cn_name,sku,is_bundle', 'createdBy:id,name,email', 'originalMovement:id,type,quantity_change,created_at']);
+            }
 
             $lockedProduct = Product::query()
                 ->whereKey($movement->product_id)

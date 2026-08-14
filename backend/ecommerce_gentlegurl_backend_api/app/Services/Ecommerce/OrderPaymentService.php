@@ -10,6 +10,7 @@ use App\Models\Ecommerce\PointsEarnBatch;
 use App\Models\Ecommerce\PointsTransaction;
 use App\Models\Ecommerce\StockMovement;
 use App\Models\Ecommerce\OrderInventoryReservation;
+use App\Models\Ecommerce\ProductStockMovement;
 use App\Services\Booking\CustomerServicePackageService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +28,8 @@ class OrderPaymentService
 
     protected function deductStock(Order $order): void
     {
-        if (OrderInventoryReservation::query()->where('order_id', $order->id)->exists()) {
+        if (OrderInventoryReservation::query()->where('order_id', $order->id)->exists()
+            || ProductStockMovement::query()->where('reference_type', Order::class)->where('reference_id', $order->id)->exists()) {
             // Canonical ProductStockMovement entries were written atomically with
             // the Branch reservation. Payment confirmation must not write a
             // second legacy movement for the same physical deduction.
