@@ -147,6 +147,24 @@ php artisan branch-inventory:initialize --file=/secure/reviewed-physical-counts.
 
 Safe re-runs update the same exact identities while authority is not ACTIVE, record the input SHA-256, and leave each imported Branch RECONCILED.
 
+### Initial single-existing-Branch migration from legacy stock
+
+For the confirmed first Gentlegurls production cutover only, all historical legacy Product/Variant stock physically belongs to the existing Branch whose immutable code is `PNG`. The Branch code remains an operator argument and is not hardcoded by the application:
+
+```bash
+php artisan branch-inventory:initialize --store-code=PNG --from-global --dry-run
+```
+
+The dry-run resolves an active Branch by `store_locations.code`, maps non-variant Products from the current legacy Product quantity, maps exact non-bundle Variants from `product_variants.stock`, skips derived bundles and untracked identities, and prints target identity, counts, quantities, existing rows, mismatches, skipped identities, and non-zero rows at other active Branches. It performs zero writes.
+
+Approved first-cutover initialization (documented, never executed by this implementation):
+
+```bash
+php artisan branch-inventory:initialize --store-code=PNG --from-global --force
+```
+
+Force fails closed for a missing/inactive/ACTIVE target, unsafe legacy quantity, duplicate identity, conflicting target balance, reviewed inventory from another initialization mode, or any non-zero inventory at another active Branch. Exact matching replays are idempotent. It writes only the named Branch, never changes Product-to-Branch availability, never distributes stock, and leaves authority `RECONCILED`. New Branches must still have their zero/independent physical counts reviewed before coordinated activation readiness can pass. Once more than one Branch owns physical stock, use the reviewed JSON workflow instead.
+
 ### Coordinated activation readiness
 
 Mixed ACTIVE/legacy operation is unsafe because shipping may route across Branches and legacy fields become aggregate projections. Phase 8C therefore chooses **all-or-none coordinated activation of every active physical Branch**. Readiness fails closed when any active Branch lacks a reviewed import, is not RECONCILED, lacks an inventory identity for an available Product/Variant, or an ACTIVE mixed state already exists.
@@ -169,7 +187,7 @@ Activation changes all active physical Branch states in one transaction and imme
 
 1. Deploy Phase 8C with Branch Inventory inactive.
 2. Verify Product-to-Branch assignments and Shipping priority.
-3. Prepare and independently approve complete physical counts for every Branch.
+3. For the confirmed initial PNG-only legacy model, approve the `--store-code=PNG --from-global` mapping and separately review new Branches as zero/independent; otherwise prepare complete reviewed JSON counts for every Branch.
 4. Pause Ecommerce, POS, reward fulfilment, CRM adjustments/revokes, cancellations, and expiry jobs; zero downtime is not promised.
 5. Run initialization `--dry-run`; resolve every error and review every quantity.
 6. Run approved initialization `--force`; rerun dry-run/reconciliation.
