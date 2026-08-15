@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use App\Services\StoreLocationAccessService;
+use App\Models\Ecommerce\BranchInventoryCutoverState;
+use App\Services\Ecommerce\BranchInventoryMutationService;
 
 class ProductController extends Controller
 {
@@ -31,7 +33,9 @@ class ProductController extends Controller
         if ($branchId && $request->user()) {
             app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
         }
+        $branchAuthorityActive = $branchId && BranchInventoryCutoverState::query()->where('store_location_id', $branchId)->where('status', BranchInventoryCutoverState::ACTIVE)->exists();
         $products = Product::with(['categories', 'images', 'video', 'variants', 'storeLocations:id,name,code,is_active,is_pos_available'])
+            ->when($branchAuthorityActive, fn ($query) => $query->with(['branchInventories' => fn ($inventory) => $inventory->where('store_location_id', $branchId)]))
             ->when($branchId, fn ($query) => $query->whereHas('storeLocations', fn ($branches) => $branches
                 ->where('store_locations.id', $branchId)->where('store_location_product.is_available', true)))
             ->when($request->filled('search'), function ($query) use ($request) {
@@ -82,8 +86,16 @@ class ProductController extends Controller
             ->orderByDesc('id')
             ->paginate($perPage);
 
-        $products->getCollection()->transform(function (Product $product) {
+        $products->getCollection()->transform(function (Product $product) use ($branchAuthorityActive) {
             $variants = $product->relationLoaded('variants') ? $product->variants : collect();
+            if ($branchAuthorityActive) {
+                $inventory = $product->branchInventories->keyBy(fn ($row) => (int) ($row->product_variant_id ?? 0));
+                $product->setAttribute('stock', (int) ($inventory->get(0)?->quantity ?? 0));
+                $product->setAttribute('stock_quantity', (int) ($inventory->get(0)?->quantity ?? 0));
+                $variants->each(fn (ProductVariant $variant) => ! $variant->is_bundle
+                    ? $variant->setAttribute('stock', (int) ($inventory->get((int) $variant->id)?->quantity ?? 0))
+                    : null);
+            }
             $variantPrices = $variants
                 ->map(fn(ProductVariant $variant) => $variant->price)
                 ->filter(fn($value) => $value !== null)
@@ -184,6 +196,14 @@ class ProductController extends Controller
         }
         $this->validateSalePrice($validated, $request);
         $this->validateVariantSkus($request);
+
+        if (BranchInventoryCutoverState::query()->where('status', BranchInventoryCutoverState::ACTIVE)->exists()
+            && ((int) ($validated['stock'] ?? 0) !== 0
+                || collect($validated['variants'] ?? [])->contains(fn ($variant) => (int) ($variant['stock'] ?? 0) !== 0))) {
+            throw ValidationException::withMessages([
+                'stock' => [__('Initial stock must be recorded through a specific Branch stock adjustment after Branch Inventory activation.')],
+            ]);
+        }
 
         $initialStock = max(0, (int) ($validated['stock'] ?? 0));
         $initialCost = max(0, (float) ($validated['cost_price'] ?? 0));
@@ -356,6 +376,7 @@ class ProductController extends Controller
     public function adjustStock(Request $request, Product $product)
     {
         $validated = $request->validate([
+            'store_location_id' => ['required', 'integer', 'exists:store_locations,id'],
             'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'adjustment_type' => ['required', Rule::in(['stock_in', 'stock_out'])],
             'quantity' => ['required', 'integer', 'min:1'],
@@ -363,13 +384,19 @@ class ProductController extends Controller
             'remark' => ['nullable', 'string', 'max:1000'],
         ]);
 
+        $branch = app(StoreLocationAccessService::class)
+            ->authorizeStoreLocation($request->user(), (int) $validated['store_location_id'], false);
+        if (! $branch->is_active) {
+            throw ValidationException::withMessages(['store_location_id' => [__('The selected Branch is inactive.')]]);
+        }
+
         if ($validated['adjustment_type'] === 'stock_in' && !array_key_exists('cost_price_per_unit', $validated)) {
             throw ValidationException::withMessages([
                 'cost_price_per_unit' => [__('Cost price per unit is required for Add Stock.')],
             ]);
         }
 
-        $updatedProduct = DB::transaction(function () use ($product, $validated, $request) {
+        $updatedProduct = DB::transaction(function () use ($product, $validated, $request, $branch) {
             $lockedProduct = Product::where('id', $product->id)->lockForUpdate()->firstOrFail();
             $variantId = isset($validated['product_variant_id']) ? (int) $validated['product_variant_id'] : null;
 
@@ -395,6 +422,22 @@ class ProductController extends Controller
                 throw ValidationException::withMessages([
                     'product_variant_id' => [__('Please select a variant for stock adjustment.')],
                 ])->status(422);
+            }
+
+            if (BranchInventoryCutoverState::query()->where('store_location_id', $branch->id)->where('status', BranchInventoryCutoverState::ACTIVE)->exists()) {
+                $delta = $validated['adjustment_type'] === 'stock_in' ? (int) $validated['quantity'] : -1 * (int) $validated['quantity'];
+                $movement = app(BranchInventoryMutationService::class)->mutateMany((int) $branch->id, [[
+                    'product_id' => (int) $lockedProduct->id,
+                    'product_variant_id' => $lockedVariant?->id,
+                    'delta' => $delta,
+                    'type' => $validated['adjustment_type'],
+                    'remark' => $validated['remark'] ?? null,
+                    'idempotency_key' => 'crm-adjustment:'.(string) \Illuminate\Support\Str::uuid(),
+                ]], (int) $request->user()->id)->first();
+                if ($validated['adjustment_type'] === 'stock_in') {
+                    $movement->forceFill(['input_cost_price_per_unit' => (float) $validated['cost_price_per_unit']])->save();
+                }
+                return $lockedProduct->fresh();
             }
 
             $beforeQty = $lockedVariant
@@ -444,11 +487,13 @@ class ProductController extends Controller
             }
 
             ProductStockMovement::create([
+                'store_location_id' => (int) $branch->id,
                 'product_id' => $lockedProduct->id,
                 'product_variant_id' => $lockedVariant?->id,
                 'type' => $type,
                 'quantity_before' => $beforeQty,
                 'quantity_change' => $quantity,
+                'quantity_delta' => $type === 'stock_in' ? $quantity : -$quantity,
                 'quantity_after' => $afterQty,
                 'cost_price_before' => $beforeCost,
                 'cost_price_after' => $afterCost,
@@ -457,6 +502,7 @@ class ProductController extends Controller
                 'input_cost_price_per_unit' => $inputCost,
                 'remark' => $validated['remark'] ?? null,
                 'created_by_user_id' => $request->user()?->id,
+                'idempotency_key' => 'legacy-crm-adjustment:'.(string) \Illuminate\Support\Str::uuid(),
             ]);
 
             return $lockedProduct;
@@ -840,6 +886,17 @@ class ProductController extends Controller
             $clean = $validator->validated();
 
             $variantsForImport = is_array($payload['variants'] ?? null) ? $payload['variants'] : [];
+
+            if (BranchInventoryCutoverState::query()->where('status', BranchInventoryCutoverState::ACTIVE)->exists()
+                && ((int) ($clean['stock'] ?? 0) !== 0
+                    || collect($variantsForImport)->contains(fn ($variant) => (int) ($variant['stock'] ?? 0) !== 0))) {
+                $summary['failed']++;
+                $summary['failedRows'][] = [
+                    'row' => $rowNumber,
+                    'reason' => __('Initial stock imports are disabled after Branch Inventory activation; use a specific Branch stock adjustment.'),
+                ];
+                continue;
+            }
 
             try {
                 DB::transaction(function () use ($clean, $variantsForImport, &$existingSkuLookup, &$existingSlugLookup, &$summary) {

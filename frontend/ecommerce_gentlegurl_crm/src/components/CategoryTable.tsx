@@ -20,6 +20,7 @@ import {
   mapCategoryApiItemToRow,
 } from './categoryUtils'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface CategoryTableProps {
   permissions: string[]
@@ -61,6 +62,7 @@ export default function CategoryTable({
   permissions,
 }: CategoryTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId, selectedBranch, isAllBranches } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<CategoryFilterValues>({ ...emptyCategoryFilters })
@@ -126,6 +128,7 @@ export default function CategoryTable({
 
   const fetchCategories = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
+    setRows([])
     try {
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
@@ -135,6 +138,7 @@ export default function CategoryTable({
       if (filters.isActive) {
         qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
       }
+      if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
 
       const res = await fetch(`/api/proxy/ecommerce/categories?${qs.toString()}`, {
         cache: 'no-store',
@@ -200,7 +204,7 @@ export default function CategoryTable({
     } finally {
       setLoading(false)
     }
-  }, [currentPage, filters, pageSize])
+  }, [currentPage, filters, pageSize, selectedBranchId])
 
   const handleExportCsv = async () => {
     setIsExporting(true)
@@ -275,6 +279,11 @@ export default function CategoryTable({
       }
     }
   }
+
+  useEffect(() => {
+    setCurrentPage(1)
+    setSelectedIds(new Set())
+  }, [selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -445,16 +454,6 @@ export default function CategoryTable({
     })
   }
 
-  const handleCategoryUpdated = (category: CategoryRowData) => {
-    setRows((prev) => {
-      const index = prev.findIndex((item) => item.id === category.id)
-      if (index === -1) return prev
-      const next = [...prev]
-      next[index] = category
-      return next
-    })
-  }
-
   const handleCategoryDeleted = (categoryId: number) => {
     setRows((prev) => prev.filter((item) => item.id !== categoryId))
 
@@ -596,6 +595,12 @@ export default function CategoryTable({
         </div>
       </div>
 
+      <div className="mb-4 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        Category records are global. {isAllBranches
+          ? 'This view shows all Categories and global Product counts.'
+          : `This view shows Categories with available Products at ${selectedBranch?.name ?? 'the selected Branch'} and their local Product counts.`}
+      </div>
+
       {(isImporting || importSummary) && (
         <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
           <div>Import status: processing file on server...</div>
@@ -661,6 +666,7 @@ export default function CategoryTable({
                   { key: 'slug', label: 'Slug' },
                   { key: 'description', label: 'Description' },
                   { key: 'menuNames', label: 'Menus' },
+                  { key: 'productCount', label: 'Products' },
                   { key: 'showInPosFilter', label: 'POS Filter' },
                   { key: 'isActive', label: t('common.status') },
                 ] as const
@@ -726,9 +732,9 @@ export default function CategoryTable({
         <CategoryEditModal
           categoryId={editingCategoryId}
           onClose={() => setEditingCategoryId(null)}
-          onSuccess={(category) => {
+          onSuccess={() => {
             setEditingCategoryId(null)
-            handleCategoryUpdated(category)
+            void fetchCategories()
           }}
         />
       )}

@@ -778,6 +778,10 @@ class OrderController extends Controller
             return $this->respond($order, __('Order already paid.'), false, 422);
         }
 
+        if (! in_array((string) $order->status, ['pending', 'processing', 'reject_payment_proof'], true)) {
+            return $this->respond($order, __('Order cannot be cancelled in its current status.'), false, 422);
+        }
+
         $validated = $request->validate([
             'admin_note' => ['required', 'string'],
         ]);
@@ -796,6 +800,10 @@ class OrderController extends Controller
                     throw new \RuntimeException('Order already paid.');
                 }
 
+                if (! in_array((string) $lockedOrder->status, ['pending', 'processing', 'reject_payment_proof'], true)) {
+                    throw new \RuntimeException('Order cannot be cancelled in its current status.');
+                }
+
                 if ($isBookingOrder && ! in_array((string) $lockedOrder->status, ['pending', 'processing'], true)) {
                     throw new \RuntimeException('Only awaiting payment or waiting verification booking orders can be cancelled here.');
                 }
@@ -811,7 +819,7 @@ class OrderController extends Controller
                     app(CustomerServicePackageService::class)->revokeUnpaidBookingPackagesForOrder($lockedOrder);
                 }
 
-                // $this->orderReserveService->releaseStockForOrder($lockedOrder);
+                $this->orderReserveService->releaseStockForOrder($lockedOrder);
             });
         } catch (\RuntimeException $exception) {
             return $this->respond($order, __($exception->getMessage()), false, 422);

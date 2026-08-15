@@ -127,9 +127,9 @@ class OrderReserveService
      */
     public function validateStockForItems(array $items): void
     {
-        $normalItems = collect($items)
-            ->filter(fn($item) => empty($item['is_reward']))
-            ->values();
+        // Product rewards become physical Order lines in the current lifecycle,
+        // so they participate in the same atomic stock reservation.
+        $normalItems = collect($items)->values();
 
         if ($normalItems->isEmpty()) {
             return;
@@ -223,10 +223,6 @@ class OrderReserveService
     public function reserveStockForItems(array $items): void
     {
         foreach ($items as $item) {
-            if (!empty($item['is_reward'])) {
-                continue;
-            }
-
             $productId = (int) ($item['product_id'] ?? 0);
             if (!$productId) {
                 continue;
@@ -324,13 +320,13 @@ class OrderReserveService
 
     public function releaseStockForOrder(Order $order): void
     {
+        if (app(OrderBranchInventoryService::class)->release($order)) {
+            return;
+        }
+
         $order->loadMissing('items');
 
         foreach ($order->items as $item) {
-            if ($item->is_reward) {
-                continue;
-            }
-
             if ($item->product_variant_id) {
                 $variant = ProductVariant::with('bundleItems.componentVariant')
                     ->where('id', $item->product_variant_id)

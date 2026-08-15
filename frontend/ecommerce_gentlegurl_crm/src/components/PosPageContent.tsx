@@ -13,6 +13,7 @@ import PosPriceEditSummaryGrid, { priceEditTargetUsesSimpleServicePriceLayout, r
 import type { PosDepositTransaction, PosRefundTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import ThermalPrinterCheckoutOption from '@/components/pos/ThermalPrinterCheckoutOption'
+import { useBranch } from '@/contexts/BranchContext'
 import ApplyPackageModal from '@/components/pos/ApplyPackageModal'
 import {
   batchReleaseAppointmentPackageClaims,
@@ -1714,6 +1715,7 @@ type PosPageContentProps = {
 }
 
 export default function PosPageContent({ currentUser, permissions = [] }: PosPageContentProps) {
+  const { selectedBranchId } = useBranch()
   const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const canManageBalance = useMemo(() => permissions.includes('customer_wallet.adjust'), [permissions])
   const { hasOpenShift, cashShiftLoading } = usePosCashShift()
@@ -5787,14 +5789,17 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   useEffect(() => {
     focusScanner()
     void loadCart()
+    const categoryRequest = new AbortController()
+    setCategories([])
     const loadCategories = async () => {
       const params = new URLSearchParams({
         page: '1',
         per_page: '200',
         is_active: 'true',
       })
+      if (selectedBranchId) params.set('branch_store_location_id', String(selectedBranchId))
       try {
-        const res = await fetch(`/api/proxy/ecommerce/categories?${params.toString()}`, { cache: 'no-store' })
+        const res = await fetch(`/api/proxy/ecommerce/categories?${params.toString()}`, { cache: 'no-store', signal: categoryRequest.signal })
         if (!res.ok) {
           setCategories([])
           return
@@ -5861,7 +5866,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     void fetchBookingProducts(null)
     void fetchServicePackages()
     void fetchUnpaidCompletedAppointments('')
-  }, [fetchActiveStaffs, fetchBookingProducts, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments])
+    return () => categoryRequest.abort()
+  }, [fetchActiveStaffs, fetchBookingProducts, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments, selectedBranchId])
 
   useEffect(() => {
     const handle = window.setTimeout(() => {

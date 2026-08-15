@@ -24,11 +24,13 @@ class Promotion extends Model
         'start_at',
         'end_at',
         'is_active',
+        'is_online_enabled',
         'sort_order',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_online_enabled' => 'boolean',
         'start_at' => 'datetime',
         'end_at' => 'datetime',
         'starts_at' => 'datetime',
@@ -43,6 +45,22 @@ class Promotion extends Model
     public function promotionTiers()
     {
         return $this->hasMany(\App\Models\Ecommerce\PromotionTier::class);
+    }
+
+    public function offlineStoreLocations()
+    {
+        return $this->belongsToMany(\App\Models\Ecommerce\StoreLocation::class, 'promotion_store_location')
+            ->withTimestamps();
+    }
+
+    public function scopeOnline($query)
+    {
+        return $query->where('is_online_enabled', true);
+    }
+
+    public function scopeOfflineAt($query, int $storeLocationId)
+    {
+        return $query->whereHas('offlineStoreLocations', fn ($branch) => $branch->whereKey($storeLocationId));
     }
 
     public function scopeActive($query)

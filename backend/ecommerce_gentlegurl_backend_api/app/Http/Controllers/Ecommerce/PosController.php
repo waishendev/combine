@@ -5425,6 +5425,8 @@ class PosController extends Controller
             return $this->respondError(__('Product is not available at this Branch.'), 422);
         }
 
+        $this->validateActiveBranchItem($cart, $resolvedProduct, $variant, $qty);
+
         if ($variant) {
             $availableQty = $this->resolveVariantAvailableQty($variant);
             if ($availableQty !== null && $availableQty < $qty) {
@@ -5450,6 +5452,8 @@ class PosController extends Controller
         $item->price_snapshot = $unitPrice;
         $item->variant_id = $variant?->id;
         $item->product_id = $variant ? null : $resolvedProduct->id;
+
+        $this->validateActiveBranchItem($cart, $resolvedProduct, $variant, (int) $item->qty);
 
         if ($variant) {
             $availableQty = $this->resolveVariantAvailableQty($variant);
@@ -5830,12 +5834,18 @@ class PosController extends Controller
             'items.*.qty' => ['required', 'integer', 'min:1'],
         ]);
 
-        $order = DB::transaction(function () use ($validated, $request) {
+        $operatingCart = $this->resolveCart((int) $request->user()->id);
+        if (! $operatingCart->store_location_id) {
+            throw ValidationException::withMessages(['store_location_id' => __('A specific POS Branch is required.')]);
+        }
+
+        $order = DB::transaction(function () use ($validated, $request, $operatingCart) {
             $payloadItems = collect($validated['items']);
             $order = Order::create([
                 'order_number' => $this->generateOrderNumber(),
                 'customer_id' => null,
                 'created_by_user_id' => $request->user()->id,
+                'store_location_id' => (int) $operatingCart->store_location_id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
                 'payment_method' => 'staff_free',
@@ -5856,7 +5866,7 @@ class PosController extends Controller
                 ],
             ]);
 
-            foreach ($payloadItems as $payloadItem) {
+            foreach ($payloadItems as $payloadIndex => $payloadItem) {
                 $qty = max(1, (int) $payloadItem['qty']);
                 $variantId = !empty($payloadItem['variant_id']) ? (int) $payloadItem['variant_id'] : null;
 
@@ -5928,7 +5938,17 @@ class PosController extends Controller
                     'locked' => true,
                 ]);
 
-                $this->deductStaffConsumableStock($product, $variant, $qty, (int) $request->user()->id);
+                $branchDeducted = app(\App\Services\Ecommerce\PosBranchInventoryService::class)->deductItems(
+                    (int) $order->store_location_id,
+                    [['product_id' => (int) $product->id, 'product_variant_id' => $variant?->id, 'quantity' => $qty]],
+                    "staff-consumable-order:{$order->id}:line:{$payloadIndex}",
+                    $order,
+                    (int) $request->user()->id,
+                    'Staff consumable claim',
+                );
+                if (! $branchDeducted) {
+                    $this->deductStaffConsumableStock($product, $variant, $qty, (int) $request->user()->id, (int) $order->store_location_id);
+                }
             }
 
             return $order->fresh(['items', 'creator']);
@@ -5981,7 +6001,7 @@ class PosController extends Controller
         ];
     }
 
-    protected function deductStaffConsumableStock(Product $product, ?ProductVariant $variant, int $qty, ?int $actorUserId = null): void
+    protected function deductStaffConsumableStock(Product $product, ?ProductVariant $variant, int $qty, ?int $actorUserId = null, ?int $storeLocationId = null): void
     {
         if ($variant) {
             if ($variant->is_bundle) {
@@ -6009,6 +6029,7 @@ class PosController extends Controller
                     $componentVariant->save();
 
                     ProductStockMovement::create([
+                        'store_location_id' => $storeLocationId,
                         'product_id' => (int) ($component->product_id ?? $product->id),
                         'product_variant_id' => (int) $componentVariant->id,
                         'type' => 'stock_out',
@@ -6048,6 +6069,7 @@ class PosController extends Controller
             $lockedVariant->save();
 
             ProductStockMovement::create([
+                'store_location_id' => $storeLocationId,
                 'product_id' => (int) $product->id,
                 'product_variant_id' => (int) $lockedVariant->id,
                 'type' => 'stock_out',
@@ -6088,6 +6110,7 @@ class PosController extends Controller
         $lockedProduct->save();
 
         ProductStockMovement::create([
+            'store_location_id' => $storeLocationId,
             'product_id' => (int) $lockedProduct->id,
             'product_variant_id' => null,
             'type' => 'stock_out',
@@ -6164,6 +6187,11 @@ class PosController extends Controller
             return $this->respond([
                 'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
             ]);
+        }
+
+        $resolvedProduct = $item->variant?->product ?? $item->product;
+        if ($resolvedProduct) {
+            $this->validateActiveBranchItem($cart, $resolvedProduct, $item->variant, $qty);
         }
 
         if ($item->variant) {
@@ -8402,7 +8430,9 @@ class PosController extends Controller
                 }
             }
 
-            $this->deductPosCheckoutStock($cart, (int) $request->user()->id);
+            if (! app(\App\Services\Ecommerce\PosBranchInventoryService::class)->deduct($cart, $order, (int) $request->user()->id)) {
+                $this->deductPosCheckoutStock($cart, (int) $request->user()->id);
+            }
             $this->replaceOrderPayments($order, $paymentRows, 'pos_checkout');
             $this->settleCustomerBalancePayment($order, $customerId ? (int) $customerId : null, $paymentRows, (int) $request->user()->id);
             if ($request->hasFile('qr_payment_proof')) {
@@ -9167,6 +9197,7 @@ class PosController extends Controller
                             : Product::query()->find($componentVariant->product_id);
 
                         ProductStockMovement::create([
+                            'store_location_id' => (int) $cart->store_location_id,
                             'product_id' => (int) ($componentProduct?->id ?? $componentVariant->product_id),
                             'product_variant_id' => (int) $componentVariant->id,
                             'type' => 'stock_out',
@@ -9204,6 +9235,7 @@ class PosController extends Controller
                 $lockedVariant->save();
 
                 ProductStockMovement::create([
+                    'store_location_id' => (int) $cart->store_location_id,
                     'product_id' => (int) $product->id,
                     'product_variant_id' => (int) $lockedVariant->id,
                     'type' => 'stock_out',
@@ -9250,6 +9282,7 @@ class PosController extends Controller
             $lockedProduct->save();
 
             ProductStockMovement::create([
+                'store_location_id' => (int) $cart->store_location_id,
                 'product_id' => (int) $lockedProduct->id,
                 'product_variant_id' => null,
                 'type' => 'stock_out',
@@ -9265,6 +9298,18 @@ class PosController extends Controller
                 'created_by_user_id' => $actorUserId,
             ]);
         }
+    }
+
+    protected function validateActiveBranchItem(PosCart $cart, Product $product, ?ProductVariant $variant, int $quantity): void
+    {
+        if (! app(\App\Services\Ecommerce\OrderBranchInventoryService::class)->isActive((int) $cart->store_location_id)) {
+            return;
+        }
+        app(\App\Services\Ecommerce\PickupFulfillmentService::class)->validateAtBranch((int) $cart->store_location_id, [[
+            'product_id' => (int) $product->id,
+            'product_variant_id' => $variant?->id,
+            'quantity' => $quantity,
+        ]]);
     }
 
     public function sendReceiptEmail(Request $request, int $orderId)
@@ -10682,6 +10727,12 @@ class PosController extends Controller
 
         $promotions = Promotion::query()
             ->where('is_active', true)
+            ->offlineAt((int) $cart->store_location_id)
+            ->where(function ($query) {
+                $now = now();
+                $query->where(fn ($dates) => $dates->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
+                    ->where(fn ($dates) => $dates->whereNull('ends_at')->orWhere('ends_at', '>=', $now));
+            })
             ->whereIn('id', DB::table('promotion_products')->select('promotion_id')->distinct())
             ->with(['promotionProducts', 'promotionTiers'])
             ->get();

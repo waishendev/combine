@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class BranchInventoryMutationService
 {
+    public function __construct(private BranchInventoryProjectionService $projection) {}
     /**
      * @param array<int, array{product_id:int, product_variant_id?:int|null, delta:int, type:string, remark?:string|null, idempotency_key:string}> $mutations
      */
@@ -79,7 +80,7 @@ class BranchInventoryMutationService
                 }
             }
 
-            return $normalized->map(function (array $item) use ($rows, $storeLocationId, $actorUserId, $reference) {
+            $movements = $normalized->map(function (array $item) use ($rows, $storeLocationId, $actorUserId, $reference) {
                 $row = $rows[$this->identity($item)];
                 $before = (int) $row->quantity;
                 $after = $before + $item['delta'];
@@ -108,6 +109,14 @@ class BranchInventoryMutationService
                     'idempotency_key' => $item['idempotency_key'],
                 ]);
             });
+
+            // Legacy fields are a bounded compatibility projection only after
+            // activation; operational deductions never target the aggregate.
+            foreach ($normalized as $item) {
+                $this->projection->project($item['product_id'], $item['product_variant_id']);
+            }
+
+            return $movements;
         }, 3);
     }
 

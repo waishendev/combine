@@ -1001,6 +1001,7 @@ class PublicShopController extends Controller
 
         $promotions = Promotion::query()
             ->where('is_active', true)
+            ->where('is_online_enabled', true)
             ->where(function ($q) use ($now) {
                 $q->whereNull('start_at')->orWhere('start_at', '<=', $now);
             })

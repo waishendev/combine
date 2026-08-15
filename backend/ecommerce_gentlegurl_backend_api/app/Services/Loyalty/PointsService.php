@@ -242,20 +242,14 @@ class PointsService
                 }
             }
 
-            $lockedProduct = null;
             if ($reward->type === 'product' && $reward->product_id) {
-                $lockedProduct = Product::whereKey($reward->product_id)->lockForUpdate()->first();
-
-                if (!$lockedProduct) {
+                // Product rewards are global claims at this stage. Physical stock
+                // is reserved exactly once later, when checkout has selected the
+                // actual pickup or shipping fulfilment Branch.
+                if (! Product::whereKey($reward->product_id)->exists()) {
                     throw ValidationException::withMessages([
                         'reward_id' => __('Selected product reward is missing product.'),
                     ]);
-                }
-
-                if ($lockedProduct->stock <= 0) {
-                    throw ValidationException::withMessages([
-                        'reward_id' => __('Out of stock.'),
-                    ])->status(422);
                 }
             }
 
@@ -287,12 +281,6 @@ class PointsService
             if ($reward->type === 'voucher') {
                 $reward->quota_used = (int) $reward->quota_used + 1;
                 $reward->save();
-            }
-
-            if ($lockedProduct) {
-                $lockedProduct->stock = max(0, (int) $lockedProduct->stock - 1);
-                $lockedProduct->stock_quantity = $lockedProduct->stock;
-                $lockedProduct->save();
             }
 
             $redemption = LoyaltyRedemption::create([

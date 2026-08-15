@@ -72,6 +72,7 @@ use App\Http\Controllers\Ecommerce\LoyaltyAdminController;
 use App\Http\Controllers\Ecommerce\LoyaltyRewardController;
 use App\Http\Controllers\Ecommerce\LoyaltyRedemptionAdminController;
 use App\Http\Controllers\Ecommerce\ShopSettingController;
+use App\Http\Controllers\Ecommerce\ShippingFulfillmentSettingController;
 use App\Http\Controllers\Ecommerce\ThermalPrinterSettingController;
 use App\Http\Controllers\Ecommerce\BranchLimitSettingController;
 use App\Http\Controllers\LoyaltySettingController;
@@ -1091,6 +1092,11 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.loyalty.redemptions.update');
 
         // Shop Settings
+        Route::get('/shipping-fulfillment-priority', [ShippingFulfillmentSettingController::class, 'show'])
+            ->middleware('permission:ecommerce.settings.view|ecommerce.settings.update');
+        Route::put('/shipping-fulfillment-priority', [ShippingFulfillmentSettingController::class, 'update'])
+            ->middleware('permission:ecommerce.settings.update');
+
         Route::get('/branch-limit', [BranchLimitSettingController::class, 'show']);
         Route::put('/branch-limit', [BranchLimitSettingController::class, 'update']);
 

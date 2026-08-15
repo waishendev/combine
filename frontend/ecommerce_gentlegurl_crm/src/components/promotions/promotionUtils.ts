@@ -27,6 +27,8 @@ export type PromotionApiItem = {
   name?: string
   title?: string
   is_active: boolean
+  is_online_enabled?: boolean
+  offline_store_locations?: Array<{ id: number; name: string; code: string }>
   trigger_type: TriggerType
   created_at?: string
   promotion_products?: Array<{
@@ -52,6 +54,8 @@ export type PromotionFormState = {
   id?: number
   name: string
   is_active: boolean
+  is_online_enabled: boolean
+  offline_store_location_ids: number[]
   trigger_type: TriggerType
   product_ids: number[]
   tiers: TierApi[]
@@ -67,6 +71,8 @@ export const tierTemplate = (): TierApi => ({
 export const emptyPromotionForm = (): PromotionFormState => ({
   name: '',
   is_active: true,
+  is_online_enabled: false,
+  offline_store_location_ids: [],
   trigger_type: 'quantity',
   product_ids: [],
   tiers: [tierTemplate()],
@@ -85,6 +91,9 @@ export function promotionApiItemToFormState(
     id: promotion.id,
     name: promotion.name ?? promotion.title ?? '',
     is_active: Boolean(promotion.is_active),
+    is_online_enabled: Boolean(promotion.is_online_enabled),
+    offline_store_location_ids:
+      promotion.offline_store_locations?.map((branch) => branch.id) ?? [],
     trigger_type: promotion.trigger_type ?? 'quantity',
     product_ids: promotion.promotion_products?.map((row) => row.product_id) ?? [],
     tiers: (promotion.promotion_tiers?.length
@@ -117,6 +126,9 @@ export function mapPromotionApiItemToRow(
 
 export function validatePromotionForm(form: PromotionFormState): string | null {
   if (!form.name.trim()) return 'Promotion name is required.'
+  if (!form.is_online_enabled && !form.offline_store_location_ids.length) {
+    return 'Enable Online Ecommerce or select at least one Offline Branch.'
+  }
   if (!form.product_ids.length) return 'Please select at least one product.'
   if (!form.tiers.length) return 'Please add at least one tier rule.'
 

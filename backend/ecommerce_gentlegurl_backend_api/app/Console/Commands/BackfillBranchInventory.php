@@ -34,6 +34,10 @@ class BackfillBranchInventory extends Command
             $this->info('Dry run: zero writes. Cutover remains inactive.');
             return self::SUCCESS;
         }
+        if (StoreLocation::query()->where('is_active', true)->count() > 1) {
+            $this->error('Force refused: global stock cannot be assigned to one Branch when multiple active physical Branches exist. Import reviewed per-Branch counts instead.');
+            return self::FAILURE;
+        }
         if ($report['mismatch_count'] > 0 || $report['extra_count'] > 0) {
             $this->error('Force refused: existing Branch inventory has mismatched or unresolved extra rows. Reconcile explicitly; nothing was overwritten.');
             return self::FAILURE;
