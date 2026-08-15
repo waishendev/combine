@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\PublicShopController;
 use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\StoreLocation;
@@ -53,22 +54,30 @@ class ProductBranchContextTest extends TestCase
     public function test_categories_remain_global_while_product_counts_follow_branch_availability(): void
     {
         $png = $this->branch('PNG'); $b = $this->branch('B');
-        $category = Category::create(['name' => 'Global', 'slug' => 'global', 'is_active' => true]);
+        $category = Category::create(['name' => 'Both', 'slug' => 'both', 'is_active' => true]);
+        $bOnly = Category::create(['name' => 'B only', 'slug' => 'b-only', 'is_active' => true]);
+        $inventoryOnly = Category::create(['name' => 'Inventory only', 'slug' => 'inventory-only', 'is_active' => true]);
         $empty = Category::create(['name' => 'Empty', 'slug' => 'empty', 'is_active' => true]);
-        $pngProduct = $this->product('PNG', 0); $bProduct = $this->product('B', 0);
+        $pngProduct = $this->product('PNG', 0); $bProduct = $this->product('B', 0); $unassigned = $this->product('UNASSIGNED', 99);
         $category->products()->attach([$pngProduct->id, $bProduct->id]);
+        $bOnly->products()->attach($bProduct->id); $inventoryOnly->products()->attach($unassigned->id);
         $pngProduct->storeLocations()->attach($png->id, ['is_available' => true]);
         $bProduct->storeLocations()->attach($b->id, ['is_available' => true]);
+        StoreLocationProductInventory::create(['store_location_id' => $png->id, 'product_id' => $unassigned->id, 'quantity' => 99]);
 
         $pngRows = $this->categoryRows($png->id); $bRows = $this->categoryRows($b->id); $allRows = $this->categoryRows(null);
-        $this->assertCount(2, $pngRows); $this->assertCount(2, $bRows); $this->assertCount(2, $allRows);
+        $this->assertSame([$category->id], collect($pngRows)->pluck('id')->all());
+        $this->assertEqualsCanonicalizing([$category->id, $bOnly->id], collect($bRows)->pluck('id')->all());
+        $this->assertEqualsCanonicalizing([$category->id, $bOnly->id, $inventoryOnly->id, $empty->id], collect($allRows)->pluck('id')->all());
+        $public = app(PublicShopController::class)->categories(Request::create('/public/categories', 'GET'));
+        $this->assertEqualsCanonicalizing([$category->id, $bOnly->id, $inventoryOnly->id, $empty->id], collect($public->getData(true)['data'])->pluck('id')->all());
         $this->assertSame(1, $this->countFor($pngRows, $category->id));
         $this->assertSame(1, $this->countFor($bRows, $category->id));
         $this->assertSame(2, $this->countFor($allRows, $category->id));
-        $this->assertSame(0, $this->countFor($pngRows, $empty->id));
+        $this->assertFalse(\Schema::hasTable('category_store_location'));
 
         $category->update(['name' => 'Edited globally']);
-        $this->assertSame(2, Category::query()->count(), 'Branch context must not clone Category identity.');
+        $this->assertSame(4, Category::query()->count(), 'Branch context must not clone Category identity.');
     }
 
     private function productIds(?int $branchId): array

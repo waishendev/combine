@@ -28,6 +28,9 @@ class CategoryController extends Controller
                         ->where('store_location_product.is_available', true));
                 }
             }])
+            ->when($branchId, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
+                ->where('store_locations.id', $branchId)
+                ->where('store_location_product.is_available', true)))
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
             })

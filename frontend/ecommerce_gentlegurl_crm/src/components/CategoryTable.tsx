@@ -596,7 +596,9 @@ export default function CategoryTable({
       </div>
 
       <div className="mb-4 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-        Category records are global. Product counts show {isAllBranches ? 'all Branches' : selectedBranch?.name ?? 'the selected Branch'}.
+        Category records are global. {isAllBranches
+          ? 'This view shows all Categories and global Product counts.'
+          : `This view shows Categories with available Products at ${selectedBranch?.name ?? 'the selected Branch'} and their local Product counts.`}
       </div>
 
       {(isImporting || importSummary) && (

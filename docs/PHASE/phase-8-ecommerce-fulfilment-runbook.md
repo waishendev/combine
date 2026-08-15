@@ -174,7 +174,7 @@ php artisan product-branch:backfill --store-code=PNG --force
 
 This command resolves an active Branch by code, preserves all existing `store_location_product` rows (including explicit unavailable rows), adds only missing Products as available, leaves every other Branch assignment intact, and never reads or writes inventory quantities. Product listing at a specific Header Branch filters by this availability pivot—not by inventory—so an available zero-stock Product remains visible. All Branches retains the global Product identity view.
 
-Category identity remains global. The Branch-specific Categories view keeps every Category visible (including zero-count Categories) and scopes only its direct Product count through Product-to-Branch availability. This preserves global create/edit management while preventing another Branch's Products from being represented in the local count. Branch selection is part of Product and Category request/cache dependencies; switching clears stale rows and refetches the new scope.
+Category identity remains global. In a specific CRM/POS Branch context, Category visibility is derived rather than persisted: a Category is returned only when at least one related Product has `store_location_product.is_available = true` at that Branch, and its count uses the same predicate. All Branches and public Ecommerce retain the global Category query. Global Category create/edit remains unchanged; a new empty Category appears globally but not in a specific operational Branch until an available Product is related. Branch selection is part of Product and Category request dependencies, so switching clears stale rows and refetches the new scope.
 
 ### Coordinated activation readiness
 
