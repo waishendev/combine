@@ -20,6 +20,7 @@ use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
 use App\Services\StoreLocationAccessService;
+use App\Services\Reports\ReportBranchScope;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -64,25 +65,17 @@ class OrderController extends Controller
             $paymentStatus = !empty($paymentStatus) ? $paymentStatus : null;
         }
     
-        $orders = Order::with([
+        $orders = ReportBranchScope::applyCurrent(Order::with([
             'storeLocation:id,name,code',
             'customer:id,name,email,phone',
             'items:id,order_id,line_type',
             'serviceItems:id,order_id',
             'returns:id,order_id,status,created_at',
             'returns.items:id,return_request_id,quantity',
-        ])
+        ]), 'orders.store_location_id')
             // Only include eCommerce shop orders here.
             // POS orders are created by an admin user and have created_by_user_id set.
             ->whereNull('created_by_user_id')
-            ->when($request->filled('branch_store_location_id'), function ($q) use ($request) {
-                $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $request->integer('branch_store_location_id'), false);
-                $q->where('store_location_id', $branch->id);
-            })
-            ->when($request->query('branch_scope') === 'all', function ($q) use ($request) {
-                $ids = app(StoreLocationAccessService::class)->accessibleStoreLocations($request->user(), false)->pluck('id');
-                $q->where(fn ($scope) => $scope->whereIn('store_location_id', $ids)->orWhereNull('store_location_id'));
-            })
             ->when($orderType === 'booking', fn($q) => $this->applyBookingOrderScope($q))
             ->when($orderType === 'ecommerce', fn($q) => $this->applyNonBookingOrderScope($q))
             ->when($orderType === 'mixed', function ($q) {
@@ -192,9 +185,7 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        if ($order->store_location_id !== null) {
-            app(StoreLocationAccessService::class)->authorizeStoreLocation(request()->user(), (int) $order->store_location_id);
-        }
+        $this->authorizeOrderBranch($order);
         $order->load([
             'storeLocation:id,name,code',
             'items.product.images',
@@ -618,6 +609,8 @@ class OrderController extends Controller
 
     public function invoice(Order $order)
     {
+        $this->authorizeOrderBranch($order);
+
         if (! $this->invoiceService->canCustomerDownloadInvoice($order)) {
             return $this->respondError(__('Invoice is available after the order is completed.'), 403);
         }
@@ -629,6 +622,7 @@ class OrderController extends Controller
 
     public function update(Request $request, Order $order)
     {
+        $this->authorizeOrderBranch($order, $request);
         $validated = $request->validate([
             'status' => ['required', 'string'],
             'shipping_courier' => ['nullable', 'string', 'max:100'],
@@ -723,6 +717,7 @@ class OrderController extends Controller
 
     public function confirmPayment(Request $request, Order $order)
     {
+        $this->authorizeOrderBranch($order, $request);
         if ($order->payment_status === 'paid') {
             return $this->respond($order, __('Order already paid.'), false, 422);
         }
@@ -750,6 +745,7 @@ class OrderController extends Controller
 
     public function RejectPaymentProof(Request $request, Order $order)
     {
+        $this->authorizeOrderBranch($order, $request);
         if ($order->payment_status === 'paid') {
             return $this->respond($order, __('Order already paid.'), false, 422);
         }
@@ -774,6 +770,7 @@ class OrderController extends Controller
 
     public function cancelOrder(Request $request, Order $order)
     {
+        $this->authorizeOrderBranch($order, $request);
         if ($order->payment_status === 'paid') {
             return $this->respond($order, __('Order already paid.'), false, 422);
         }
@@ -830,6 +827,8 @@ class OrderController extends Controller
 
     public function refund(Request $request, Order $order)
     {
+        $this->authorizeOrderBranch($order, $request);
+
         // Debug: Log all request data
         Log::info('Refund request data:', [
             'method' => $request->method(),
@@ -886,8 +885,21 @@ class OrderController extends Controller
         return $this->respond($order->fresh(['items', 'customer']), __('Order Refunded.'));
     }
 
+    /** Legacy NULL orders remain accessible under the existing historical compatibility policy. */
+    private function authorizeOrderBranch(Order $order, ?Request $request = null): void
+    {
+        if ($order->store_location_id !== null) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation(
+                ($request ?? request())->user(),
+                (int) $order->store_location_id,
+                false
+            );
+        }
+    }
+
     public function complete(Order $order)
     {
+        $this->authorizeOrderBranch($order);
         if ($order->status === 'completed') {
             return $this->respond($order, __('Order already completed.'));
         }

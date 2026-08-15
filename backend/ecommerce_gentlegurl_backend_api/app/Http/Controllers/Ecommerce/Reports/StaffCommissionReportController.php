@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Services\Ecommerce\StaffSplitNormalizer;
+use App\Services\Reports\ReportBranchScope;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -237,7 +238,7 @@ class StaffCommissionReportController extends Controller
 
     private function baseCommissionQuery(array $filters): Builder
     {
-        return DB::table('orders')
+        return ReportBranchScope::applyCurrent(DB::table('orders'), 'orders.store_location_id')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->join('staffs', 'staffs.id', '=', 'order_item_staff_splits.staff_id')
@@ -260,7 +261,7 @@ class StaffCommissionReportController extends Controller
 
     private function basePackageCommissionQuery(array $filters): Builder
     {
-        return DB::table('orders')
+        return ReportBranchScope::applyCurrent(DB::table('orders'), 'orders.store_location_id')
             ->join('customer_service_packages', function ($join) {
                 $join->on('customer_service_packages.purchased_ref_id', '=', 'orders.id')
                     ->where('customer_service_packages.purchased_from', 'POS');

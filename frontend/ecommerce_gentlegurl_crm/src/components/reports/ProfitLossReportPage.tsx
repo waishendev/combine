@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useBranch } from '@/contexts/BranchContext'
 
 type ProfitLossRow = {
   month: number
@@ -18,6 +19,7 @@ type ProfitLossPayload = {
   year: number
   months: ProfitLossRow[]
   totals: Omit<ProfitLossRow, 'month' | 'month_name'>
+  accounting_scope?: { complete_company_view: boolean; global_expenses_included: boolean; result_label: string }
 }
 
 const formatCurrency = (amount: number) => {
@@ -26,6 +28,7 @@ const formatCurrency = (amount: number) => {
 }
 
 export default function ProfitLossReportPage() {
+  const { selectedBranchId } = useBranch()
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -41,7 +44,10 @@ export default function ProfitLossReportPage() {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(`/api/proxy/admin/reports/profit-loss?year=${selectedYear}`, { cache: 'no-store' })
+      const qs = new URLSearchParams({ year: String(selectedYear) })
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
+      const response = await fetch(`/api/proxy/admin/reports/profit-loss?${qs.toString()}`, { cache: 'no-store' })
       if (!response.ok) throw new Error('Unable to load profit and loss report.')
       setData((await response.json()) as ProfitLossPayload)
     } catch {
@@ -50,7 +56,7 @@ export default function ProfitLossReportPage() {
     } finally {
       setLoading(false)
     }
-  }, [selectedYear])
+  }, [selectedYear, selectedBranchId])
 
   useEffect(() => { void load() }, [load])
 
@@ -74,7 +80,7 @@ export default function ProfitLossReportPage() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold text-slate-900">{selectedYear} Monthly Profit &amp; Loss</h1>
-          <p className="mt-1 text-sm text-slate-600">Monthly ecommerce and booking sales, product costing, refunds, and expenses.</p>
+          <p className="mt-1 text-sm text-slate-600">Monthly Branch-attributed sales, costing and refunds. Global company expenses are excluded from a specific or restricted Branch view.</p>
         </div>
         <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Year
           <select value={selectedYear} onChange={(event) => changeYear(Number(event.target.value))} className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
@@ -86,7 +92,7 @@ export default function ProfitLossReportPage() {
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full min-w-[980px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr>
-              <th className="px-4 py-3 font-semibold">Month</th><th className="px-4 py-3 text-right font-semibold">Ecommerce Sales</th><th className="px-4 py-3 text-right font-semibold">Ecommerce Costing</th><th className="px-4 py-3 text-right font-semibold">Booking Sales</th><th className="px-4 py-3 text-right font-semibold">Refund</th><th className="px-4 py-3 text-right font-semibold">Expense</th><th className="px-4 py-3 text-right font-semibold">Profit &amp; Loss</th>
+              <th className="px-4 py-3 font-semibold">Month</th><th className="px-4 py-3 text-right font-semibold">Ecommerce Sales</th><th className="px-4 py-3 text-right font-semibold">Ecommerce Costing</th><th className="px-4 py-3 text-right font-semibold">Booking Sales</th><th className="px-4 py-3 text-right font-semibold">Refund</th><th className="px-4 py-3 text-right font-semibold">Expense</th><th className="px-4 py-3 text-right font-semibold">{data?.accounting_scope?.result_label ?? 'Contribution'}</th>
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => <tr key={row.month} className="text-slate-700"><td className="px-4 py-3 font-medium">{row.month_name}</td><Currency value={row.ecommerce_sales} /><Currency value={row.ecommerce_costing} /><Currency value={row.booking_sales} /><Currency value={row.refund} /><Currency value={row.expense} /><Currency value={row.profit_loss} profit /></tr>)}

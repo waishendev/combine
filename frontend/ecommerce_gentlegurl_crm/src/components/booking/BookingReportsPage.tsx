@@ -8,6 +8,7 @@ import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import PaginationControls from '../PaginationControls'
 import TableEmptyState from '../TableEmptyState'
 import TableLoadingRow from '../TableLoadingRow'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Pagination = {
   total: number
@@ -36,6 +37,7 @@ type BookingReportResponse = {
   grand_totals?: SummaryTotals
   totals_page?: SummaryTotals
   pagination?: Partial<Pagination>
+  unassigned?: { included_in_totals: boolean; bookings_count: number; deposit_collected: number }
 }
 
 const DEFAULT_PAGE_SIZE = 15
@@ -79,6 +81,7 @@ const formatAmount = (amount: number) =>
   })
 
 export default function BookingReportsPage({ canExport = false }: { canExport?: boolean }) {
+  const { selectedBranchId } = useBranch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -111,6 +114,7 @@ export default function BookingReportsPage({ canExport = false }: { canExport?: 
   const [rows, setRows] = useState<SummaryRow[]>([])
   const [totalsPage, setTotalsPage] = useState<SummaryTotals | null>(null)
   const [grandTotals, setGrandTotals] = useState<SummaryTotals | null>(null)
+  const [unassigned, setUnassigned] = useState<BookingReportResponse['unassigned']>(undefined)
   const [pagination, setPagination] = useState<Pagination>({
     total: 0,
     per_page: resolvedParams.perPage,
@@ -178,6 +182,8 @@ export default function BookingReportsPage({ canExport = false }: { canExport?: 
       qs.set('group_by', resolvedParams.groupBy)
       qs.set('page', String(resolvedParams.page))
       qs.set('per_page', String(resolvedParams.perPage))
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
 
       try {
         const response = await fetch(
@@ -200,6 +206,7 @@ export default function BookingReportsPage({ canExport = false }: { canExport?: 
         setRows(responseRows)
         setTotalsPage(data.totals_page ?? null)
         setGrandTotals(data.grand_totals ?? null)
+        setUnassigned(data.unassigned)
         const hasPagination = Boolean(data.pagination)
         setHasServerPagination(hasPagination)
 
@@ -237,7 +244,7 @@ export default function BookingReportsPage({ canExport = false }: { canExport?: 
     fetchReport()
 
     return () => controller.abort()
-  }, [resolvedParams.dateFrom, resolvedParams.dateTo, resolvedParams.groupBy, resolvedParams.page, resolvedParams.perPage])
+  }, [resolvedParams.dateFrom, resolvedParams.dateTo, resolvedParams.groupBy, resolvedParams.page, resolvedParams.perPage, selectedBranchId])
 
   const updateQuery = (next: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -282,8 +289,10 @@ export default function BookingReportsPage({ canExport = false }: { canExport?: 
     qs.set('from', resolvedParams.dateFrom)
     qs.set('to', resolvedParams.dateTo)
     qs.set('group_by', resolvedParams.groupBy)
+    if (selectedBranchId === null) qs.set('branch_scope', 'all')
+    else qs.set('branch_store_location_id', String(selectedBranchId))
     return `/api/proxy/admin/booking/reports/summary/export.csv?${qs.toString()}`
-  }, [canExport, resolvedParams.dateFrom, resolvedParams.dateTo, resolvedParams.groupBy])
+  }, [canExport, resolvedParams.dateFrom, resolvedParams.dateTo, resolvedParams.groupBy, selectedBranchId])
 
   const activeFilters = useMemo(() => {
     if (!resolvedParams.hasDateFrom || !resolvedParams.hasDateTo) {
@@ -347,6 +356,11 @@ export default function BookingReportsPage({ canExport = false }: { canExport?: 
 
   return (
     <div className="space-y-6">
+      {unassigned?.included_in_totals && unassigned.bookings_count > 0 ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span className="font-semibold">Unassigned legacy activity:</span> {unassigned.bookings_count} bookings; RM {Number(unassigned.deposit_collected).toFixed(2)} deposit collected. Included in All Branches totals without Branch attribution.
+        </div>
+      ) : null}
       {isFilterOpen ? (
         <CrmFilterModalShell
           title="Filter"

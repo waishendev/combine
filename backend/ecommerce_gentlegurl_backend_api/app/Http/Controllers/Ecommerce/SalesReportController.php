@@ -145,5 +145,6 @@ class SalesReportController extends Controller
         }
 
         $data['meta'] = $meta;
+        $data['unassigned'] = $this->service->unassignedSummary($start, $end);
     }
 }

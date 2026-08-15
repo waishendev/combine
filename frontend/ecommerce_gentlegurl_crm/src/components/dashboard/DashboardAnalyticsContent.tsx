@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react'
 import DashboardPageLoading from '@/components/dashboard/DashboardPageLoading'
 import EcommerceAnalyticsDashboard from '@/components/dashboard/EcommerceAnalyticsDashboard'
 import PackageAnalyticsDashboard from '@/components/dashboard/PackageAnalyticsDashboard'
+import { useBranch } from '@/contexts/BranchContext'
 
 type DashboardAnalyticsContentProps = {
   canViewEcommerce: boolean
@@ -15,6 +16,8 @@ export default function DashboardAnalyticsContent({
   canViewEcommerce,
   canViewPackage,
 }: DashboardAnalyticsContentProps) {
+  const { selectedBranchId } = useBranch()
+  const branchKey = selectedBranchId === null ? 'all' : String(selectedBranchId)
   const [ecommerceReady, setEcommerceReady] = useState(!canViewEcommerce)
   const [packageReady, setPackageReady] = useState(!canViewPackage)
 
@@ -27,7 +30,7 @@ export default function DashboardAnalyticsContent({
     <div className="relative">
       {isLoading ? <DashboardPageLoading /> : null}
       <div className={isLoading ? 'hidden' : 'space-y-8'}>
-        {canViewEcommerce ? <EcommerceAnalyticsDashboard onInitialLoad={onEcommerceReady} /> : null}
+        {canViewEcommerce ? <EcommerceAnalyticsDashboard key={branchKey} onInitialLoad={onEcommerceReady} /> : null}
         {canViewPackage ? <PackageAnalyticsDashboard onInitialLoad={onPackageReady} /> : null}
       </div>
     </div>

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\OrderItem;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\StaffSplitNormalizer;
+use App\Services\Reports\ReportBranchScope;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -532,7 +533,7 @@ class MyPosSummaryReportController extends Controller
 
     protected function baseOrdersScopeQuery(array $filters, ?int $ownerUserId = null): Builder
     {
-        $query = DB::table('orders')
+        $query = ReportBranchScope::applyCurrent(DB::table('orders'), 'orders.store_location_id')
             ->leftJoin('users as creator_user', 'creator_user.id', '=', 'orders.created_by_user_id')
             ->leftJoin('staffs as creator_staff', 'creator_staff.id', '=', 'creator_user.staff_id')
             ->whereDate('orders.created_at', '>=', $filters['start_date'])

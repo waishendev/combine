@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use App\Services\Reports\ReportBranchScope;
 
 class ReportController extends Controller
 {
@@ -14,7 +15,7 @@ class ReportController extends Controller
     {
         [$from, $to] = $this->resolveRange($request);
 
-        $rows = Booking::query()
+        $rows = ReportBranchScope::applyCurrent(Booking::query(), 'bookings.store_location_id')
             ->selectRaw('staff_id, status, COUNT(*) as total')
             ->when($from, fn (Builder $q) => $q->where('start_at', '>=', $from))
             ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to))
@@ -48,7 +49,7 @@ class ReportController extends Controller
         $page = (int) $request->query('page', 1);
 
         // Base query for rows
-        $baseQuery = Booking::query()
+        $baseQuery = ReportBranchScope::applyCurrent(Booking::query(), 'bookings.store_location_id')
             ->selectRaw($this->periodExpression($groupBy) . ' as period')
             ->selectRaw('COUNT(*) as total_bookings')
             ->selectRaw("SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as confirmed_count")
@@ -68,7 +69,7 @@ class ReportController extends Controller
         $rows = $paginated->items();
 
         // Calculate grand totals (all data)
-        $grandTotalsQuery = Booking::query()
+        $grandTotalsQuery = ReportBranchScope::applyCurrent(Booking::query(), 'bookings.store_location_id')
             ->selectRaw('COUNT(*) as total_bookings')
             ->selectRaw("SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count")
             ->selectRaw("SUM(CASE WHEN status = 'NOTIFIED_CANCELLATION' THEN 1 ELSE 0 END) as notified_cancellation_count")
@@ -77,6 +78,15 @@ class ReportController extends Controller
             ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to));
 
         $grandTotals = $grandTotalsQuery->first();
+        $scope = ReportBranchScope::current();
+        $unassignedQuery = Booking::query()->whereNull('store_location_id')
+            ->when($from, fn (Builder $q) => $q->where('start_at', '>=', $from))
+            ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to));
+        $unassigned = $scope->includeUnassigned ? [
+            'included_in_totals' => true,
+            'bookings_count' => (clone $unassignedQuery)->count(),
+            'deposit_collected' => (float) (clone $unassignedQuery)->where('payment_status', 'PAID')->sum('deposit_amount'),
+        ] : ['included_in_totals' => false, 'bookings_count' => 0, 'deposit_collected' => 0.0];
 
         // Calculate page totals (current page only)
         $pageTotals = collect($rows)->reduce(function ($acc, $row) {
@@ -101,6 +111,7 @@ class ReportController extends Controller
                 'deposit_collected' => (float) ($grandTotals->deposit_collected ?? 0),
             ],
             'totals_page' => $pageTotals,
+            'unassigned' => $unassigned,
             'pagination' => [
                 'total' => $paginated->total(),
                 'per_page' => $paginated->perPage(),
@@ -112,7 +123,7 @@ class ReportController extends Controller
 
     public function summaryExport(Request $request)
     {
-        $rows = $this->summary($request)->getData(true)['data'] ?? [];
+        $rows = $this->summary($request)->getData(true)['rows'] ?? [];
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');

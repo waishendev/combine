@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
+import { useBranch } from '@/contexts/BranchContext'
 
 type StaffSalesPayload = {
   range?: {
@@ -49,6 +50,7 @@ function StatSkeleton() {
 }
 
 export default function StaffMySalesDashboard() {
+  const { selectedBranchId } = useBranch()
   const defaultRange = useMemo(() => getDefaultRange(), [])
   const [filterInputs, setFilterInputs] = useState(defaultRange)
   const [appliedFilters, setAppliedFilters] = useState(defaultRange)
@@ -57,7 +59,7 @@ export default function StaffMySalesDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
@@ -65,8 +67,11 @@ export default function StaffMySalesDashboard() {
         date_from: appliedFilters.from,
         date_to: appliedFilters.to,
       })
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/ecommerce/reports/my-staff-sales?${qs.toString()}`, {
         cache: 'no-store',
+        signal,
       })
       if (!res.ok) {
         setData(null)
@@ -74,16 +79,19 @@ export default function StaffMySalesDashboard() {
         return
       }
       setData((await res.json()) as StaffSalesPayload)
-    } catch {
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return
       setData(null)
       setError('Unable to load sales summary.')
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
-  }, [appliedFilters.from, appliedFilters.to])
+  }, [appliedFilters.from, appliedFilters.to, selectedBranchId])
 
   useEffect(() => {
-    void load()
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
   }, [load])
 
   const applyRange = (range: { from: string; to: string }) => {

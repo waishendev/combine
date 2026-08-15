@@ -14,6 +14,7 @@ use App\Services\Booking\StaffCommissionService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\AppointmentActivityLogService;
 use App\Services\StoreLocationAccessService;
+use App\Services\Reports\ReportBranchScope;
 use App\Services\Ecommerce\StaffSplitNormalizer;
 use App\Support\BookingNotes;
 use App\Models\Booking\BookingPayment;
@@ -74,6 +75,7 @@ class AppointmentController extends Controller
             ])
             ->whereDate('start_at', $date)
             ->where('status', 'COMPLETED');
+        ReportBranchScope::current()->apply($query, 'bookings.store_location_id');
 
         if ($request->filled('staff_id')) {
             $query->where('staff_id', (int) $request->query('staff_id'));
@@ -1044,14 +1046,8 @@ class AppointmentController extends Controller
 
     private function applyBranchScope($query, Request $request): void
     {
-        $access = app(StoreLocationAccessService::class);
-        if ($request->filled('branch_store_location_id')) {
-            $branch = $access->authorizeStoreLocation($request->user(), $request->integer('branch_store_location_id'), false);
-            $query->where('store_location_id', $branch->id); // NULL legacy rows are not pretended to belong to a Branch.
-        } elseif ($request->query('branch_scope') === 'all') {
-            $ids = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
-            $query->where(fn ($scope) => $scope->whereIn('store_location_id', $ids)->orWhereNull('store_location_id'));
-        }
+        ReportBranchScope::fromRequest($request, app(StoreLocationAccessService::class))
+            ->apply($query, 'bookings.store_location_id');
     }
 
     private function authorizeBookingBranch(Booking $booking, Request $request): void

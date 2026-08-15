@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import SalesVisualPeriodDashboard from '@/components/reports/SalesVisualPeriodDashboard'
+import { useBranch } from '@/contexts/BranchContext'
 
 type SummaryTotals = {
   ecommerce_sales: number
@@ -103,6 +104,7 @@ function isDailyRow(row: MonthlyRow | DailyRow): row is DailyRow {
 }
 
 export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false }: { canViewStaffReport?: boolean }) {
+  const { selectedBranchId } = useBranch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -178,7 +180,7 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
     [],
   )
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
@@ -193,23 +195,28 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
         qs.set('year_from', String(selectedYearFrom))
         qs.set('year_to', String(selectedYearTo))
       }
-      const res = await fetch(`/api/proxy/ecommerce/reports/sales-summary?${qs.toString()}`, { cache: 'no-store' })
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
+      const res = await fetch(`/api/proxy/ecommerce/reports/sales-summary?${qs.toString()}`, { cache: 'no-store', signal })
       if (!res.ok) {
         setData(null)
         setError('Unable to load sales summary.')
         return
       }
       setData((await res.json()) as SalesSummaryPayload)
-    } catch {
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return
       setData(null)
       setError('Unable to load sales summary.')
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
-  }, [isMonthlyView, selectedMonthFrom, selectedMonthTo, selectedYear, selectedYearFrom, selectedYearTo])
+  }, [isMonthlyView, selectedMonthFrom, selectedMonthTo, selectedYear, selectedYearFrom, selectedYearTo, selectedBranchId])
 
   useEffect(() => {
-    void load()
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
   }, [load])
 
   const openYearSummary = (year = selectedYearFrom) => {

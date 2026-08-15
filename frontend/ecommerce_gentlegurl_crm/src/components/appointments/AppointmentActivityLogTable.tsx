@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Row = {
   id: number
@@ -23,6 +24,7 @@ const formatDateTime = (value: string | null) => {
 }
 
 export default function AppointmentActivityLogTable() {
+  const { selectedBranchId } = useBranch()
   const [rows, setRows] = useState<Row[]>([])
   const [actions, setActions] = useState<FilterOption[]>([])
   const [users, setUsers] = useState<FilterOption[]>([])
@@ -34,8 +36,10 @@ export default function AppointmentActivityLogTable() {
   const query = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), per_page: String(pagination.per_page) })
     Object.entries(filters).forEach(([key, value]) => { if (value) qs.set(key, value) })
+    if (selectedBranchId === null) qs.set('branch_scope', 'all')
+    else qs.set('branch_store_location_id', String(selectedBranchId))
     return qs.toString()
-  }, [filters, page, pagination.per_page])
+  }, [filters, page, pagination.per_page, selectedBranchId])
 
   useEffect(() => {
     let active = true

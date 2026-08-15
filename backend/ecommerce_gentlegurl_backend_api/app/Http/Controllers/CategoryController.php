@@ -86,7 +86,19 @@ class CategoryController extends Controller
 
     public function exportCsv(Request $request)
     {
+        $branchId = $request->integer('branch_store_location_id') ?: null;
+        if ($branchId && $request->user()) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
+        }
         $categories = Category::with(['shopMenus'])
+            ->when($branchId, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
+                ->where('store_locations.id', $branchId)
+                ->where('store_location_product.is_available', true)))
+            ->withCount(['products as products_count' => fn ($query) => $branchId
+                ? $query->whereHas('storeLocations', fn ($branches) => $branches
+                    ->where('store_locations.id', $branchId)
+                    ->where('store_location_product.is_available', true))
+                : $query])
             ->orderBy('sort_order')
             ->get();
 
@@ -143,7 +155,7 @@ class CategoryController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="categories_export_' . now()->format('Y-m-d_His') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="'.($branchId ? 'branch_categories_export_' : 'global_categories_master_export_') . now()->format('Y-m-d_His') . '.csv"',
             'Cache-Control' => 'no-store, no-cache',
         ]);
     }

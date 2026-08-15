@@ -111,7 +111,7 @@ class CustomerSalesDomainReportService
         $paymentMethod = $this->nullableString($filters['payment_method'] ?? null);
         $status = $this->nullableString($filters['status'] ?? null);
 
-        $query = DB::table('orders as o')
+        $query = ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
@@ -160,7 +160,7 @@ class CustomerSalesDomainReportService
         $paymentMethod = $this->nullableString($filters['payment_method'] ?? null);
         $status = $this->nullableString($filters['status'] ?? null);
 
-        $query = DB::table('orders as o')
+        $query = ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])

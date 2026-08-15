@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Services\Reports\SalesReportService;
+use App\Services\Reports\ReportBranchScope;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
@@ -154,7 +155,7 @@ class ProductProfitReportController extends Controller
         ?int $staffId,
         string $channel
     ): Builder {
-        return DB::table('order_items as oi')
+        return ReportBranchScope::applyCurrent(DB::table('order_items as oi'), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
             ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')

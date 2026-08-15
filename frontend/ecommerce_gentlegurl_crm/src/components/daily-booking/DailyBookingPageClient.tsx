@@ -11,6 +11,7 @@ import BookingServicesAddOnsSection, {
 import { type PaymentProof } from '@/components/payment/PaymentProofPreview'
 import StatusBadge from '@/components/StatusBadge'
 import { getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Photo = {
   id: number
@@ -141,6 +142,7 @@ const formatTodayLabel = () => {
 }
 
 export default function DailyBookingPageClient() {
+  const { selectedBranchId } = useBranch()
   const date = todayYmd()
   const todayLabel = formatTodayLabel()
   const [staffId, setStaffId] = useState('')
@@ -167,6 +169,8 @@ export default function DailyBookingPageClient() {
         const qs = new URLSearchParams({ date })
         if (staffId) qs.set('staff_id', staffId)
         if (search.trim()) qs.set('search', search.trim())
+        if (selectedBranchId === null) qs.set('branch_scope', 'all')
+        else qs.set('branch_store_location_id', String(selectedBranchId))
         const res = await fetch(`/api/proxy/admin/daily-bookings?${qs.toString()}`, { cache: 'no-store', signal: controller.signal })
         const json = await res.json().catch(() => null) as DailyBookingResponse | { message?: string } | null
         if (!res.ok) throw new Error(json && 'message' in json && json.message ? json.message : 'Unable to load daily bookings.')
@@ -179,7 +183,7 @@ export default function DailyBookingPageClient() {
     }
     void load()
     return () => controller.abort()
-  }, [date, staffId, search])
+  }, [date, staffId, search, selectedBranchId])
 
   const updateSelectedPhotos = (photos: BookingServicePhoto[]) => {
     setSelected((current) => (current ? { ...current, service_photos: photos, service_photos_count: photos.length } : current))

@@ -19,6 +19,7 @@ class DailyLowStockSummaryMail extends Mailable
      *   cn_name?:string,
      *   variant_name?:string|null,
      *   variant_cn_name?:string|null,
+     *   branch_name?:string,
      *   stock:int,
      *   threshold:int
      * }>  $products

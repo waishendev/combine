@@ -286,6 +286,7 @@ export default function ProductTable({
         qs.set('is_reward_only', 'false')
       }
       if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
+      else qs.set('branch_scope', 'all')
 
       const res = await fetch(`/api/proxy/ecommerce/products?${qs.toString()}`, {
         cache: 'no-store',
@@ -1113,7 +1114,7 @@ export default function ProductTable({
             onClick={handleExportCsv}
             disabled={loading || isExporting || isImporting}
           >
-            {isExporting ? 'Exporting...' : 'Export CSV'}
+            {isExporting ? 'Exporting...' : 'Export Global Product Master CSV'}
           </button>
           <button
             type="button"

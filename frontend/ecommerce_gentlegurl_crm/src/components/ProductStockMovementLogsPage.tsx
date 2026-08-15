@@ -9,6 +9,7 @@ import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import { NameStack, VariantNameStack } from './NameStack'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { useBranch } from '@/contexts/BranchContext'
 
 type ProductOption = {
   id: number
@@ -115,6 +116,7 @@ export default function ProductStockMovementLogsPage({
 }: ProductStockMovementLogsPageProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { selectedBranchId } = useBranch()
 
   const [products, setProducts] = useState<ProductOption[]>([])
   const [rows, setRows] = useState<MovementRow[]>([])
@@ -170,7 +172,7 @@ export default function ProductStockMovementLogsPage({
   )
 
   const fetchRows = useCallback(
-    async (nextPage = 1) => {
+    async (nextPage = 1, signal?: AbortSignal) => {
       setLoading(true)
       try {
         const params = new URLSearchParams({
@@ -182,10 +184,12 @@ export default function ProductStockMovementLogsPage({
         if (dateFrom) params.set('date_from', dateFrom)
         if (dateTo) params.set('date_to', dateTo)
         if (revokableOnly) params.set('revokable_only', '1')
+        if (selectedBranchId === null) params.set('branch_scope', 'all')
+        else params.set('branch_store_location_id', String(selectedBranchId))
 
         const res = await fetch(
           `/api/proxy/ecommerce/product-stock-movements?${params.toString()}`,
-          { cache: 'no-store' },
+          { cache: 'no-store', signal },
         )
 
         if (!res.ok) {
@@ -205,20 +209,21 @@ export default function ProductStockMovementLogsPage({
           total: Number(payload?.total ?? data.length) || data.length,
         })
       } finally {
-        setLoading(false)
+        if (!signal?.aborted) setLoading(false)
       }
     },
-    [dateFrom, dateTo, pageSize, productId, revokableOnly, type],
+    [dateFrom, dateTo, pageSize, productId, revokableOnly, type, selectedBranchId],
   )
 
-  const fetchProducts = useCallback(async () => {
+  const fetchProducts = useCallback(async (signal?: AbortSignal) => {
     const params = new URLSearchParams({
       page: '1',
       per_page: '300',
       is_reward_only: 'false',
     })
+    if (selectedBranchId) params.set('branch_store_location_id', String(selectedBranchId))
     const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, {
-      cache: 'no-store',
+      cache: 'no-store', signal,
     })
     if (!res.ok) return
     const json = await res.json().catch(() => null)
@@ -240,14 +245,22 @@ export default function ProductStockMovementLogsPage({
         })
         .filter((item: ProductOption) => item.id > 0),
     )
-  }, [])
+  }, [selectedBranchId])
 
   useEffect(() => {
-    void fetchProducts()
+    const controller = new AbortController()
+    void fetchProducts(controller.signal).catch((error) => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) console.error(error)
+    })
+    return () => controller.abort()
   }, [fetchProducts])
 
   useEffect(() => {
-    void fetchRows(1)
+    const controller = new AbortController()
+    void fetchRows(1, controller.signal).catch((error) => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) console.error(error)
+    })
+    return () => controller.abort()
   }, [fetchRows])
 
   const handleApplyFilters = () => {

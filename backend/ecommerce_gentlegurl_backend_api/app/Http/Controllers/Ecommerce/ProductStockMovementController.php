@@ -13,6 +13,7 @@ use Illuminate\Validation\ValidationException;
 use App\Services\StoreLocationAccessService;
 use App\Services\Ecommerce\BranchInventoryMutationService;
 use App\Models\Ecommerce\BranchInventoryCutoverState;
+use App\Services\Reports\ReportBranchScope;
 
 class ProductStockMovementController extends Controller
 {
@@ -31,7 +32,7 @@ class ProductStockMovementController extends Controller
 
         $perPage = (int) ($validated['per_page'] ?? 20);
 
-        $query = ProductStockMovement::query()
+        $query = ReportBranchScope::applyCurrent(ProductStockMovement::query(), 'product_stock_movements.store_location_id')
             ->with([
                 'product:id,name,cn_name,sku',
                 'variant:id,title,cn_name,sku,is_bundle',

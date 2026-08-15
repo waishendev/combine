@@ -105,6 +105,7 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
 
   return (
     <div className="space-y-5">
+      <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">Global customer/Ecommerce metric — wishlist intent is not Branch-attributed.</p>
       {summary ? (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Total Wishlist Adds" value={summary.total_wishlist_adds} accent="blue" />

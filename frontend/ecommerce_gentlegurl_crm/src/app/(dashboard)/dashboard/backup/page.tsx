@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import DashboardSectionCard from '@/components/DashboardSectionCard'
 import DashboardStatCard from '@/components/DashboardStatCard'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 type MonthlySalesPoint = {
   month: string
@@ -111,6 +112,7 @@ const buildTooltipLines = (
 
 export default function DashboardPage() {
   const { t } = useI18n()
+  const { selectedBranchId } = useBranch()
   const [data, setData] = useState<DashboardOverviewResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -123,7 +125,10 @@ export default function DashboardPage() {
       setError(null)
 
       try {
-        const res = await fetch('/api/proxy/ecommerce/dashboard/overview', {
+        const qs = new URLSearchParams()
+        if (selectedBranchId === null) qs.set('branch_scope', 'all')
+        else qs.set('branch_store_location_id', String(selectedBranchId))
+        const res = await fetch(`/api/proxy/ecommerce/dashboard/overview?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -159,7 +164,7 @@ export default function DashboardPage() {
     fetchOverview()
 
     return () => controller.abort()
-  }, [])
+  }, [selectedBranchId])
 
   const monthlySales = data?.charts.monthly_sales ?? []
   const maxRevenue = useMemo(() => {
