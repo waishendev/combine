@@ -20,6 +20,7 @@ export interface CategoryRowData {
   sortOrder: number
   menuIds: number[]
   menuNames: string
+  productCount: number
   createdAt: string
   updatedAt: string
 }
@@ -68,6 +69,7 @@ export default function CategoryRow({
       <td className="px-4 py-2 border border-gray-200">{category.slug}</td>
       <td className="px-4 py-2 border border-gray-200">{category.description}</td>
       <td className="px-4 py-2 border border-gray-200">{category.menuNames}</td>
+      <td className="px-4 py-2 border border-gray-200">{category.productCount}</td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={category.showInPosFilter ? 'active' : 'inactive'}
@@ -111,4 +113,3 @@ export default function CategoryRow({
     </tr>
   )
 }
-

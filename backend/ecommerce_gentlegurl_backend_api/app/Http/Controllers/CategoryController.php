@@ -9,13 +9,25 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use App\Services\StoreLocationAccessService;
 
 class CategoryController extends Controller
 {
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 15);
+        $branchId = $request->integer('branch_store_location_id') ?: null;
+        if ($branchId && $request->user()) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
+        }
         $categories = Category::with(['parent', 'shopMenus'])
+            ->withCount(['products as products_count' => function ($query) use ($branchId) {
+                if ($branchId) {
+                    $query->whereHas('storeLocations', fn ($branches) => $branches
+                        ->where('store_locations.id', $branchId)
+                        ->where('store_location_product.is_available', true));
+                }
+            }])
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
             })
@@ -537,6 +549,7 @@ class CategoryController extends Controller
                     'slug' => $menu->slug,
                 ];
             })->all(),
+            'products_count' => (int) ($category->products_count ?? 0),
             'children' => $category->relationLoaded('children')
                 ? $category->children->map(fn (Category $child) => $this->formatCategory($child))->all()
                 : [],

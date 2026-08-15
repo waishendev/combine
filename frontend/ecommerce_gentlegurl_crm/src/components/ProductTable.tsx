@@ -427,6 +427,12 @@ export default function ProductTable({
   }
 
   useEffect(() => {
+    setRows([])
+    setSelectedIds(new Set())
+    setCurrentPage(1)
+  }, [selectedBranchId])
+
+  useEffect(() => {
     const controller = new AbortController()
     fetchCategories(controller.signal)
     return () => controller.abort()

@@ -165,6 +165,17 @@ php artisan branch-inventory:initialize --store-code=PNG --from-global --force
 
 Force fails closed for a missing/inactive/ACTIVE target, unsafe legacy quantity, duplicate identity, conflicting target balance, reviewed inventory from another initialization mode, or any non-zero inventory at another active Branch. Exact matching replays are idempotent. It writes only the named Branch, never changes Product-to-Branch availability, never distributes stock, and leaves authority `RECONCILED`. New Branches must still have their zero/independent physical counts reviewed before coordinated activation readiness can pass. Once more than one Branch owns physical stock, use the reviewed JSON workflow instead.
 
+The inventory initializer deliberately does not create Product availability assignments. For the initial legacy catalogue, first audit and then create only missing PNG assignments with:
+
+```bash
+php artisan product-branch:backfill --store-code=PNG --dry-run
+php artisan product-branch:backfill --store-code=PNG --force
+```
+
+This command resolves an active Branch by code, preserves all existing `store_location_product` rows (including explicit unavailable rows), adds only missing Products as available, leaves every other Branch assignment intact, and never reads or writes inventory quantities. Product listing at a specific Header Branch filters by this availability pivot—not by inventory—so an available zero-stock Product remains visible. All Branches retains the global Product identity view.
+
+Category identity remains global. The Branch-specific Categories view keeps every Category visible (including zero-count Categories) and scopes only its direct Product count through Product-to-Branch availability. This preserves global create/edit management while preventing another Branch's Products from being represented in the local count. Branch selection is part of Product and Category request/cache dependencies; switching clears stale rows and refetches the new scope.
+
 ### Coordinated activation readiness
 
 Mixed ACTIVE/legacy operation is unsafe because shipping may route across Branches and legacy fields become aggregate projections. Phase 8C therefore chooses **all-or-none coordinated activation of every active physical Branch**. Readiness fails closed when any active Branch lacks a reviewed import, is not RECONCILED, lacks an inventory identity for an available Product/Variant, or an ACTIVE mixed state already exists.

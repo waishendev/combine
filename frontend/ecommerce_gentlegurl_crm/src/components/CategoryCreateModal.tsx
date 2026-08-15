@@ -239,6 +239,7 @@ export default function CategoryCreateModal({
             sortOrder: 0,
             menuIds: form.menuIds,
             menuNames: menus.filter(m => form.menuIds.includes(m.id)).map(m => m.name).join(', ') || '-',
+            productCount: 0,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           }
@@ -550,4 +551,3 @@ export default function CategoryCreateModal({
     </CrmFormModalShell>
   )
 }
-

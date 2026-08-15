@@ -377,6 +377,7 @@ export default function CategoryEditModal({
             sortOrder: loadedCategory?.sortOrder ?? 0,
             menuIds: form.menuIds,
             menuNames: menus.filter(m => form.menuIds.includes(m.id)).map(m => m.name).join(', ') || '-',
+            productCount: loadedCategory?.productCount ?? 0,
             createdAt: loadedCategory?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
           }
@@ -721,4 +722,3 @@ export default function CategoryEditModal({
     </CrmFormModalShell>
   )
 }
-

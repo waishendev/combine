@@ -24,6 +24,7 @@ export type CategoryApiItem = {
   sort_order?: number | string | null
   menu_ids?: (number | string)[] | null
   menus?: CategoryApiMenu[] | null
+  products_count?: number | string | null
   children?: CategoryApiItem[] | null
   created_at?: string | null
   updated_at?: string | null
@@ -77,8 +78,8 @@ export const mapCategoryApiItemToRow = (item: CategoryApiItem): CategoryRowData 
     sortOrder: typeof item.sort_order === 'number' ? item.sort_order : (item.sort_order ? Number(item.sort_order) : 0),
     menuIds: Array.isArray(item.menu_ids) ? item.menu_ids.map(id => typeof id === 'number' ? id : Number(id)).filter(id => Number.isFinite(id)) : [],
     menuNames,
+    productCount: Number(item.products_count ?? 0) || 0,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
   }
 }
-
