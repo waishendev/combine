@@ -80,6 +80,26 @@ class SalesReportService
         ];
     }
 
+    /** Legacy rows are included in All totals, but are disclosed separately rather than attributed to a Branch. */
+    public function unassignedSummary(Carbon $start, Carbon $end): array
+    {
+        if (! ReportBranchScope::current()->includeUnassigned) {
+            return ['included_in_totals' => false, 'orders_count' => 0, 'amount' => 0.0];
+        }
+
+        $query = Order::query()
+            ->whereNull('store_location_id')
+            ->whereBetween(DB::raw('COALESCE(placed_at, created_at)'), [$start, $end])
+            ->whereIn('payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
+            ->whereIn('status', self::VALID_ORDER_STATUSES_FOR_REPORT);
+
+        return [
+            'included_in_totals' => true,
+            'orders_count' => (clone $query)->count(),
+            'amount' => (float) (clone $query)->sum('grand_total'),
+        ];
+    }
+
     public function getDaily(Carbon $start, Carbon $end, string $groupBy = 'day'): array
     {
         $groupBy = $groupBy === 'month' ? 'month' : 'day';

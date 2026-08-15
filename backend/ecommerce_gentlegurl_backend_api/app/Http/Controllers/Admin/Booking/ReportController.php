@@ -78,6 +78,15 @@ class ReportController extends Controller
             ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to));
 
         $grandTotals = $grandTotalsQuery->first();
+        $scope = ReportBranchScope::current();
+        $unassignedQuery = Booking::query()->whereNull('store_location_id')
+            ->when($from, fn (Builder $q) => $q->where('start_at', '>=', $from))
+            ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to));
+        $unassigned = $scope->includeUnassigned ? [
+            'included_in_totals' => true,
+            'bookings_count' => (clone $unassignedQuery)->count(),
+            'deposit_collected' => (float) (clone $unassignedQuery)->where('payment_status', 'PAID')->sum('deposit_amount'),
+        ] : ['included_in_totals' => false, 'bookings_count' => 0, 'deposit_collected' => 0.0];
 
         // Calculate page totals (current page only)
         $pageTotals = collect($rows)->reduce(function ($acc, $row) {
@@ -102,6 +111,7 @@ class ReportController extends Controller
                 'deposit_collected' => (float) ($grandTotals->deposit_collected ?? 0),
             ],
             'totals_page' => $pageTotals,
+            'unassigned' => $unassigned,
             'pagination' => [
                 'total' => $paginated->total(),
                 'per_page' => $paginated->perPage(),

@@ -43,6 +43,11 @@ class Phase9BReportingScopeTest extends TestCase
         $totals = app(SalesReportService::class)->getOverview(now()->subDay(), now()->addDay())['totals'];
         $this->assertSame(3, $totals['orders_count']);
         $this->assertSame(35.0, $totals['revenue']);
+        $this->assertSame([
+            'included_in_totals' => true,
+            'orders_count' => 1,
+            'amount' => 5.0,
+        ], app(SalesReportService::class)->unassignedSummary(now()->subDay(), now()->addDay()));
     }
 
     public function test_manual_inaccessible_branch_is_rejected(): void
@@ -77,6 +82,34 @@ class Phase9BReportingScopeTest extends TestCase
         $payload = app(DashboardAnalyticsController::class)->ecommerce($request, app(StoreLocationAccessService::class))->getData(true);
         $this->assertSame(22, $payload['products']['current_stock_qty']);
         $this->assertSame(1, $payload['products']['low_stock_count']);
+        $this->assertSame(['A'], collect($payload['items']['data'][0]['low_branches'])->pluck('branch_name')->all());
+        $this->assertSame(['A', 'B'], collect($payload['items']['data'][0]['branch_inventory_breakdown'])->pluck('branch_name')->sort()->values()->all());
+    }
+
+    public function test_missing_inventory_is_zero_only_for_an_available_accessible_branch(): void
+    {
+        [$user, $a, $b] = $this->actorAndBranches();
+        $product = Product::query()->create(['name' => 'Missing A', 'slug' => 'missing-a', 'sku' => 'MA', 'type' => 'single', 'price' => 10, 'cost_price' => 2, 'stock' => 20, 'stock_quantity' => 20, 'track_stock' => true, 'low_stock_threshold' => 5, 'is_active' => true]);
+        $product->storeLocations()->sync([$a->id => ['is_available' => true], $b->id => ['is_available' => true]]);
+        StoreLocationProductInventory::query()->create(['store_location_id' => $b->id, 'product_id' => $product->id, 'product_variant_id' => null, 'quantity' => 20]);
+        $request = $this->bindRequest($user, ['branch_scope' => 'all']);
+
+        $payload = app(DashboardAnalyticsController::class)->ecommerce($request, app(StoreLocationAccessService::class))->getData(true);
+        $item = collect($payload['items']['data'])->firstWhere('product_id', $product->id);
+        $this->assertSame(20, $item['current_stock']);
+        $this->assertSame(['A'], collect($item['low_branches'])->pluck('branch_name')->all());
+        $this->assertSame(0, collect($item['branch_inventory_breakdown'])->firstWhere('branch_name', 'A')['quantity']);
+    }
+
+    public function test_global_product_master_csv_contract_has_no_physical_stock_columns(): void
+    {
+        $source = file_get_contents(app_path('Http/Controllers/ProductController.php'));
+        $export = substr($source, strpos($source, 'public function exportCsv'), strpos($source, 'protected function serializeProductForCsvExport') - strpos($source, 'public function exportCsv'));
+        $serializer = substr($source, strpos($source, 'protected function serializeProductForCsvExport'));
+
+        $this->assertStringNotContainsString("'stock'", $export);
+        $this->assertStringNotContainsString("'stock' => \$product->stock", $serializer);
+        $this->assertStringNotContainsString("'stock' => \$variant->stock", $serializer);
     }
 
     private function actorAndBranches(bool $includeInaccessible = false): array

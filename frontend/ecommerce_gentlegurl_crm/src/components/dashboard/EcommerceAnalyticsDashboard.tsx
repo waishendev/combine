@@ -18,6 +18,8 @@ type InventoryItem = {
   retail_value: number
   potential_profit: number
   missing_cost: boolean
+  branch_inventory_breakdown: Array<{ store_location_id: number; branch_name: string; quantity: number; is_low: boolean }>
+  low_branches: Array<{ store_location_id: number; branch_name: string; quantity: number; is_low: boolean }>
 }
 
 type AnalyticsResponse = {
@@ -109,6 +111,20 @@ function InventoryDetailDrawer({ item, onClose }: { item: InventoryItem; onClose
           <div className="grid gap-3 sm:grid-cols-2">
             <DetailField label="SKU / Variant" value={item.sku_variant || '—'} />
             <DetailField label="Category" value={item.category} />
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Branch Inventory</h4>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            {item.branch_inventory_breakdown.map((branch) => (
+              <div key={branch.store_location_id} className="flex items-center justify-between border-b border-slate-100 px-4 py-3 last:border-b-0">
+                <span className="text-sm font-medium text-slate-800">{branch.branch_name}</span>
+                <span className={branch.is_low ? 'text-sm font-semibold text-rose-700' : 'text-sm font-semibold text-emerald-700'}>
+                  {branch.quantity} units{branch.is_low ? ' · Low' : ''}
+                </span>
+              </div>
+            ))}
           </div>
         </section>
 

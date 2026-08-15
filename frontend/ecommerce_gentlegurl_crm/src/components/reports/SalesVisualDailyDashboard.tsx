@@ -73,7 +73,7 @@ export default function SalesVisualDailyDashboard({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
@@ -88,6 +88,7 @@ export default function SalesVisualDailyDashboard({
       else qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/ecommerce/reports/sales/visual-daily/${path}?${qs.toString()}`, {
         cache: 'no-store',
+        signal,
       })
       if (!res.ok) {
         setData(null)
@@ -95,16 +96,19 @@ export default function SalesVisualDailyDashboard({
         return
       }
       setData((await res.json()) as VisualPayload)
-    } catch {
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return
       setData(null)
       setError('Unable to load visual summary.')
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
   }, [dateFrom, dateTo, includeVoid, mode, selectedBranchId])
 
   useEffect(() => {
-    void load()
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
   }, [load, refreshKey])
 
   const periodLabel = isSingleDay

@@ -23,6 +23,12 @@ class ProfitLossReportController extends Controller
         $includeGlobalExpenses = $scope->selectedStoreLocationId === null
             && app(StoreLocationAccessService::class)->hasPlatformBypass($request->user());
 
-        return response()->json($this->service->monthly($year, $includeGlobalExpenses));
+        return response()->json(array_merge($this->service->monthly($year, $includeGlobalExpenses), [
+            'accounting_scope' => [
+                'complete_company_view' => $includeGlobalExpenses,
+                'global_expenses_included' => $includeGlobalExpenses,
+                'result_label' => $includeGlobalExpenses ? 'Profit & Loss' : 'Branch contribution',
+            ],
+        ]));
     }
 }

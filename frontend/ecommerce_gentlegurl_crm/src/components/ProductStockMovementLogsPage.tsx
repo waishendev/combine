@@ -172,7 +172,7 @@ export default function ProductStockMovementLogsPage({
   )
 
   const fetchRows = useCallback(
-    async (nextPage = 1) => {
+    async (nextPage = 1, signal?: AbortSignal) => {
       setLoading(true)
       try {
         const params = new URLSearchParams({
@@ -189,7 +189,7 @@ export default function ProductStockMovementLogsPage({
 
         const res = await fetch(
           `/api/proxy/ecommerce/product-stock-movements?${params.toString()}`,
-          { cache: 'no-store' },
+          { cache: 'no-store', signal },
         )
 
         if (!res.ok) {
@@ -209,13 +209,13 @@ export default function ProductStockMovementLogsPage({
           total: Number(payload?.total ?? data.length) || data.length,
         })
       } finally {
-        setLoading(false)
+        if (!signal?.aborted) setLoading(false)
       }
     },
     [dateFrom, dateTo, pageSize, productId, revokableOnly, type, selectedBranchId],
   )
 
-  const fetchProducts = useCallback(async () => {
+  const fetchProducts = useCallback(async (signal?: AbortSignal) => {
     const params = new URLSearchParams({
       page: '1',
       per_page: '300',
@@ -223,7 +223,7 @@ export default function ProductStockMovementLogsPage({
     })
     if (selectedBranchId) params.set('branch_store_location_id', String(selectedBranchId))
     const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, {
-      cache: 'no-store',
+      cache: 'no-store', signal,
     })
     if (!res.ok) return
     const json = await res.json().catch(() => null)
@@ -248,11 +248,19 @@ export default function ProductStockMovementLogsPage({
   }, [selectedBranchId])
 
   useEffect(() => {
-    void fetchProducts()
+    const controller = new AbortController()
+    void fetchProducts(controller.signal).catch((error) => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) console.error(error)
+    })
+    return () => controller.abort()
   }, [fetchProducts])
 
   useEffect(() => {
-    void fetchRows(1)
+    const controller = new AbortController()
+    void fetchRows(1, controller.signal).catch((error) => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) console.error(error)
+    })
+    return () => controller.abort()
   }, [fetchRows])
 
   const handleApplyFilters = () => {

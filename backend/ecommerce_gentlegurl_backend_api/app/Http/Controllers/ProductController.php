@@ -540,7 +540,7 @@ class ProductController extends Controller
 
         $headers = [
             'name', 'cn_name', 'slug', 'sku', 'barcode', 'type', 'description', 'price', 'sale_price',
-            'sale_price_start_at', 'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold',
+            'sale_price_start_at', 'sale_price_end_at', 'cost_price', 'low_stock_threshold',
             'track_stock', 'dummy_sold_count', 'is_active', 'is_featured', 'is_hidden_in_shop', 'is_staff_free', 'is_reward_only',
             'meta_title', 'meta_description', 'meta_keywords', 'meta_og_image', 'category_ids', 'variants',
         ];
@@ -1409,7 +1409,6 @@ class ProductController extends Controller
             'sale_price_start_at' => $product->sale_price_start_at,
             'sale_price_end_at' => $product->sale_price_end_at,
             'cost_price' => $product->cost_price,
-            'stock' => $product->stock,
             'low_stock_threshold' => $product->low_stock_threshold,
             'track_stock' => $product->track_stock,
             'dummy_sold_count' => $product->dummy_sold_count,
@@ -1441,7 +1440,6 @@ class ProductController extends Controller
                 'sale_price_start_at' => $variant->sale_price_start_at,
                 'sale_price_end_at' => $variant->sale_price_end_at,
                 'cost_price' => $variant->cost_price,
-                'stock' => $variant->stock,
                 'low_stock_threshold' => $variant->low_stock_threshold,
                 'track_stock' => $variant->track_stock,
                 'is_bundle' => $variant->is_bundle,

@@ -19,6 +19,7 @@ type ProfitLossPayload = {
   year: number
   months: ProfitLossRow[]
   totals: Omit<ProfitLossRow, 'month' | 'month_name'>
+  accounting_scope?: { complete_company_view: boolean; global_expenses_included: boolean; result_label: string }
 }
 
 const formatCurrency = (amount: number) => {
@@ -91,7 +92,7 @@ export default function ProfitLossReportPage() {
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full min-w-[980px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr>
-              <th className="px-4 py-3 font-semibold">Month</th><th className="px-4 py-3 text-right font-semibold">Ecommerce Sales</th><th className="px-4 py-3 text-right font-semibold">Ecommerce Costing</th><th className="px-4 py-3 text-right font-semibold">Booking Sales</th><th className="px-4 py-3 text-right font-semibold">Refund</th><th className="px-4 py-3 text-right font-semibold">Expense</th><th className="px-4 py-3 text-right font-semibold">Profit &amp; Loss</th>
+              <th className="px-4 py-3 font-semibold">Month</th><th className="px-4 py-3 text-right font-semibold">Ecommerce Sales</th><th className="px-4 py-3 text-right font-semibold">Ecommerce Costing</th><th className="px-4 py-3 text-right font-semibold">Booking Sales</th><th className="px-4 py-3 text-right font-semibold">Refund</th><th className="px-4 py-3 text-right font-semibold">Expense</th><th className="px-4 py-3 text-right font-semibold">{data?.accounting_scope?.result_label ?? 'Contribution'}</th>
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => <tr key={row.month} className="text-slate-700"><td className="px-4 py-3 font-medium">{row.month_name}</td><Currency value={row.ecommerce_sales} /><Currency value={row.ecommerce_costing} /><Currency value={row.booking_sales} /><Currency value={row.refund} /><Currency value={row.expense} /><Currency value={row.profit_loss} profit /></tr>)}

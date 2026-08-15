@@ -77,7 +77,7 @@ export default function SalesVisualPeriodDashboard({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
@@ -93,6 +93,7 @@ export default function SalesVisualPeriodDashboard({
       else qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/ecommerce/reports/sales/visual-period/all?${qs.toString()}`, {
         cache: 'no-store',
+        signal,
       })
       if (!res.ok) {
         setData(null)
@@ -100,16 +101,19 @@ export default function SalesVisualPeriodDashboard({
         return
       }
       setData((await res.json()) as PeriodPayload)
-    } catch {
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return
       setData(null)
       setError('Unable to load period summary.')
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
   }, [resolvedMonthFrom, resolvedMonthTo, resolvedYearFrom, resolvedYearTo, year, selectedBranchId])
 
   useEffect(() => {
-    void load()
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
   }, [load])
 
   const periodLabel = useMemo(

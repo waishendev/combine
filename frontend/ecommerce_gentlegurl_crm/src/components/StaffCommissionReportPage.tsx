@@ -152,7 +152,7 @@ export default function StaffCommissionReportPage() {
     setStaffOptions(mapped)
   }
 
-  const applyFilter = useCallback(async () => {
+  const applyFilter = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     try {
       const qs = new URLSearchParams({
@@ -165,6 +165,7 @@ export default function StaffCommissionReportPage() {
 
       const res = await fetch(`/api/proxy/ecommerce/reports/staff-commission?${qs.toString()}`, {
         cache: 'no-store',
+        signal,
       })
 
       if (!res.ok) {
@@ -179,7 +180,7 @@ export default function StaffCommissionReportPage() {
       setGrandTotalSales(Number(json?.grand_total_sales ?? 0))
       setGrandTotalCommission(Number(json?.grand_total_commission ?? 0))
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [appliedFilters, selectedBranchId])
 
@@ -188,7 +189,11 @@ export default function StaffCommissionReportPage() {
   }, [])
 
   useEffect(() => {
-    applyFilter().catch(() => {})
+    const controller = new AbortController()
+    applyFilter(controller.signal).catch((error) => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) console.error(error)
+    })
+    return () => controller.abort()
   }, [applyFilter])
 
   const handleApply = () => {

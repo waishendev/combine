@@ -261,7 +261,7 @@ export default function MyPosSummaryPage({
     }
   }, [createdByUserIdFilter])
 
-  const loadData = useCallback(async (page = 1) => {
+  const loadData = useCallback(async (page = 1, signal?: AbortSignal) => {
     setLoading(true)
     try {
       const qs = new URLSearchParams({
@@ -278,6 +278,7 @@ export default function MyPosSummaryPage({
 
       const res = await fetch(`${reportPath}?${qs.toString()}`, {
         cache: 'no-store',
+        signal,
       })
 
       if (!res.ok) {
@@ -297,12 +298,16 @@ export default function MyPosSummaryPage({
       setTotal(Number(json?.meta?.total ?? 0))
       setExpanded({})
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [appliedFilters.date_from, appliedFilters.date_to, perPage, reportPath, createdByUserIdFilter, selectedBranchId])
 
   useEffect(() => {
-    loadData(1).catch(() => {})
+    const controller = new AbortController()
+    loadData(1, controller.signal).catch((error) => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) console.error(error)
+    })
+    return () => controller.abort()
   }, [loadData])
 
   useEffect(() => {

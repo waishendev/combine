@@ -157,7 +157,12 @@ class ActivityLogController extends Controller
             ],
             'filters' => [
                 'actions' => collect(AppointmentActivityLogService::ACTIONS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
-                'users' => ActivityLog::query()->where('model_type', 'Booking')->whereIn('action', $actions)->whereNotNull('user_id')->selectRaw('DISTINCT user_id, user_name')->orderBy('user_name')->get()->map(fn ($row) => ['id' => $row->user_id, 'name' => $row->user_name]),
+                'users' => ActivityLog::query()->where('model_type', 'Booking')
+                    ->whereExists(fn ($bookings) => $scope->apply($bookings->selectRaw('1')->from('bookings')
+                        ->whereColumn('bookings.id', 'activity_logs.model_id'), 'bookings.store_location_id'))
+                    ->whereIn('action', $actions)->whereNotNull('user_id')
+                    ->selectRaw('DISTINCT user_id, user_name')->orderBy('user_name')->get()
+                    ->map(fn ($row) => ['id' => $row->user_id, 'name' => $row->user_name]),
             ],
         ]);
     }

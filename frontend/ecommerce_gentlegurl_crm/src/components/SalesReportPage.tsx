@@ -87,6 +87,7 @@ type ReportResponse = {
   rows?: CategoryRow[] | ProductRow[] | CustomerRow[]
   pagination?: Partial<Pagination>
   meta?: ReportMeta
+  unassigned?: { included_in_totals: boolean; orders_count: number; amount: number }
 }
 
 const DEFAULT_PAGE_SIZE = 15
@@ -216,6 +217,7 @@ export default function SalesReportPage({
   const [meta, setMeta] = useState<ReportMeta | null>(null)
   const [totalsPage, setTotalsPage] = useState<ReportSummary | null>(null)
   const [grandTotals, setGrandTotals] = useState<ReportSummary | null>(null)
+  const [unassigned, setUnassigned] = useState<ReportResponse['unassigned']>(undefined)
   const [tops, setTops] = useState<CategoryRow[] | ProductRow[] | CustomerRow[]>([])
   const [pagination, setPagination] = useState<Pagination>({
     total: 0,
@@ -350,6 +352,7 @@ export default function SalesReportPage({
           : null
         setTotalsPage(normalizedTotalsPage)
         setGrandTotals(normalizedGrandTotals)
+        setUnassigned(data.unassigned)
         setTops(data.tops ?? [])
         if (data.meta) {
           setMeta(data.meta)
@@ -780,6 +783,12 @@ export default function SalesReportPage({
           ))}
         </div>
       )}
+
+      {unassigned?.included_in_totals && unassigned.orders_count > 0 ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span className="font-semibold">Unassigned legacy activity:</span> {unassigned.orders_count} orders · RM {formatAmount(unassigned.amount)}. Included in All Branches totals but not attributed to any Branch.
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="text-sm font-semibold text-slate-700">

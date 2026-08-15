@@ -114,3 +114,44 @@ No dedicated Voucher-usage, Point-transaction or Promotion-usage report page exi
 | Schedule/service/Booking Product exports | Existing domain exports | no false physical-inventory ownership introduced |
 | Transaction receipts/invoices | Identifier transaction document | existing Order access/token rules; no new report PDF |
 | Excel/XLSX | Deferred/nonexistent | not introduced |
+
+## Phase 9C production-readiness hardening
+
+### IMPLEMENTED
+
+- Admin Order invoice generation authorizes persisted `orders.store_location_id` before building the PDF. Historical NULL Orders retain the documented legacy compatibility policy and are never assigned to a Branch.
+- The operational Order list always resolves through `ReportBranchScope`; omitted Branch parameters mean authenticated accessible All, not an unrestricted query.
+- Global Product Master CSV contains no Product or Variant physical stock. Product identity/configuration remains global; operational inventory remains Branch-scoped.
+- Sales and Booking All-Branches responses disclose legacy NULL totals under an explicit `unassigned` object while retaining them in accounting totals. Specific Branch responses exclude NULL.
+- Dashboard low stock evaluates each accessible `Product × available StoreLocation` pair. Missing Branch inventory is zero; inaccessible/unavailable Branches are excluded; items expose `branch_inventory_breakdown` and `low_branches`.
+- Daily low-stock notification applies the available-Branch rule, names the Branch, and fails safely during mixed cutover state.
+- Converted report clients cancel superseded Branch requests; intentional aborts do not surface as errors and stale finalizers cannot clear current loading state.
+- Appointment activity-log actors derive from the same Branch-authorized Booking activity set as visible rows.
+- Restricted/specific Profit & Loss identifies Branch contribution and states that global expenses are excluded.
+
+### AUTOMATED TEST ADDED
+
+- Regression assertions cover explicit Sales Unassigned totals, exact low Branch identification, missing inventory as zero, inaccessible inventory exclusion, and absence of physical stock from Global Product Master CSV.
+- Existing Phase 9B tests cover persisted Sales attribution, accessible-All behavior, inaccessible Branch rejection, Booking history attribution, and shortage preservation.
+
+### AUTOMATED TEST EXECUTED
+
+- Release validation must record the actual PHPUnit/CI command and result. Test source presence is not a pass.
+
+### MANUAL QA REQUIRED
+
+- Exercise invoice, movement revoke, Return update, POS refund/void receipt, commission detail, and loyalty update with A-only, B-only, and `infra_core_x1` accounts.
+- Reconcile Sales/Booking Unassigned output against production-shaped NULL fixtures.
+- Switch A → B under throttled networking on each converted report and verify late A responses cannot replace B.
+- Validate low stock for singles, Variants, missing inventory, unavailable Products, and inaccessible Branch C.
+- Confirm all intended Branches are ACTIVE together before production activation.
+
+### GLOBAL BY DESIGN
+
+- Member identity and Point balance; Package catalogue, ownership and remaining entitlement; Voucher and Redeem Voucher definitions/eligibility; Product and Category identity; reward definitions and initial Redeem Product selection; Wishlist/customer Ecommerce intent.
+
+### DEFERRED — DATA MODEL LIMITATION
+
+- `StaffMonthlySale` and commission snapshots without an earning Order/Booking parent remain Unassigned/Unsupported. Current Staff assignment is never used to guess historical Branch.
+- Dedicated Points, Voucher, and Promotion historical-usage workspaces do not exist and were not invented.
+- Global company Expenses lack deterministic Branch ownership and are not allocated into specific-Branch net profit.
