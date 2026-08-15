@@ -12,6 +12,7 @@ import { VariantNameStack } from './NameStack'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { formatBookingAddonReceiptLabel } from '@/lib/bookingReceiptDisplay'
 import { formatReportStaffSplitLabel } from '@/components/pos/staffSplitCore'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Summary = {
   orders_count: number
@@ -189,6 +190,7 @@ export default function MyPosSummaryPage({
   initialCreatedByUserId = '',
   initialHandledByName = '',
 }: MyPosSummaryPageProps) {
+  const { selectedBranchId } = useBranch()
   const defaultRange = useMemo(() => getDefaultRange(), [])
   const [filterInputs, setFilterInputs] = useState({
     date_from: defaultRange.from,
@@ -271,6 +273,8 @@ export default function MyPosSummaryPage({
       if (createdByUserIdFilter) {
         qs.set('created_by_user_id', createdByUserIdFilter)
       }
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
 
       const res = await fetch(`${reportPath}?${qs.toString()}`, {
         cache: 'no-store',
@@ -295,7 +299,7 @@ export default function MyPosSummaryPage({
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters.date_from, appliedFilters.date_to, perPage, reportPath, createdByUserIdFilter])
+  }, [appliedFilters.date_from, appliedFilters.date_to, perPage, reportPath, createdByUserIdFilter, selectedBranchId])
 
   useEffect(() => {
     loadData(1).catch(() => {})

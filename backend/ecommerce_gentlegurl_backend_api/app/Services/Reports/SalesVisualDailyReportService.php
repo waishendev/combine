@@ -357,7 +357,7 @@ class SalesVisualDailyReportService
         $lineTotal = $this->lineNetAmountSql('oi');
 
         return $this->applyOrderScope(
-            DB::table('orders as o')
+            ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
@@ -508,7 +508,7 @@ class SalesVisualDailyReportService
         $lineTotal = $this->lineNetAmountSql('oi');
 
         $bookingPackageSub = $this->applyOrderScope(
-            DB::table('orders as o')
+            ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
@@ -632,7 +632,7 @@ class SalesVisualDailyReportService
             ->first();
 
         $bookingPackageSub = $this->applyOrderScope(
-            DB::table('orders as o')
+            ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
@@ -1039,7 +1039,7 @@ class SalesVisualDailyReportService
                     ->groupBy('booking_id');
 
                 // Fallback to bookings.staff_id if no booking_service_staff_splits exist
-                $bookingStaffFallback = DB::table('bookings')
+                $bookingStaffFallback = ReportBranchScope::applyCurrent(DB::table('bookings'), 'bookings.store_location_id')
                     ->join('staffs', 'staffs.id', '=', 'bookings.staff_id')
                     ->whereIn('bookings.id', $fallbackBookingIds)
                     ->whereNotNull('bookings.staff_id')
@@ -1159,7 +1159,7 @@ class SalesVisualDailyReportService
     private function baseBookingOrderItemSplitQuery(Carbon $start, Carbon $end): Builder
     {
         return $this->applyOrderScope(
-            DB::table('orders')
+            ReportBranchScope::applyCurrent(DB::table('orders'), 'orders.store_location_id')
                 ->join('order_items', 'order_items.order_id', '=', 'orders.id')
                 ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
                 ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end]),
@@ -1352,7 +1352,7 @@ class SalesVisualDailyReportService
         $allocatedNetSql = $this->allocatedPaymentNetSql($orderNetSql);
 
         $q = $this->applyOrderScope(
-            DB::table('orders as o')
+            ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
                 ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
@@ -1505,7 +1505,7 @@ class SalesVisualDailyReportService
         $allocatedNetSql = $this->allocatedPaymentNetSql($orderNetSql);
 
         $q = $this->applyOrderScope(
-            DB::table('orders as o')
+            ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
                 ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
@@ -1542,7 +1542,7 @@ class SalesVisualDailyReportService
 
     private function completedBookingServiceActivityByStaff(Carbon $start, Carbon $end, string $lineTotal): array
     {
-        $bookings = DB::table('bookings as b')
+        $bookings = ReportBranchScope::applyCurrent(DB::table('bookings as b'), 'b.store_location_id')
             ->where('b.status', 'COMPLETED')
             ->whereNotNull('b.completed_at')
             ->whereBetween('b.completed_at', [$start, $end])

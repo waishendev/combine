@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 import { apiFetch } from '@/lib/api'
+import { useBranch } from '@/contexts/BranchContext'
 
 const PER_PAGE = 10
 
@@ -324,6 +325,8 @@ type PackageAnalyticsDashboardProps = {
 }
 
 export default function PackageAnalyticsDashboard({ onInitialLoad }: PackageAnalyticsDashboardProps = {}) {
+  const { selectedBranchId } = useBranch()
+  const branchQuery = selectedBranchId === null ? 'branch_scope=all' : `branch_store_location_id=${selectedBranchId}`
   const [summary, setSummary] = useState<Summary | null>(null)
   const [liability, setLiability] = useState<Page<Liability> | null>(null)
   const [filterOptions, setFilterOptions] = useState<FilterOptionsResponse>({ customers: [], packages: [] })
@@ -343,7 +346,7 @@ export default function PackageAnalyticsDashboard({ onInitialLoad }: PackageAnal
   useEffect(() => {
     let cancelled = false
     Promise.all([
-      apiFetch<Summary>('/api/admin/dashboard/analytics/packages/summary'),
+      apiFetch<Summary>(`/api/admin/dashboard/analytics/packages/summary?${branchQuery}`),
       apiFetch<FilterOptionsResponse>('/api/admin/dashboard/analytics/packages/filter-options'),
     ])
       .then(([summaryData, optionsData]) => {
@@ -359,7 +362,7 @@ export default function PackageAnalyticsDashboard({ onInitialLoad }: PackageAnal
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [branchQuery])
 
   useEffect(() => {
     let cancelled = false
@@ -404,7 +407,7 @@ export default function PackageAnalyticsDashboard({ onInitialLoad }: PackageAnal
     setDetailError(null)
     setDetailLoading(true)
     try {
-      const response = await apiFetch<Detail>(`/api/admin/dashboard/analytics/packages/customer-packages/${id}`)
+      const response = await apiFetch<Detail>(`/api/admin/dashboard/analytics/packages/customer-packages/${id}?${branchQuery}`)
       setDetail(response)
     } catch (err) {
       setDetailError(err instanceof Error ? err.message : 'Unable to load details')

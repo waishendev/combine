@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import { useBranch } from '@/contexts/BranchContext'
 
 type ReportType = 'by-category' | 'by-products' | 'by-customers'
 
@@ -178,6 +179,7 @@ export default function SalesReportPage({
   reportType: ReportType
   canExport?: boolean
 }) {
+  const { selectedBranchId } = useBranch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -291,6 +293,8 @@ export default function SalesReportPage({
       qs.set('page', String(resolvedParams.page))
       qs.set('per_page', String(resolvedParams.perPage))
       qs.set('top', String(resolvedParams.top))
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       if (reportType === 'by-products') {
         qs.set('group_by', resolvedParams.groupBy)
       }
@@ -384,6 +388,7 @@ export default function SalesReportPage({
     resolvedParams.perPage,
     resolvedParams.top,
     resolvedParams.groupBy,
+    selectedBranchId,
   ])
 
   const updateQuery = (next: Record<string, string>) => {
@@ -426,11 +431,13 @@ export default function SalesReportPage({
     qs.set('date_from', resolvedParams.dateFrom)
     qs.set('date_to', resolvedParams.dateTo)
     qs.set('format', 'csv')
+    if (selectedBranchId === null) qs.set('branch_scope', 'all')
+    else qs.set('branch_store_location_id', String(selectedBranchId))
     if (reportType === 'by-products') {
       qs.set('group_by', resolvedParams.groupBy)
     }
     return `/api/proxy/ecommerce/reports/sales/export/${reportType}?${qs.toString()}`
-  }, [canExport, reportType, resolvedParams.dateFrom, resolvedParams.dateTo, resolvedParams.groupBy])
+  }, [canExport, reportType, resolvedParams.dateFrom, resolvedParams.dateTo, resolvedParams.groupBy, selectedBranchId])
 
   const activeFilters = useMemo(() => {
     const filters: Array<{ key: string; label: string; value: string }> = []

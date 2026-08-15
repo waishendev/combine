@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Mode = 'ecommerce' | 'booking'
 
@@ -81,6 +82,7 @@ export default function CustomerSalesDomainReportPage({
   /** `today` = default date range is the current day (still fully filterable). */
   defaultDatePreset?: 'month' | 'today'
 }) {
+  const { selectedBranchId } = useBranch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -116,13 +118,18 @@ export default function CustomerSalesDomainReportPage({
   const [loading, setLoading] = useState(true)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
 
-  useEffect(() => setInputs(resolved), [resolved])
+  useEffect(() => {
+    // Synchronize URL-controlled filters after navigation.
+    setInputs(resolved)
+  }, [resolved])
 
   useEffect(() => {
     const controller = new AbortController()
     const run = async () => {
       setLoading(true)
       const qs = new URLSearchParams()
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       qs.set('date_from', resolved.dateFrom)
       qs.set('date_to', resolved.dateTo)
       qs.set('page', String(resolved.page))
@@ -160,7 +167,7 @@ export default function CustomerSalesDomainReportPage({
 
     void run()
     return () => controller.abort()
-  }, [mode, resolved])
+  }, [mode, resolved, selectedBranchId])
 
   const updateQuery = (patch: Record<string, string>) => {
     const next = new URLSearchParams(searchParams.toString())
@@ -213,6 +220,7 @@ export default function CustomerSalesDomainReportPage({
     ...(resolved.customer ? { customer: resolved.customer } : {}),
     ...(resolved.paymentMethod !== 'all' ? { payment_method: resolved.paymentMethod } : {}),
     ...(resolved.status !== 'all' ? { status: resolved.status } : {}),
+    ...(selectedBranchId === null ? { branch_scope: 'all' } : { branch_store_location_id: String(selectedBranchId) }),
   }).toString()}`
 
   return (

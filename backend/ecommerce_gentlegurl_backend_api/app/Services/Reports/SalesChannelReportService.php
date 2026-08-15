@@ -82,7 +82,7 @@ class SalesChannelReportService
 
     public function orderDetails(int $orderId, bool $includeVoid = false): array
     {
-        $order = Order::query()
+        $order = ReportBranchScope::applyCurrent(Order::query(), 'orders.store_location_id')
             ->with([
                 'customer:id,name,email,phone',
                 'payments:id,order_id,payment_method,amount,reference_no',
@@ -1149,7 +1149,7 @@ class SalesChannelReportService
         ?int $customerId = null
     ) {
         $query = $this->applyOrderScope(
-            DB::table('orders as o')
+            ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
@@ -1199,7 +1199,7 @@ class SalesChannelReportService
         ?int $customerId = null
     ) {
         $query = $this->applyOrderScope(
-            DB::table('orders as o')
+            ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
                 ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')

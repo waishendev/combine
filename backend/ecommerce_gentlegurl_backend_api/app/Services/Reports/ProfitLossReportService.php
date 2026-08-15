@@ -14,11 +14,11 @@ class ProfitLossReportService
     /**
      * Builds the monthly P&L from the same sales-summary payload used by Yearly Sales Report.
      */
-    public function monthly(int $year): array
+    public function monthly(int $year, bool $includeGlobalExpenses = true): array
     {
         $sales = $this->salesSummary->salesSummary($year);
         $costingByMonth = $this->salesSummary->ecommerceCostingByMonth($year);
-        $expenseByMonth = $this->expensesByMonth($year);
+        $expenseByMonth = $includeGlobalExpenses ? $this->expensesByMonth($year) : [];
         $months = [];
 
         foreach ($sales['rows'] as $salesRow) {
@@ -64,6 +64,7 @@ class ProfitLossReportService
                 'sales_source' => 'sales-summary',
                 'costing' => 'order_items.cost_amount_snapshot_only',
                 'expense_date_field' => 'expense_date',
+                'expenses_scope' => $includeGlobalExpenses ? 'global_company_expenses' : 'excluded_no_deterministic_branch_attribution',
             ],
         ];
     }

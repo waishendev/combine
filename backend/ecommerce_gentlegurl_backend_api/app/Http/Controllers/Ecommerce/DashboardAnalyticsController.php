@@ -29,7 +29,7 @@ class DashboardAnalyticsController extends Controller
         // Build inventory once; clone for summary + detail so Schema lookups and SQL assembly run once.
         $inventoryRows = $this->inventoryRowsQuery();
         $summary = DB::query()->fromSub(clone $inventoryRows, 'i')->selectRaw(
-            'COUNT(DISTINCT product_id) as active_count, COUNT(*) as sku_count, SUM(stock) as current_stock_qty, SUM(CASE WHEN cost_price IS NULL THEN 1 ELSE 0 END) as missing_cost_count, SUM(CASE WHEN stock <= low_stock_threshold THEN 1 ELSE 0 END) as low_stock_count, SUM(stock * COALESCE(cost_price, 0)) as current_cost, SUM(stock * retail_price) as retail_value'
+            'COUNT(DISTINCT product_id) as active_count, COUNT(*) as sku_count, SUM(stock) as current_stock_qty, SUM(CASE WHEN cost_price IS NULL THEN 1 ELSE 0 END) as missing_cost_count, SUM(CASE WHEN min_branch_stock <= low_stock_threshold THEN 1 ELSE 0 END) as low_stock_count, SUM(stock * COALESCE(cost_price, 0)) as current_cost, SUM(stock * retail_price) as retail_value'
         )->first();
 
         $grossSales = $this->grossProductSales();
@@ -40,7 +40,7 @@ class DashboardAnalyticsController extends Controller
             ->leftJoin('product_categories as pc', 'pc.product_id', '=', 'i.product_id')
             ->leftJoin('categories as c', 'c.id', '=', 'pc.category_id')
             ->selectRaw("i.*, {$categoryAggregate} as category")
-            ->groupBy('i.product_id', 'i.product_name', 'i.product_sku', 'i.product_active', 'i.variant_id', 'i.variant_title', 'i.variant_sku', 'i.stock', 'i.cost_price', 'i.retail_price', 'i.low_stock_threshold');
+            ->groupBy('i.product_id', 'i.product_name', 'i.product_sku', 'i.product_active', 'i.variant_id', 'i.variant_title', 'i.variant_sku', 'i.stock', 'i.min_branch_stock', 'i.cost_price', 'i.retail_price', 'i.low_stock_threshold');
 
         if ($status === 'inactive') {
             // Phase 1 primary analytics excludes inactive products; detail table keeps status filter shape for UI.
@@ -55,7 +55,7 @@ class DashboardAnalyticsController extends Controller
             $detailQuery->where('c.name', $categoryId);
         }
         if ($lowStockOnly) {
-            $detailQuery->whereRaw('i.stock <= i.low_stock_threshold');
+            $detailQuery->whereRaw('i.min_branch_stock <= i.low_stock_threshold');
         }
         if ($missingCostOnly) {
             $detailQuery->whereNull('i.cost_price');
@@ -72,6 +72,7 @@ class DashboardAnalyticsController extends Controller
                 'category' => $row->category ?: 'Uncategorized',
                 'status' => $row->product_active ? 'Active' : 'Inactive',
                 'current_stock' => $stock,
+                'has_branch_low_stock' => (int) $row->min_branch_stock <= (int) $row->low_stock_threshold,
                 'cost_per_unit' => $row->cost_price === null ? null : $cost,
                 'retail_price' => $retail,
                 'inventory_cost' => $stock * $cost,
@@ -131,13 +132,13 @@ class DashboardAnalyticsController extends Controller
             ->whereIn('store_location_id', $this->branchScope->storeLocationIds)
             ->whereNotNull('product_variant_id')
             ->groupBy('product_id', 'product_variant_id')
-            ->selectRaw('product_id, product_variant_id, SUM(quantity) as quantity');
+            ->selectRaw('product_id, product_variant_id, SUM(quantity) as quantity, MIN(quantity) as min_quantity');
 
         return DB::table('product_variants as v')
             ->join('products as p', 'p.id', '=', 'v.product_id')
             ->join('store_location_product as availability', fn ($join) => $join->on('availability.product_id', '=', 'p.id')->where('availability.is_available', true)->whereIn('availability.store_location_id', $this->branchScope->storeLocationIds))
             ->leftJoinSub($inventory, 'branch_inventory', fn ($join) => $join->on('branch_inventory.product_id', '=', 'p.id')->on('branch_inventory.product_variant_id', '=', 'v.id'))
-            ->selectRaw("p.id as product_id, p.name as product_name, p.sku as product_sku, p.is_active as product_active, v.id as variant_id, v.title as variant_title, v.sku as variant_sku, COALESCE(branch_inventory.quantity, 0) as stock, {$variantCost} as cost_price, {$variantPrice} as retail_price, COALESCE({$variantLowStock}, 0) as low_stock_threshold")
+            ->selectRaw("p.id as product_id, p.name as product_name, p.sku as product_sku, p.is_active as product_active, v.id as variant_id, v.title as variant_title, v.sku as variant_sku, COALESCE(branch_inventory.quantity, 0) as stock, COALESCE(branch_inventory.min_quantity, 0) as min_branch_stock, {$variantCost} as cost_price, {$variantPrice} as retail_price, COALESCE({$variantLowStock}, 0) as low_stock_threshold")
             ->where('p.is_active', true)
             ->where('v.is_active', true)
             ->distinct();
@@ -154,12 +155,12 @@ class DashboardAnalyticsController extends Controller
         $inventory = DB::table('store_location_product_inventories')
             ->whereIn('store_location_id', $this->branchScope->storeLocationIds)
             ->whereNull('product_variant_id')->groupBy('product_id')
-            ->selectRaw('product_id, SUM(quantity) as quantity');
+            ->selectRaw('product_id, SUM(quantity) as quantity, MIN(quantity) as min_quantity');
 
         $query = DB::table('products as p')
             ->join('store_location_product as availability', fn ($join) => $join->on('availability.product_id', '=', 'p.id')->where('availability.is_available', true)->whereIn('availability.store_location_id', $this->branchScope->storeLocationIds))
             ->leftJoinSub($inventory, 'branch_inventory', 'branch_inventory.product_id', '=', 'p.id')
-            ->selectRaw("p.id as product_id, p.name as product_name, p.sku as product_sku, p.is_active as product_active, null as variant_id, null as variant_title, p.sku as variant_sku, COALESCE(branch_inventory.quantity, 0) as stock, {$productCost} as cost_price, {$productPrice} as retail_price, COALESCE({$productLowStock}, 0) as low_stock_threshold")
+            ->selectRaw("p.id as product_id, p.name as product_name, p.sku as product_sku, p.is_active as product_active, null as variant_id, null as variant_title, p.sku as variant_sku, COALESCE(branch_inventory.quantity, 0) as stock, COALESCE(branch_inventory.min_quantity, 0) as min_branch_stock, {$productCost} as cost_price, {$productPrice} as retail_price, COALESCE({$productLowStock}, 0) as low_stock_threshold")
             ->where('p.is_active', true);
 
         if ($this->schemaHasTable('product_variants')) {

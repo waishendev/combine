@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\Reports\ReportBranchScope;
 
 class PackageDashboardAnalyticsController extends Controller
 {
@@ -183,7 +184,7 @@ class PackageDashboardAnalyticsController extends Controller
      */
     private function usageValueQuery(bool $withServiceName = true): Builder
     {
-        $query = DB::table('customer_service_package_usages as u')
+        $query = ReportBranchScope::applyCurrent(DB::table('customer_service_package_usages as u'), 'u.store_location_id')
             ->leftJoin('customer_service_packages as csp_value', 'csp_value.id', '=', 'u.customer_service_package_id')
             ->leftJoin('customer_service_package_balances as b_value', function ($join) {
                 $join->on('b_value.customer_service_package_id', '=', 'u.customer_service_package_id')

@@ -463,3 +463,9 @@ Branch-scoped Product listing is intentionally driven by `store_location_product
 ## Phase 9 reporting and final regression (2026-08-15)
 
 Phase 9 converts the rendered ecommerce dashboard inventory and sales surfaces to the authorized shared Header Branch Context and fixes Orders table Branch state ownership. All Branches is server-derived accessible scope, with legacy NULL transaction activity explicitly Unassigned; specific Branch never absorbs NULL. Global masters and entitlement balances remain global. The audit matrix, 52-point regression, limitations, and non-destructive production checklist are maintained in [the Phase 9 reporting runbook](phase-9-reporting-runbook.md).
+
+## Phase 9B executable reporting completion (2026-08-15)
+
+Phase 9B applies the existing `ReportBranchScope` safe default across executable Sales, Booking, Appointment, POS, Product Profit, ecommerce commission, stock movement, Return and Package-usage reporting. Specific Branch excludes NULL; All is derived from authenticated accessible StoreLocations and retains meaningful NULL as Unassigned. Operational Sales/Booking CSVs reuse the scoped services. Physical reporting uses accessible Branch inventory; low stock is evaluated per Branch and ACTIVE-Branch notifications name the shortage Branch.
+
+Global masters and liabilities remain global. Expense has no deterministic Branch ownership, so restricted/specific Profit/Loss excludes company expenses rather than inventing attribution. Wishlist remains a labelled global Ecommerce-intent metric. No new benefit or Promotion report page, Excel/PDF report feature, stock workflow, tenant, organization or Branch entity was introduced. See [the Phase 9 reporting runbook](phase-9-reporting-runbook.md) for the executable ledger, test status, export classification, manual checks and remaining deterministic-attribution limitations.

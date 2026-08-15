@@ -9,6 +9,7 @@ import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import { NameStack, VariantNameStack } from './NameStack'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { useBranch } from '@/contexts/BranchContext'
 
 type ProductOption = {
   id: number
@@ -115,6 +116,7 @@ export default function ProductStockMovementLogsPage({
 }: ProductStockMovementLogsPageProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { selectedBranchId } = useBranch()
 
   const [products, setProducts] = useState<ProductOption[]>([])
   const [rows, setRows] = useState<MovementRow[]>([])
@@ -182,6 +184,8 @@ export default function ProductStockMovementLogsPage({
         if (dateFrom) params.set('date_from', dateFrom)
         if (dateTo) params.set('date_to', dateTo)
         if (revokableOnly) params.set('revokable_only', '1')
+        if (selectedBranchId === null) params.set('branch_scope', 'all')
+        else params.set('branch_store_location_id', String(selectedBranchId))
 
         const res = await fetch(
           `/api/proxy/ecommerce/product-stock-movements?${params.toString()}`,
@@ -208,7 +212,7 @@ export default function ProductStockMovementLogsPage({
         setLoading(false)
       }
     },
-    [dateFrom, dateTo, pageSize, productId, revokableOnly, type],
+    [dateFrom, dateTo, pageSize, productId, revokableOnly, type, selectedBranchId],
   )
 
   const fetchProducts = useCallback(async () => {
@@ -217,6 +221,7 @@ export default function ProductStockMovementLogsPage({
       per_page: '300',
       is_reward_only: 'false',
     })
+    if (selectedBranchId) params.set('branch_store_location_id', String(selectedBranchId))
     const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, {
       cache: 'no-store',
     })
@@ -240,7 +245,7 @@ export default function ProductStockMovementLogsPage({
         })
         .filter((item: ProductOption) => item.id > 0),
     )
-  }, [])
+  }, [selectedBranchId])
 
   useEffect(() => {
     void fetchProducts()

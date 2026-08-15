@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import SalesVisualPeriodDashboard from '@/components/reports/SalesVisualPeriodDashboard'
+import { useBranch } from '@/contexts/BranchContext'
 
 type SummaryTotals = {
   ecommerce_sales: number
@@ -103,6 +104,7 @@ function isDailyRow(row: MonthlyRow | DailyRow): row is DailyRow {
 }
 
 export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false }: { canViewStaffReport?: boolean }) {
+  const { selectedBranchId } = useBranch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -193,6 +195,8 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
         qs.set('year_from', String(selectedYearFrom))
         qs.set('year_to', String(selectedYearTo))
       }
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/ecommerce/reports/sales-summary?${qs.toString()}`, { cache: 'no-store' })
       if (!res.ok) {
         setData(null)
@@ -206,7 +210,7 @@ export default function SalesSummaryWorkspaceClient({ canViewStaffReport = false
     } finally {
       setLoading(false)
     }
-  }, [isMonthlyView, selectedMonthFrom, selectedMonthTo, selectedYear, selectedYearFrom, selectedYearTo])
+  }, [isMonthlyView, selectedMonthFrom, selectedMonthTo, selectedYear, selectedYearFrom, selectedYearTo, selectedBranchId])
 
   useEffect(() => {
     void load()

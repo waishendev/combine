@@ -6,6 +6,7 @@ import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import { formatReportStaffSplitLabel } from '@/components/pos/staffSplitCore'
+import { useBranch } from '@/contexts/BranchContext'
 
 type StaffOption = {
   id: number
@@ -102,6 +103,7 @@ const formatDateTimeForTable = (dateString: string) => {
 }
 
 export default function StaffCommissionReportPage() {
+  const { selectedBranchId } = useBranch()
   const defaultRange = useMemo(() => getDefaultRange(), [])
   const [filterInputs, setFilterInputs] = useState({
     date_from: defaultRange.from,
@@ -158,6 +160,8 @@ export default function StaffCommissionReportPage() {
         end_date: appliedFilters.date_to,
       })
       if (appliedFilters.staff_id) qs.set('staff_id', appliedFilters.staff_id)
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
 
       const res = await fetch(`/api/proxy/ecommerce/reports/staff-commission?${qs.toString()}`, {
         cache: 'no-store',
@@ -177,7 +181,7 @@ export default function StaffCommissionReportPage() {
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters])
+  }, [appliedFilters, selectedBranchId])
 
   useEffect(() => {
     loadStaffOptions('').catch(() => {})
@@ -242,6 +246,8 @@ export default function StaffCommissionReportPage() {
         end_date: appliedFilters.date_to,
         per_page: '100',
       })
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/ecommerce/reports/staff-commission/detail?${qs.toString()}`, {
         cache: 'no-store',
       })

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import SalesVisualSummaryCards, { type SalesVisualSummaryData } from '@/components/reports/SalesVisualSummaryCards'
+import { useBranch } from '@/contexts/BranchContext'
 
 type SalesVisualPeriodDashboardProps = {
   year: number
@@ -66,6 +67,7 @@ export default function SalesVisualPeriodDashboard({
   onShiftPeriod,
   canViewStaffReport = false,
 }: SalesVisualPeriodDashboardProps) {
+  const { selectedBranchId } = useBranch()
   const resolvedYearFrom = yearFrom ?? year
   const resolvedYearTo = yearTo ?? yearFrom ?? year
   const resolvedMonthFrom = monthFrom ?? month
@@ -87,6 +89,8 @@ export default function SalesVisualPeriodDashboard({
         qs.set('month_from', String(resolvedMonthFrom))
         qs.set('month_to', String(resolvedMonthTo ?? resolvedMonthFrom))
       }
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/ecommerce/reports/sales/visual-period/all?${qs.toString()}`, {
         cache: 'no-store',
       })
@@ -102,7 +106,7 @@ export default function SalesVisualPeriodDashboard({
     } finally {
       setLoading(false)
     }
-  }, [resolvedMonthFrom, resolvedMonthTo, resolvedYearFrom, resolvedYearTo, year])
+  }, [resolvedMonthFrom, resolvedMonthTo, resolvedYearFrom, resolvedYearTo, year, selectedBranchId])
 
   useEffect(() => {
     void load()

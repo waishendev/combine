@@ -209,7 +209,9 @@ export default function CategoryTable({
   const handleExportCsv = async () => {
     setIsExporting(true)
     try {
-      const res = await fetch('/api/proxy/ecommerce/categories/export', { cache: 'no-store' })
+      const exportParams = new URLSearchParams()
+      if (selectedBranchId) exportParams.set('branch_store_location_id', String(selectedBranchId))
+      const res = await fetch(`/api/proxy/ecommerce/categories/export?${exportParams.toString()}`, { cache: 'no-store' })
       if (!res.ok) {
         throw new Error('Export CSV failed.')
       }

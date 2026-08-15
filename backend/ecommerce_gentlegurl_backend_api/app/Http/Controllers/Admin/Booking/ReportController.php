@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use App\Services\Reports\ReportBranchScope;
 
 class ReportController extends Controller
 {
@@ -14,7 +15,7 @@ class ReportController extends Controller
     {
         [$from, $to] = $this->resolveRange($request);
 
-        $rows = Booking::query()
+        $rows = ReportBranchScope::applyCurrent(Booking::query(), 'bookings.store_location_id')
             ->selectRaw('staff_id, status, COUNT(*) as total')
             ->when($from, fn (Builder $q) => $q->where('start_at', '>=', $from))
             ->when($to, fn (Builder $q) => $q->where('start_at', '<=', $to))
@@ -48,7 +49,7 @@ class ReportController extends Controller
         $page = (int) $request->query('page', 1);
 
         // Base query for rows
-        $baseQuery = Booking::query()
+        $baseQuery = ReportBranchScope::applyCurrent(Booking::query(), 'bookings.store_location_id')
             ->selectRaw($this->periodExpression($groupBy) . ' as period')
             ->selectRaw('COUNT(*) as total_bookings')
             ->selectRaw("SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as confirmed_count")
@@ -68,7 +69,7 @@ class ReportController extends Controller
         $rows = $paginated->items();
 
         // Calculate grand totals (all data)
-        $grandTotalsQuery = Booking::query()
+        $grandTotalsQuery = ReportBranchScope::applyCurrent(Booking::query(), 'bookings.store_location_id')
             ->selectRaw('COUNT(*) as total_bookings')
             ->selectRaw("SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count")
             ->selectRaw("SUM(CASE WHEN status = 'NOTIFIED_CANCELLATION' THEN 1 ELSE 0 END) as notified_cancellation_count")
@@ -112,7 +113,7 @@ class ReportController extends Controller
 
     public function summaryExport(Request $request)
     {
-        $rows = $this->summary($request)->getData(true)['data'] ?? [];
+        $rows = $this->summary($request)->getData(true)['rows'] ?? [];
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');

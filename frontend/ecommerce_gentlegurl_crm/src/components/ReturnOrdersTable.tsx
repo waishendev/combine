@@ -10,6 +10,7 @@ import ReturnViewPanel from './ReturnViewPanel'
 import CrmFilterModalShell from './CrmFilterModalShell'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_PDF_ACCEPT } from './mediaAccept'
+import { useBranch } from '@/contexts/BranchContext'
 
 type ReturnItem = {
   order_item_id: number
@@ -140,6 +141,7 @@ const getFileUrl = (path?: string | null) => {
 
 export default function ReturnOrdersTable() {
   const { t } = useI18n()
+  const { selectedBranchId } = useBranch()
   const searchParams = useSearchParams()
 
   const queryFilters = useMemo(() => {
@@ -212,6 +214,8 @@ export default function ReturnOrdersTable() {
     if (customerEmailFilter) params.set('customer_email', customerEmailFilter)
     if (dateFromFilter) params.set('date_from', dateFromFilter)
     if (dateToFilter) params.set('date_to', dateToFilter)
+    if (selectedBranchId === null) params.set('branch_scope', 'all')
+    else params.set('branch_store_location_id', String(selectedBranchId))
     return params.toString()
   }, [
     statusFilter,
@@ -222,6 +226,7 @@ export default function ReturnOrdersTable() {
     dateToFilter,
     currentPage,
     pageSize,
+    selectedBranchId,
   ])
 
   const fetchReturns = useCallback(async () => {

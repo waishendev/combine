@@ -15,7 +15,7 @@ Date: {{ $date }}
     $variantCnName = trim((string) ($product['variant_cn_name'] ?? ''));
     $sku = trim((string) ($product['sku'] ?? ''));
 @endphp
-- [{{ $isOut ? 'OUT' : 'LOW' }}] {{ $sku !== '' ? $sku : '-' }} | {{ $name !== '' ? $name : '-' }}@if($cnName !== '') / {{ $cnName }}@endif @if($variantName !== '' || $variantCnName !== '') | Variant: {{ $variantName }}@if($variantName !== '' && $variantCnName !== '') / @endif{{ $variantCnName }}@endif | Stock {{ $stock }} / Threshold {{ $threshold }}
+- [{{ $isOut ? 'OUT' : 'LOW' }}] @if(!empty($product['branch_name']))Branch: {{ $product['branch_name'] }} | @endif{{ $sku !== '' ? $sku : '-' }} | {{ $name !== '' ? $name : '-' }}@if($cnName !== '') / {{ $cnName }}@endif @if($variantName !== '' || $variantCnName !== '') | Variant: {{ $variantName }}@if($variantName !== '' && $variantCnName !== '') / @endif{{ $variantCnName }}@endif | Stock {{ $stock }} / Threshold {{ $threshold }}
 
 @endforeach
 This is an automated inventory alert from Gentlegurls. Please do not reply.

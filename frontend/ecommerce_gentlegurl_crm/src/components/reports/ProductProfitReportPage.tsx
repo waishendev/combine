@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { ReportDetailDrawer, ReportViewDetailsButton } from './ReportActions'
+import { useBranch } from '@/contexts/BranchContext'
 
 type ProductProfitRow = {
   product_id: number
@@ -65,6 +66,7 @@ type Props = {
 }
 
 export default function ProductProfitReportPage({ initialDateFrom = '', initialDateTo = '', initialSearch = '' }: Props) {
+  const { selectedBranchId } = useBranch()
   const [rows, setRows] = useState<ProductProfitRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -105,6 +107,8 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
         if (dateTo) qs.set('date_to', dateTo)
         if (categoryId) qs.set('category_id', categoryId)
         if (channel) qs.set('channel', channel)
+        if (selectedBranchId === null) qs.set('branch_scope', 'all')
+        else qs.set('branch_store_location_id', String(selectedBranchId))
 
         const res = await fetch(`/api/proxy/admin/reports/product-profit?${qs.toString()}`, {
           cache: 'no-store',
@@ -132,7 +136,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
 
     load()
     return () => controller.abort()
-  }, [page, perPage, search, dateFrom, dateTo, categoryId, channel])
+  }, [page, perPage, search, dateFrom, dateTo, categoryId, channel, selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -147,7 +151,10 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
           data?: unknown
         }
         if (res.ok) {
-          const maybeArray = (data as any)?.data?.data ?? (data as any)?.data
+          const outer = data.data
+          const maybeArray = outer && typeof outer === 'object' && 'data' in outer
+            ? (outer as { data?: unknown }).data
+            : outer
           setCategories(Array.isArray(maybeArray) ? maybeArray : [])
         }
       } catch (err) {

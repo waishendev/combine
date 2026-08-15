@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
+import { useBranch } from '@/contexts/BranchContext'
 
 type StaffSalesPayload = {
   range?: {
@@ -49,6 +50,7 @@ function StatSkeleton() {
 }
 
 export default function StaffMySalesDashboard() {
+  const { selectedBranchId } = useBranch()
   const defaultRange = useMemo(() => getDefaultRange(), [])
   const [filterInputs, setFilterInputs] = useState(defaultRange)
   const [appliedFilters, setAppliedFilters] = useState(defaultRange)
@@ -65,6 +67,8 @@ export default function StaffMySalesDashboard() {
         date_from: appliedFilters.from,
         date_to: appliedFilters.to,
       })
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/ecommerce/reports/my-staff-sales?${qs.toString()}`, {
         cache: 'no-store',
       })
@@ -80,7 +84,7 @@ export default function StaffMySalesDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters.from, appliedFilters.to])
+  }, [appliedFilters.from, appliedFilters.to, selectedBranchId])
 
   useEffect(() => {
     void load()

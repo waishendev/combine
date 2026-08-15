@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 import SalesVisualSummaryCards, { type SalesVisualSummaryData } from '@/components/reports/SalesVisualSummaryCards'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Mode = 'ecommerce' | 'booking' | 'all'
 
@@ -55,6 +56,7 @@ export default function SalesVisualDailyDashboard({
   canViewStaffReport?: boolean
   includeVoid?: boolean
 }) {
+  const { selectedBranchId } = useBranch()
   const searchParams = useSearchParams()
   const today = useMemo(() => formatYmd(new Date()), [])
   const range = useMemo(() => {
@@ -82,6 +84,8 @@ export default function SalesVisualDailyDashboard({
         date_to: dateTo,
       })
       if (includeVoid) qs.set('include_void', 'true')
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/ecommerce/reports/sales/visual-daily/${path}?${qs.toString()}`, {
         cache: 'no-store',
       })
@@ -97,7 +101,7 @@ export default function SalesVisualDailyDashboard({
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, includeVoid, mode])
+  }, [dateFrom, dateTo, includeVoid, mode, selectedBranchId])
 
   useEffect(() => {
     void load()

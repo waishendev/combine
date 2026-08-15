@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use App\Services\Reports\ReportBranchScope;
 
 class ReturnRequestController extends Controller
 {
@@ -33,6 +34,8 @@ class ReturnRequestController extends Controller
         $query = ReturnRequest::with(['order', 'customer'])
             ->withCount('items')
             ->withSum('items as items_quantity', 'quantity');
+        $scope = ReportBranchScope::current();
+        $query->whereHas('order', fn ($orders) => $scope->apply($orders, 'orders.store_location_id'));
 
         if (!empty($validated['status'])) {
             $query->where('status', $validated['status']);
@@ -71,6 +74,7 @@ class ReturnRequestController extends Controller
 
     public function show(ReturnRequest $returnRequest)
     {
+        $this->authorizeReturnBranch($returnRequest);
         $returnRequest->load([
             'order',
             'customer',
@@ -142,6 +146,7 @@ class ReturnRequestController extends Controller
 
     public function updateStatus(Request $request, ReturnRequest $returnRequest)
     {
+        $this->authorizeReturnBranch($returnRequest);
         $action = $request->input('action')
             ?? $request->input('mark')
             ?? $request->input('status_action');
@@ -285,5 +290,14 @@ class ReturnRequestController extends Controller
         }
 
         return $this->respond($returnRequest->fresh(), __('Status updated.'));
+    }
+
+    private function authorizeReturnBranch(ReturnRequest $returnRequest): void
+    {
+        $order = $returnRequest->order()->first();
+        abort_unless($order && ReportBranchScope::current()->apply(
+            $returnRequest->order()->getQuery(),
+            'orders.store_location_id'
+        )->whereKey($order->getKey())->exists(), 403, __('You are not allowed to access this return Branch.'));
     }
 }

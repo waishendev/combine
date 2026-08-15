@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Mode = 'ecommerce' | 'booking' | 'all'
 
@@ -59,6 +60,7 @@ const fmtRm = (n: number) =>
   `RM ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode }) {
+  const { selectedBranchId } = useBranch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -75,8 +77,11 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
     setError(null)
     try {
       const path = mode === 'ecommerce' ? 'ecommerce' : mode === 'booking' ? 'booking' : 'all'
+      const qs = new URLSearchParams({ date })
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(
-        `/api/proxy/ecommerce/reports/sales/visual-daily/${path}?date=${encodeURIComponent(date)}`,
+        `/api/proxy/ecommerce/reports/sales/visual-daily/${path}?${qs.toString()}`,
         { cache: 'no-store' },
       )
       if (!res.ok) {
@@ -92,7 +97,7 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
     } finally {
       setLoading(false)
     }
-  }, [date, mode])
+  }, [date, mode, selectedBranchId])
 
   useEffect(() => {
     void load()
@@ -318,4 +323,3 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
     </div>
   )
 }
-

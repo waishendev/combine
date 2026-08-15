@@ -165,6 +165,12 @@ class PosCashShiftController extends Controller
                 ],
                 'open_shift' => null,
                 'open_shifts' => $openShifts->map(fn ($shift) => $this->serializeShift($shift))->values(),
+                'branch_pool_breakdown' => $accounts->groupBy('store_location_id')->map(fn ($rows, $id) => [
+                    'store_location_id' => (int) $id,
+                    'total_initial_cash' => round((float) $rows->sum('total_initial_cash'), 2),
+                    'total_withdraw' => round((float) $rows->sum('total_withdraw'), 2),
+                ])->values(),
+                'unassigned_cash_shifts_count' => PosCashShift::query()->whereNull('store_location_id')->count(),
                 'scope' => 'all_accessible_branches',
             ]);
         }
@@ -205,7 +211,8 @@ class PosCashShiftController extends Controller
                 'linkedOpenShift.opener:id,name,email',
             ])
             ->when($branchId, fn (Builder $q) => $q->where('store_location_id', $branchId))
-            ->when(! $branchId, fn (Builder $q) => $q->whereIn('store_location_id', $accessibleIds))
+            ->when(! $branchId, fn (Builder $q) => $q->where(fn (Builder $scope) => $scope
+                ->whereIn('store_location_id', $accessibleIds)->orWhereNull('store_location_id')))
             ->when(! empty($validated['date_from']), function (Builder $q) use ($validated) {
                 $q->where(function (Builder $inner) use ($validated) {
                     $inner->whereDate('opened_at', '>=', $validated['date_from'])

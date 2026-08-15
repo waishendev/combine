@@ -35,6 +35,7 @@
                         $variantName = trim((string) ($product['variant_name'] ?? ''));
                         $variantCnName = trim((string) ($product['variant_cn_name'] ?? ''));
                         $sku = trim((string) ($product['sku'] ?? ''));
+                        $branchName = trim((string) ($product['branch_name'] ?? ''));
                     @endphp
                     <tr>
                         <td style="padding:10px 8px; font-size:13px; vertical-align:top; border-bottom:1px solid #eeeeee; white-space:nowrap;">
@@ -42,6 +43,9 @@
                         </td>
                         <td style="padding:10px 8px; font-size:13px; vertical-align:top; border-bottom:1px solid #eeeeee;">
                             <div>{{ $name !== '' ? $name : '—' }}</div>
+                            @if ($branchName !== '')
+                                <div style="margin-top:2px; font-size:12px; font-weight:600; color:#475569;">Branch: {{ $branchName }}</div>
+                            @endif
                             @if ($cnName !== '')
                                 <div style="margin-top:2px; font-size:12px; color:#666666;">{{ $cnName }}</div>
                             @endif

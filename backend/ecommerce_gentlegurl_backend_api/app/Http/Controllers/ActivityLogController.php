@@ -95,8 +95,11 @@ class ActivityLogController extends Controller
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $actions = array_keys(AppointmentActivityLogService::ACTIONS);
 
+        $scope = \App\Services\Reports\ReportBranchScope::current();
         $query = ActivityLog::query()
             ->where('model_type', 'Booking')
+            ->whereExists(fn ($bookings) => $scope->apply($bookings->selectRaw('1')->from('bookings')
+                ->whereColumn('bookings.id', 'activity_logs.model_id'), 'bookings.store_location_id'))
             ->whereIn('action', $actions)
             ->latest('created_at');
 

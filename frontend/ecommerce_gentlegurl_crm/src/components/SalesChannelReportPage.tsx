@@ -17,6 +17,7 @@ import { formatReportStaffSplitList } from '@/components/pos/staffSplitCore'
 import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
 import { getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
 import { formatBookingAddonReceiptLabel } from '@/lib/bookingReceiptDisplay'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Mode = 'ecommerce' | 'booking'
 
@@ -515,6 +516,7 @@ export default function SalesChannelReportPage({
   externalRefreshKey?: number
   includeVoid?: boolean
 }) {
+  const { selectedBranchId } = useBranch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -568,6 +570,8 @@ export default function SalesChannelReportPage({
     const fetchData = async () => {
       setLoading(true)
       const qs = new URLSearchParams()
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
       qs.set('date_from', resolved.dateFrom)
       qs.set('date_to', resolved.dateTo)
       qs.set('channel', resolved.channel)
@@ -613,7 +617,7 @@ export default function SalesChannelReportPage({
 
     void fetchData()
     return () => controller.abort()
-  }, [includeVoid, mode, resolved, refreshKey, externalRefreshKey])
+  }, [includeVoid, mode, resolved, refreshKey, externalRefreshKey, selectedBranchId])
 
   const updateQuery = (patch: Record<string, string>) => {
     const next = new URLSearchParams(searchParams.toString())
@@ -715,6 +719,8 @@ export default function SalesChannelReportPage({
 
   const exportUrl = useMemo(() => {
     const qs = new URLSearchParams()
+    if (selectedBranchId === null) qs.set('branch_scope', 'all')
+    else qs.set('branch_store_location_id', String(selectedBranchId))
     qs.set('date_from', resolved.dateFrom)
     qs.set('date_to', resolved.dateTo)
     qs.set('channel', resolved.channel)
@@ -723,7 +729,7 @@ export default function SalesChannelReportPage({
     if (mode === 'booking' && resolved.type !== 'all') qs.set('type', resolved.type)
     if (includeVoid) qs.set('include_void', 'true')
     return `/api/proxy/ecommerce/reports/sales/export/${mode}?${qs.toString()}`
-  }, [includeVoid, mode, resolved])
+  }, [includeVoid, mode, resolved, selectedBranchId])
 
   const groupedEcommerceRows = useMemo(() => {
     const groups = new Map<string, EcommerceRow>()

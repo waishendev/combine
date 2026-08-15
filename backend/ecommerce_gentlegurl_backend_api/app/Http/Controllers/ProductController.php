@@ -33,9 +33,18 @@ class ProductController extends Controller
         if ($branchId && $request->user()) {
             app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
         }
-        $branchAuthorityActive = $branchId && BranchInventoryCutoverState::query()->where('store_location_id', $branchId)->where('status', BranchInventoryCutoverState::ACTIVE)->exists();
+        $allBranchScope = ! $branchId && $request->query('branch_scope') === 'all' && $request->user();
+        $accessibleIds = $allBranchScope
+            ? app(StoreLocationAccessService::class)->accessibleStoreLocations($request->user())->pluck('id')->map(fn ($id) => (int) $id)->all()
+            : [];
+        $inventoryBranchIds = $branchId ? [$branchId] : $accessibleIds;
+        $activeInventoryBranchIds = BranchInventoryCutoverState::query()->whereIn('store_location_id', $inventoryBranchIds)
+            ->where('status', BranchInventoryCutoverState::ACTIVE)->pluck('store_location_id')->map(fn ($id) => (int) $id)->all();
+        $branchAuthorityActive = $branchId && in_array($branchId, $activeInventoryBranchIds, true);
+        $branchInventoryReporting = $branchAuthorityActive || ($allBranchScope && $activeInventoryBranchIds !== []);
         $products = Product::with(['categories', 'images', 'video', 'variants', 'storeLocations:id,name,code,is_active,is_pos_available'])
-            ->when($branchAuthorityActive, fn ($query) => $query->with(['branchInventories' => fn ($inventory) => $inventory->where('store_location_id', $branchId)]))
+            ->when($branchInventoryReporting, fn ($query) => $query->with(['branchInventories' => fn ($inventory) => $inventory
+                ->whereIn('store_location_id', $activeInventoryBranchIds)->with('storeLocation:id,name,code')]))
             ->when($branchId, fn ($query) => $query->whereHas('storeLocations', fn ($branches) => $branches
                 ->where('store_locations.id', $branchId)->where('store_location_product.is_available', true)))
             ->when($request->filled('search'), function ($query) use ($request) {
@@ -86,15 +95,22 @@ class ProductController extends Controller
             ->orderByDesc('id')
             ->paginate($perPage);
 
-        $products->getCollection()->transform(function (Product $product) use ($branchAuthorityActive) {
+        $products->getCollection()->transform(function (Product $product) use ($branchInventoryReporting) {
             $variants = $product->relationLoaded('variants') ? $product->variants : collect();
-            if ($branchAuthorityActive) {
-                $inventory = $product->branchInventories->keyBy(fn ($row) => (int) ($row->product_variant_id ?? 0));
-                $product->setAttribute('stock', (int) ($inventory->get(0)?->quantity ?? 0));
-                $product->setAttribute('stock_quantity', (int) ($inventory->get(0)?->quantity ?? 0));
+            if ($branchInventoryReporting) {
+                $inventory = $product->branchInventories->groupBy(fn ($row) => (int) ($row->product_variant_id ?? 0));
+                $product->setAttribute('stock', (int) ($inventory->get(0)?->sum('quantity') ?? 0));
+                $product->setAttribute('stock_quantity', (int) ($inventory->get(0)?->sum('quantity') ?? 0));
                 $variants->each(fn (ProductVariant $variant) => ! $variant->is_bundle
-                    ? $variant->setAttribute('stock', (int) ($inventory->get((int) $variant->id)?->quantity ?? 0))
+                    ? $variant->setAttribute('stock', (int) ($inventory->get((int) $variant->id)?->sum('quantity') ?? 0))
                     : null);
+                $product->setAttribute('branch_inventory_breakdown', $product->branchInventories->map(fn ($row) => [
+                    'store_location_id' => (int) $row->store_location_id,
+                    'branch_name' => $row->storeLocation?->name,
+                    'branch_code' => $row->storeLocation?->code,
+                    'product_variant_id' => $row->product_variant_id ? (int) $row->product_variant_id : null,
+                    'quantity' => (int) $row->quantity,
+                ])->values());
             }
             $variantPrices = $variants
                 ->map(fn(ProductVariant $variant) => $variant->price)
@@ -559,7 +575,7 @@ class ProductController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="products_export_' . now()->format('Y-m-d_His') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="global_product_master_export_' . now()->format('Y-m-d_His') . '.csv"',
             'Cache-Control' => 'no-store, no-cache',
         ]);
     }

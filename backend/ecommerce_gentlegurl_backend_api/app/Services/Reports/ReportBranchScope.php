@@ -39,6 +39,33 @@ final class ReportBranchScope
         return new self($ids, null, true);
     }
 
+    /** Safe default for operational reports: omitted scope means authenticated accessible All. */
+    public static function current(): self
+    {
+        $request = request();
+        $cacheKey = self::class;
+        $cached = $request->attributes->get($cacheKey);
+        if ($cached instanceof self) {
+            return $cached;
+        }
+        // Trusted CLI/report reconciliation has no authenticated browser scope.
+        // HTTP endpoints remain fail-closed through fromRequest().
+        if (! $request->user() && app()->runningInConsole()) {
+            $scope = new self(\App\Models\Ecommerce\StoreLocation::query()->pluck('id')->map(fn ($id) => (int) $id)->all(), null, true);
+            $request->attributes->set($cacheKey, $scope);
+            return $scope;
+        }
+        $scope = self::fromRequest($request, app(StoreLocationAccessService::class));
+        $request->attributes->set($cacheKey, $scope);
+
+        return $scope;
+    }
+
+    public static function applyCurrent($query, string $column = 'store_location_id'): mixed
+    {
+        return self::current()->apply($query, $column);
+    }
+
     public function apply($query, string $column = 'store_location_id'): mixed
     {
         return $query->where(function ($builder) use ($column) {

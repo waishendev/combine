@@ -13,6 +13,7 @@ import {
   emptyBookingAppointmentFilters,
 } from './BookingAppointmentFilters'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 type BookingRow = {
   id: number
@@ -111,6 +112,7 @@ const extractData = <T,>(payload: unknown, fallback: T): T => {
 
 export default function BookingAppointmentsPage({ permissions }: Props) {
   const { t } = useI18n()
+  const { selectedBranchId } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [inputs, setInputs] = useState<BookingAppointmentFilterValues>({ ...emptyBookingAppointmentFilters })
   const [filters, setFilters] = useState<BookingAppointmentFilterValues>({ ...emptyBookingAppointmentFilters })
@@ -162,6 +164,8 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
       if (filters.staffId) qs.set('staff_id', filters.staffId)
       if (filters.status) qs.set('status', filters.status)
       if (filters.search.trim()) qs.set('q', filters.search.trim())
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
 
       const res = await fetch(`/api/proxy/admin/booking/appointments?${qs.toString()}`, {
         cache: 'no-store',
@@ -233,7 +237,7 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [currentPage, filters, pageSize])
+  }, [currentPage, filters, pageSize, selectedBranchId])
 
   useEffect(() => {
     loadStaffs()

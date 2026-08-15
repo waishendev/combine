@@ -6,12 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\LoyaltyRedemption;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use App\Services\Reports\ReportBranchScope;
 
 class LoyaltyRedemptionAdminController extends Controller
 {
     public function index(Request $request)
     {
-        $redemptions = LoyaltyRedemption::query()
+        $redemptions = ReportBranchScope::applyCurrent(LoyaltyRedemption::query(), 'loyalty_redemptions.store_location_id')
             ->with(['customer', 'reward'])
             ->when($request->filled('status'), fn($q) => $q->where('status', $request->string('status')->toString()))
             ->when($request->filled('reward_id'), fn($q) => $q->where('reward_id', $request->integer('reward_id')))
@@ -29,6 +30,7 @@ class LoyaltyRedemptionAdminController extends Controller
 
     public function show(LoyaltyRedemption $redemption)
     {
+        $this->authorizeScope($redemption);
         $redemption->load(['customer', 'reward']);
 
         return $this->respond($redemption);
@@ -36,6 +38,7 @@ class LoyaltyRedemptionAdminController extends Controller
 
     public function updateStatus(LoyaltyRedemption $redemption, Request $request)
     {
+        $this->authorizeScope($redemption);
         $validated = $request->validate([
             'status' => ['required', Rule::in(['pending', 'completed', 'cancelled'])],
             'admin_note' => ['nullable', 'string'],
@@ -54,5 +57,11 @@ class LoyaltyRedemptionAdminController extends Controller
         $redemption->save();
 
         return $this->respond($redemption, __('Redemption status updated.'));
+    }
+
+    private function authorizeScope(LoyaltyRedemption $redemption): void
+    {
+        abort_unless(ReportBranchScope::applyCurrent(LoyaltyRedemption::query(), 'loyalty_redemptions.store_location_id')
+            ->whereKey($redemption->getKey())->exists(), 403);
     }
 }

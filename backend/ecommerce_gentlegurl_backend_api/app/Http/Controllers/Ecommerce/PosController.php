@@ -2927,6 +2927,9 @@ class PosController extends Controller
             ->where('id', $id)
             ->where('status', 'completed')
             ->firstOrFail();
+        if ($refund->booking) {
+            $this->authorizePosAppointmentBranch($refund->booking, $request);
+        }
 
         $remark = trim((string) $validated['remark']);
         $voidNote = '[VOIDED ' . now()->format('Y-m-d H:i') . '] ' . $remark;
@@ -2975,7 +2978,10 @@ class PosController extends Controller
 
     public function refundReceipt(int $id)
     {
-        $refund = BookingRefund::query()->findOrFail($id);
+        $refund = BookingRefund::query()->with('booking')->findOrFail($id);
+        if ($refund->booking) {
+            $this->authorizePosAppointmentBranch($refund->booking, request());
+        }
 
         return $this->respond([
             'refund' => [

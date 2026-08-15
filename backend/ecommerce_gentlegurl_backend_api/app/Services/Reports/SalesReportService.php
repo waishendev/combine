@@ -40,7 +40,7 @@ class SalesReportService
         $revenue = (float) (clone $baseQuery)->sum('grand_total');
         $returnAmount = $this->refundAmountForRange($start, $end);
         $netRevenue = $revenue - $returnAmount;
-        $itemsCount = (int) DB::table('order_items')
+        $itemsCount = (int) ReportBranchScope::applyCurrent(DB::table('order_items'), 'orders.store_location_id')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
             ->whereIn('orders.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
@@ -380,7 +380,7 @@ class SalesReportService
 
     private function baseOrdersQuery(Carbon $start, Carbon $end): Builder
     {
-        return Order::query()
+        return ReportBranchScope::applyCurrent(Order::query(), 'orders.store_location_id')
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
             ->whereIn('payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('status', self::VALID_ORDER_STATUSES_FOR_REPORT);
@@ -393,7 +393,7 @@ class SalesReportService
 
     private function cogsForOrderItems(Carbon $start, Carbon $end): float
     {
-        return (float) DB::table('order_items as oi')
+        return (float) ReportBranchScope::applyCurrent(DB::table('order_items as oi'), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
             ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
@@ -409,7 +409,7 @@ class SalesReportService
             return 0;
         }
 
-        return (int) DB::table('order_items as oi')
+        return (int) ReportBranchScope::applyCurrent(DB::table('order_items as oi'), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
@@ -500,7 +500,7 @@ class SalesReportService
 
     private function packageSalesTotals(Carbon $start, Carbon $end): array
     {
-        $row = DB::table('customer_service_packages')
+        $row = ReportBranchScope::applyCurrent(DB::table('customer_service_packages'), 'customer_service_packages.purchase_store_location_id')
             ->join('service_packages', 'service_packages.id', '=', 'customer_service_packages.service_package_id')
             ->whereBetween('customer_service_packages.created_at', [$start, $end])
             ->whereIn('customer_service_packages.purchased_from', ['POS', 'BOOKING'])
@@ -517,7 +517,7 @@ class SalesReportService
     private function buildByCategoryQuery(Carbon $start, Carbon $end, bool $profitSupported): array
     {
         $refundsSubquery = $this->refundsByOrderSubquery($start, $end);
-        $rowsQuery = DB::table('orders as o')
+        $rowsQuery = ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
             ->join('product_categories as pc', 'pc.product_id', '=', 'p.id')
@@ -592,7 +592,7 @@ class SalesReportService
             ->selectRaw('COALESCE(SUM(order_refunds.refund_amount), 0) as return_amount');
 
         if ($profitSupported) {
-            $cogsSubquery = DB::table('order_items as oi')
+            $cogsSubquery = ReportBranchScope::applyCurrent(DB::table('order_items as oi'), 'o.store_location_id')
                 ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
                 ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
@@ -669,7 +669,7 @@ class SalesReportService
             ? "to_char(customer_service_packages.created_at, 'YYYY-MM')"
             : "to_char(customer_service_packages.created_at, 'YYYY-MM-DD')";
 
-        return DB::table('customer_service_packages')
+        return ReportBranchScope::applyCurrent(DB::table('customer_service_packages'), 'customer_service_packages.purchase_store_location_id')
             ->join('service_packages', 'service_packages.id', '=', 'customer_service_packages.service_package_id')
             ->whereBetween('customer_service_packages.created_at', [$start, $end])
             ->whereIn('customer_service_packages.purchased_from', ['POS', 'BOOKING'])
@@ -689,7 +689,7 @@ class SalesReportService
     ): array
     {
         $refundsSubquery = $this->refundsByOrderSubquery($start, $end);
-        $rowsQuery = DB::table('orders as o')
+        $rowsQuery = ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
             ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
@@ -855,7 +855,7 @@ class SalesReportService
 
     private function refundsByOrderSubquery(Carbon $start, Carbon $end)
     {
-        return ReturnRequest::query()
+        return ReportBranchScope::applyCurrent(ReturnRequest::query(), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
@@ -867,7 +867,7 @@ class SalesReportService
 
     private function refundAmountForRange(Carbon $start, Carbon $end): float
     {
-        return (float) ReturnRequest::query()
+        return (float) ReportBranchScope::applyCurrent(ReturnRequest::query(), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', self::VALID_PAYMENT_STATUSES_FOR_REPORT)
