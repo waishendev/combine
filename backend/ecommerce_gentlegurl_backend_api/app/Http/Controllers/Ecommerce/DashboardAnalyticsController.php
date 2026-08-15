@@ -7,13 +7,18 @@ use App\Http\Controllers\Controller;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\Reports\ReportBranchScope;
+use App\Services\StoreLocationAccessService;
 
 class DashboardAnalyticsController extends Controller
 {
     use MemoizesSchemaLookups;
 
-    public function ecommerce(Request $request)
+    private ReportBranchScope $branchScope;
+
+    public function ecommerce(Request $request, StoreLocationAccessService $access)
     {
+        $this->branchScope = ReportBranchScope::fromRequest($request, $access);
         $lowStockOnly = $request->boolean('low_stock');
         $missingCostOnly = $request->boolean('missing_cost');
         $status = $request->query('status', 'active');
@@ -122,11 +127,20 @@ class DashboardAnalyticsController extends Controller
         $variantPrice = $this->priceExpression('v', 'product_variants', 'p', 'products');
         $variantLowStock = $this->columnExpression('v', 'product_variants', 'low_stock_threshold', $this->columnExpression('p', 'products', 'low_stock_threshold', '0'));
 
+        $inventory = DB::table('store_location_product_inventories')
+            ->whereIn('store_location_id', $this->branchScope->storeLocationIds)
+            ->whereNotNull('product_variant_id')
+            ->groupBy('product_id', 'product_variant_id')
+            ->selectRaw('product_id, product_variant_id, SUM(quantity) as quantity');
+
         return DB::table('product_variants as v')
             ->join('products as p', 'p.id', '=', 'v.product_id')
-            ->selectRaw("p.id as product_id, p.name as product_name, p.sku as product_sku, p.is_active as product_active, v.id as variant_id, v.title as variant_title, v.sku as variant_sku, COALESCE({$variantStock}, 0) as stock, {$variantCost} as cost_price, {$variantPrice} as retail_price, COALESCE({$variantLowStock}, 0) as low_stock_threshold")
+            ->join('store_location_product as availability', fn ($join) => $join->on('availability.product_id', '=', 'p.id')->where('availability.is_available', true)->whereIn('availability.store_location_id', $this->branchScope->storeLocationIds))
+            ->leftJoinSub($inventory, 'branch_inventory', fn ($join) => $join->on('branch_inventory.product_id', '=', 'p.id')->on('branch_inventory.product_variant_id', '=', 'v.id'))
+            ->selectRaw("p.id as product_id, p.name as product_name, p.sku as product_sku, p.is_active as product_active, v.id as variant_id, v.title as variant_title, v.sku as variant_sku, COALESCE(branch_inventory.quantity, 0) as stock, {$variantCost} as cost_price, {$variantPrice} as retail_price, COALESCE({$variantLowStock}, 0) as low_stock_threshold")
             ->where('p.is_active', true)
-            ->where('v.is_active', true);
+            ->where('v.is_active', true)
+            ->distinct();
     }
 
     private function singleProductRowsQuery(): Builder
@@ -137,8 +151,15 @@ class DashboardAnalyticsController extends Controller
         $productPrice = $this->priceExpression('p', 'products');
         $productLowStock = $this->columnExpression('p', 'products', 'low_stock_threshold', '0');
 
+        $inventory = DB::table('store_location_product_inventories')
+            ->whereIn('store_location_id', $this->branchScope->storeLocationIds)
+            ->whereNull('product_variant_id')->groupBy('product_id')
+            ->selectRaw('product_id, SUM(quantity) as quantity');
+
         $query = DB::table('products as p')
-            ->selectRaw("p.id as product_id, p.name as product_name, p.sku as product_sku, p.is_active as product_active, null as variant_id, null as variant_title, p.sku as variant_sku, COALESCE({$productStock}, 0) as stock, {$productCost} as cost_price, {$productPrice} as retail_price, COALESCE({$productLowStock}, 0) as low_stock_threshold")
+            ->join('store_location_product as availability', fn ($join) => $join->on('availability.product_id', '=', 'p.id')->where('availability.is_available', true)->whereIn('availability.store_location_id', $this->branchScope->storeLocationIds))
+            ->leftJoinSub($inventory, 'branch_inventory', 'branch_inventory.product_id', '=', 'p.id')
+            ->selectRaw("p.id as product_id, p.name as product_name, p.sku as product_sku, p.is_active as product_active, null as variant_id, null as variant_title, p.sku as variant_sku, COALESCE(branch_inventory.quantity, 0) as stock, {$productCost} as cost_price, {$productPrice} as retail_price, COALESCE({$productLowStock}, 0) as low_stock_threshold")
             ->where('p.is_active', true);
 
         if ($this->schemaHasTable('product_variants')) {
@@ -157,7 +178,7 @@ class DashboardAnalyticsController extends Controller
             'line_total',
         ], '0');
 
-        return (float) DB::table('order_items as oi')
+        return (float) $this->branchScope->apply(DB::table('order_items as oi'), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->where('oi.is_package', false)
             ->whereIn('o.payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
@@ -169,7 +190,7 @@ class DashboardAnalyticsController extends Controller
     private function ecommerceRefundAmount(): float
     {
         if ($this->schemaHasColumn('orders', 'refund_total')) {
-            return (float) DB::table('orders')
+            return (float) $this->branchScope->apply(DB::table('orders'), 'orders.store_location_id')
                 ->whereIn('payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
                 ->whereNotIn('status', ['cancelled', 'voided'])
                 ->selectRaw('SUM(COALESCE(refund_total, 0)) as total')
@@ -177,7 +198,7 @@ class DashboardAnalyticsController extends Controller
         }
 
         if ($this->schemaHasTable('return_requests') && $this->schemaHasColumn('return_requests', 'refund_amount')) {
-            return (float) DB::table('return_requests as rr')
+            return (float) $this->branchScope->apply(DB::table('return_requests as rr'), 'o.store_location_id')
                 ->join('orders as o', 'o.id', '=', 'rr.order_id')
                 ->whereIn('o.payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
                 ->whereNotIn('o.status', ['cancelled', 'voided'])

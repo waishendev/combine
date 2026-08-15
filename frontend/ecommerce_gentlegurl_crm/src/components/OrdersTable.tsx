@@ -63,6 +63,7 @@ export default function OrdersTable({
   extraQueryParams,
 }: OrdersTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId } = useBranch()
   const searchParams = useSearchParams()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [inputs, setInputs] = useState<OrderFilterValues>({ ...emptyOrderFilters })
@@ -146,7 +147,6 @@ export default function OrdersTable({
     dir: 'asc' | 'desc' | null
     className?: string
 }) {
-  const { selectedBranchId } = useBranch()
     const activeColor = '#122350ff'
     const inactiveColor = '#afb2b8ff'
     const up = active && dir === 'asc' ? activeColor : inactiveColor

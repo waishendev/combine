@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 import { apiFetch } from '@/lib/api'
+import { useBranch } from '@/contexts/BranchContext'
 
 type InventoryItem = {
   product_id: number
@@ -137,6 +138,7 @@ type EcommerceAnalyticsDashboardProps = {
 }
 
 export default function EcommerceAnalyticsDashboard({ onInitialLoad }: EcommerceAnalyticsDashboardProps = {}) {
+  const { selectedBranchId } = useBranch()
   const [data, setData] = useState<AnalyticsResponse | null>(null)
   const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -152,8 +154,10 @@ export default function EcommerceAnalyticsDashboard({ onInitialLoad }: Ecommerce
     const params = new URLSearchParams({ page: String(page), per_page: String(PER_PAGE), status: 'active' })
     if (search) params.set('search', search)
     if (category) params.set('category_id', category)
+    if (selectedBranchId === null) params.set('branch_scope', 'all')
+    else params.set('branch_store_location_id', String(selectedBranchId))
     return params.toString()
-  }, [category, page, search])
+  }, [category, page, search, selectedBranchId])
 
   const hasActiveFilters = Boolean(search || category)
 
@@ -178,6 +182,8 @@ export default function EcommerceAnalyticsDashboard({ onInitialLoad }: Ecommerce
 
   useEffect(() => {
     let cancelled = false
+    // Loading is the request lifecycle state; this effect is the request owner.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     apiFetch<AnalyticsResponse>(`/api/admin/dashboard/analytics/ecommerce?${query}`)
       .then((response) => {
@@ -195,6 +201,8 @@ export default function EcommerceAnalyticsDashboard({ onInitialLoad }: Ecommerce
 
   useEffect(() => {
     if (!hasInitiallyLoaded && !loading) {
+      // Notify the parent exactly once after this request owner becomes ready.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasInitiallyLoaded(true)
       onInitialLoad?.()
     }

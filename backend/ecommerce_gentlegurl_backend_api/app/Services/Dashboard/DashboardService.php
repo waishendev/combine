@@ -6,6 +6,7 @@ use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\ReturnRequest;
 use App\Services\Reports\SalesReportService;
+use App\Services\Reports\ReportBranchScope;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -13,12 +14,12 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
-    public function getOverview(Carbon $start, Carbon $end, Carbon $previousStart, Carbon $previousEnd): array
+    public function getOverview(Carbon $start, Carbon $end, Carbon $previousStart, Carbon $previousEnd, ReportBranchScope $scope): array
     {
-        $currentKpis = $this->calculateKpis($start, $end);
-        $previousKpis = $this->calculateKpis($previousStart, $previousEnd);
-        $monthlySales = $this->monthlySales();
-        $topProducts = $this->topProducts($start, $end);
+        $currentKpis = $this->calculateKpis($start, $end, $scope);
+        $previousKpis = $this->calculateKpis($previousStart, $previousEnd, $scope);
+        $monthlySales = $this->monthlySales($scope);
+        $topProducts = $this->topProducts($start, $end, $scope);
 
         return [
             'date_range' => [
@@ -36,6 +37,11 @@ class DashboardService
                 'monthly_sales' => $monthlySales,
             ],
             'top_products' => $topProducts,
+            'branch_scope' => [
+                'store_location_id' => $scope->selectedStoreLocationId,
+                'accessible_store_location_ids' => $scope->storeLocationIds,
+                'includes_unassigned' => $scope->includeUnassigned,
+            ],
         ];
     }
 
@@ -73,17 +79,17 @@ class DashboardService
         return [$previousStart, $previousEnd];
     }
 
-    private function baseOrdersQuery(Carbon $start, Carbon $end): Builder
+    private function baseOrdersQuery(Carbon $start, Carbon $end, ReportBranchScope $scope): Builder
     {
-        return Order::query()
+        return $scope->apply(Order::query(), 'orders.store_location_id')
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
             ->whereIn('payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT);
     }
 
-    private function refundAmountForRange(Carbon $start, Carbon $end): float
+    private function refundAmountForRange(Carbon $start, Carbon $end, ReportBranchScope $scope): float
     {
-        return (float) ReturnRequest::query()
+        return (float) $scope->apply(ReturnRequest::query(), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
@@ -92,15 +98,15 @@ class DashboardService
             ->sum('return_requests.refund_amount');
     }
 
-    private function calculateKpis(Carbon $start, Carbon $end): array
+    private function calculateKpis(Carbon $start, Carbon $end, ReportBranchScope $scope): array
     {
-        $baseQuery = $this->baseOrdersQuery($start, $end);
+        $baseQuery = $this->baseOrdersQuery($start, $end, $scope);
         $revenue = (float) (clone $baseQuery)->sum('grand_total');
         $ordersCount = (int) (clone $baseQuery)->count();
         $newCustomers = (int) Customer::query()
             ->whereBetween('created_at', [$start, $end])
             ->count();
-        $refundAmount = $this->refundAmountForRange($start, $end);
+        $refundAmount = $this->refundAmountForRange($start, $end, $scope);
         $netRevenue = $revenue - $refundAmount;
 
         return [
@@ -112,12 +118,12 @@ class DashboardService
         ];
     }
 
-    private function monthlySales(): array
+    private function monthlySales(ReportBranchScope $scope): array
     {
         $end = Carbon::today()->endOfMonth()->endOfDay();
         $start = Carbon::today()->startOfMonth()->subMonths(4);
 
-        $refundsSubquery = ReturnRequest::query()
+        $refundsSubquery = $scope->apply(ReturnRequest::query(), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
@@ -126,7 +132,7 @@ class DashboardService
             ->groupBy('return_requests.order_id')
             ->select('return_requests.order_id', DB::raw('SUM(return_requests.refund_amount) as refund_amount'));
 
-        $rows = Order::query()
+        $rows = $scope->apply(Order::query(), 'orders.store_location_id')
             ->leftJoinSub($refundsSubquery, 'order_refunds', 'orders.id', '=', 'order_refunds.order_id')
             ->whereBetween(DB::raw('COALESCE(orders.placed_at, orders.created_at)'), [$start, $end])
             ->whereIn('payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
@@ -160,9 +166,9 @@ class DashboardService
         return $months;
     }
 
-    private function topProducts(Carbon $start, Carbon $end): array
+    private function topProducts(Carbon $start, Carbon $end, ReportBranchScope $scope): array
     {
-        $refundsSubquery = ReturnRequest::query()
+        $refundsSubquery = $scope->apply(ReturnRequest::query(), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'return_requests.order_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
@@ -171,7 +177,7 @@ class DashboardService
             ->groupBy('return_requests.order_id')
             ->select('return_requests.order_id', DB::raw('SUM(return_requests.refund_amount) as refund_amount'));
 
-        $rows = DB::table('orders as o')
+        $rows = $scope->apply(DB::table('orders as o'), 'o.store_location_id')
             ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
             ->join('products as p', 'p.id', '=', 'oi.product_id')
             ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
