@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import ExpenseCategoryCreateModal from '@/components/expenses/ExpenseCategoryCreateModal'
 import PaginationControls from '@/components/PaginationControls'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Category = {
   id: number
@@ -13,9 +14,13 @@ type Category = {
   description?: string
   sort_order: number
   is_active: boolean
+  store_location_id: number | null
+  store_location?: { id: number; name: string }
+  expenses_count: number
 }
 
 type CategoryForm = {
+  store_location_id: string
   name: string
   description: string
   is_active: boolean
@@ -38,6 +43,7 @@ const primaryBtnClass =
 
 function emptyForm(): CategoryForm {
   return {
+    store_location_id: '',
     name: '',
     description: '',
     is_active: true,
@@ -45,12 +51,14 @@ function emptyForm(): CategoryForm {
 }
 
 export default function ExpenseCategoriesPage({ permissions }: { permissions: string[] }) {
+  const { accessibleBranches, selectedBranchId, selectedBranch, isAllBranches } = useBranch()
   const [rows, setRows] = useState<Category[]>([])
   const [form, setForm] = useState<CategoryForm>(emptyForm())
   const [edit, setEdit] = useState<Category | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const loadSequence = useRef(0)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [movingId, setMovingId] = useState<number | null>(null)
@@ -74,14 +82,17 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
   const showActions = canUpdate || canDelete
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current
     setLoading(true)
     try {
       const qs = new URLSearchParams({
         page: String(page),
         per_page: String(pageSize),
       })
+      if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/expense-categories?${qs.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
+      if (sequence !== loadSequence.current) return
       const payload = json?.data || {}
       setRows(Array.isArray(payload.data) ? payload.data : Array.isArray(payload) ? payload : [])
       setMeta({
@@ -91,9 +102,17 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
         total: Number(payload.total ?? 0) || 0,
       })
     } finally {
-      setLoading(false)
+      if (sequence === loadSequence.current) setLoading(false)
     }
-  }, [page, pageSize])
+  }, [page, pageSize, selectedBranchId])
+
+  useEffect(() => {
+    loadSequence.current += 1
+    setRows([])
+    setPage(1)
+    setEditOpen(false)
+    setCreateOpen(false)
+  }, [selectedBranchId])
 
   useEffect(() => {
     void load()
@@ -112,6 +131,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
   const openEdit = (category: Category) => {
     setEdit(category)
     setForm({
+      store_location_id: category.store_location_id === null ? '' : String(category.store_location_id),
       name: category.name,
       description: category.description || '',
       is_active: category.is_active,
@@ -134,13 +154,15 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
     setFormError('')
     setSaving(true)
     try {
-      const res = await fetch(`/api/proxy/expense-categories/${edit.id}`, {
+      const branchQuery = selectedBranchId === null ? '' : `?branch_store_location_id=${selectedBranchId}`
+      const res = await fetch(`/api/proxy/expense-categories/${edit.id}${branchQuery}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name,
           description: form.description,
           is_active: form.is_active,
+          store_location_id: Number(form.store_location_id),
         }),
       })
       if (!res.ok) {
@@ -181,7 +203,8 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
     if (movingId === category.id) return
     setMovingId(category.id)
     try {
-      const res = await fetch(`/api/proxy/expense-categories/${category.id}/move-${direction}`, {
+      const branchQuery = selectedBranchId === null ? '' : `?branch_store_location_id=${selectedBranchId}`
+      const res = await fetch(`/api/proxy/expense-categories/${category.id}/move-${direction}${branchQuery}`, {
         method: 'POST',
         headers: { Accept: 'application/json' },
       })
@@ -202,7 +225,8 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
     setDeleting(true)
     setDeleteError('')
     try {
-      const res = await fetch(`/api/proxy/expense-categories/${deleteTarget.id}`, { method: 'DELETE' })
+      const branchQuery = selectedBranchId === null ? '' : `?branch_store_location_id=${selectedBranchId}`
+      const res = await fetch(`/api/proxy/expense-categories/${deleteTarget.id}${branchQuery}`, { method: 'DELETE' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         setDeleteError(json?.message || 'Unable to delete category.')
@@ -275,6 +299,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-5 py-3">Name</th>
+                {isAllBranches ? <th className="px-5 py-3">Branch</th> : null}
                 <th className="px-5 py-3">Description</th>
                 <th className="px-5 py-3">Sort Order</th>
                 <th className="px-5 py-3">Status</th>
@@ -284,13 +309,13 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={showActions ? 5 : 4} className="px-5 py-10 text-center text-slate-500">
+                  <td colSpan={(showActions ? 5 : 4) + (isAllBranches ? 1 : 0)} className="px-5 py-10 text-center text-slate-500">
                     Loading categories…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={showActions ? 5 : 4} className="px-5 py-10 text-center text-slate-500">
+                  <td colSpan={(showActions ? 5 : 4) + (isAllBranches ? 1 : 0)} className="px-5 py-10 text-center text-slate-500">
                     No categories yet. Add one to start classifying expenses.
                   </td>
                 </tr>
@@ -303,6 +328,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
                   return (
                     <tr key={category.id} className="hover:bg-slate-50/80">
                       <td className="px-5 py-3 font-semibold text-slate-900">{category.name}</td>
+                      {isAllBranches ? <td className="px-5 py-3 text-slate-600">{category.store_location?.name ?? 'Unassigned'}</td> : null}
                       <td className="px-5 py-3 text-slate-600">{category.description || '—'}</td>
                       <td className="px-5 py-3">
                         {canUpdate ? (
@@ -396,6 +422,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
 
       {createOpen ? (
         <ExpenseCategoryCreateModal
+          selectedBranchId={selectedBranchId}
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
             if (page === 1) {
@@ -442,6 +469,26 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
             ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
+              {isAllBranches ? (
+                <label className="sm:col-span-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Branch
+                  <select
+                    required
+                    value={form.store_location_id}
+                    onChange={(event) => setForm((previous) => ({ ...previous, store_location_id: event.target.value }))}
+                    className={fieldClass}
+                    disabled={saving || edit!.expenses_count > 0}
+                  >
+                    <option value="">Select Branch</option>
+                    {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  </select>
+                  {edit!.expenses_count > 0 ? <span className="mt-1 block normal-case tracking-normal text-amber-700">This Category is used by {edit!.expenses_count} Expense{edit!.expenses_count === 1 ? '' : 's'} and its Branch cannot be changed.</span> : null}
+                </label>
+              ) : (
+                <div className="sm:col-span-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  <span className="text-xs font-semibold uppercase text-slate-500">Branch</span><br />{selectedBranch?.name}
+                </div>
+              )}
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Name
                 <input

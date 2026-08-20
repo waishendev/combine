@@ -18,7 +18,7 @@ class ProfitLossReportService
     {
         $sales = $this->salesSummary->salesSummary($year);
         $costingByMonth = $this->salesSummary->ecommerceCostingByMonth($year);
-        $expenseByMonth = $includeGlobalExpenses ? $this->expensesByMonth($year) : [];
+        $expenseByMonth = $this->expensesByMonth($year, $includeGlobalExpenses);
         $months = [];
 
         foreach ($sales['rows'] as $salesRow) {
@@ -64,15 +64,22 @@ class ProfitLossReportService
                 'sales_source' => 'sales-summary',
                 'costing' => 'order_items.cost_amount_snapshot_only',
                 'expense_date_field' => 'expense_date',
-                'expenses_scope' => $includeGlobalExpenses ? 'global_company_expenses' : 'excluded_no_deterministic_branch_attribution',
+                'expenses_scope' => $includeGlobalExpenses ? 'accessible_branches_and_unassigned' : 'selected_branch_attributed',
             ],
         ];
     }
 
     /** @return array<int, float> */
-    private function expensesByMonth(int $year): array
+    private function expensesByMonth(int $year, bool $includeUnassigned): array
     {
-        return Expense::query()
+        $scope = ReportBranchScope::current();
+        $query = Expense::query();
+        $query->where(function ($branches) use ($scope, $includeUnassigned) {
+            $branches->whereIn('store_location_id', $scope->storeLocationIds);
+            if ($includeUnassigned) $branches->orWhereNull('store_location_id');
+        });
+
+        return $query
             ->whereBetween('expense_date', [Carbon::create($year, 1, 1)->toDateString(), Carbon::create($year, 12, 31)->toDateString()])
             ->selectRaw('EXTRACT(MONTH FROM expense_date)::int as month, COALESCE(SUM(amount), 0) as expense')
             ->groupByRaw('EXTRACT(MONTH FROM expense_date)::int')

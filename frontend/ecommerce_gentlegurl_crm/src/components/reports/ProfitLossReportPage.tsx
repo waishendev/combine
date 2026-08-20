@@ -80,7 +80,7 @@ export default function ProfitLossReportPage() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold text-slate-900">{selectedYear} Monthly Profit &amp; Loss</h1>
-          <p className="mt-1 text-sm text-slate-600">Monthly Branch-attributed sales, costing and refunds. Global company expenses are excluded from a specific or restricted Branch view.</p>
+          <p className="mt-1 text-sm text-slate-600">Monthly Branch-attributed sales, costing, refunds, and expenses. Unassigned legacy expenses appear only in All Branches.</p>
         </div>
         <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">Year
           <select value={selectedYear} onChange={(event) => changeYear(Number(event.target.value))} className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
