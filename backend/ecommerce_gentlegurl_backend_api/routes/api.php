@@ -23,6 +23,7 @@ use App\Http\Controllers\Ecommerce\HomeSliderController;
 use App\Http\Controllers\Ecommerce\PublicAnnouncementController;
 use App\Http\Controllers\Ecommerce\DashboardController;
 use App\Http\Controllers\Ecommerce\DashboardAnalyticsController;
+use App\Http\Controllers\Ecommerce\DashboardAnalyticsOverviewController;
 use App\Http\Controllers\Ecommerce\PackageDashboardAnalyticsController;
 use App\Http\Controllers\Ecommerce\BrandingController;
 use App\Http\Controllers\Ecommerce\BillplzPaymentGatewayOptionController;
@@ -284,8 +285,16 @@ $protectedRoutes = function () {
 
     Route::get('/me', [AuthController::class, 'me']);
 
+    // NEW ENHANCEMENT
+    // Page: CRM /dashboard (first paint — ecommerce + package analytics + categories)
+    Route::get('/admin/dashboard/analytics/overview', DashboardAnalyticsOverviewController::class)
+        ->middleware('permission:dashboard.ecommerce_analytics.view|dashboard.package_analytics.view|dashboard.analytics.view');
+    // END NEW ENHANCEMENT
+
+    // Page: CRM /dashboard — ecommerce inventory table pagination / search / category filter
     Route::get('/admin/dashboard/analytics/ecommerce', [DashboardAnalyticsController::class, 'ecommerce'])
         ->middleware('permission:dashboard.ecommerce_analytics.view|dashboard.analytics.view');
+    // Page: CRM /dashboard — package summary refresh, liability filters, detail drawer
     Route::prefix('/admin/dashboard/analytics/packages')
         ->middleware('permission:dashboard.package_analytics.view|dashboard.analytics.view')
         ->group(function () {

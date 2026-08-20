@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 import { apiFetch } from '@/lib/api'
 import { useBranch } from '@/contexts/BranchContext'
@@ -315,25 +315,37 @@ type FilterOption = {
   name: string
 }
 
-type FilterOptionsResponse = {
+export type PackageSummary = Summary
+export type LiabilityPage = Page<Liability>
+export type FilterOptionsResponse = {
   customers: FilterOption[]
   packages: FilterOption[]
 }
 
 type PackageAnalyticsDashboardProps = {
   onInitialLoad?: () => void
+  initialSummary?: PackageSummary | null
+  initialFilterOptions?: FilterOptionsResponse
+  initialLiability?: LiabilityPage | null
 }
 
-export default function PackageAnalyticsDashboard({ onInitialLoad }: PackageAnalyticsDashboardProps = {}) {
+export default function PackageAnalyticsDashboard({
+  onInitialLoad,
+  initialSummary = null,
+  initialFilterOptions,
+  initialLiability = null,
+}: PackageAnalyticsDashboardProps = {}) {
   const { selectedBranchId } = useBranch()
   const branchQuery = selectedBranchId === null ? 'branch_scope=all' : `branch_store_location_id=${selectedBranchId}`
-  const [summary, setSummary] = useState<Summary | null>(null)
-  const [liability, setLiability] = useState<Page<Liability> | null>(null)
-  const [filterOptions, setFilterOptions] = useState<FilterOptionsResponse>({ customers: [], packages: [] })
+  const [summary, setSummary] = useState<Summary | null>(initialSummary)
+  const [liability, setLiability] = useState<Page<Liability> | null>(initialLiability)
+  const [filterOptions, setFilterOptions] = useState<FilterOptionsResponse>(
+    initialFilterOptions ?? { customers: [], packages: [] },
+  )
   const [error, setError] = useState<string | null>(null)
-  const [summaryLoading, setSummaryLoading] = useState(true)
-  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false)
-  const [liabilityLoading, setLiabilityLoading] = useState(true)
+  const [summaryLoading, setSummaryLoading] = useState(!initialSummary)
+  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(Boolean(initialSummary && initialLiability))
+  const [liabilityLoading, setLiabilityLoading] = useState(!initialLiability)
   const [customerId, setCustomerId] = useState('')
   const [packageId, setPackageId] = useState('')
   const [status, setStatus] = useState('')
@@ -342,9 +354,18 @@ export default function PackageAnalyticsDashboard({ onInitialLoad }: PackageAnal
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const skipNextSummaryFetchRef = useRef(Boolean(initialSummary))
+  const skipNextLiabilityFetchRef = useRef(Boolean(initialLiability))
 
   useEffect(() => {
+    if (skipNextSummaryFetchRef.current) {
+      skipNextSummaryFetchRef.current = false
+      setSummaryLoading(false)
+      return
+    }
+
     let cancelled = false
+    setSummaryLoading(true)
     Promise.all([
       apiFetch<Summary>(`/api/admin/dashboard/analytics/packages/summary?${branchQuery}`),
       apiFetch<FilterOptionsResponse>('/api/admin/dashboard/analytics/packages/filter-options'),
@@ -365,6 +386,12 @@ export default function PackageAnalyticsDashboard({ onInitialLoad }: PackageAnal
   }, [branchQuery])
 
   useEffect(() => {
+    if (skipNextLiabilityFetchRef.current) {
+      skipNextLiabilityFetchRef.current = false
+      setLiabilityLoading(false)
+      return
+    }
+
     let cancelled = false
     setLiabilityLoading(true)
     const q = new URLSearchParams({ page: String(liabilityPage), per_page: String(PER_PAGE) })

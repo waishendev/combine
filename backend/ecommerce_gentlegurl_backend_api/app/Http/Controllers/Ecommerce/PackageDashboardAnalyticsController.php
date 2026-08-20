@@ -15,8 +15,16 @@ class PackageDashboardAnalyticsController extends Controller
 
     public function summary(Request $request)
     {
+        return response()->json($this->buildSummaryPayload($request));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function buildSummaryPayload(Request $request): array
+    {
         if (! $this->hasPackageTables()) {
-            return response()->json($this->emptySummary());
+            return $this->emptySummary();
         }
 
         $expiringDays = max(1, (int) $request->query('expiring_days', 30));
@@ -39,20 +47,28 @@ class PackageDashboardAnalyticsController extends Controller
         $redemptions = $redemptionsQuery->first();
         $status = DB::table('customer_service_packages as csp')->selectRaw("SUM(CASE WHEN status = 'active' AND expires_at BETWEEN ? AND ? THEN 1 ELSE 0 END) expiring_soon, SUM(CASE WHEN status = 'exhausted' THEN 1 ELSE 0 END) exhausted, SUM(CASE WHEN status = 'expired' OR (status = 'active' AND expires_at < ?) THEN 1 ELSE 0 END) expired, SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) cancelled", [now(), now()->addDays($expiringDays), now()])->first();
 
-        return response()->json([
+        return [
             'templates' => ['total' => (int) ($templates->total ?? 0), 'active' => (int) ($templates->active ?? 0), 'inactive' => (int) ($templates->inactive ?? 0), 'missing_redemption_value_count' => (int) ($balances->missing_redemption_value_count ?? 0)],
             'customers' => ['active_holders' => (int) (clone $activePackages)->distinct('csp.customer_id')->count('csp.customer_id'), 'active_customer_packages' => (int) (clone $activePackages)->count()],
             'balances' => ['remaining_redemptions' => (int) ($balances->remaining_redemptions ?? 0), 'outstanding_service_value' => round((float) ($balances->outstanding_service_value ?? 0), 2)],
             'sales' => ['gross_package_sales' => round((float) ($sales->gross ?? 0), 2), 'refund_amount' => round((float) ($sales->refunds ?? 0), 2), 'net_package_sales' => round((float) ($sales->net ?? 0), 2)],
             'redemptions' => ['redeemed_qty' => (int) ($redemptions->redeemed_qty ?? 0), 'redeemed_value' => round((float) ($redemptions->redeemed_value ?? 0), 2)],
             'status' => ['expiring_soon' => (int) ($status->expiring_soon ?? 0), 'exhausted' => (int) ($status->exhausted ?? 0), 'expired' => (int) ($status->expired ?? 0), 'cancelled' => (int) ($status->cancelled ?? 0)],
-        ]);
+        ];
     }
 
     public function customerPackages(Request $request)
     {
+        return response()->json($this->buildCustomerPackagesPayload($request));
+    }
+
+    /**
+     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator|array{data: array<int, mixed>}
+     */
+    public function buildCustomerPackagesPayload(Request $request): mixed
+    {
         if (! $this->hasPackageTables()) {
-            return response()->json(['data' => []]);
+            return ['data' => []];
         }
         $value = $this->balanceRedemptionValueExpression();
         $rawValue = $this->balanceRedemptionRawExpression();
@@ -82,13 +98,21 @@ class PackageDashboardAnalyticsController extends Controller
             $query->where('csp.status', $request->query('status'));
         }
 
-        return response()->json($query->orderByDesc('remaining_service_value')->paginate(min(max((int) $request->query('per_page', 10), 1), 50)));
+        return $query->orderByDesc('remaining_service_value')->paginate(min(max((int) $request->query('per_page', 10), 1), 50));
     }
 
     public function filterOptions()
     {
+        return response()->json($this->buildFilterOptionsPayload());
+    }
+
+    /**
+     * @return array{customers: list<array{id: int, name: string}>, packages: list<array{id: int, name: string}>}
+     */
+    public function buildFilterOptionsPayload(): array
+    {
         if (! $this->hasPackageTables()) {
-            return response()->json(['customers' => [], 'packages' => []]);
+            return ['customers' => [], 'packages' => []];
         }
 
         $packageName = $this->packageNameExpression();
@@ -100,7 +124,8 @@ class PackageDashboardAnalyticsController extends Controller
             ->orderBy('c.name')
             ->get()
             ->map(fn ($row) => ['id' => (int) $row->id, 'name' => (string) $row->name])
-            ->values();
+            ->values()
+            ->all();
 
         $packages = DB::table('customer_service_packages as csp')
             ->join('service_packages as sp', 'sp.id', '=', 'csp.service_package_id')
@@ -109,12 +134,13 @@ class PackageDashboardAnalyticsController extends Controller
             ->orderBy('name')
             ->get()
             ->map(fn ($row) => ['id' => (int) $row->id, 'name' => (string) $row->name])
-            ->values();
+            ->values()
+            ->all();
 
-        return response()->json([
+        return [
             'customers' => $customers,
             'packages' => $packages,
-        ]);
+        ];
     }
 
     public function sales(Request $request)

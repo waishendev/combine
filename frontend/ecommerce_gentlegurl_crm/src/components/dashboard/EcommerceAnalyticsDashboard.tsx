@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 import { apiFetch } from '@/lib/api'
 import { useBranch } from '@/contexts/BranchContext'
@@ -22,11 +22,16 @@ type InventoryItem = {
   low_branches: Array<{ store_location_id: number; branch_name: string; quantity: number; is_low: boolean }>
 }
 
-type AnalyticsResponse = {
+export type AnalyticsResponse = {
   products: { active_count: number; sku_count: number; current_stock_qty: number; missing_cost_count: number; low_stock_count: number }
   inventory: { current_cost: number; retail_value: number; potential_gross_profit: number; potential_margin_percent: number }
   sales: { gross_product_sales: number; refund_amount: number; refund_available?: boolean; net_product_sales: number }
   items: { data: InventoryItem[]; current_page: number; last_page: number; total: number }
+}
+
+export type CategoryOption = {
+  id: number
+  name: string
 }
 
 const money = (value: number | null | undefined) =>
@@ -142,29 +147,31 @@ function InventoryDetailDrawer({ item, onClose }: { item: InventoryItem; onClose
   )
 }
 
-type CategoryOption = {
-  id: number
-  name: string
-}
-
 const PER_PAGE = 10
 
 type EcommerceAnalyticsDashboardProps = {
   onInitialLoad?: () => void
+  initialData?: AnalyticsResponse | null
+  initialCategories?: CategoryOption[]
 }
 
-export default function EcommerceAnalyticsDashboard({ onInitialLoad }: EcommerceAnalyticsDashboardProps = {}) {
+export default function EcommerceAnalyticsDashboard({
+  onInitialLoad,
+  initialData = null,
+  initialCategories = [],
+}: EcommerceAnalyticsDashboardProps = {}) {
   const { selectedBranchId } = useBranch()
-  const [data, setData] = useState<AnalyticsResponse | null>(null)
-  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<AnalyticsResponse | null>(initialData)
+  const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(Boolean(initialData))
+  const [loading, setLoading] = useState(!initialData)
   const [error, setError] = useState<string | null>(null)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
-  const [categories, setCategories] = useState<CategoryOption[]>([])
+  const [categories, setCategories] = useState<CategoryOption[]>(initialCategories)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<InventoryItem | null>(null)
+  const skipNextFetchRef = useRef(Boolean(initialData))
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), per_page: String(PER_PAGE), status: 'active' })
@@ -178,6 +185,11 @@ export default function EcommerceAnalyticsDashboard({ onInitialLoad }: Ecommerce
   const hasActiveFilters = Boolean(search || category)
 
   useEffect(() => {
+    if (initialCategories.length > 0) {
+      setCategories(initialCategories)
+      return
+    }
+
     let cancelled = false
 
     fetch('/api/proxy/ecommerce/categories?page=1&per_page=500', { cache: 'no-store' })
@@ -194,9 +206,15 @@ export default function EcommerceAnalyticsDashboard({ onInitialLoad }: Ecommerce
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [initialCategories])
 
   useEffect(() => {
+    if (skipNextFetchRef.current) {
+      skipNextFetchRef.current = false
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
     // Loading is the request lifecycle state; this effect is the request owner.
     // eslint-disable-next-line react-hooks/set-state-in-effect
