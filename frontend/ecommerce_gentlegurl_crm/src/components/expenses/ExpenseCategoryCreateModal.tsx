@@ -3,6 +3,7 @@
 import { useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import { useBranch } from '@/contexts/BranchContext'
 
 const fieldClass =
   'mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100'
@@ -10,9 +11,13 @@ const fieldClass =
 type ExpenseCategoryCreateModalProps = {
   onClose: () => void
   onCreated?: () => void
+  selectedBranchId?: number | null
 }
 
-export default function ExpenseCategoryCreateModal({ onClose, onCreated }: ExpenseCategoryCreateModalProps) {
+export default function ExpenseCategoryCreateModal({ onClose, onCreated, selectedBranchId: branchOverride }: ExpenseCategoryCreateModalProps) {
+  const branch = useBranch()
+  const selectedBranchId = branchOverride === undefined ? branch.selectedBranchId : branchOverride
+  const [storeLocationId, setStoreLocationId] = useState(selectedBranchId === null ? '' : String(selectedBranchId))
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
@@ -31,7 +36,7 @@ export default function ExpenseCategoryCreateModal({ onClose, onCreated }: Expen
       const res = await fetch('/api/proxy/expense-categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({ name, description, store_location_id: selectedBranchId ?? (Number(storeLocationId) || null) }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => null)
@@ -80,6 +85,14 @@ export default function ExpenseCategoryCreateModal({ onClose, onCreated }: Expen
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
+          {selectedBranchId === null ? (
+            <label className="sm:col-span-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Branch
+              <select required className={fieldClass} value={storeLocationId} onChange={(event) => setStoreLocationId(event.target.value)} disabled={saving}>
+                <option value="">Select Branch</option>
+                {branch.accessibleBranches.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </label>
+          ) : null}
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Name
             <input

@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import ExpenseCategoryCreateModal from '@/components/expenses/ExpenseCategoryCreateModal'
 import PaginationControls from '@/components/PaginationControls'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Category = {
   id: number
@@ -13,6 +14,8 @@ type Category = {
   description?: string
   sort_order: number
   is_active: boolean
+  store_location_id: number | null
+  store_location?: { id: number; name: string }
 }
 
 type CategoryForm = {
@@ -45,12 +48,14 @@ function emptyForm(): CategoryForm {
 }
 
 export default function ExpenseCategoriesPage({ permissions }: { permissions: string[] }) {
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [rows, setRows] = useState<Category[]>([])
   const [form, setForm] = useState<CategoryForm>(emptyForm())
   const [edit, setEdit] = useState<Category | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const loadSequence = useRef(0)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [movingId, setMovingId] = useState<number | null>(null)
@@ -74,14 +79,17 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
   const showActions = canUpdate || canDelete
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current
     setLoading(true)
     try {
       const qs = new URLSearchParams({
         page: String(page),
         per_page: String(pageSize),
       })
+      if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/expense-categories?${qs.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
+      if (sequence !== loadSequence.current) return
       const payload = json?.data || {}
       setRows(Array.isArray(payload.data) ? payload.data : Array.isArray(payload) ? payload : [])
       setMeta({
@@ -91,9 +99,17 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
         total: Number(payload.total ?? 0) || 0,
       })
     } finally {
-      setLoading(false)
+      if (sequence === loadSequence.current) setLoading(false)
     }
-  }, [page, pageSize])
+  }, [page, pageSize, selectedBranchId])
+
+  useEffect(() => {
+    loadSequence.current += 1
+    setRows([])
+    setPage(1)
+    setEditOpen(false)
+    setCreateOpen(false)
+  }, [selectedBranchId])
 
   useEffect(() => {
     void load()
@@ -134,13 +150,15 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
     setFormError('')
     setSaving(true)
     try {
-      const res = await fetch(`/api/proxy/expense-categories/${edit.id}`, {
+      const branchQuery = selectedBranchId === null ? '' : `?branch_store_location_id=${selectedBranchId}`
+      const res = await fetch(`/api/proxy/expense-categories/${edit.id}${branchQuery}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name,
           description: form.description,
           is_active: form.is_active,
+          store_location_id: edit.store_location_id,
         }),
       })
       if (!res.ok) {
@@ -181,7 +199,8 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
     if (movingId === category.id) return
     setMovingId(category.id)
     try {
-      const res = await fetch(`/api/proxy/expense-categories/${category.id}/move-${direction}`, {
+      const branchQuery = selectedBranchId === null ? '' : `?branch_store_location_id=${selectedBranchId}`
+      const res = await fetch(`/api/proxy/expense-categories/${category.id}/move-${direction}${branchQuery}`, {
         method: 'POST',
         headers: { Accept: 'application/json' },
       })
@@ -202,7 +221,8 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
     setDeleting(true)
     setDeleteError('')
     try {
-      const res = await fetch(`/api/proxy/expense-categories/${deleteTarget.id}`, { method: 'DELETE' })
+      const branchQuery = selectedBranchId === null ? '' : `?branch_store_location_id=${selectedBranchId}`
+      const res = await fetch(`/api/proxy/expense-categories/${deleteTarget.id}${branchQuery}`, { method: 'DELETE' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         setDeleteError(json?.message || 'Unable to delete category.')
@@ -275,6 +295,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-5 py-3">Name</th>
+                {isAllBranches ? <th className="px-5 py-3">Branch</th> : null}
                 <th className="px-5 py-3">Description</th>
                 <th className="px-5 py-3">Sort Order</th>
                 <th className="px-5 py-3">Status</th>
@@ -284,13 +305,13 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={showActions ? 5 : 4} className="px-5 py-10 text-center text-slate-500">
+                  <td colSpan={(showActions ? 5 : 4) + (isAllBranches ? 1 : 0)} className="px-5 py-10 text-center text-slate-500">
                     Loading categories…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={showActions ? 5 : 4} className="px-5 py-10 text-center text-slate-500">
+                  <td colSpan={(showActions ? 5 : 4) + (isAllBranches ? 1 : 0)} className="px-5 py-10 text-center text-slate-500">
                     No categories yet. Add one to start classifying expenses.
                   </td>
                 </tr>
@@ -303,6 +324,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
                   return (
                     <tr key={category.id} className="hover:bg-slate-50/80">
                       <td className="px-5 py-3 font-semibold text-slate-900">{category.name}</td>
+                      {isAllBranches ? <td className="px-5 py-3 text-slate-600">{category.store_location?.name ?? 'Unassigned'}</td> : null}
                       <td className="px-5 py-3 text-slate-600">{category.description || '—'}</td>
                       <td className="px-5 py-3">
                         {canUpdate ? (
@@ -396,6 +418,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
 
       {createOpen ? (
         <ExpenseCategoryCreateModal
+          selectedBranchId={selectedBranchId}
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
             if (page === 1) {

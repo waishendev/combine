@@ -7,7 +7,6 @@ use App\Services\Reports\ProfitLossReportService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Services\Reports\ReportBranchScope;
-use App\Services\StoreLocationAccessService;
 
 class ProfitLossReportController extends Controller
 {
@@ -20,8 +19,7 @@ class ProfitLossReportController extends Controller
         $year = max(2000, min(2100, (int) $request->query('year', Carbon::today()->year)));
 
         $scope = ReportBranchScope::current();
-        $includeGlobalExpenses = $scope->selectedStoreLocationId === null
-            && app(StoreLocationAccessService::class)->hasPlatformBypass($request->user());
+        $includeGlobalExpenses = $scope->selectedStoreLocationId === null;
 
         return response()->json(array_merge($this->service->monthly($year, $includeGlobalExpenses), [
             'accounting_scope' => [

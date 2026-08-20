@@ -1,15 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import ExpenseCategoryCreateModal from '@/components/expenses/ExpenseCategoryCreateModal'
 import PaginationControls from '@/components/PaginationControls'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Category = {
   id: number
   name: string
   is_active: boolean
+  store_location_id: number | null
+  store_location?: { id: number; name: string }
 }
 
 type Expense = {
@@ -22,9 +25,12 @@ type Expense = {
   category?: Category
   creator?: { name: string }
   receipt_url?: string
+  store_location_id: number | null
+  store_location?: { id: number; name: string }
 }
 
 type ExpenseForm = {
+  store_location_id: string
   expense_date: string
   title: string
   expense_category_id: string
@@ -47,9 +53,6 @@ const fieldClass =
 const textareaClass =
   'mt-1 min-h-[5rem] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100'
 
-const secondaryBtnClass =
-  'inline-flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50'
-
 const primaryBtnClass =
   'inline-flex h-10 items-center justify-center rounded-lg bg-blue-600 px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700'
 
@@ -63,6 +66,7 @@ function currentMonth() {
 
 function emptyForm(): ExpenseForm {
   return {
+    store_location_id: '',
     expense_date: todayYmd(),
     title: '',
     expense_category_id: '',
@@ -90,6 +94,7 @@ function monthTitle(ym: string) {
 
 function formFromExpense(expense: Expense): ExpenseForm {
   return {
+    store_location_id: expense.store_location_id === null ? '' : String(expense.store_location_id),
     expense_date: expense.expense_date.slice(0, 10),
     title: expense.title,
     expense_category_id: String(expense.category?.id || ''),
@@ -99,6 +104,7 @@ function formFromExpense(expense: Expense): ExpenseForm {
 }
 
 export default function ExpensesPage({ permissions }: { permissions: string[] }) {
+  const { accessibleBranches, selectedBranchId, selectedBranch, isAllBranches } = useBranch()
   const [filters, setFilters] = useState({
     month: currentMonth(),
     expense_category_id: '',
@@ -114,6 +120,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
     total: 0,
   })
   const [loading, setLoading] = useState(true)
+  const loadSequence = useRef(0)
 
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
   const [editing, setEditing] = useState<Expense | null>(null)
@@ -136,25 +143,29 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
     qs.set('per_page', String(PAGE_SIZE))
     if (filters.month) qs.set('month', filters.month)
     if (filters.expense_category_id) qs.set('expense_category_id', filters.expense_category_id)
+    if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
     return qs.toString()
-  }, [filters.expense_category_id, filters.month, page])
+  }, [filters.expense_category_id, filters.month, page, selectedBranchId])
 
   const exportQuery = useCallback(() => {
     const qs = new URLSearchParams()
     if (filters.month) qs.set('month', filters.month)
     if (filters.expense_category_id) qs.set('expense_category_id', filters.expense_category_id)
+    if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
     return qs.toString()
-  }, [filters.expense_category_id, filters.month])
+  }, [filters.expense_category_id, filters.month, selectedBranchId])
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current
     setLoading(true)
     try {
       const [expensesRes, categoriesRes] = await Promise.all([
         fetch(`/api/proxy/expenses?${query()}`, { cache: 'no-store' }),
-        fetch('/api/proxy/expense-categories?active_only=1', { cache: 'no-store' }),
+        fetch(`/api/proxy/expense-categories?active_only=1${selectedBranchId !== null ? `&branch_store_location_id=${selectedBranchId}` : ''}`, { cache: 'no-store' }),
       ])
       const expensesJson = await expensesRes.json().catch(() => null)
       const categoriesJson = await categoriesRes.json().catch(() => null)
+      if (sequence !== loadSequence.current) return
       const payload = expensesJson?.data || {}
       const paginated = payload.items || {}
       setItems(Array.isArray(paginated.data) ? paginated.data : [])
@@ -167,18 +178,25 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
       })
       setCategories(categoriesJson?.data?.data || categoriesJson?.data || [])
     } finally {
-      setLoading(false)
+      if (sequence === loadSequence.current) setLoading(false)
     }
-  }, [page, query])
+  }, [page, query, selectedBranchId])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    loadSequence.current += 1
+    setItems([])
+    setCategories([])
+    setFilters((current) => ({ ...current, expense_category_id: '' }))
+    setPage(1)
+    setFormMode(null)
+  }, [selectedBranchId])
+
+  useEffect(() => { void load() }, [load])
 
   const openCreate = () => {
     setFormMode('create')
     setEditing(null)
-    setForm(emptyForm())
+    setForm({ ...emptyForm(), store_location_id: selectedBranchId === null ? '' : String(selectedBranchId) })
     setFormError('')
   }
 
@@ -204,6 +222,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
     try {
       const data = new FormData()
       Object.entries(form).forEach(([key, value]) => data.append(key, value))
+      if (selectedBranchId !== null) data.set('store_location_id', String(selectedBranchId))
 
       const res = await fetch(`/api/proxy/expenses${editing?.id ? `/${editing.id}` : ''}`, {
         method: 'POST',
@@ -253,7 +272,9 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
     return `${meta.total} record${meta.total === 1 ? '' : 's'}`
   }, [loading, meta.total])
 
-  const colSpan = showActions ? 6 : 5
+  const colSpan = (showActions ? 6 : 5) + (isAllBranches ? 1 : 0)
+  const formBranchId = selectedBranchId === null ? form.store_location_id : String(selectedBranchId)
+  const formCategories = categories.filter((category) => String(category.store_location_id ?? '') === formBranchId)
 
   return (
     <div className="crm-page-shell space-y-5 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10">
@@ -349,6 +370,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
               <tr>
                 <th className="px-5 py-3">Date</th>
                 <th className="px-5 py-3">Expense</th>
+                {isAllBranches ? <th className="px-5 py-3">Branch</th> : null}
                 <th className="px-5 py-3">Category</th>
                 <th className="px-5 py-3">Remark</th>
                 <th className="px-5 py-3 text-right">Amount</th>
@@ -373,6 +395,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
                   <tr key={expense.id} className="hover:bg-slate-50/80">
                     <td className="px-5 py-3 text-slate-700">{formatDateLabel(expense.expense_date)}</td>
                     <td className="px-5 py-3 font-medium text-slate-900">{expense.title}</td>
+                    {isAllBranches ? <td className="px-5 py-3 text-slate-600">{expense.store_location?.name ?? 'Unassigned'}</td> : null}
                     <td className="px-5 py-3">
                       <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
                         {expense.category?.name || '—'}
@@ -434,7 +457,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
             {!loading && items.length > 0 ? (
               <tfoot>
                 <tr className="border-t-2 border-rose-200 bg-rose-50 text-sm font-bold text-rose-950">
-                  <td className="px-5 py-3 text-xs uppercase tracking-wide" colSpan={4}>
+                  <td className="px-5 py-3 text-xs uppercase tracking-wide" colSpan={4 + (isAllBranches ? 1 : 0)}>
                     Total
                   </td>
                   <td className="px-5 py-3 text-right">{formatRm(total)}</td>
@@ -493,6 +516,15 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
             ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
+              {isAllBranches ? (
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Branch
+                  <select required value={form.store_location_id} onChange={(e) => setForm((prev) => ({ ...prev, store_location_id: e.target.value, expense_category_id: '' }))} className={fieldClass} disabled={saving || formMode === 'edit'}>
+                    <option value="">Select Branch</option>
+                    {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  </select>
+                </label>
+              ) : <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700"><span className="text-xs font-semibold uppercase text-slate-500">Branch</span><br />{selectedBranch?.name}</div>}
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Date
                 <input
@@ -525,7 +557,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
                   disabled={saving}
                 >
                   <option value="">Select category</option>
-                  {categories.map((category) => (
+                  {formCategories.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.name}
                     </option>
@@ -625,6 +657,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
 
       {categoryCreateOpen ? (
         <ExpenseCategoryCreateModal
+          selectedBranchId={selectedBranchId}
           onClose={() => setCategoryCreateOpen(false)}
           onCreated={() => void load()}
         />
