@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             AppointmentActivityLogPermissionSeeder::class,
             SuperAdminSeeder::class,
             BranchAccessPermissionSeeder::class,
+            SuperAdminBranchAccessPermissionSeeder::class,
             StaffPermissionSeeder::class,
 
 
@@ -50,6 +51,16 @@ class DatabaseSeeder extends Seeder
             
             PaymentGatewaySeeder::class,
             BillplzPaymentGatewayOptionSeeder::class,
+            BillplzPaymentGatewayPermissionSeeder::class,
+            DashboardAnalyticsPermissionSeeder::class,
+            CustomerWalletPermissionSeeder::class,
+            StaffConsumablePermissionSeeder::class,
+            StaffPosAppointmentsPermissionSeeder::class,
+            StaffSalesReportPermissionSeeder::class,
+            ActivityLogPermissionSeeder::class,
+            ThermalPrinterPermissionSeeder::class,
+            ExpensePermissionSeeder::class,
+            AddBookingPermissionsSeeder::class,
             BookingLandingPageSeeder::class,
             BookingBranchAssignmentSeeder::class,
             ProductBranchAssignmentSeeder::class,

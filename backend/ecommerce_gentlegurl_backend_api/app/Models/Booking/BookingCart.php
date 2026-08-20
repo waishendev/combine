@@ -2,6 +2,7 @@
 
 namespace App\Models\Booking;
 
+use App\Models\Ecommerce\StoreLocation;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
@@ -13,6 +14,11 @@ class BookingCart extends Model
     protected $keyType = 'string';
 
     protected $fillable = ['customer_id', 'guest_token', 'store_location_id', 'status'];
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(StoreLocation::class);
+    }
 
     public function items()
     {

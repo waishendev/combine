@@ -44,7 +44,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="crm-page-shell py-6 px-4 sm:px-6 lg:px-10">
-      <div className="text-xs mb-4">
+      <div className="mb-4 text-xs">
         <span className="text-gray-500">Home</span>
         <span className="mx-1">/</span>
         <Link href="/dashboard" className="text-blue-600 hover:underline">

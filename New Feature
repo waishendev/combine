@@ -1,0 +1,36 @@
+php artisan migrate --force
+
+
+php artisan db:seed --class=BranchLimitSettingSeeder 
+
+php artisan branch-access:backfill --store-code=PNG --dry-run
+
+php artisan branch-access:backfill --store-code=PNG --force
+
+php artisan booking-branch:backfill --store-code=PNG --dry-run
+php artisan booking-branch:backfill --store-code=PNG --force
+
+php artisan pos-branch:backfill --store-code=PNG --dry-run
+php artisan pos-branch:backfill --store-code=PNG --force
+
+php artisan branch-transactions:backfill --store-code=PNG --dry-run
+php artisan branch-transactions:backfill --store-code=PNG --force
+
+php artisan benefit-branch:backfill --dry-run
+php artisan benefit-branch:backfill --force
+
+php artisan product-branch:backfill --store-code=PNG  --dry-run
+php artisan product-branch:backfill --store-code=PNG  --force
+
+php artisan branch-inventory:initialize --store-code=PNG --from-global --dry-run
+php artisan branch-inventory:initialize --store-code=PNG --from-global  --force
+
+
+php artisan db:seed --class=SuperAdminBranchAccessPermissionSeeder 
+
+已经跑过了 20260808
+--------------------需要检查一下是不是有SEED 没有需要加进去 在PHP ARTISAN Migrate的时候
+php artisan db:seed --class=BillplzPaymentGatewayPermissionSeeder
+
+不需要的
+php artisan db:seed --class=BillplzPublicBankRhbOptionSeeder

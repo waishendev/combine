@@ -45,9 +45,13 @@ class BackfillBenefitBranchesCommand extends Command
         $claimsAttributable = DB::table('loyalty_redemptions as r')->join('order_items as oi', 'oi.reward_redemption_id', '=', 'r.id')->join('orders as o', 'o.id', '=', 'oi.order_id')->whereNull('r.store_location_id')->whereNotNull('o.store_location_id')->distinct()->count('r.id');
         $claimsNull = DB::table('loyalty_redemptions')->whereNull('store_location_id')->count() - $claimsAttributable;
 
+        $voucherAttributable = DB::table('voucher_usages as u')->join('orders as o', 'o.id', '=', 'u.order_id')->whereNull('u.store_location_id')->whereNotNull('o.store_location_id')->count();
+        $voucherNull = DB::table('voucher_usages')->whereNull('store_location_id')->count() - $voucherAttributable;
+
         return [
             ['Voucher definitions', DB::table('vouchers')->count(), 'global; no Branch applicability backfill'],
             ['Redeem Voucher definitions', DB::table('loyalty_rewards')->where('type', 'voucher')->count(), 'global; no Branch applicability backfill'],
+            ['Voucher usages', $voucherAttributable, max(0, $voucherNull)],
             ['Package usage', $packageAttributable, max(0, $packageNull)],
             ['Point transactions', $pointsAttributable, max(0, $pointsGlobal).' system/global rows left NULL'],
             ['Product redemption claims', $claimsAttributable, max(0, $claimsNull)],

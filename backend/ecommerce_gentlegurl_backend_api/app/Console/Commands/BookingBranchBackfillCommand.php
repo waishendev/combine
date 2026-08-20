@@ -65,9 +65,11 @@ class BookingBranchBackfillCommand extends Command
             ->eachById(fn (Staff $staff) => $staff->storeLocations()->syncWithoutDetaching([$branch->id]));
         BookingService::query()->whereDoesntHave('storeLocations', fn ($q) => $q->whereKey($branch->id))
             ->eachById(fn (BookingService $service) => $service->storeLocations()->syncWithoutDetaching([$branch->id]));
-        BookingStaffSchedule::query()->whereNull('store_location_id')->whereIn('staff_id', $assignedStaffIds)->update(['store_location_id' => $branch->id]);
-        BookingStaffTimeoff::query()->whereNull('store_location_id')->whereNotIn('id', $leaveTimeoffIds)->whereIn('staff_id', $assignedStaffIds)->update(['store_location_id' => $branch->id]);
-        BookingBlock::query()->whereNull('store_location_id')->where(fn ($q) => $q->where('scope', 'STORE')->orWhereIn('staff_id', $assignedStaffIds))->update(['store_location_id' => $branch->id]);
+
+        $allStaffIds = Staff::query()->whereHas('storeLocations', fn ($q) => $q->whereKey($branch->id))->pluck('id');
+        BookingStaffSchedule::query()->whereNull('store_location_id')->whereIn('staff_id', $allStaffIds)->update(['store_location_id' => $branch->id]);
+        BookingStaffTimeoff::query()->whereNull('store_location_id')->whereNotIn('id', $leaveTimeoffIds)->whereIn('staff_id', $allStaffIds)->update(['store_location_id' => $branch->id]);
+        BookingBlock::query()->whereNull('store_location_id')->where(fn ($q) => $q->where('scope', 'STORE')->orWhereIn('staff_id', $allStaffIds))->update(['store_location_id' => $branch->id]);
 
         $this->info(sprintf('Applied %d Staff, %d Service, %d Schedule, %d operational Time-Off, and %d Block attributions; non-null and unresolved records were preserved.', $staffTotal - $staffAssigned, $serviceTotal - $serviceAssigned, $scheduleMissing, $timeoffMissing, $blockMissing));
         return self::SUCCESS;

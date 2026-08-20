@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
+import BranchSelector from '@/components/BranchSelector'
 import { getWorkspace, type Workspace } from '@/lib/workspace'
 
 type SidebarProps = {
@@ -972,6 +973,9 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             : 'pointer-events-auto visible translate-x-0 shadow-xl'
         }`}
       >
+        <div className="shrink-0 border-b border-slate-100 px-3 py-3">
+          <BranchSelector />
+        </div>
         <nav className="crm-sidebar-nav min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-4 text-sm text-slate-600 [-webkit-overflow-scrolling:touch] touch-pan-y lg:py-6">
           <div className="space-y-1">
             {visibleItems.map((item) => {
