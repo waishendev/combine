@@ -20,7 +20,7 @@ The enhancement is **IMPLEMENTED** as follows:
 - the CRM reuses the existing Header Branch Context rather than introducing a second persistent context;
 - a Specific Branch automatically supplies the Branch on create, while All Branches requires an explicit accessible Branch selection;
 - an Expense Category must be active and belong to the same Branch as its Expense, with backend validation in addition to frontend filtering;
-- Expense and Expense Category Branch movement is prohibited after creation, avoiding accidental cross-Branch reclassification;
+- ownership is locked while editing from a Specific Branch; All Branches permits an explicit authorized ownership correction, with Expense Category revalidation and usage safeguards;
 - list, show, create, update, delete/archive, ordering, and export operations use server-side `StoreLocationAccessService` authorization and accessible-Branch query scoping;
 - specific-Branch requests exclude legacy `NULL`; All Branches may display those historical records as **Unassigned**;
 - Branch-attributed Expenses participate in Branch-specific Profit/Loss/Contribution calculations, while `NULL` remains Unassigned until an operator explicitly backfills it;
@@ -62,7 +62,7 @@ The command is not invoked by migrations, seeders, deployment hooks, or applicat
 - Legacy `NULL` records are excluded.
 - Create automatically uses the Header Branch.
 - No duplicate Branch selector is shown.
-- Edit/delete remains constrained to that Branch; ownership cannot be moved.
+- Edit/delete remains constrained to that Branch; ownership cannot be moved from this context.
 - Expense Category choices are limited to that Branch.
 
 ### Header = All Branches
@@ -71,6 +71,8 @@ The command is not invoked by migrations, seeders, deployment hooks, or applicat
 - A Branch column distinguishes records.
 - Create requires selection from the authenticated accessible Branch dropdown.
 - A Branch-owned record cannot be created with `NULL`.
+- Expense edit may move ownership to another accessible Branch, but changing Branch clears the old Category selection and requires a Category owned by the target Branch.
+- An unused Expense Category may move to another accessible Branch; a Category referenced by any Expense remains read-only and the backend rejects movement rather than moving its Expenses.
 
 ### Legacy NULL
 

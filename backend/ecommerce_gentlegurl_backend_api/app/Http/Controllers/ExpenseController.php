@@ -130,10 +130,14 @@ class ExpenseController extends Controller
     public function update(Request $request, Expense $expense)
     {
         $this->authorizeRecord($request, $expense);
+        $scope = $this->scope($request);
         $validated = $request->validate($this->rules());
         $this->authorizeAssignment($request, $validated);
-        if ((int) $expense->store_location_id !== (int) $validated['store_location_id']) {
-            throw ValidationException::withMessages(['store_location_id' => 'Moving an Expense to another Branch is not allowed.']);
+        if ($scope->selectedStoreLocationId !== null
+            && (int) $expense->store_location_id !== (int) $validated['store_location_id']) {
+            throw ValidationException::withMessages([
+                'store_location_id' => 'Expense ownership is locked while editing in a specific Branch context.',
+            ]);
         }
         $expense->update([...$validated, 'receipt_path' => $this->receipt($request, $expense), 'updated_by' => $request->user()->id]);
 

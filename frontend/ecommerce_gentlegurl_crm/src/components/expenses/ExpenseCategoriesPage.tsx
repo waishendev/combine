@@ -16,9 +16,11 @@ type Category = {
   is_active: boolean
   store_location_id: number | null
   store_location?: { id: number; name: string }
+  expenses_count: number
 }
 
 type CategoryForm = {
+  store_location_id: string
   name: string
   description: string
   is_active: boolean
@@ -41,6 +43,7 @@ const primaryBtnClass =
 
 function emptyForm(): CategoryForm {
   return {
+    store_location_id: '',
     name: '',
     description: '',
     is_active: true,
@@ -48,7 +51,7 @@ function emptyForm(): CategoryForm {
 }
 
 export default function ExpenseCategoriesPage({ permissions }: { permissions: string[] }) {
-  const { selectedBranchId, isAllBranches } = useBranch()
+  const { accessibleBranches, selectedBranchId, selectedBranch, isAllBranches } = useBranch()
   const [rows, setRows] = useState<Category[]>([])
   const [form, setForm] = useState<CategoryForm>(emptyForm())
   const [edit, setEdit] = useState<Category | null>(null)
@@ -128,6 +131,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
   const openEdit = (category: Category) => {
     setEdit(category)
     setForm({
+      store_location_id: category.store_location_id === null ? '' : String(category.store_location_id),
       name: category.name,
       description: category.description || '',
       is_active: category.is_active,
@@ -158,7 +162,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
           name: form.name,
           description: form.description,
           is_active: form.is_active,
-          store_location_id: edit.store_location_id,
+          store_location_id: Number(form.store_location_id),
         }),
       })
       if (!res.ok) {
@@ -465,6 +469,26 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
             ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
+              {isAllBranches ? (
+                <label className="sm:col-span-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Branch
+                  <select
+                    required
+                    value={form.store_location_id}
+                    onChange={(event) => setForm((previous) => ({ ...previous, store_location_id: event.target.value }))}
+                    className={fieldClass}
+                    disabled={saving || edit!.expenses_count > 0}
+                  >
+                    <option value="">Select Branch</option>
+                    {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  </select>
+                  {edit!.expenses_count > 0 ? <span className="mt-1 block normal-case tracking-normal text-amber-700">This Category is used by {edit!.expenses_count} Expense{edit!.expenses_count === 1 ? '' : 's'} and its Branch cannot be changed.</span> : null}
+                </label>
+              ) : (
+                <div className="sm:col-span-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  <span className="text-xs font-semibold uppercase text-slate-500">Branch</span><br />{selectedBranch?.name}
+                </div>
+              )}
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Name
                 <input

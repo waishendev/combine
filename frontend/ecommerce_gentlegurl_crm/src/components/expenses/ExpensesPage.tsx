@@ -519,7 +519,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
               {isAllBranches ? (
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Branch
-                  <select required value={form.store_location_id} onChange={(e) => setForm((prev) => ({ ...prev, store_location_id: e.target.value, expense_category_id: '' }))} className={fieldClass} disabled={saving || formMode === 'edit'}>
+                  <select required value={form.store_location_id} onChange={(e) => setForm((prev) => ({ ...prev, store_location_id: e.target.value, expense_category_id: '' }))} className={fieldClass} disabled={saving}>
                     <option value="">Select Branch</option>
                     {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                   </select>

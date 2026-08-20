@@ -28,7 +28,7 @@ class ExpenseCategoryController extends Controller
 
     public function index(Request $request)
     {
-        $query = $this->scope($request)->apply(ExpenseCategory::query()->with('storeLocation'))
+        $query = $this->scope($request)->apply(ExpenseCategory::query()->with('storeLocation')->withCount('expenses'))
             ->orderBy('store_location_id')->orderBy('sort_order')->orderBy('name');
         if ($request->boolean('active_only')) $query->where('is_active', true);
 
@@ -60,6 +60,7 @@ class ExpenseCategoryController extends Controller
     public function update(Request $request, ExpenseCategory $expenseCategory)
     {
         $this->authorizeRecord($request, $expenseCategory);
+        $scope = $this->scope($request);
         $validated = $request->validate([
             'store_location_id' => ['required', 'integer', 'exists:store_locations,id'],
             'name' => ['required', 'string', 'max:100'],
@@ -68,11 +69,24 @@ class ExpenseCategoryController extends Controller
         ]);
         $branchId = (int) $validated['store_location_id'];
         $this->branchAccess->authorizeStoreLocation($request->user(), $branchId);
-        if ((int) $expenseCategory->store_location_id !== $branchId) {
-            throw ValidationException::withMessages(['store_location_id' => 'Moving an Expense Category to another Branch is not allowed.']);
+        $movingBranch = (int) $expenseCategory->store_location_id !== $branchId;
+        if ($movingBranch && $scope->selectedStoreLocationId !== null) {
+            throw ValidationException::withMessages([
+                'store_location_id' => 'Expense Category ownership is locked while editing in a specific Branch context.',
+            ]);
+        }
+        if ($movingBranch && $expenseCategory->expenses()->exists()) {
+            throw ValidationException::withMessages([
+                'store_location_id' => 'This Expense Category is already used by Expenses and cannot be moved to another Branch.',
+            ]);
         }
         $request->validate(['name' => Rule::unique('expense_categories', 'name')->where('store_location_id', $branchId)->ignore($expenseCategory->id)]);
-        $expenseCategory->update(['name' => trim($validated['name']), 'description' => $validated['description'] ?? null, 'is_active' => $validated['is_active']]);
+        $expenseCategory->update([
+            'store_location_id' => $branchId,
+            'name' => trim($validated['name']),
+            'description' => $validated['description'] ?? null,
+            'is_active' => $validated['is_active'],
+        ]);
 
         return $this->respond($expenseCategory->load('storeLocation'), 'Expense category updated successfully.');
     }
