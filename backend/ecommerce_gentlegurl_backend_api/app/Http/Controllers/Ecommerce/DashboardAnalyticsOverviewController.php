@@ -7,19 +7,11 @@ use App\Models\User;
 use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Dashboard Analytics Enhancement — Overview (single request).
  *
- * Combines the first-paint payloads that the CRM `/dashboard` page previously
- * fetched as 4–5 parallel HTTP calls into one endpoint, while reusing the same
- * payload builders as the legacy granular routes (contract-compatible slices).
- *
- * Tracking:
- * - DONE (this API): ecommerce + packages summary/filter-options/customer-packages + categories
- * - LEGACY (still available): /admin/dashboard/analytics/ecommerce, /packages/*
- * - NOT YET: sales / redemptions list endpoints, detail drawer, Redis cache
+ * Page: CRM /dashboard first paint.
  */
 class DashboardAnalyticsOverviewController extends Controller
 {
@@ -57,21 +49,10 @@ class DashboardAnalyticsOverviewController extends Controller
 
         $included = [];
         $payload = [
+            // First paint only needs enhancement id + which slices were built.
             'meta' => [
                 'enhancement' => self::ENHANCEMENT,
-                'status' => 'done',
                 'includes' => [],
-                'legacy_endpoints' => [
-                    'ecommerce' => '/api/admin/dashboard/analytics/ecommerce',
-                    'packages_summary' => '/api/admin/dashboard/analytics/packages/summary',
-                    'packages_filter_options' => '/api/admin/dashboard/analytics/packages/filter-options',
-                    'packages_customer_packages' => '/api/admin/dashboard/analytics/packages/customer-packages',
-                ],
-                'not_yet' => [
-                    'packages_sales_list' => '/api/admin/dashboard/analytics/packages/sales',
-                    'packages_redemptions_list' => '/api/admin/dashboard/analytics/packages/redemptions',
-                    'packages_customer_package_detail' => '/api/admin/dashboard/analytics/packages/customer-packages/{id}',
-                ],
             ],
             'ecommerce' => null,
             'packages' => null,
@@ -79,15 +60,18 @@ class DashboardAnalyticsOverviewController extends Controller
         ];
 
         if ($wantEcommerce) {
-            $payload['ecommerce'] = $ecommerce->buildEcommercePayload($request, $access);
+            $payload['ecommerce'] = $ecommerce->buildEcommercePayload($request, $access, forOverview: true);
             $included[] = 'ecommerce';
         }
 
         if ($wantPackages) {
+            // Overview shares ecommerce query params (status=active for products).
+            // Package liability must not inherit that product status filter.
+            $packageRequest = $this->packageRequestFromOverview($request);
             $payload['packages'] = [
-                'summary' => $packages->buildSummaryPayload($request),
+                'summary' => $packages->buildSummaryPayload($packageRequest, forOverview: true),
                 'filter_options' => $packages->buildFilterOptionsPayload(),
-                'customer_packages' => $packages->buildCustomerPackagesPayload($request),
+                'customer_packages' => $packages->buildCustomerPackagesPayload($packageRequest, forOverview: true),
             ];
             $included[] = 'packages';
         }
@@ -100,6 +84,30 @@ class DashboardAnalyticsOverviewController extends Controller
         $payload['meta']['includes'] = $included;
 
         return response()->json($payload);
+    }
+
+    /**
+     * Strip ecommerce-only filters so package builders keep legacy behavior.
+     */
+    private function packageRequestFromOverview(Request $request): Request
+    {
+        $query = $request->query();
+        unset($query['status'], $query['search'], $query['category_id'], $query['low_stock'], $query['missing_cost']);
+
+        if ($request->filled('package_status')) {
+            $query['status'] = $request->query('package_status');
+        }
+        if ($request->filled('package_search')) {
+            $query['search'] = $request->query('package_search');
+        }
+
+        $packageRequest = Request::create($request->url(), 'GET', $query);
+        $packageRequest->setUserResolver($request->getUserResolver());
+        foreach ($request->attributes->all() as $key => $value) {
+            $packageRequest->attributes->set($key, $value);
+        }
+
+        return $packageRequest;
     }
 
     /**
@@ -125,7 +133,12 @@ class DashboardAnalyticsOverviewController extends Controller
      */
     private function categoryOptions(): array
     {
-        if (! Schema::hasTable('categories')) {
+        $tables = request()->attributes->get('_dash_schema_tables', []);
+        $categoriesExist = is_array($tables) && array_key_exists('categories', $tables)
+            ? (bool) $tables['categories']
+            : \Illuminate\Support\Facades\Schema::hasTable('categories');
+
+        if (! $categoriesExist) {
             return [];
         }
 

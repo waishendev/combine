@@ -19,37 +19,79 @@ class PackageDashboardAnalyticsController extends Controller
     }
 
     /**
+     * @param  bool  $forOverview  Slim first-paint fields only (CRM /dashboard).
      * @return array<string, mixed>
      */
-    public function buildSummaryPayload(Request $request): array
+    public function buildSummaryPayload(Request $request, bool $forOverview = false): array
     {
+        $this->warmPackageSchema();
+
         if (! $this->hasPackageTables()) {
-            return $this->emptySummary();
+            return $this->emptySummary($forOverview);
         }
 
-        $expiringDays = max(1, (int) $request->query('expiring_days', 30));
         $templates = DB::table('service_packages')->selectRaw('COUNT(*) total, SUM(CASE WHEN is_active THEN 1 ELSE 0 END) active, SUM(CASE WHEN is_active THEN 0 ELSE 1 END) inactive')->first();
         $activePackageIdsWithRemaining = DB::table('customer_service_package_balances')->select('customer_service_package_id')->where('remaining_qty', '>', 0);
-        $activePackages = DB::table('customer_service_packages as csp')->where('csp.status', 'active')->where(fn ($q) => $q->whereNull('csp.expires_at')->orWhere('csp.expires_at', '>=', now()))->whereIn('csp.id', $activePackageIdsWithRemaining);
 
         $balanceValue = $this->balanceRedemptionValueExpression();
         $usageValue = $this->usageRedemptionValueExpression();
         // Aggregate-only path: booking_services join is unused (no service-name select).
+        $balanceSelect = $forOverview
+            ? "SUM(b.remaining_qty) remaining_redemptions, SUM(b.remaining_qty * {$balanceValue}) outstanding_service_value"
+            : "SUM(b.remaining_qty) remaining_redemptions, SUM(b.remaining_qty * {$balanceValue}) outstanding_service_value, SUM(CASE WHEN b.remaining_qty > 0 AND {$this->balanceRedemptionRawExpression()} IS NULL THEN 1 ELSE 0 END) missing_redemption_value_count";
         $balances = $this->balanceValueQuery(withServiceName: false)->where('csp.status', 'active')->where(fn ($q) => $q->whereNull('csp.expires_at')->orWhere('csp.expires_at', '>=', now()))
-            ->selectRaw("SUM(b.remaining_qty) remaining_redemptions, SUM(b.remaining_qty * {$balanceValue}) outstanding_service_value, SUM(CASE WHEN b.remaining_qty > 0 AND {$this->balanceRedemptionRawExpression()} IS NULL THEN 1 ELSE 0 END) missing_redemption_value_count")
+            ->selectRaw($balanceSelect)
             ->first();
 
         $sales = $this->packageSalesTotals();
-        $redemptionsQuery = $this->usageValueQuery(withServiceName: false)->selectRaw("SUM(u.used_qty) redeemed_qty, SUM(u.used_qty * {$usageValue}) redeemed_value");
+        $redemptionSelect = $forOverview
+            ? "SUM(u.used_qty * {$usageValue}) redeemed_value"
+            : "SUM(u.used_qty) redeemed_qty, SUM(u.used_qty * {$usageValue}) redeemed_value";
+        $redemptionsQuery = $this->usageValueQuery(withServiceName: false)->selectRaw($redemptionSelect);
         if ($this->schemaHasColumn('customer_service_package_usages', 'status')) {
             $redemptionsQuery->whereIn('u.status', $this->completedUsageStatuses());
         }
         $redemptions = $redemptionsQuery->first();
+
+        $activeCountSelect = $forOverview
+            ? 'COUNT(DISTINCT csp.customer_id) as active_holders'
+            : 'COUNT(DISTINCT csp.customer_id) as active_holders, COUNT(*) as active_customer_packages';
+        $activeCounts = DB::table('customer_service_packages as csp')
+            ->where('csp.status', 'active')
+            ->where(fn ($q) => $q->whereNull('csp.expires_at')->orWhere('csp.expires_at', '>=', now()))
+            ->whereIn('csp.id', $activePackageIdsWithRemaining)
+            ->selectRaw($activeCountSelect)
+            ->first();
+
+        if ($forOverview) {
+            return [
+                'templates' => [
+                    'total' => (int) ($templates->total ?? 0),
+                    'active' => (int) ($templates->active ?? 0),
+                    'inactive' => (int) ($templates->inactive ?? 0),
+                ],
+                'customers' => [
+                    'active_holders' => (int) ($activeCounts->active_holders ?? 0),
+                ],
+                'balances' => [
+                    'remaining_redemptions' => (int) ($balances->remaining_redemptions ?? 0),
+                    'outstanding_service_value' => round((float) ($balances->outstanding_service_value ?? 0), 2),
+                ],
+                'sales' => [
+                    'net_package_sales' => round((float) ($sales->net ?? 0), 2),
+                ],
+                'redemptions' => [
+                    'redeemed_value' => round((float) ($redemptions->redeemed_value ?? 0), 2),
+                ],
+            ];
+        }
+
+        $expiringDays = max(1, (int) $request->query('expiring_days', 30));
         $status = DB::table('customer_service_packages as csp')->selectRaw("SUM(CASE WHEN status = 'active' AND expires_at BETWEEN ? AND ? THEN 1 ELSE 0 END) expiring_soon, SUM(CASE WHEN status = 'exhausted' THEN 1 ELSE 0 END) exhausted, SUM(CASE WHEN status = 'expired' OR (status = 'active' AND expires_at < ?) THEN 1 ELSE 0 END) expired, SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) cancelled", [now(), now()->addDays($expiringDays), now()])->first();
 
         return [
             'templates' => ['total' => (int) ($templates->total ?? 0), 'active' => (int) ($templates->active ?? 0), 'inactive' => (int) ($templates->inactive ?? 0), 'missing_redemption_value_count' => (int) ($balances->missing_redemption_value_count ?? 0)],
-            'customers' => ['active_holders' => (int) (clone $activePackages)->distinct('csp.customer_id')->count('csp.customer_id'), 'active_customer_packages' => (int) (clone $activePackages)->count()],
+            'customers' => ['active_holders' => (int) ($activeCounts->active_holders ?? 0), 'active_customer_packages' => (int) ($activeCounts->active_customer_packages ?? 0)],
             'balances' => ['remaining_redemptions' => (int) ($balances->remaining_redemptions ?? 0), 'outstanding_service_value' => round((float) ($balances->outstanding_service_value ?? 0), 2)],
             'sales' => ['gross_package_sales' => round((float) ($sales->gross ?? 0), 2), 'refund_amount' => round((float) ($sales->refunds ?? 0), 2), 'net_package_sales' => round((float) ($sales->net ?? 0), 2)],
             'redemptions' => ['redeemed_qty' => (int) ($redemptions->redeemed_qty ?? 0), 'redeemed_value' => round((float) ($redemptions->redeemed_value ?? 0), 2)],
@@ -63,27 +105,45 @@ class PackageDashboardAnalyticsController extends Controller
     }
 
     /**
-     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator|array{data: array<int, mixed>}
+     * @param  bool  $forOverview  Slim first-paint fields only (CRM /dashboard).
+     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator|array{data: array<int, mixed>, current_page?: int, last_page?: int, total?: int}
      */
-    public function buildCustomerPackagesPayload(Request $request): mixed
+    public function buildCustomerPackagesPayload(Request $request, bool $forOverview = false): mixed
     {
+        $this->warmPackageSchema();
+
         if (! $this->hasPackageTables()) {
-            return ['data' => []];
+            return $forOverview
+                ? ['data' => [], 'current_page' => 1, 'last_page' => 1, 'total' => 0]
+                : ['data' => []];
         }
         $value = $this->balanceRedemptionValueExpression();
         $rawValue = $this->balanceRedemptionRawExpression();
         // List select has no per-service name — skip booking_services join.
         $query = $this->balanceValueQuery(withServiceName: false)
             ->join('customers as c', 'c.id', '=', 'csp.customer_id')
-            ->join('service_packages as sp', 'sp.id', '=', 'csp.service_package_id')
-            ->leftJoinSub($this->reservedQtyAggregateQuery(), 'reserved_agg', 'reserved_agg.customer_service_package_id', '=', 'csp.id')
-            ->selectRaw("csp.id, c.name customer, {$this->packageNameExpression()} package, csp.purchased_from, {$this->purchaseReferenceExpression()} purchase_reference, csp.created_at purchase_date, csp.started_at, csp.expires_at, csp.status, {$this->purchaseAmountExpression()} purchase_amount, COALESCE(SUM(b.total_qty), 0) total_qty, COALESCE(SUM(b.used_qty), 0) used_qty, COALESCE(MAX(reserved_agg.reserved_qty), 0) reserved_qty, COALESCE(SUM(b.remaining_qty), 0) remaining_qty, COALESCE(SUM(b.remaining_qty * {$value}), 0) remaining_service_value, SUM(CASE WHEN b.remaining_qty > 0 AND {$rawValue} IS NULL THEN 1 ELSE 0 END) missing_values")
-            ->groupBy('csp.id', 'c.name', 'sp.name', 'sp.selling_price', 'csp.purchased_from', 'csp.created_at', 'csp.started_at', 'csp.expires_at', 'csp.status');
-        foreach (['package_name_snapshot', 'purchase_amount_snapshot', 'purchase_reference_snapshot'] as $groupColumn) {
-            if ($this->hasCsp($groupColumn)) {
-                $query->groupBy('csp.'.$groupColumn);
+            ->join('service_packages as sp', 'sp.id', '=', 'csp.service_package_id');
+
+        if ($forOverview) {
+            // Overview table does not render reserved_qty / purchase_reference / started_at.
+            $query->selectRaw("csp.id, c.name customer, {$this->packageNameExpression()} package, csp.purchased_from, csp.created_at purchase_date, csp.expires_at, csp.status, {$this->purchaseAmountExpression()} purchase_amount, COALESCE(SUM(b.total_qty), 0) total_qty, COALESCE(SUM(b.used_qty), 0) used_qty, COALESCE(SUM(b.remaining_qty), 0) remaining_qty, COALESCE(SUM(b.remaining_qty * {$value}), 0) remaining_service_value, SUM(CASE WHEN b.remaining_qty > 0 AND {$rawValue} IS NULL THEN 1 ELSE 0 END) missing_values")
+                ->groupBy('csp.id', 'c.name', 'sp.name', 'sp.selling_price', 'csp.purchased_from', 'csp.created_at', 'csp.expires_at', 'csp.status');
+            foreach (['package_name_snapshot', 'purchase_amount_snapshot'] as $groupColumn) {
+                if ($this->hasCsp($groupColumn)) {
+                    $query->groupBy('csp.'.$groupColumn);
+                }
+            }
+        } else {
+            $query->leftJoinSub($this->reservedQtyAggregateQuery(), 'reserved_agg', 'reserved_agg.customer_service_package_id', '=', 'csp.id')
+                ->selectRaw("csp.id, c.name customer, {$this->packageNameExpression()} package, csp.purchased_from, {$this->purchaseReferenceExpression()} purchase_reference, csp.created_at purchase_date, csp.started_at, csp.expires_at, csp.status, {$this->purchaseAmountExpression()} purchase_amount, COALESCE(SUM(b.total_qty), 0) total_qty, COALESCE(SUM(b.used_qty), 0) used_qty, COALESCE(MAX(reserved_agg.reserved_qty), 0) reserved_qty, COALESCE(SUM(b.remaining_qty), 0) remaining_qty, COALESCE(SUM(b.remaining_qty * {$value}), 0) remaining_service_value, SUM(CASE WHEN b.remaining_qty > 0 AND {$rawValue} IS NULL THEN 1 ELSE 0 END) missing_values")
+                ->groupBy('csp.id', 'c.name', 'sp.name', 'sp.selling_price', 'csp.purchased_from', 'csp.created_at', 'csp.started_at', 'csp.expires_at', 'csp.status');
+            foreach (['package_name_snapshot', 'purchase_amount_snapshot', 'purchase_reference_snapshot'] as $groupColumn) {
+                if ($this->hasCsp($groupColumn)) {
+                    $query->groupBy('csp.'.$groupColumn);
+                }
             }
         }
+
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
             $query->where(fn ($q) => $q->where('c.name', 'like', "%{$search}%")->orWhere('sp.name', 'like', "%{$search}%"));
@@ -98,7 +158,37 @@ class PackageDashboardAnalyticsController extends Controller
             $query->where('csp.status', $request->query('status'));
         }
 
-        return $query->orderByDesc('remaining_service_value')->paginate(min(max((int) $request->query('per_page', 10), 1), 50));
+        $perPage = min(max((int) $request->query('per_page', 10), 1), 50);
+        if (! $forOverview) {
+            return $query->orderByDesc('remaining_service_value')->paginate($perPage);
+        }
+
+        $page = max((int) $request->query('page', 1), 1);
+        $total = (int) DB::query()->fromSub(clone $query, 'count_sub')->count();
+        $rows = (clone $query)->orderByDesc('remaining_service_value')->forPage($page, $perPage)->get()
+            ->map(fn ($row) => [
+                'id' => (int) $row->id,
+                'customer' => (string) $row->customer,
+                'package' => (string) $row->package,
+                'purchased_from' => (string) $row->purchased_from,
+                'purchase_date' => $row->purchase_date,
+                'expires_at' => $row->expires_at,
+                'status' => (string) $row->status,
+                'total_qty' => (int) $row->total_qty,
+                'used_qty' => (int) $row->used_qty,
+                'remaining_qty' => (int) $row->remaining_qty,
+                'purchase_amount' => round((float) $row->purchase_amount, 2),
+                'remaining_service_value' => round((float) $row->remaining_service_value, 2),
+                'missing_values' => (int) $row->missing_values,
+            ])
+            ->all();
+
+        return [
+            'data' => $rows,
+            'current_page' => $page,
+            'last_page' => max(1, (int) ceil($total / $perPage)),
+            'total' => $total,
+        ];
     }
 
     public function filterOptions()
@@ -111,6 +201,8 @@ class PackageDashboardAnalyticsController extends Controller
      */
     public function buildFilterOptionsPayload(): array
     {
+        $this->warmPackageSchema();
+
         if (! $this->hasPackageTables()) {
             return ['customers' => [], 'packages' => []];
         }
@@ -192,11 +284,15 @@ class PackageDashboardAnalyticsController extends Controller
     private function balanceValueQuery(bool $withServiceName = true): Builder
     {
         $query = DB::table('customer_service_packages as csp')
-            ->leftJoin('customer_service_package_balances as b', 'b.customer_service_package_id', '=', 'csp.id')
-            ->leftJoin('service_package_items as spi', function ($join) {
+            ->leftJoin('customer_service_package_balances as b', 'b.customer_service_package_id', '=', 'csp.id');
+
+        // Snapshot column makes service_package_items unnecessary for redemption math.
+        if (! $this->hasBalance('redemption_value_snapshot')) {
+            $query->leftJoin('service_package_items as spi', function ($join) {
                 $join->on('spi.service_package_id', '=', 'csp.service_package_id')
                     ->on('spi.booking_service_id', '=', 'b.booking_service_id');
             });
+        }
 
         if ($withServiceName) {
             $query->leftJoin('booking_services as bs', 'bs.id', '=', 'b.booking_service_id');
@@ -210,16 +306,23 @@ class PackageDashboardAnalyticsController extends Controller
      */
     private function usageValueQuery(bool $withServiceName = true): Builder
     {
-        $query = ReportBranchScope::applyCurrent(DB::table('customer_service_package_usages as u'), 'u.store_location_id')
-            ->leftJoin('customer_service_packages as csp_value', 'csp_value.id', '=', 'u.customer_service_package_id')
-            ->leftJoin('customer_service_package_balances as b_value', function ($join) {
-                $join->on('b_value.customer_service_package_id', '=', 'u.customer_service_package_id')
-                    ->on('b_value.booking_service_id', '=', 'u.booking_service_id');
-            })
-            ->leftJoin('service_package_items as spi_value', function ($join) {
-                $join->on('spi_value.service_package_id', '=', 'csp_value.service_package_id')
-                    ->on('spi_value.booking_service_id', '=', 'u.booking_service_id');
-            });
+        $query = ReportBranchScope::applyCurrent(DB::table('customer_service_package_usages as u'), 'u.store_location_id');
+
+        // Usage snapshot is enough for redemption value; skip fallback joins.
+        if (! $this->hasUsage('redemption_value_snapshot')) {
+            $query->leftJoin('customer_service_packages as csp_value', 'csp_value.id', '=', 'u.customer_service_package_id')
+                ->leftJoin('customer_service_package_balances as b_value', function ($join) {
+                    $join->on('b_value.customer_service_package_id', '=', 'u.customer_service_package_id')
+                        ->on('b_value.booking_service_id', '=', 'u.booking_service_id');
+                });
+
+            if (! $this->hasBalance('redemption_value_snapshot')) {
+                $query->leftJoin('service_package_items as spi_value', function ($join) {
+                    $join->on('spi_value.service_package_id', '=', 'csp_value.service_package_id')
+                        ->on('spi_value.booking_service_id', '=', 'u.booking_service_id');
+                });
+            }
+        }
 
         if ($withServiceName) {
             $query->leftJoin('booking_services as bs', 'bs.id', '=', 'u.booking_service_id');
@@ -363,6 +466,20 @@ class PackageDashboardAnalyticsController extends Controller
             && $this->schemaHasTable('customer_service_package_usages');
     }
 
+    private function warmPackageSchema(): void
+    {
+        $this->warmSchemaTables([
+            'service_packages',
+            'service_package_items',
+            'customer_service_packages',
+            'customer_service_package_balances',
+            'customer_service_package_usages',
+            'booking_services',
+            'order_items',
+            'orders',
+        ]);
+    }
+
     private function hasCsp(string $column): bool
     {
         return $this->schemaHasColumn('customer_service_packages', $column);
@@ -383,8 +500,18 @@ class PackageDashboardAnalyticsController extends Controller
         return ['completed', 'committed', 'consumed'];
     }
 
-    private function emptySummary(): array
+    private function emptySummary(bool $forOverview = false): array
     {
+        if ($forOverview) {
+            return [
+                'templates' => ['total' => 0, 'active' => 0, 'inactive' => 0],
+                'customers' => ['active_holders' => 0],
+                'balances' => ['remaining_redemptions' => 0, 'outstanding_service_value' => 0],
+                'sales' => ['net_package_sales' => 0],
+                'redemptions' => ['redeemed_value' => 0],
+            ];
+        }
+
         return [
             'templates' => ['total' => 0, 'active' => 0, 'inactive' => 0, 'missing_redemption_value_count' => 0],
             'customers' => ['active_holders' => 0, 'active_customer_packages' => 0],

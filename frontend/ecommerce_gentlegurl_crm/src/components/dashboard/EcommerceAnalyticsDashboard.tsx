@@ -10,7 +10,8 @@ type InventoryItem = {
   product: string
   sku_variant: string | null
   category: string
-  status: string
+  /** Present on legacy ecommerce API; omitted from overview first-paint payload. */
+  status?: string
   current_stock: number
   cost_per_unit: number | null
   retail_price: number
@@ -19,7 +20,9 @@ type InventoryItem = {
   potential_profit: number
   missing_cost: boolean
   branch_inventory_breakdown: Array<{ store_location_id: number; branch_name: string; quantity: number; is_low: boolean }>
-  low_branches: Array<{ store_location_id: number; branch_name: string; quantity: number; is_low: boolean }>
+  /** Present on legacy ecommerce API; omitted from overview first-paint payload. */
+  low_branches?: Array<{ store_location_id: number; branch_name: string; quantity: number; is_low: boolean }>
+  has_branch_low_stock?: boolean
 }
 
 export type AnalyticsResponse = {

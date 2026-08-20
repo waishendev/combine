@@ -8,12 +8,32 @@ import { useBranch } from '@/contexts/BranchContext'
 const PER_PAGE = 10
 
 type Summary = {
-  templates: { total: number; active: number; inactive: number; missing_redemption_value_count: number }
-  customers: { active_holders: number; active_customer_packages: number }
+  templates: {
+    total: number
+    active: number
+    inactive: number
+    /** Legacy summary only; omitted from overview first-paint payload. */
+    missing_redemption_value_count?: number
+  }
+  customers: {
+    active_holders: number
+    /** Legacy summary only; omitted from overview first-paint payload. */
+    active_customer_packages?: number
+  }
   balances: { remaining_redemptions: number; outstanding_service_value: number }
-  sales: { gross_package_sales: number; refund_amount: number; net_package_sales: number }
-  redemptions: { redeemed_qty: number; redeemed_value: number }
-  status: { expiring_soon: number; exhausted: number; expired: number; cancelled: number }
+  sales: {
+    net_package_sales: number
+    /** Legacy summary only; omitted from overview first-paint payload. */
+    gross_package_sales?: number
+    refund_amount?: number
+  }
+  redemptions: {
+    redeemed_value: number
+    /** Legacy summary only; omitted from overview first-paint payload. */
+    redeemed_qty?: number
+  }
+  /** Legacy summary only; omitted from overview first-paint payload. */
+  status?: { expiring_soon: number; exhausted: number; expired: number; cancelled: number }
 }
 
 type Page<T> = { data: T[]; current_page: number; last_page: number; total: number }
@@ -24,7 +44,8 @@ type Liability = {
   package: string
   purchased_from: string
   purchase_date: string
-  started_at: string | null
+  /** Legacy list / detail only; omitted from overview first-paint list. */
+  started_at?: string | null
   expires_at: string | null
   status: string
   total_qty: number

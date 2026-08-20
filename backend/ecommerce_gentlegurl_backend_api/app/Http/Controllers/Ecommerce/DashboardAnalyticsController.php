@@ -25,10 +25,23 @@ class DashboardAnalyticsController extends Controller
     /**
      * Shared payload builder for the legacy ecommerce endpoint and the overview API.
      *
+     * @param  bool  $forOverview  Slim first-paint fields only (CRM /dashboard).
      * @return array<string, mixed>
      */
-    public function buildEcommercePayload(Request $request, StoreLocationAccessService $access): array
+    public function buildEcommercePayload(Request $request, StoreLocationAccessService $access, bool $forOverview = false): array
     {
+        $this->warmSchemaTables([
+            'products',
+            'product_variants',
+            'order_items',
+            'orders',
+            'return_requests',
+            'store_location_product',
+            'store_location_product_inventories',
+            'product_categories',
+            'categories',
+        ]);
+
         $this->branchScope = ReportBranchScope::fromRequest($request, $access);
         $lowStockOnly = $request->boolean('low_stock');
         $missingCostOnly = $request->boolean('missing_cost');
@@ -47,13 +60,13 @@ class DashboardAnalyticsController extends Controller
             $categoryId,
             $perPage,
             $page,
+            $forOverview,
         ) {
             $summary = DB::table($tmp.' as i')->selectRaw(
                 'COUNT(DISTINCT product_id) as active_count, COUNT(*) as sku_count, SUM(stock) as current_stock_qty, SUM(CASE WHEN cost_price IS NULL THEN 1 ELSE 0 END) as missing_cost_count, SUM(CASE WHEN min_branch_stock <= low_stock_threshold THEN 1 ELSE 0 END) as low_stock_count, SUM(stock * COALESCE(cost_price, 0)) as current_cost, SUM(stock * retail_price) as retail_value'
             )->first();
 
-            $grossSales = $this->grossProductSales();
-            $refundAmount = $this->ecommerceRefundAmount();
+            [$grossSales, $refundAmount] = $this->grossProductSalesAndRefunds();
 
             $categoryAggregate = $this->categoryAggregateExpression();
             $detailQuery = DB::table($tmp.' as i')
@@ -81,29 +94,34 @@ class DashboardAnalyticsController extends Controller
                 $detailQuery->whereNull('i.cost_price');
             }
 
-            $total = (int) DB::query()->fromSub(clone $detailQuery, 'count_sub')->count();
-            $items = (clone $detailQuery)->orderBy('i.product_name')->forPage($page, $perPage)->get();
-            $rows = new LengthAwarePaginator($items, $total, $perPage, $page, [
-                'path' => $request->url(),
-                'query' => $request->query(),
-            ]);
+            // Unfiltered active catalog: detail rows === inventory UNION rows === summary.sku_count.
+            $unfilteredActive = $status !== 'inactive'
+                && $search === ''
+                && ! is_numeric($categoryId)
+                && ! (is_string($categoryId) && trim($categoryId) !== '')
+                && ! $lowStockOnly
+                && ! $missingCostOnly;
 
-            $breakdowns = $this->branchInventoryBreakdowns(collect($rows->items()));
-            $rows->through(function ($row) use ($breakdowns) {
+            $total = $unfilteredActive
+                ? (int) ($summary->sku_count ?? 0)
+                : (int) DB::query()->fromSub(clone $detailQuery, 'count_sub')->count();
+            $items = (clone $detailQuery)->orderBy('i.product_name')->forPage($page, $perPage)->get();
+            $breakdowns = $this->branchInventoryBreakdowns(collect($items));
+
+            $mapped = collect($items)->map(function ($row) use ($breakdowns, $forOverview) {
                 $stock = (int) $row->stock;
                 $cost = (float) ($row->cost_price ?? 0);
                 $retail = (float) $row->retail_price;
+                $key = $this->inventoryKey((int) $row->product_id, $row->variant_id);
+                $breakdown = $breakdowns[$key] ?? [];
 
-                return [
+                $payload = [
                     'product_id' => (int) $row->product_id,
                     'product' => $row->product_name,
                     'sku_variant' => $row->variant_title ? trim($row->variant_sku.' / '.$row->variant_title, ' /') : ($row->variant_sku ?: $row->product_sku),
                     'category' => $row->category ?: 'Uncategorized',
-                    'status' => $row->product_active ? 'Active' : 'Inactive',
                     'current_stock' => $stock,
-                    'has_branch_low_stock' => (int) $row->min_branch_stock <= (int) $row->low_stock_threshold,
-                    'branch_inventory_breakdown' => $breakdowns[$this->inventoryKey($row->product_id, $row->variant_id)] ?? [],
-                    'low_branches' => collect($breakdowns[$this->inventoryKey($row->product_id, $row->variant_id)] ?? [])->where('is_low', true)->values()->all(),
+                    'branch_inventory_breakdown' => $breakdown,
                     'cost_per_unit' => $row->cost_price === null ? null : $cost,
                     'retail_price' => $retail,
                     'inventory_cost' => $stock * $cost,
@@ -111,11 +129,31 @@ class DashboardAnalyticsController extends Controller
                     'potential_profit' => ($stock * $retail) - ($stock * $cost),
                     'missing_cost' => $row->cost_price === null,
                 ];
-            });
+
+                if (! $forOverview) {
+                    $payload['status'] = $row->product_active ? 'Active' : 'Inactive';
+                    $payload['has_branch_low_stock'] = (int) $row->min_branch_stock <= (int) $row->low_stock_threshold;
+                    $payload['low_branches'] = collect($breakdown)->where('is_low', true)->values()->all();
+                }
+
+                return $payload;
+            })->all();
 
             $currentCost = (float) ($summary->current_cost ?? 0);
             $retailValue = (float) ($summary->retail_value ?? 0);
             $profit = $retailValue - $currentCost;
+
+            $itemsPayload = $forOverview
+                ? [
+                    'data' => $mapped,
+                    'current_page' => $page,
+                    'last_page' => max(1, (int) ceil($total / $perPage)),
+                    'total' => $total,
+                ]
+                : (new LengthAwarePaginator($mapped, $total, $perPage, $page, [
+                    'path' => $request->url(),
+                    'query' => $request->query(),
+                ]));
 
             return [
                 'products' => [
@@ -137,7 +175,7 @@ class DashboardAnalyticsController extends Controller
                     'refund_available' => $this->refundsAreAvailable(),
                     'net_product_sales' => round($grossSales - $refundAmount, 2),
                 ],
-                'items' => $rows,
+                'items' => $itemsPayload,
             ];
         });
     }
@@ -261,41 +299,66 @@ class DashboardAnalyticsController extends Controller
 
     private function grossProductSales(): float
     {
+        return $this->grossProductSalesAndRefunds()[0];
+    }
+
+    private function ecommerceRefundAmount(): float
+    {
+        return $this->grossProductSalesAndRefunds()[1];
+    }
+
+    /**
+     * One round-trip for both sales totals (same filters / payment set).
+     *
+     * @return array{0: float, 1: float}
+     */
+    private function grossProductSalesAndRefunds(): array
+    {
         $lineTotal = $this->firstExistingColumnExpression('oi', 'order_items', [
             'effective_line_total',
             'line_total_snapshot',
             'line_total',
         ], '0');
 
-        return (float) $this->branchScope->apply(DB::table('order_items as oi'), 'o.store_location_id')
+        $salesQuery = $this->branchScope->apply(DB::table('order_items as oi'), 'o.store_location_id')
+            ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->where('oi.is_package', false)
+            ->whereIn('o.payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
+            ->whereNotIn('o.status', ['cancelled', 'voided'])
+            ->selectRaw("SUM(COALESCE({$lineTotal}, 0))");
+
+        $refundQuery = null;
+        if ($this->schemaHasColumn('orders', 'refund_total')) {
+            $refundQuery = $this->branchScope->apply(DB::table('orders'), 'orders.store_location_id')
+                ->whereIn('payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
+                ->whereNotIn('status', ['cancelled', 'voided'])
+                ->selectRaw('SUM(COALESCE(refund_total, 0))');
+        } elseif ($this->schemaHasTable('return_requests') && $this->schemaHasColumn('return_requests', 'refund_amount')) {
+            $refundQuery = $this->branchScope->apply(DB::table('return_requests as rr'), 'o.store_location_id')
+                ->join('orders as o', 'o.id', '=', 'rr.order_id')
+                ->whereIn('o.payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
+                ->whereNotIn('o.status', ['cancelled', 'voided'])
+                ->selectRaw('SUM(COALESCE(rr.refund_amount, 0))');
+        }
+
+        if ($refundQuery) {
+            $row = DB::selectOne(
+                'select ('.$salesQuery->toSql().') as gross, ('.$refundQuery->toSql().') as refund',
+                array_merge($salesQuery->getBindings(), $refundQuery->getBindings())
+            );
+
+            return [(float) ($row->gross ?? 0), (float) ($row->refund ?? 0)];
+        }
+
+        $gross = (float) $this->branchScope->apply(DB::table('order_items as oi'), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
             ->where('oi.is_package', false)
             ->whereIn('o.payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
             ->whereNotIn('o.status', ['cancelled', 'voided'])
             ->selectRaw("SUM(COALESCE({$lineTotal}, 0)) as total")
             ->value('total');
-    }
 
-    private function ecommerceRefundAmount(): float
-    {
-        if ($this->schemaHasColumn('orders', 'refund_total')) {
-            return (float) $this->branchScope->apply(DB::table('orders'), 'orders.store_location_id')
-                ->whereIn('payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
-                ->whereNotIn('status', ['cancelled', 'voided'])
-                ->selectRaw('SUM(COALESCE(refund_total, 0)) as total')
-                ->value('total');
-        }
-
-        if ($this->schemaHasTable('return_requests') && $this->schemaHasColumn('return_requests', 'refund_amount')) {
-            return (float) $this->branchScope->apply(DB::table('return_requests as rr'), 'o.store_location_id')
-                ->join('orders as o', 'o.id', '=', 'rr.order_id')
-                ->whereIn('o.payment_status', ['paid', 'completed', 'refunded', 'partially_refunded'])
-                ->whereNotIn('o.status', ['cancelled', 'voided'])
-                ->selectRaw('SUM(COALESCE(rr.refund_amount, 0)) as total')
-                ->value('total');
-        }
-
-        return 0.0;
+        return [$gross, 0.0];
     }
 
     private function refundsAreAvailable(): bool

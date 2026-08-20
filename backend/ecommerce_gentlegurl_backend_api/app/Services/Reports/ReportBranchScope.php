@@ -18,6 +18,12 @@ final class ReportBranchScope
 
     public static function fromRequest(Request $request, StoreLocationAccessService $access): self
     {
+        $cacheKey = self::class;
+        $cached = $request->attributes->get($cacheKey);
+        if ($cached instanceof self) {
+            return $cached;
+        }
+
         /** @var User|null $user */
         $user = $request->user();
         abort_unless($user, 401);
@@ -28,7 +34,10 @@ final class ReportBranchScope
             $id = (int) $requested;
             $access->authorizeStoreLocation($user, $id);
 
-            return new self([$id], $id, false);
+            $scope = new self([$id], $id, false);
+            $request->attributes->set($cacheKey, $scope);
+
+            return $scope;
         }
 
         $ids = $access->accessibleStoreLocations($user)
@@ -36,7 +45,10 @@ final class ReportBranchScope
 
         // Historical NULL rows are auditable only in All Branches; they are never
         // silently attributed to a selected Branch.
-        return new self($ids, null, true);
+        $scope = new self($ids, null, true);
+        $request->attributes->set($cacheKey, $scope);
+
+        return $scope;
     }
 
     /** Safe default for operational reports: omitted scope means authenticated accessible All. */
