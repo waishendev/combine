@@ -437,6 +437,201 @@ class PosController extends Controller
         }
     }
 
+    /**
+     * Lightweight schedule feed. The calendar genuinely needs every row in its
+     * visible month, but it does not need the heavyweight settlement DTO used by
+     * appointmentDetail. Keep filtering/counting in SQL and enrich only with the
+     * small package-status map needed for the calendar's paid/unpaid tone.
+     */
+    public function appointmentCalendar(Request $request)
+    {
+        $profile = (bool) config('app.debug') && $request->boolean('profile');
+        $connection = DB::connection();
+        if ($profile) {
+            $connection->flushQueryLog();
+            $connection->enableQueryLog();
+        }
+        $startedAt = hrtime(true);
+
+        try {
+            $query = trim((string) $request->query('q', ''));
+            $page = max(1, (int) $request->query('page', 1));
+            $perPage = max(1, min(500, (int) $request->query('per_page', 100)));
+            $hasRange = $request->filled('from_date') && $request->filled('to_date');
+            $includeTerminalStatuses = $request->boolean('include_terminal_statuses');
+            $activeStatuses = ['HOLD', 'CONFIRMED', 'PENDING'];
+            $terminalStatuses = ['CANCELLED', 'NOTIFIED_CANCELLATION', 'LATE_CANCELLATION', 'NO_SHOW', 'EXPIRED', 'VOIDED'];
+
+            $builder = Booking::query()
+                ->select([
+                    'id', 'store_location_id', 'booking_code', 'customer_id', 'guest_name', 'guest_phone',
+                    'guest_email', 'staff_id', 'service_id', 'start_at', 'end_at', 'status', 'payment_status',
+                    'settled_service_amount',
+                ])
+                ->with([
+                    'customer:id,name,phone,email',
+                    'service:id,name,cn_name,price_mode,price_range_min,price_range_max',
+                    'staff:id,name',
+                    'storeLocation:id,name,code',
+                ]);
+            $this->applyPosAppointmentBranchScope($builder, $request);
+
+            if ($query !== '') {
+                $builder->where(function ($search) use ($query) {
+                    $search->where('booking_code', 'like', "%{$query}%")
+                        ->orWhereHas('customer', fn ($customer) => $customer->where('name', 'like', "%{$query}%"))
+                        ->orWhereHas('service', fn ($service) => $service
+                            ->where('name', 'like', "%{$query}%")
+                            ->orWhere('cn_name', 'like', "%{$query}%"))
+                        ->orWhere('guest_name', 'like', "%{$query}%")
+                        ->orWhere('guest_phone', 'like', "%{$query}%")
+                        ->orWhere('guest_email', 'like', "%{$query}%");
+                });
+            }
+
+            if ($hasRange) {
+                PosAppointmentStartAtFilter::apply(
+                    $builder,
+                    (string) $request->string('from_date'),
+                    (string) $request->string('to_date'),
+                );
+            } elseif ($request->filled('date')) {
+                PosAppointmentStartAtFilter::apply($builder, null, null, (string) $request->string('date'));
+            }
+            if ($request->filled('customer_id')) {
+                $builder->where('customer_id', (int) $request->query('customer_id'));
+            }
+            if ($request->filled('staff_id')) {
+                $builder->where('staff_id', (int) $request->query('staff_id'));
+            }
+
+            if ($request->filled('status')) {
+                $builder->where('status', strtoupper(trim((string) $request->query('status'))));
+            } elseif ($includeTerminalStatuses) {
+                $builder->whereIn('status', array_merge($activeStatuses, ['COMPLETED'], $terminalStatuses));
+            } else {
+                // Completed+PAID is normally closed. A reserved package or unfinished
+                // range price still needs to remain on the operational schedule.
+                $builder->where(function ($status) use ($activeStatuses) {
+                    $status->whereIn('status', $activeStatuses)
+                        ->orWhere(function ($completed) {
+                            $completed->where('status', 'COMPLETED')
+                                ->where(function ($open) {
+                                    $open->where('payment_status', '!=', 'PAID')
+                                        ->orWhereNull('payment_status')
+                                        ->orWhere(function ($rangePrice) {
+                                            $rangePrice->whereNull('settled_service_amount')
+                                                ->whereHas('service', fn ($service) => $service->where('price_mode', 'range'));
+                                        })
+                                        ->orWhereExists(function ($usage) {
+                                            $usage->selectRaw('1')
+                                                ->from('customer_service_package_usages')
+                                                ->whereColumn('customer_service_package_usages.booking_id', 'bookings.id')
+                                                ->where('customer_service_package_usages.status', 'reserved');
+                                        });
+                                });
+                        });
+                });
+            }
+
+            $paginator = $builder->orderBy('start_at')->orderBy('id')->paginate($perPage, ['*'], 'page', $page);
+            $bookings = collect($paginator->items());
+            $bookingIds = $bookings->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $packageUsages = $bookingIds === [] ? collect() : CustomerServicePackageUsage::query()
+                ->whereIn('booking_id', $bookingIds)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->orderByDesc('id')
+                ->get(['id', 'booking_id', 'status', 'used_qty'])
+                ->unique(fn (CustomerServicePackageUsage $usage) => (int) $usage->booking_id)
+                ->keyBy(fn (CustomerServicePackageUsage $usage) => (int) $usage->booking_id);
+
+            $rows = $bookings->map(function (Booking $booking) use ($packageUsages) {
+                $usage = $packageUsages->get((int) $booking->id);
+                $tone = $this->appointmentCalendarFinancialTone(
+                    (string) $booking->payment_status,
+                    $usage?->status,
+                );
+                $guestName = trim((string) ($booking->guest_name ?? ''));
+
+                return [
+                    'id' => (int) $booking->id,
+                    'store_location_id' => $booking->store_location_id ? (int) $booking->store_location_id : null,
+                    'store_location' => $booking->storeLocation ? ['id' => (int) $booking->storeLocation->id, 'name' => (string) $booking->storeLocation->name, 'code' => (string) $booking->storeLocation->code] : null,
+                    'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
+                    'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
+                    'customer_name' => str_starts_with(strtoupper($guestName), 'UNKNOWN') ? 'Walk-in / Unknown' : (string) (($booking->customer?->name ?? '') ?: ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
+                    'customer_phone' => $booking->customer?->phone,
+                    'customer_email' => $booking->customer?->email,
+                    'guest_name' => $guestName !== '' ? $guestName : null,
+                    'guest_phone' => $booking->guest_phone,
+                    'guest_email' => $booking->guest_email,
+                    'service_names' => [(string) ($booking->service?->name ?? '-')],
+                    'service_cn_names' => array_values(array_filter([(string) ($booking->service?->cn_name ?? '')])),
+                    'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
+                    'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+                    'staff_id' => $booking->staff_id ? (int) $booking->staff_id : null,
+                    'staff_name' => (string) ($booking->staff?->name ?? '-'),
+                    'status' => (string) $booking->status,
+                    'payment_status' => $tone['payment_status'],
+                    'deposit_paid' => 0.0,
+                    'balance_due' => $tone['balance_due'],
+                    'amount_due_now' => $tone['amount_due_now'],
+                    'settlement_paid' => $tone['settlement_paid'],
+                    'package_status' => $usage ? ['status' => (string) $usage->status, 'used_qty' => (int) $usage->used_qty] : null,
+                ];
+            })->values();
+
+            $payload = [
+                'data' => $rows,
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'pending_cancellation_requests_count' => BookingCancellationRequest::query()
+                    ->whereHas('booking', function ($scope) use ($request) {
+                        $this->applyPosAppointmentBranchScope($scope, $request);
+                    })->where('status', 'pending')->count(),
+            ];
+
+            if ($profile) {
+                $queries = collect($connection->getQueryLog());
+                $payload['profile'] = [
+                    'duration_ms' => round((hrtime(true) - $startedAt) / 1_000_000, 2),
+                    'query_count' => $queries->count(),
+                    'sql_time_ms' => round((float) $queries->sum('time'), 2),
+                    'slowest_sql_ms' => round((float) $queries->max('time'), 2),
+                    'duplicate_sql_count' => $queries->groupBy('query')->sum(fn ($duplicates) => max(0, $duplicates->count() - 1)),
+                    'rows_hydrated' => $bookings->count(),
+                    'rows_returned' => $rows->count(),
+                    'package_rows_loaded' => $packageUsages->count(),
+                    'financial_calculations' => 0,
+                    'visit_calculations' => 0,
+                ];
+            }
+
+            return $this->respond($payload);
+        } finally {
+            if ($profile) {
+                $connection->disableQueryLog();
+            }
+        }
+    }
+
+    /** @return array{payment_status:string,balance_due:float,amount_due_now:float,settlement_paid:float} */
+    protected function appointmentCalendarFinancialTone(string $paymentStatus, ?string $packageStatus): array
+    {
+        $paid = strtoupper($paymentStatus) === 'PAID' && strtolower((string) $packageStatus) !== 'reserved';
+
+        return [
+            'payment_status' => $paid ? 'PAID' : ($paymentStatus !== '' ? $paymentStatus : 'UNPAID'),
+            // Exact money remains detail-only. Persisted payment_status supplies
+            // the calendar classification without inventing monetary values.
+            'balance_due' => 0.0,
+            'amount_due_now' => 0.0,
+            'settlement_paid' => $paid ? 1.0 : 0.0,
+        ];
+    }
+
     protected function runAppointmentSearch(Request $request)
     {
         $query = trim((string) $request->query('q', ''));

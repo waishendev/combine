@@ -156,6 +156,8 @@ export default function PosCashShiftGate({
   const [closeModalOpen, setCloseModalOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const currentShiftRequest = useRef(0)
+  const currentShiftAbortController = useRef<AbortController | null>(null)
+  const currentShiftInFlightBranch = useRef<number | null>(null)
 
   const loadStaffOptions = useCallback(async () => {
     setStaffLoading(true)
@@ -175,6 +177,11 @@ export default function PosCashShiftGate({
   }, [defaultStaffId])
 
   const loadCurrentShift = useCallback(async () => {
+    if (selectedBranchId && currentShiftInFlightBranch.current === selectedBranchId) return null
+    currentShiftAbortController.current?.abort()
+    const controller = new AbortController()
+    currentShiftAbortController.current = controller
+    currentShiftInFlightBranch.current = selectedBranchId
     const request = ++currentShiftRequest.current
     setShift(null)
     setCloseModalShift(null)
@@ -189,7 +196,7 @@ export default function PosCashShiftGate({
     }
     setCashShiftLoading(true)
     try {
-      const res = await fetch(`/api/proxy/pos/cash-shifts/current?store_location_id=${selectedBranchId}`, { cache: 'no-store' })
+      const res = await fetch(`/api/proxy/pos/cash-shifts/current?store_location_id=${selectedBranchId}`, { cache: 'no-store', signal: controller.signal })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to check current cash shift.')
       const currentShift = (json?.data?.shift ?? null) as PosCashShift | null
@@ -201,10 +208,12 @@ export default function PosCashShiftGate({
       }
       return currentShift
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return null
       if (request !== currentShiftRequest.current) return null
       setError(err instanceof Error ? err.message : 'Unable to check current cash shift.')
       return null
     } finally {
+      if (currentShiftInFlightBranch.current === selectedBranchId) currentShiftInFlightBranch.current = null
       if (request === currentShiftRequest.current) setCashShiftLoading(false)
     }
   }, [selectedBranchId])
