@@ -8,6 +8,7 @@ use Database\Seeders\FreshInstallBranchOneSeeder;
 use Database\Seeders\FreshInstallBranchTwoSeeder;
 use Database\Seeders\FreshInstallMultiBranchQaDataSeeder;
 use Database\Seeders\FreshInstallGlobalQaCatalogSeeder;
+use Database\Seeders\FreshInstallSharedBranchAdminSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -27,6 +28,31 @@ class FreshInstallMultiBranchSeederTest extends TestCase
             'code' => 'CCC', 'name' => 'Branch CCC', 'admin_email' => 'ccc@example.test', 'admin_username' => 'ccc-admin',
         ]);
         config()->set('multi_branch.fresh_seed_admin_password', 'test-password');
+        config()->set('multi_branch.fresh_seed_shared_admin', [
+            'email' => 'shared@example.test', 'username' => 'shared-admin',
+        ]);
+    }
+
+    public function test_shared_admin_can_access_both_branches_and_is_idempotent(): void
+    {
+        config()->set('multi_branch.fresh_seed_profile', 'both');
+        $this->seed([FreshInstallBranchOneSeeder::class, FreshInstallBranchTwoSeeder::class]);
+        $this->seed(FreshInstallSharedBranchAdminSeeder::class);
+        $this->seed(FreshInstallSharedBranchAdminSeeder::class);
+
+        $shared = User::where('email', 'shared@example.test')->firstOrFail();
+        $this->assertSame(['AAA', 'CCC'], $shared->storeLocations()->orderBy('code')->pluck('code')->all());
+        $this->assertSame(2, DB::table('store_location_user')->where('user_id', $shared->id)->count());
+    }
+
+    public function test_shared_admin_only_gets_branch_one_in_single_branch_profile(): void
+    {
+        config()->set('multi_branch.fresh_seed_profile', 'branch_one');
+        $this->seed(FreshInstallBranchOneSeeder::class);
+        $this->seed(FreshInstallSharedBranchAdminSeeder::class);
+
+        $shared = User::where('email', 'shared@example.test')->firstOrFail();
+        $this->assertSame(['AAA'], $shared->storeLocations()->pluck('code')->all());
     }
 
     public function test_branch_seeders_create_isolated_admins_and_are_idempotent(): void

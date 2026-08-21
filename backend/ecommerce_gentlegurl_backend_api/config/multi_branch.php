@@ -15,6 +15,10 @@ return [
     'fresh_seed_profile' => env('MULTI_BRANCH_SEED_PROFILE', 'both'),
     'fresh_seed_qa_data' => env('MULTI_BRANCH_SEED_QA_DATA', true),
     'fresh_seed_admin_password' => env('MULTI_BRANCH_SEED_ADMIN_PASSWORD', 'password'),
+    'fresh_seed_shared_admin' => [
+        'email' => env('MULTI_BRANCH_SEED_SHARED_ADMIN_EMAIL', 'branches.admin@example.com'),
+        'username' => env('MULTI_BRANCH_SEED_SHARED_ADMIN_USERNAME', 'branchesadmin'),
+    ],
     'fresh_seed_branches' => [
         'branch_one' => [
             'code' => env('MULTI_BRANCH_SEED_BRANCH_ONE_CODE', 'PNG'),

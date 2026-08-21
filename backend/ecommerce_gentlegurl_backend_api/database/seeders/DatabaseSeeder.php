@@ -39,6 +39,7 @@ class DatabaseSeeder extends Seeder
             ...($profile === 'branch_one'
                 ? []
                 : [FreshInstallBranchTwoSeeder::class]),
+            FreshInstallSharedBranchAdminSeeder::class,
 
             GlobalSeoSeedeer::class,
             SettingSeeder::class,
