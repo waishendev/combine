@@ -126,3 +126,40 @@ Example staging request (use an authenticated browser session and an authorized 
 4. Repeat for specific PNG, another authorized Branch, accessible All scope, Staff/customer/search/status filters, a month with 300+ rows, and pages 1/2 at a smaller page size.
 
 No local before/after wall-clock or PostgreSQL plan is claimed: this container has no installed Composer dependencies or reachable representative database. The measured-in-test target is the constant query budget and page hydration count; real response time, SQL time and buffers remain a staging release gate. A normal representative month should be sub-second to a few seconds, not tens of seconds.
+
+## Dedicated checkout boot performance pass
+
+### Source-confirmed old pipeline and request inventory
+
+The reported baseline is **about 11,000 ms from navigation to usable checkout** in a real browser. No HAR or representative database is available in this container, so that total cannot honestly be assigned to individual endpoints and no invented before/after milliseconds appear below. Source tracing found that the Cash Shift gate mounted the checkout workspace after Branch transport setup, then the workspace launched the following independent work together. The generic Product management response was the critical payload and eager work competed with it for browser, proxy, PHP and database capacity.
+
+| Class | Request and parameters | Branch attribution | Trigger | Blocks Product grid? | Overlap / immediate need |
+|---|---|---|---|---|---|
+| Critical | `GET /pos/cash-shifts/current?store_location_id={branch}` | explicit, authorized | `PosCashShiftGate` Branch effect | checkout actions, not shell/catalog request | required once per Branch |
+| Critical | formerly `GET /ecommerce/products?page=1&per_page=100&is_active=true&is_reward_only=false`; now `GET /pos/products/catalog` with those paging/filter keys plus `store_location_id` | now explicit and authorization checked | Product query effect | yes | old endpoint returned management/video/all-Branch/breakdown fields |
+| Critical | `GET /ecommerce/categories?page=1&per_page=200&is_active=true&branch_store_location_id={branch}` | explicit | workspace Branch effect | no; filters fill independently | category relation overlaps minimally, but filter metadata remains separate |
+| Secondary | `GET /staffs?is_active=1&store_location_id={branch}` (also gate Staff lookup when allowed) | explicit | workspace/gate | no | Staff selection/open-close shift |
+| Secondary | `GET /booking/services` and `/booking/service-categories` | current proxy/user scope | formerly mount; now Book Service tab | no | unused on Product tab |
+| Secondary | `GET /admin/booking/products?is_active=1&per_page=200[&category_id]` | existing backend scope | formerly mount; now Booking Products tab | no | unused on Product tab |
+| Secondary | `GET /service-packages?per_page=100` | global Package rules | formerly mount; now Package tab | no | eligibility is not evaluated here |
+| Secondary | `GET /pos/appointments?per_page=50&unpaid_only=1` | selected Branch supplied by POS transport | formerly mount; now Settlement tab | no | unused until settlement interaction |
+| Lazy | `/pos/members/search?page=1&per_page=10&q=...` | Member identity remains global | member panel, 300 ms, minimum 3 chars | no | never preloads Members |
+| Lazy | member detail/wallet/package-availability, Product/service detail, vouchers and eligibility | selected entity/cart inputs | selection/modal/action effects | no | no initial request |
+| Optional | thermal-printer settings | selected Branch | printer option | no | failure/loading never gates shell or grid |
+| Existing cart | `GET /pos/cart` | selected Branch supplied by POS transport | mount/focus lifecycle | no | restores an in-progress sale |
+
+The previous critical path was Branch context → Branch fetch transport installation → Cash Shift gate/workspace mount → generic Product management listing while secondary/list/cart calls competed in parallel → React normalization/grid render and images. It was not a category-then-Product waterfall: those requests already started independently. Confirmed architectural bottlenecks were the detail-grade generic Product read model and eager service, booking Product, Package and settlement payloads irrelevant to the first Product sale. Exact endpoint ranking remains a staging measurement requirement; source inspection is not presented as latency measurement.
+
+### New first-paint, backend and Branch-switch strategy
+
+The shell and Cash Shift status render independently. Product catalogue and categories begin without waiting for secondary tabs; Cash Shift gates payment actions, not safe catalogue retrieval. Book Service, Booking Product, Package and Settlement data start only when selected. Member search keeps its threshold/debounce and printer remains optional.
+
+Product requests are keyed by Branch, explicitly send `store_location_id`, clear Branch-owned Products, abort on cleanup, and ignore superseded responses. Branch A therefore cannot publish after switching to B. Unopened/global resources are not fetched merely because Header Branch changes.
+
+The authorized catalogue selects grid identity/pricing/stock columns and eager-loads minimal images, categories and active variants. Availability uses `store_location_product.is_available`; current Product/variant stock is one bulk read from `store_location_product_inventories`. It does not sum movement history, load video/SEO/descriptions/all StoreLocations, emit inventory breakdowns, or evaluate Promotions/Package eligibility. Its bounded non-empty query shape is count + page + images + categories/pivot + variants + inventory snapshot (normally six queries). Existing Phase 8 indexes cover `(store_location_id, product_id)` and `(store_location_id, product_id, product_variant_id)`, so this pass adds no migration and requires no backfill.
+
+### Measurement and manual QA release gate
+
+In staging DevTools enable Preserve log and Disable cache. At PNG record T0 navigation, T1 shell visible, T2 Cash Shift complete, T3 catalogue complete/grid clickable, and T4 each secondary tab complete. Export a HAR and rank initial endpoints by Waiting/TTFB and total duration. Repeat PNG → another authorized Branch; verify old catalogue/Cash Shift cancellation, no stale cards, one catalogue URL per logical load, no unopened lookup refetch, and independently fail/throttle printer and optional endpoints.
+
+For catalogue diagnostics use Laravel Telescope or a request-scoped local query listener in staging (never permanent global SQL logging) to capture count, SQL total, slowest and duplicates; run emitted count/page/inventory SQL with `EXPLAIN (ANALYZE, BUFFERS)` against representative PostgreSQL data. The target is immediate T1 and T3 within 1–3 seconds, but production readiness remains conditional until baseline and new build are measured on identical data/network. T4 is separate and must not affect T3.
