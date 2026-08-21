@@ -5,21 +5,25 @@ namespace App\Http\Controllers\Admin\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\StaffMonthlySale;
 use App\Services\Booking\StaffCommissionService;
+use App\Services\ExpenseBranchScope;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
 
 class CommissionController extends Controller
 {
-    public function __construct(private readonly StaffCommissionService $staffCommissionService)
+    public function __construct(private readonly StaffCommissionService $staffCommissionService, private readonly StoreLocationAccessService $branchAccess)
     {
     }
 
     public function index(Request $request)
     {
         $type = $this->staffCommissionService->normalizeType($request->query('type', StaffCommissionService::TYPE_BOOKING));
+        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
 
         $query = StaffMonthlySale::query()
-            ->with('staff:id,name')
+            ->with(['staff:id,name', 'storeLocation:id,code,name'])
             ->where('type', $type);
+        $scope->apply($query);
 
         if ($request->filled('year')) {
             $query->where('year', (int) $request->query('year'));
@@ -44,6 +48,7 @@ class CommissionController extends Controller
         ]);
 
         $monthly = StaffMonthlySale::query()->findOrFail($id);
+        $this->authorizeMonthly($request, $monthly);
         if ($this->staffCommissionService->isFrozen($monthly)) {
             return $this->respondError('Frozen month cannot be overridden. Please reopen first.', 422);
         }
@@ -88,11 +93,12 @@ class CommissionController extends Controller
         $month = (int) $data['month'];
         $type = $this->staffCommissionService->normalizeType($data['type'] ?? StaffCommissionService::TYPE_BOOKING);
         $force = (bool) ($data['force'] ?? false);
+        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
 
         if (!empty($data['staff_id'])) {
-            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $data['staff_id'], $year, $month, $type, $force);
-            $row = $row->fresh('staff:id,name');
-            $this->staffCommissionService->logAction(
+            $rows = collect($this->staffCommissionService->recalculateForMonthAll($year, $month, $type, $force, $scope->storeLocationIds))
+                ->where('staff_id', (int) $data['staff_id'])->values();
+            foreach ($rows as $row) $this->staffCommissionService->logAction(
                 'RECALCULATE',
                 $row,
                 null,
@@ -106,12 +112,12 @@ class CommissionController extends Controller
                 'type' => $type,
                 'year' => $year,
                 'month' => $month,
-                'rows' => [$row],
-                'count' => 1,
+                'rows' => $rows->values(),
+                'count' => $rows->count(),
             ]);
         }
 
-        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type, $force);
+        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type, $force, $scope->storeLocationIds);
         $rowsCollection = collect($rows)->map(fn (StaffMonthlySale $row) => $row->fresh('staff:id,name'))->values();
         foreach ($rowsCollection as $row) {
             $this->staffCommissionService->logAction(
@@ -137,6 +143,7 @@ class CommissionController extends Controller
     public function freeze(Request $request, int $id)
     {
         $monthly = StaffMonthlySale::query()->findOrFail($id);
+        $this->authorizeMonthly($request, $monthly);
         $before = $monthly->only(['status', 'frozen_at', 'frozen_by']);
         $monthly = $this->staffCommissionService->freezeMonthly($monthly, optional($request->user())->id);
 
@@ -162,7 +169,9 @@ class CommissionController extends Controller
         $year = (int) $data['year'];
         $month = (int) $data['month'];
         $type = $this->staffCommissionService->normalizeType($data['type'] ?? StaffCommissionService::TYPE_BOOKING);
-        $rows = $this->staffCommissionService->monthRows($year, $month, $type);
+        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
+        $rows = $this->staffCommissionService->monthRows($year, $month, $type)
+            ->whereIn('store_location_id', $scope->storeLocationIds);
 
         foreach ($rows as $row) {
             $before = $row->only(['status', 'frozen_at', 'frozen_by']);
@@ -188,6 +197,7 @@ class CommissionController extends Controller
     public function reopen(Request $request, int $id)
     {
         $monthly = StaffMonthlySale::query()->findOrFail($id);
+        $this->authorizeMonthly($request, $monthly);
         $before = $monthly->only(['status', 'reopened_at', 'reopened_by']);
         $monthly = $this->staffCommissionService->reopenMonthly($monthly, optional($request->user())->id);
 
@@ -213,7 +223,9 @@ class CommissionController extends Controller
         $year = (int) $data['year'];
         $month = (int) $data['month'];
         $type = $this->staffCommissionService->normalizeType($data['type'] ?? StaffCommissionService::TYPE_BOOKING);
-        $rows = $this->staffCommissionService->monthRows($year, $month, $type);
+        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
+        $rows = $this->staffCommissionService->monthRows($year, $month, $type)
+            ->whereIn('store_location_id', $scope->storeLocationIds);
 
         foreach ($rows as $row) {
             $before = $row->only(['status', 'reopened_at', 'reopened_by']);
@@ -234,5 +246,11 @@ class CommissionController extends Controller
             'month' => $month,
             'updated_count' => $rows->count(),
         ]);
+    }
+
+    private function authorizeMonthly(Request $request, StaffMonthlySale $monthly): void
+    {
+        abort_if($monthly->store_location_id === null, 409, 'Legacy Unassigned commission rows are read-only until reconciled.');
+        $this->branchAccess->authorizeStoreLocation($request->user(), (int) $monthly->store_location_id);
     }
 }

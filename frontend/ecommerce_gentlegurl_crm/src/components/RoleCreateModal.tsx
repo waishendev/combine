@@ -112,6 +112,7 @@ interface RoleCreateModalProps {
   onSuccess: (role: RoleRowData) => void
   permissions: PermissionOption[]
   permissionsLoading: boolean
+  storeLocationId: number
 }
 
 type RoleApiPermission = {
@@ -161,6 +162,7 @@ const mapApiRoleToRow = (item: RoleApiItem): RoleRowData => {
     permissionCount: permissions.length,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
+    branchName: 'Current Branch',
   }
 }
 
@@ -181,6 +183,7 @@ export default function RoleCreateModal({
   onSuccess,
   permissions,
   permissionsLoading,
+  storeLocationId,
 }: RoleCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -249,6 +252,7 @@ export default function RoleCreateModal({
           description: form.description.trim() || null,
           is_active: true,
           permissions: form.permissionIds,
+          store_location_id: storeLocationId,
         }),
       })
 

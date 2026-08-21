@@ -66,6 +66,7 @@ const mapApiRoleToRow = (item: RoleApiItem): RoleRowData => {
     permissionCount: permissions.length,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
+    branchName: 'Current Branch',
   }
 }
 

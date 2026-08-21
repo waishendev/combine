@@ -10,6 +10,7 @@ import BookingCommissionOverrideModal from '@/components/booking/BookingCommissi
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { useBranch } from '@/contexts/BranchContext'
 
 type CommissionType = 'BOOKING' | 'ECOMMERCE'
 type CommissionStatus = 'OPEN' | 'FROZEN'
@@ -82,6 +83,7 @@ type Props = {
 export default function StaffCommissionsTable({ type, routeBasePath, countLabel }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { selectedBranchId } = useBranch()
 
   const resolvedParams = useMemo(() => {
     const parsedPage = Number(searchParams.get('page'))
@@ -189,6 +191,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     qs.set('type', type)
     qs.set('page', String(resolvedParams.page))
     qs.set('per_page', String(resolvedParams.perPage))
+    if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
 
     try {
       const response = await fetch(`/api/proxy/admin/booking/commissions?${qs.toString()}`, {
@@ -216,7 +219,13 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       if (signal?.aborted) return null
       return null
     }
-  }, [resolvedParams.staffId, resolvedParams.year, resolvedParams.month, resolvedParams.page, resolvedParams.perPage, type])
+  }, [resolvedParams.staffId, resolvedParams.year, resolvedParams.month, resolvedParams.page, resolvedParams.perPage, type, selectedBranchId])
+
+  useEffect(() => {
+    updateQuery({ page: String(DEFAULT_PAGE) })
+    // Header Branch changes are an external navigation dimension.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchId])
 
   const refetchTable = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) setLoading(true)

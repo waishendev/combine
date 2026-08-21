@@ -75,11 +75,16 @@ class User extends Authenticatable
             ->withTimestamps();
     }
 
+    public function branchRoles()
+    {
+        return $this->belongsToMany(Role::class, 'role_user_store_location')
+            ->withPivot('store_location_id')->withTimestamps();
+    }
+
     public function getAllPermissions(): Collection
     {
-        return $this->roles()
-            ->with('permissions')
-            ->get()
+        return $this->roles()->with('permissions')->get()
+            ->concat($this->branchRoles()->with('permissions')->get())
             ->flatMap(fn (Role $role) => $role->permissions)
             ->pluck('slug')
             ->unique()
@@ -110,6 +115,7 @@ class User extends Authenticatable
         return $this->roles()
             ->with('permissions')
             ->get()
+            ->concat($this->branchRoles()->with('permissions')->get())
             ->flatMap(fn (Role $role) => $role->permissions)
             ->unique('id')
             ->values();

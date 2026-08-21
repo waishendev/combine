@@ -35,25 +35,28 @@ class StaffCommissionService
             : self::TYPE_BOOKING;
     }
 
-    public function recalculateForStaffMonth(int $staffId, int $year, int $month, ?string $type = null, bool $force = false): StaffMonthlySale
+    public function recalculateForStaffMonth(int $staffId, int $year, int $month, ?string $type = null, bool $force = false, ?int $storeLocationId = null): StaffMonthlySale
+    {
+        if (! $storeLocationId) {
+            throw new \InvalidArgumentException('A persisted earning Branch is required for staff-month recalculation.');
+        }
+        $resolvedType = $this->normalizeType($type);
+
+        return $resolvedType === self::TYPE_ECOMMERCE
+            ? $this->recalculateEcommerceForStaffMonth($staffId, $year, $month, $force, $storeLocationId)
+            : $this->recalculateBookingForStaffMonth($staffId, $year, $month, $force, $storeLocationId);
+    }
+
+    public function recalculateForMonthAll(int $year, int $month, ?string $type = null, bool $force = false, ?array $storeLocationIds = null): array
     {
         $resolvedType = $this->normalizeType($type);
 
         return $resolvedType === self::TYPE_ECOMMERCE
-            ? $this->recalculateEcommerceForStaffMonth($staffId, $year, $month, $force)
-            : $this->recalculateBookingForStaffMonth($staffId, $year, $month, $force);
+            ? $this->recalculateEcommerceForMonthAll($year, $month, $force, $storeLocationIds)
+            : $this->recalculateBookingForMonthAll($year, $month, $force, $storeLocationIds);
     }
 
-    public function recalculateForMonthAll(int $year, int $month, ?string $type = null, bool $force = false): array
-    {
-        $resolvedType = $this->normalizeType($type);
-
-        return $resolvedType === self::TYPE_ECOMMERCE
-            ? $this->recalculateEcommerceForMonthAll($year, $month, $force)
-            : $this->recalculateBookingForMonthAll($year, $month, $force);
-    }
-
-    public function recalculateAllMonths(?int $staffId = null, ?string $type = null, bool $force = false): array
+    public function recalculateAllMonths(?int $staffId = null, ?string $type = null, bool $force = false, ?int $storeLocationId = null): array
     {
         $resolvedType = $this->normalizeType($type);
         $months = $resolvedType === self::TYPE_ECOMMERCE
@@ -66,9 +69,9 @@ class StaffCommissionService
             $monthValue = (int) $month['month'];
 
             if ($staffId) {
-                $results[] = $this->recalculateForStaffMonth($staffId, $year, $monthValue, $resolvedType, $force);
+                $results[] = $this->recalculateForStaffMonth($staffId, $year, $monthValue, $resolvedType, $force, $storeLocationId);
             } else {
-                $rows = $this->recalculateForMonthAll($year, $monthValue, $resolvedType, $force);
+                $rows = $this->recalculateForMonthAll($year, $monthValue, $resolvedType, $force, $storeLocationId ? [$storeLocationId] : []);
                 array_push($results, ...$rows);
             }
         }
@@ -125,7 +128,11 @@ class StaffCommissionService
 
         $year = (int) $completedAt->format('Y');
         $month = (int) $completedAt->format('m');
-        $monthlyRows = $this->resolveOrCreateBookingMonthlyRows($commissionRows->pluck('staff_id')->unique()->values(), $year, $month);
+        $branchId = $booking->store_location_id;
+        if (! $branchId) {
+            return; // Unsupported legacy earning: never infer Branch from the Staff record.
+        }
+        $monthlyRows = $this->resolveOrCreateBookingMonthlyRows($commissionRows->pluck('staff_id')->unique()->values(), $year, $month, (int) $branchId);
         if ($monthlyRows->contains(fn (StaffMonthlySale $row) => $this->isFrozen($row))) {
             return;
         }
@@ -166,6 +173,7 @@ class StaffCommissionService
         $month = (int) $completedAt->format('m');
         $monthlyRows = StaffMonthlySale::query()
             ->where('type', self::TYPE_BOOKING)
+            ->where('store_location_id', $booking->store_location_id)
             ->whereIn('staff_id', $commissionRows->pluck('staff_id')->unique()->values()->all())
             ->where('year', $year)
             ->where('month', $month)
@@ -209,9 +217,13 @@ class StaffCommissionService
 
         $tier = StaffCommissionTier::query()
             ->where('type', $resolvedType)
+            ->where('store_location_id', $monthly->store_location_id)
             ->where('min_sales', '<=', $monthly->total_sales)
             ->orderByDesc('min_sales')
             ->first();
+        if ($monthly->store_location_id !== null && ! $tier) {
+            throw new \RuntimeException('No commission tier is configured for the earning Branch and commission type.');
+        }
 
         $tierPercent = (float) ($tier?->commission_percent ?? 0);
         $commissionAmount = round(((float) $monthly->total_sales * $tierPercent) / 100, 2);
@@ -233,13 +245,13 @@ class StaffCommissionService
         return $monthly->refresh();
     }
 
-    private function recalculateBookingForStaffMonth(int $staffId, int $year, int $month, bool $force = false): StaffMonthlySale
+    private function recalculateBookingForStaffMonth(int $staffId, int $year, int $month, bool $force = false, ?int $storeLocationId = null): StaffMonthlySale
     {
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $nextMonthStart = $start->copy()->addMonth();
 
         // Step 1: Get amounts and booking IDs from order_item_staff_splits (most cases)
-        $mainQueryRows = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart)
+        $mainQueryRows = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart, $storeLocationId)
             ->where('order_item_staff_splits.staff_id', $staffId)
             ->selectRaw('('.StaffSplitNormalizer::splitSalesSql('order_item_staff_splits', $this->effectiveLineTotalExpr()).') as split_sales')
             ->selectRaw('order_items.booking_id as booking_id')
@@ -283,6 +295,7 @@ class StaffCommissionService
                 ->whereNotNull('order_items.booking_id')
                 ->where('orders.created_at', '>=', $start)
                 ->where('orders.created_at', '<', $nextMonthStart)
+                ->when($storeLocationId, fn ($query) => $query->whereExists(fn ($bookingQuery) => $bookingQuery->selectRaw('1')->from('bookings')->whereColumn('bookings.id', 'order_items.booking_id')->where('bookings.store_location_id', $storeLocationId)))
                 ->whereNotExists(function ($sub) {
                     $sub->selectRaw('1')
                         ->from('order_item_staff_splits')
@@ -351,6 +364,7 @@ class StaffCommissionService
                 'staff_id' => $staffId,
                 'year' => $year,
                 'month' => $month,
+                'store_location_id' => $storeLocationId,
             ],
             [
                 'total_sales' => 0,
@@ -419,33 +433,34 @@ class StaffCommissionService
             ->all();
     }
 
-    private function recalculateBookingForMonthAll(int $year, int $month, bool $force = false): array
+    private function recalculateBookingForMonthAll(int $year, int $month, bool $force = false, ?array $storeLocationIds = null): array
     {
-        $start = Carbon::create($year, $month, 1)->startOfMonth();
-        $nextMonthStart = $start->copy()->addMonth();
-
-        $staffIds = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart)
-            ->pluck('order_item_staff_splits.staff_id')
-            ->concat(
-                StaffMonthlySale::query()
-                    ->where('type', self::TYPE_BOOKING)
-                    ->where('year', $year)
-                    ->where('month', $month)
-                    ->pluck('staff_id')
-            )
-            ->filter()
-            ->unique()
-            ->values();
-
+        [$start, $nextMonthStart] = $this->monthWindow($year, $month);
+        $branchIds = DB::table('bookings')->join('order_items', 'order_items.booking_id', '=', 'bookings.id')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->whereIn('order_items.line_type', self::BOOKING_COMMISSION_LINE_TYPES)
+            ->where('orders.created_at', '>=', $start)->where('orders.created_at', '<', $nextMonthStart)->whereNotNull('bookings.store_location_id')
+            ->pluck('bookings.store_location_id')->concat(StaffMonthlySale::query()->where('type', self::TYPE_BOOKING)
+                ->where('year', $year)->where('month', $month)->whereNotNull('store_location_id')->pluck('store_location_id'))->unique()
+            ->when($storeLocationIds !== null, fn ($ids) => $ids->intersect($storeLocationIds));
         $result = [];
-        foreach ($staffIds as $staffId) {
-            $result[] = $this->recalculateBookingForStaffMonth((int) $staffId, $year, $month, $force);
+        foreach ($branchIds as $branchId) {
+            $staffIds = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart, (int) $branchId)
+                ->pluck('order_item_staff_splits.staff_id')->concat(StaffMonthlySale::query()->where('type', self::TYPE_BOOKING)
+                    ->where('year', $year)->where('month', $month)->where('store_location_id', $branchId)->pluck('staff_id'))
+                ->concat(DB::table('bookings')->join('order_items', 'order_items.booking_id', '=', 'bookings.id')
+                    ->join('orders', 'orders.id', '=', 'order_items.order_id')->where('bookings.store_location_id', $branchId)
+                    ->where('orders.created_at', '>=', $start)->where('orders.created_at', '<', $nextMonthStart)->whereNotNull('bookings.staff_id')->pluck('bookings.staff_id'))
+                ->concat(DB::table('booking_service_staff_splits')->join('bookings', 'bookings.id', '=', 'booking_service_staff_splits.booking_id')
+                    ->join('order_items', 'order_items.booking_id', '=', 'bookings.id')->join('orders', 'orders.id', '=', 'order_items.order_id')
+                    ->where('bookings.store_location_id', $branchId)->where('orders.created_at', '>=', $start)->where('orders.created_at', '<', $nextMonthStart)
+                    ->pluck('booking_service_staff_splits.staff_id'))->filter()->unique();
+            foreach ($staffIds as $staffId) $result[] = $this->recalculateBookingForStaffMonth((int) $staffId, $year, $month, $force, (int) $branchId);
         }
-
         return $result;
     }
 
-    private function recalculateEcommerceForStaffMonth(int $staffId, int $year, int $month, bool $force = false): StaffMonthlySale
+    private function recalculateEcommerceForStaffMonth(int $staffId, int $year, int $month, bool $force = false, ?int $storeLocationId = null): StaffMonthlySale
     {
         [$start, $nextMonthStart] = $this->monthWindow($year, $month);
 
@@ -455,21 +470,21 @@ class StaffCommissionService
         );
         // Total Sales = attributed split sales (same as sales visual / booking monthly).
         // Tier % is applied later in recalculateMonthly — do not multiply by per-staff product rate here.
-        $productSales = (float) $this->baseEcommerceProductSplitQuery($start, $nextMonthStart)
+        $productSales = (float) $this->baseEcommerceProductSplitQuery($start, $nextMonthStart, $storeLocationId)
             ->where('order_item_staff_splits.staff_id', $staffId)
             ->selectRaw("COALESCE(SUM({$splitSalesExpr}), 0) AS total_sales")
             ->value('total_sales');
 
-        $productCount = (int) $this->baseEcommerceProductSplitQuery($start, $nextMonthStart)
+        $productCount = (int) $this->baseEcommerceProductSplitQuery($start, $nextMonthStart, $storeLocationId)
             ->where('order_item_staff_splits.staff_id', $staffId)
             ->count('order_item_staff_splits.id');
 
-        $packageSales = (float) $this->baseEcommercePackageSplitQuery($start, $nextMonthStart)
+        $packageSales = (float) $this->baseEcommercePackageSplitQuery($start, $nextMonthStart, $storeLocationId)
             ->where('service_package_staff_splits.staff_id', $staffId)
             ->selectRaw('COALESCE(SUM(service_package_staff_splits.split_sales_amount::numeric), 0) AS total_sales')
             ->value('total_sales');
 
-        $packageCount = (int) $this->baseEcommercePackageSplitQuery($start, $nextMonthStart)
+        $packageCount = (int) $this->baseEcommercePackageSplitQuery($start, $nextMonthStart, $storeLocationId)
             ->where('service_package_staff_splits.staff_id', $staffId)
             ->count('service_package_staff_splits.id');
 
@@ -479,6 +494,7 @@ class StaffCommissionService
                 'staff_id' => $staffId,
                 'year' => $year,
                 'month' => $month,
+                'store_location_id' => $storeLocationId,
             ],
             [
                 'total_sales' => 0,
@@ -501,39 +517,25 @@ class StaffCommissionService
         return $this->recalculateMonthly($monthly, $force);
     }
 
-    private function recalculateEcommerceForMonthAll(int $year, int $month, bool $force = false): array
+    private function recalculateEcommerceForMonthAll(int $year, int $month, bool $force = false, ?array $storeLocationIds = null): array
     {
         [$start, $nextMonthStart] = $this->monthWindow($year, $month);
-
-        $productStaffIds = $this->baseEcommerceProductSplitQuery($start, $nextMonthStart)
-            ->pluck('order_item_staff_splits.staff_id');
-
-        $packageStaffIds = $this->baseEcommercePackageSplitQuery($start, $nextMonthStart)
-            ->pluck('service_package_staff_splits.staff_id');
-
-        $staffIds = collect($productStaffIds)
-            ->concat($packageStaffIds)
-            ->concat(
-                StaffMonthlySale::query()
-                    ->where('type', self::TYPE_ECOMMERCE)
-                    ->where('year', $year)
-                    ->where('month', $month)
-                    ->pluck('staff_id')
-            )
-            ->filter()
-            ->unique()
-            ->values();
-
+        $branchIds = DB::table('orders')->where('created_at', '>=', $start)->where('created_at', '<', $nextMonthStart)->whereNotNull('store_location_id')
+            ->pluck('store_location_id')->concat(StaffMonthlySale::query()->where('type', self::TYPE_ECOMMERCE)
+                ->where('year', $year)->where('month', $month)->whereNotNull('store_location_id')->pluck('store_location_id'))->unique()
+            ->when($storeLocationIds !== null, fn ($ids) => $ids->intersect($storeLocationIds));
         $result = [];
-        foreach ($staffIds as $staffId) {
-            $result[] = $this->recalculateEcommerceForStaffMonth((int) $staffId, $year, $month, $force);
+        foreach ($branchIds as $branchId) {
+            $staffIds = $this->baseEcommerceProductSplitQuery($start, $nextMonthStart, (int) $branchId)->pluck('order_item_staff_splits.staff_id')
+                ->concat($this->baseEcommercePackageSplitQuery($start, $nextMonthStart, (int) $branchId)->pluck('service_package_staff_splits.staff_id'))
+                ->concat(StaffMonthlySale::query()->where('type', self::TYPE_ECOMMERCE)->where('year', $year)->where('month', $month)
+                    ->where('store_location_id', $branchId)->pluck('staff_id'))->unique();
+            foreach ($staffIds as $staffId) $result[] = $this->recalculateEcommerceForStaffMonth((int) $staffId, $year, $month, $force, (int) $branchId);
         }
-
         return $result;
     }
 
-
-    private function baseBookingOrderItemSplitQuery(Carbon $start, Carbon $nextMonthStart)
+    private function baseBookingOrderItemSplitQuery(Carbon $start, Carbon $nextMonthStart, ?int $storeLocationId = null)
     {
         $query = DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
@@ -541,6 +543,7 @@ class StaffCommissionService
             ->whereIn('order_items.line_type', self::BOOKING_COMMISSION_LINE_TYPES)
             ->where('orders.created_at', '>=', $start)
             ->where('orders.created_at', '<', $nextMonthStart)
+            ->when($storeLocationId, fn ($query) => $query->whereExists(fn ($bookingQuery) => $bookingQuery->selectRaw('1')->from('bookings')->whereColumn('bookings.id', 'order_items.booking_id')->where('bookings.store_location_id', $storeLocationId)))
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -555,7 +558,7 @@ class StaffCommissionService
         return $this->excludePackageRefundedBookingDeposits($query);
     }
 
-    private function baseEcommerceProductSplitQuery(Carbon $start, Carbon $nextMonthStart)
+    private function baseEcommerceProductSplitQuery(Carbon $start, Carbon $nextMonthStart, ?int $storeLocationId = null)
     {
         return DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
@@ -563,6 +566,7 @@ class StaffCommissionService
             ->where('order_items.line_type', 'product')
             ->where('orders.created_at', '>=', $start)
             ->where('orders.created_at', '<', $nextMonthStart)
+            ->when($storeLocationId, fn ($query) => $query->where('orders.store_location_id', $storeLocationId))
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -575,7 +579,7 @@ class StaffCommissionService
             ->whereNull('orders.refunded_at');
     }
 
-    private function baseEcommercePackageSplitQuery(Carbon $start, Carbon $nextMonthStart)
+    private function baseEcommercePackageSplitQuery(Carbon $start, Carbon $nextMonthStart, ?int $storeLocationId = null)
     {
         return DB::table('orders')
             ->join('customer_service_packages', function ($join) {
@@ -585,6 +589,7 @@ class StaffCommissionService
             ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
             ->where('orders.created_at', '>=', $start)
             ->where('orders.created_at', '<', $nextMonthStart)
+            ->when($storeLocationId, fn ($query) => $query->where('orders.store_location_id', $storeLocationId))
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -872,15 +877,16 @@ class StaffCommissionService
         return collect();
     }
 
-    private function resolveOrCreateBookingMonthlyRows(Collection $staffIds, int $year, int $month): Collection
+    private function resolveOrCreateBookingMonthlyRows(Collection $staffIds, int $year, int $month, int $storeLocationId): Collection
     {
-        return $staffIds->map(function (int $staffId) use ($year, $month) {
+        return $staffIds->map(function (int $staffId) use ($year, $month, $storeLocationId) {
             return StaffMonthlySale::query()->firstOrCreate(
                 [
                     'type' => self::TYPE_BOOKING,
                     'staff_id' => $staffId,
                     'year' => $year,
                     'month' => $month,
+                    'store_location_id' => $storeLocationId,
                 ],
                 [
                     'total_sales' => 0,
@@ -958,12 +964,13 @@ class StaffCommissionService
         return $monthly->refresh();
     }
 
-    public function monthRows(int $year, int $month, ?string $type = null): Collection
+    public function monthRows(int $year, int $month, ?string $type = null, ?int $storeLocationId = null): Collection
     {
         return StaffMonthlySale::query()
             ->where('type', $this->normalizeType($type))
             ->where('year', $year)
             ->where('month', $month)
+            ->when($storeLocationId, fn ($query) => $query->where('store_location_id', $storeLocationId))
             ->get();
     }
 
@@ -992,6 +999,7 @@ class StaffCommissionService
     ): void {
         StaffCommissionLog::query()->create([
             'staff_monthly_sale_id' => $monthly->id,
+            'store_location_id' => $monthly->store_location_id,
             'staff_id' => $monthly->staff_id,
             'type' => $monthly->type,
             'year' => $monthly->year,

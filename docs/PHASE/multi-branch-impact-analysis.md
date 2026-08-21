@@ -1,5 +1,9 @@
 # Gentlegurls multi-branch impact analysis
 
+> **Phase 9E architecture correction (Roles and Commission Tiers):** operational Roles and commission tier configuration are now Branch-owned, while Permission and Permission Group definitions remain global. Admin Role assignment and monthly commission snapshots have an explicit Branch dimension; unresolved historical rows remain Global/Unassigned. See `phase-9e-role-and-commission-branch-enhancement.md`.
+
+> **Phase 9E completion:** order, Booking, and POS package commission paths now aggregate by persisted earning Branch; snapshots/logs/reports retain that dimension. Operators reconcile approved PNG history only through `role-branch:reconcile` and `commission-branch:reconcile`, each requiring an explicit `--dry-run` or `--force`. NULL is never an implicit PNG alias.
+
 > **Reusable QA data:** After manually creating a Branch, operators can prepare conservative Branch-specific test prerequisites with `multibranch:test-seed --store-code=CODE --dry-run|--force`. The command never clones global identities or existing PNG transactions; see `multi-branch-qa-seeder.md` for exact scope, safety, and manual workflow coverage.
 
 > **Phase 9D coverage enhancement (Expense Management):** Expenses and Expense Categories now have `store_location_id` ownership, Header Branch Context behavior, backend accessible-Branch/IDOR enforcement, category-to-Expense Branch consistency, and Branch-aware Profit/Loss attribution. Legacy `NULL` records remain explicit until an operator runs the conflict-aware `expense-branch:backfill --store-code=PNG --dry-run|--force` command. See `phase-9d-expense-multi-branch-enhancement.md`.

@@ -21,6 +21,7 @@ export interface RoleRowData {
   permissionCount: number
   createdAt: string
   updatedAt: string
+  branchName: string
 }
 
 interface RoleRowProps {
@@ -31,6 +32,7 @@ interface RoleRowProps {
   onEdit?: (role: RoleRowData) => void
   onDelete?: (role: RoleRowData) => void
   onViewPermissions?: (role: RoleRowData) => void
+  showBranch?: boolean
 }
 
 export default function RoleRow({
@@ -41,6 +43,7 @@ export default function RoleRow({
   onEdit,
   onDelete,
   onViewPermissions,
+  showBranch = false,
 }: RoleRowProps) {
   const { t } = useI18n()
   const [visiblePermissionCount, setVisiblePermissionCount] = useState(2)
@@ -83,6 +86,7 @@ export default function RoleRow({
 
   return (
     <tr className="text-sm">
+      {showBranch && <td className="border border-gray-200 px-4 py-2 text-gray-700">{role.branchName}</td>}
       <td className="border border-gray-200 px-4 py-2 font-medium text-gray-900">
         {role.name}
       </td>

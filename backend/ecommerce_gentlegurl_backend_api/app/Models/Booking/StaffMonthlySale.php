@@ -9,6 +9,7 @@ class StaffMonthlySale extends Model
 {
     protected $fillable = [
         'type',
+        'store_location_id',
         'staff_id',
         'year',
         'month',
@@ -45,5 +46,10 @@ class StaffMonthlySale extends Model
     public function staff()
     {
         return $this->belongsTo(Staff::class, 'staff_id');
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(\App\Models\Ecommerce\StoreLocation::class);
     }
 }

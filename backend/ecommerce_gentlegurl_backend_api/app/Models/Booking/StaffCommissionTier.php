@@ -8,6 +8,7 @@ class StaffCommissionTier extends Model
 {
     protected $fillable = [
         'type',
+        'store_location_id',
         'min_sales',
         'commission_percent',
     ];
@@ -16,4 +17,9 @@ class StaffCommissionTier extends Model
         'min_sales' => 'decimal:2',
         'commission_percent' => 'decimal:2',
     ];
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(\App\Models\Ecommerce\StoreLocation::class);
+    }
 }

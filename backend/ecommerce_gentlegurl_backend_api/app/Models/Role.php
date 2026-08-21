@@ -10,6 +10,7 @@ class Role extends BaseModel
 
     protected $fillable = [
         'name',
+        'store_location_id',
         'description',
         'is_active',
         'is_system',
@@ -30,5 +31,16 @@ class Role extends BaseModel
     public function permissions()
     {
         return $this->belongsToMany(Permission::class);
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(\App\Models\Ecommerce\StoreLocation::class);
+    }
+
+    public function branchUsers()
+    {
+        return $this->belongsToMany(User::class, 'role_user_store_location')
+            ->withPivot('store_location_id')->withTimestamps();
     }
 }

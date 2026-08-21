@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\Booking\StaffCommissionService;
 use Illuminate\Console\Command;
+use App\Models\Ecommerce\StoreLocation;
 
 class RecalculateBookingCommissionCommand extends Command
 {
@@ -12,6 +13,7 @@ class RecalculateBookingCommissionCommand extends Command
         {month? : Target month (1-12)}
         {--staff_id= : Optional staff id. If omitted recalculates all staff in the month}
         {--type=BOOKING : Commission type (BOOKING or ECOMMERCE)}
+        {--store-code= : Required earning Branch code}
         {--all : Recalculate all available months for the selected type}
         {--force : Force recalculation even for FROZEN months}';
 
@@ -32,12 +34,16 @@ class RecalculateBookingCommissionCommand extends Command
         $type = $this->staffCommissionService->normalizeType((string) $this->option('type'));
         $runAll = (bool) $this->option('all');
         $force = (bool) $this->option('force');
+        $storeCode = trim((string) $this->option('store-code'));
+        $branch = StoreLocation::query()->where('code', $storeCode)->where('is_active', true)->first();
+        if (! $branch) { $this->error('A valid active --store-code is required.'); return self::FAILURE; }
 
         if ($runAll) {
             $rows = $this->staffCommissionService->recalculateAllMonths(
                 $staffId !== null && $staffId !== '' ? (int) $staffId : null,
                 $type,
-                $force
+                $force,
+                (int) $branch->id
             );
             $scope = $staffId !== null && $staffId !== '' ? ('staff #' . (int) $staffId) : 'all staff';
             $this->info(sprintf('Recalculated %d rows across all available months for %s (%s).', count($rows), $type, $scope));
@@ -66,7 +72,7 @@ class RecalculateBookingCommissionCommand extends Command
         }
 
         if ($staffId !== null && $staffId !== '') {
-            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $staffId, $year, $month, $type, $force);
+            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $staffId, $year, $month, $type, $force, (int) $branch->id);
             $this->staffCommissionService->logAction(
                 'RECALCULATE',
                 $row,
@@ -90,7 +96,7 @@ class RecalculateBookingCommissionCommand extends Command
             return self::SUCCESS;
         }
 
-        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type, $force);
+        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type, $force, [(int) $branch->id]);
         foreach ($rows as $row) {
             $this->staffCommissionService->logAction(
                 'RECALCULATE',

@@ -21,6 +21,7 @@ import {
 } from './roleUtils'
 import { useI18n } from '@/lib/i18n'
 import type { PermissionOption } from './RoleCreateModal'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface RoleTableProps {
   permissions: string[]
@@ -67,6 +68,8 @@ export default function RoleTable({
   // isSuperAdmin = false,
 }: RoleTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId, accessibleBranches, isAllBranches } = useBranch()
+  const [createBranchId, setCreateBranchId] = useState<number | null>(null)
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<RoleFilterValues>({ ...emptyRoleFilters })
@@ -175,6 +178,7 @@ export default function RoleTable({
         if (filters.isActive) {
           qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
         }
+        if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
 
         // const endpoint = isSuperAdmin ? '/api/proxy/roles/all' : '/api/proxy/roles'
         // const res = await fetch(`${endpoint}?${qs.toString()}`, {
@@ -256,7 +260,7 @@ export default function RoleTable({
 
     fetchRoles()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize])
+  }, [filters, currentPage, pageSize, selectedBranchId])
   // }, [filters, currentPage, pageSize, isSuperAdmin])
 
   useEffect(() => {
@@ -266,6 +270,8 @@ export default function RoleTable({
       return () => controller.abort()
     }
   }, [isCreateModalOpen, editingRoleId])
+
+  useEffect(() => { setCurrentPage(1); setCreateBranchId(selectedBranchId) }, [selectedBranchId])
 
   const handleSort = (column: keyof RoleRowData) => {
     if (sortColumn === column) {
@@ -367,7 +373,7 @@ export default function RoleTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 5 : 4
+  const colCount = (showActions ? 5 : 4) + (isAllBranches ? 1 : 0)
 
   const totalPages = meta.last_page || 1
 
@@ -457,7 +463,7 @@ export default function RoleTable({
         />
       )}
 
-      {isCreateModalOpen && (
+      {isCreateModalOpen && createBranchId !== null && (
         <RoleCreateModal
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={(role) => {
@@ -466,6 +472,7 @@ export default function RoleTable({
           }}
           permissions={permissionOptions}
           permissionsLoading={permissionsLoading}
+          storeLocationId={createBranchId}
         />
       )}
 
@@ -474,12 +481,19 @@ export default function RoleTable({
           {canCreate && (
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => { if (selectedBranchId !== null) { setCreateBranchId(selectedBranchId); setIsCreateModalOpen(true) } }}
+              disabled={selectedBranchId === null}
               type="button"
             >
               <i className="fa-solid fa-plus" />
               {t('role.createAction')}
             </button>
+          )}
+          {canCreate && isAllBranches && (
+            <select className="rounded border border-gray-300 px-3 py-2 text-sm" value={createBranchId ?? ''} onChange={(e) => { const id = Number(e.target.value); setCreateBranchId(id || null); if (id) setIsCreateModalOpen(true) }}>
+              <option value="">Create Role for Branch…</option>
+              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+            </select>
           )}
 
           <button
@@ -538,6 +552,7 @@ export default function RoleTable({
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Branch</th>}
               {(
                 [
                   { key: 'name', label: t('common.name') },
@@ -578,6 +593,7 @@ export default function RoleTable({
                 <RoleRow
                   key={role.id}
                   role={role}
+                  showBranch={isAllBranches}
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}

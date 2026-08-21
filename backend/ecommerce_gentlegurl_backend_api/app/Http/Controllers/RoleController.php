@@ -5,17 +5,23 @@ namespace App\Http\Controllers;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ExpenseBranchScope;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 
 class RoleController extends Controller
 {
+    public function __construct(private readonly StoreLocationAccessService $branchAccess) {}
+
     public function index(Request $request)
     {
-        $query = Role::query();
+        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
+        $query = Role::query()->with('storeLocation');
+        $scope->apply($query);
         if (! $request->user()?->canManageSystemAdmins()) {
-            $query->where('is_default', true);
+            $query->where('is_system', false);
         }
     
         // ✅ 只有在有 pass is_active 的时候才过滤
@@ -68,8 +74,10 @@ class RoleController extends Controller
 
     public function store(Request $request)
     {
+        $storeLocationId = $this->resolveWriteBranch($request);
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:100', 'unique:roles,name'],
+            'name' => ['required', 'string', 'max:100', Rule::unique('roles', 'name')->where('store_location_id', $storeLocationId)],
+            'store_location_id' => ['nullable', 'integer', 'exists:store_locations,id'],
             'description' => ['nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
             'permissions' => ['array'],
@@ -80,6 +88,7 @@ class RoleController extends Controller
 
         $role = new Role([
             'name' => $validated['name'],
+            'store_location_id' => $storeLocationId,
             'description' => $validated['description'] ?? null,
             'is_active' => $validated['is_active'] ?? true,
         ]);
@@ -106,6 +115,7 @@ class RoleController extends Controller
     public function show(Request $request, Role $role)
     {
         $this->ensureNotSystemRole($role, $request->user(), true);
+        $this->authorizeRole($request, $role);
 
         return $this->respond($role->load('permissions'));
     }
@@ -113,6 +123,7 @@ class RoleController extends Controller
     public function edit(Request $request, Role $role)
     {
         $this->ensureNotSystemRole($role, $request->user(), true);
+        $this->authorizeRole($request, $role);
 
         $user = $request->user();
         $delegatable = $user->delegatablePermissions();
@@ -135,13 +146,14 @@ class RoleController extends Controller
     public function update(Request $request, Role $role)
     {
         $this->ensureNotSystemRole($role, $request->user(), true);
+        $this->authorizeRole($request, $role);
 
         $validated = $request->validate([
             'name' => [
                 'sometimes',
                 'string',
                 'max:100',
-                Rule::unique('roles', 'name')->ignore($role->id),
+                Rule::unique('roles', 'name')->where('store_location_id', $role->store_location_id)->ignore($role->id),
             ],
             'description' => ['nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
@@ -188,13 +200,30 @@ class RoleController extends Controller
         return $this->respond($role->load('permissions'), __('Role updated successfully.'));
     }
 
-    public function destroy(Role $role)
+    public function destroy(Request $request, Role $role)
     {
         $this->ensureNotSystemRole($role);
+        $this->authorizeRole($request, $role);
 
         $role->delete();
 
         return $this->respond(null, __('Role deleted successfully.'));
+    }
+
+    private function resolveWriteBranch(Request $request): int
+    {
+        $value = $request->input('store_location_id', $request->query('branch_store_location_id'));
+        abort_if($value === null || $value === '', 422, 'A Branch is required when creating a Role from All Branches.');
+        return (int) $this->branchAccess->authorizeStoreLocation($request->user(), (int) $value)->id;
+    }
+
+    private function authorizeRole(Request $request, Role $role): void
+    {
+        if ($role->is_system && $request->user()?->canManageSystemAdmins()) return;
+        abort_if($role->store_location_id === null, 409, 'Legacy/global Role is unresolved and cannot be modified as a Branch Role.');
+        $this->branchAccess->authorizeStoreLocation($request->user(), (int) $role->store_location_id);
+        $selected = $request->query('branch_store_location_id');
+        abort_if($selected !== null && (int) $selected !== (int) $role->store_location_id, 404);
     }
 
     private function ensureNotSystemRole(Role $role, ?User $user = null, bool $allowSuperAdmin = false): void
