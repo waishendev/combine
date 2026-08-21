@@ -6,13 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\StaffCommissionLog;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use App\Services\ExpenseBranchScope;
+use App\Services\StoreLocationAccessService;
 
 class CommissionLogController extends Controller
 {
+    public function __construct(private readonly StoreLocationAccessService $branchAccess) {}
+
     public function index(Request $request)
     {
+        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
         $query = StaffCommissionLog::query()
-            ->with(['staff:id,name', 'performer:id,name']);
+            ->with(['staff:id,name', 'performer:id,name', 'storeLocation:id,code,name']);
+        $scope->apply($query);
 
         if ($request->filled('type')) {
             $query->where('type', strtoupper((string) $request->query('type')));

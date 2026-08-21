@@ -11,39 +11,38 @@ class EcommerceServicePackageStaffSplitObserver
 {
     public function saved(ServicePackageStaffSplit $split): void
     {
-        $date = $this->resolveOrderCreatedAt((int) $split->order_id);
-        if (! $date) {
+        [$date, $branchId] = $this->resolveOrderContext((int) $split->order_id);
+        if (! $date || ! $branchId) {
             return;
         }
 
-        $this->recalculateForStaff((int) $split->staff_id, $date);
+        $this->recalculateForStaff((int) $split->staff_id, $date, $branchId);
 
         if ($split->wasChanged('staff_id')) {
             $originalStaffId = (int) $split->getOriginal('staff_id');
             if ($originalStaffId > 0 && $originalStaffId !== (int) $split->staff_id) {
-                $this->recalculateForStaff($originalStaffId, $date);
+                $this->recalculateForStaff($originalStaffId, $date, $branchId);
             }
         }
     }
 
     public function deleted(ServicePackageStaffSplit $split): void
     {
-        $date = $this->resolveOrderCreatedAt((int) $split->order_id);
-        if (! $date) {
+        [$date, $branchId] = $this->resolveOrderContext((int) $split->order_id);
+        if (! $date || ! $branchId) {
             return;
         }
 
-        $this->recalculateForStaff((int) $split->staff_id, $date);
+        $this->recalculateForStaff((int) $split->staff_id, $date, $branchId);
     }
 
-    private function resolveOrderCreatedAt(int $orderId): ?Carbon
+    private function resolveOrderContext(int $orderId): array
     {
-        $createdAt = DB::table('orders')->where('id', $orderId)->value('created_at');
-
-        return $createdAt ? Carbon::parse($createdAt) : null;
+        $order = DB::table('orders')->where('id', $orderId)->first(['created_at', 'store_location_id']);
+        return [$order?->created_at ? Carbon::parse($order->created_at) : null, $order?->store_location_id ? (int) $order->store_location_id : null];
     }
 
-    private function recalculateForStaff(int $staffId, Carbon $date): void
+    private function recalculateForStaff(int $staffId, Carbon $date, int $branchId): void
     {
         if ($staffId <= 0) {
             return;
@@ -53,7 +52,9 @@ class EcommerceServicePackageStaffSplitObserver
             $staffId,
             (int) $date->format('Y'),
             (int) $date->format('m'),
-            StaffCommissionService::TYPE_ECOMMERCE
+            StaffCommissionService::TYPE_ECOMMERCE,
+            false,
+            $branchId
         );
     }
 }

@@ -22,6 +22,7 @@ export type RoleApiItem = {
   permissions?: RoleApiPermission[] | null
   created_at?: string | null
   updated_at?: string | null
+  store_location?: { id?: number; name?: string | null } | null
 }
 
 export const mapRoleApiItemToRow = (item: RoleApiItem): RoleRowData => {
@@ -61,6 +62,6 @@ export const mapRoleApiItemToRow = (item: RoleApiItem): RoleRowData => {
     permissionCount: permissions.length,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
+    branchName: item.store_location?.name ?? 'Global / Unassigned',
   }
 }
-

@@ -1510,6 +1510,7 @@ class OfflineOrderManagementService
                 (int) $target['month'],
                 StaffCommissionService::TYPE_BOOKING,
                 false,
+                $order->store_location_id ? (int) $order->store_location_id : null,
             );
 
             if (strtoupper((string) ($row->status ?? '')) === StaffCommissionService::STATUS_FROZEN) {
@@ -1548,6 +1549,7 @@ class OfflineOrderManagementService
             (int) $at->format('m'),
             StaffCommissionService::TYPE_ECOMMERCE,
             false,
+            $order->store_location_id ? [(int) $order->store_location_id] : [],
         );
 
         $frozenCount = collect($rows)

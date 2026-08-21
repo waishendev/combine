@@ -53,14 +53,14 @@ class EcommerceOrderObserver
             );
 
             if ($hasBooking) {
-                app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_BOOKING);
+                app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_BOOKING, false, $order->store_location_id ? [(int) $order->store_location_id] : []);
             }
             if ($hasEcommerce) {
-                app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_ECOMMERCE);
+                app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_ECOMMERCE, false, $order->store_location_id ? [(int) $order->store_location_id] : []);
             }
             return;
         }
 
-        app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_ECOMMERCE);
+        // Deleted/legacy objects without persisted Branch are unsupported; never infer one.
     }
 }

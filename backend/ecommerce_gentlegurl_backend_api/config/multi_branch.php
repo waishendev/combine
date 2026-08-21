@@ -1,6 +1,10 @@
 <?php
 
 return [
+    // Explicit ownership policy. `is_system` means protected/built-in; it does
+    // not by itself mean platform-global. Only these NULL Roles bypass Branches.
+    'platform_global_role_names' => ['infra_core_x1'],
+
     'fresh_install_store_code' => env(
         'DEFAULT_STORE_LOCATION_CODE',
         env('MULTI_BRANCH_SEED_BRANCH_ONE_CODE', 'PNG'),

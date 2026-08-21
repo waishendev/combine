@@ -83,8 +83,8 @@ class AdminController extends Controller
         ]);
 
         $roleIds = $this->filterAssignableRoleIds($validated['role_ids'] ?? [], $request->user());
-        $user->roles()->sync($roleIds);
         $this->syncStoreLocations($request, $user, $validated['store_location_ids'] ?? null);
+        $this->syncRoles($user, $roleIds, $validated['store_location_ids'] ?? []);
 
         return $this->respond($user->load(['roles', 'staff', 'storeLocations']), __('Admin created successfully.'));
     }
@@ -129,7 +129,8 @@ class AdminController extends Controller
 
         if ($request->has('role_ids')) {
             $roleIds = $this->filterAssignableRoleIds($validated['role_ids'] ?? [], $request->user());
-            $admin->roles()->sync($roleIds);
+            $branchIds = $validated['store_location_ids'] ?? $admin->storeLocations()->pluck('store_locations.id')->all();
+            $this->syncRoles($admin, $roleIds, $branchIds);
         }
 
         $this->syncStoreLocations($request, $admin, $validated['store_location_ids'] ?? null);
@@ -185,8 +186,7 @@ class AdminController extends Controller
         $query = Role::whereIn('id', $roleIds);
 
         if (! $actor?->canManageSystemAdmins()) {
-            $query->where('is_system', false)
-                ->where('is_default', true);
+            $query->where(fn ($roles) => $roles->where('is_system', false)->orWhereNotNull('store_location_id'));
         }
 
         $assignableRoleIds = $query
@@ -200,5 +200,23 @@ class AdminController extends Controller
         }
 
         return $assignableRoleIds;
+    }
+
+    private function syncRoles(User $admin, array $roleIds, array $storeLocationIds): void
+    {
+        $roles = Role::query()->whereIn('id', $roleIds)->get();
+        $branchIds = collect($storeLocationIds)->map(fn ($id) => (int) $id)->unique();
+
+        foreach ($roles->whereNotNull('store_location_id') as $role) {
+            abort_unless($branchIds->contains((int) $role->store_location_id), 422,
+                __('A Branch Role can only be assigned together with its owning Branch.'));
+        }
+
+        // Global/system roles retain the legacy pivot. Operational roles are explicit per Branch.
+        $admin->roles()->sync($roles->whereNull('store_location_id')->pluck('id')->all());
+        $pivotRows = $roles->whereNotNull('store_location_id')->mapWithKeys(fn (Role $role) => [
+            $role->id => ['store_location_id' => (int) $role->store_location_id],
+        ])->all();
+        $admin->branchRoles()->sync($pivotRows);
     }
 }

@@ -8,6 +8,7 @@ import { useI18n } from '@/lib/i18n'
 import BookingCommissionTierCreateModal, { type CommissionTierRow } from './BookingCommissionTierCreateModal'
 import BookingCommissionTierEditModal from './BookingCommissionTierEditModal'
 import BookingCommissionTierDeleteModal from './BookingCommissionTierDeleteModal'
+import { useBranch } from '@/contexts/BranchContext'
 
 type Meta = {
   current_page: number
@@ -42,6 +43,8 @@ export default function BookingCommissionTiersTable({
   tierType = 'BOOKING',
 }: BookingCommissionTiersTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId, accessibleBranches, isAllBranches } = useBranch()
+  const [createBranchId, setCreateBranchId] = useState<number | null>(null)
   const [tiers, setTiers] = useState<CommissionTierRow[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
@@ -70,6 +73,7 @@ export default function BookingCommissionTiersTable({
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
       qs.set('type', tierType)
+      if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
 
       const res = await fetch(`/api/proxy/admin/booking/commission-tiers?${qs.toString()}`, {
         cache: 'no-store',
@@ -136,7 +140,9 @@ export default function BookingCommissionTiersTable({
     } finally {
       setLoading(false)
     }
-  }, [currentPage, pageSize, tierType])
+  }, [currentPage, pageSize, tierType, selectedBranchId])
+
+  useEffect(() => { setCurrentPage(1); setCreateBranchId(selectedBranchId) }, [selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -155,13 +161,14 @@ export default function BookingCommissionTiersTable({
   }
 
   const totalPages = meta.last_page || 1
-  const colCount = showActions ? 3 : 2
+  const colCount = (showActions ? 3 : 2) + (isAllBranches ? 1 : 0)
 
   return (
     <div>
-      {isCreateModalOpen && (
+      {isCreateModalOpen && createBranchId !== null && (
         <BookingCommissionTierCreateModal
           tierType={tierType}
+          storeLocationId={createBranchId}
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={async () => {
             setIsCreateModalOpen(false)
@@ -175,12 +182,19 @@ export default function BookingCommissionTiersTable({
           {canCreate && (
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => { if (selectedBranchId !== null) { setCreateBranchId(selectedBranchId); setIsCreateModalOpen(true) } }}
+              disabled={selectedBranchId === null}
               type="button"
             >
               <i className="fa-solid fa-plus" />
               {t('common.create')}
             </button>
+          )}
+          {canCreate && isAllBranches && (
+            <select className="rounded border border-gray-300 px-3 py-2 text-sm" value={createBranchId ?? ''} onChange={(e) => { const id = Number(e.target.value); setCreateBranchId(id || null); if (id) setIsCreateModalOpen(true) }}>
+              <option value="">Create for Branch…</option>
+              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+            </select>
           )}
         </div>
 
@@ -208,6 +222,7 @@ export default function BookingCommissionTiersTable({
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Branch</th>}
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
                 Min Sales
               </th>
@@ -227,6 +242,7 @@ export default function BookingCommissionTiersTable({
             ) : tiers.length > 0 ? (
               tiers.map((tier) => (
                 <tr key={tier.id} className="text-sm">
+                  {isAllBranches && <td className="border border-gray-200 px-4 py-2 text-gray-700">{tier.store_location?.name ?? 'Global / Unassigned'}</td>}
                   <td className="border border-gray-200 px-4 py-2 text-gray-700">
                     RM {Number(tier.min_sales).toFixed(2)}
                   </td>

@@ -8,6 +8,7 @@ import TableLoadingRow from '@/components/TableLoadingRow'
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { useBranch } from '@/contexts/BranchContext'
 
 type CommissionType = 'BOOKING' | 'ECOMMERCE'
 type LogAction = 'FREEZE' | 'REOPEN' | 'OVERRIDE' | 'RECALCULATE'
@@ -81,6 +82,7 @@ const ACTION_BADGE_CLASS: Record<string, string> = {
 }
 
 export default function CommissionLogsPage() {
+  const { selectedBranchId } = useBranch()
   const [rows, setRows] = useState<CommissionLogRow[]>([])
   const [staffs, setStaffs] = useState<StaffOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -118,14 +120,15 @@ export default function CommissionLogsPage() {
     if (filters.keyword) qs.set('keyword', filters.keyword)
     if (filters.from) qs.set('from', filters.from)
     if (filters.to) qs.set('to', filters.to)
+    if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
 
     return qs
   }
 
-  const load = async () => {
+  const load = async (signal?: AbortSignal) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/proxy/admin/booking/commission-logs?${buildQuery().toString()}`, { cache: 'no-store' })
+      const res = await fetch(`/api/proxy/admin/booking/commission-logs?${buildQuery().toString()}`, { cache: 'no-store', signal })
       if (!res.ok) {
         setRows([])
         setMeta((prev) => ({ ...prev, total: 0, last_page: 1 }))
@@ -156,9 +159,13 @@ export default function CommissionLogsPage() {
   }, [])
 
   useEffect(() => {
-    void load()
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, meta.current_page, meta.per_page])
+  }, [filters, meta.current_page, meta.per_page, selectedBranchId])
+
+  useEffect(() => { setMeta((prev) => ({ ...prev, current_page: 1 })) }, [selectedBranchId])
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 6 }, (_, index) => currentYear - index)

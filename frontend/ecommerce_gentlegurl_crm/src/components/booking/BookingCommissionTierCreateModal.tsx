@@ -9,18 +9,22 @@ export type CommissionTierRow = {
   id: number
   min_sales: string | number
   commission_percent: string | number
+  store_location_id?: number | null
+  store_location?: { id: number; name: string } | null
 }
 
 interface BookingCommissionTierCreateModalProps {
   tierType: 'BOOKING' | 'ECOMMERCE'
   onClose: () => void
   onSuccess: (tier: CommissionTierRow) => void
+  storeLocationId: number
 }
 
 export default function BookingCommissionTierCreateModal({
   tierType,
   onClose,
   onSuccess,
+  storeLocationId,
 }: BookingCommissionTierCreateModalProps) {
   const { t } = useI18n()
   const [minSales, setMinSales] = useState('0')
@@ -48,6 +52,7 @@ export default function BookingCommissionTierCreateModal({
           type: tierType,
           min_sales: minSalesNum,
           commission_percent: percentNum,
+          store_location_id: storeLocationId,
         }),
       })
 
@@ -142,4 +147,3 @@ export default function BookingCommissionTierCreateModal({
     </CrmFormModalShell>
   )
 }
-

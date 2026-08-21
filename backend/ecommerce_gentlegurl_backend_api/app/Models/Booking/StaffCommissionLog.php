@@ -10,6 +10,7 @@ class StaffCommissionLog extends Model
 {
     protected $fillable = [
         'staff_monthly_sale_id',
+        'store_location_id',
         'staff_id',
         'type',
         'year',
@@ -34,5 +35,10 @@ class StaffCommissionLog extends Model
     public function performer()
     {
         return $this->belongsTo(User::class, 'performed_by');
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(\App\Models\Ecommerce\StoreLocation::class);
     }
 }
