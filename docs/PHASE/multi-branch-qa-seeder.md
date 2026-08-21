@@ -57,6 +57,8 @@ There is no cleanup command. Product/Staff/Service pivots and pre-existing inven
 
 ## Fresh database seeding
 
+完整的环境变量清单、profile 对照表和 XXX/CCC 范例请参阅 `multi-branch-fresh-seed-settings.md`。
+
 `php artisan migrate:fresh --seed` now creates Branch One and, by default, Branch Two before any Branch-attributed seeders run. Each Branch receives a separate Admin user assigned through `store_location_user`; neither Branch-specific Admin is granted the other Branch. A third shared Admin is assigned to both Branches when the `both` profile is selected (and only Branch One under the single-Branch profile). `FreshInstallGlobalQaCatalogSeeder` creates one small, shared set of explicitly prefixed Product, Category, Staff and Booking Service identities only when the fresh database has QA data enabled. These identities are global—not one copy per Branch. After global catalogue/configuration seeders finish, `FreshInstallMultiBranchQaDataSeeder` invokes the same conservative QA service for the selected Branch profile, then makes QA-owned Product/Staff/Service controls explicitly shared, Branch-One-only, or Branch-Two-only.
 
 The defaults are PNG plus `BRANCH2`. They are fixture configuration—not application constants—and can be overridden in `.env`. To deliver only Branch One:
