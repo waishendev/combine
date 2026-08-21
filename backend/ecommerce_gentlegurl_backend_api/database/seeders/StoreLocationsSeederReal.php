@@ -11,10 +11,11 @@ class StoreLocationsSeederReal extends Seeder
 
     public function run(): void
     {
+        $branchOne = config('multi_branch.fresh_seed_branches.branch_one');
         $stores = [
             [
-                'name' => 'Gentlegurls Nail Salon',
-                'code' => 'PNG',
+                'name' => $branchOne['name'],
+                'code' => $branchOne['code'],
                 'address_line1' => '14, Lebuh Cintra,',
                 'city' => 'Pulau Pinang,',
                 'state' => 'George Town,',

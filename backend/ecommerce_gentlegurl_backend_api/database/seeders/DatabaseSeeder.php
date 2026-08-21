@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\CustomerAddress;
 use App\Models\Ecommerce\Customer;
 use Illuminate\Database\Seeder;
+use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
@@ -13,6 +14,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $profile = config('multi_branch.fresh_seed_profile');
+        if (! in_array($profile, ['branch_one', 'both'], true)) {
+            throw new RuntimeException('MULTI_BRANCH_SEED_PROFILE must be branch_one or both.');
+        }
+
         $this->call([
             PermissionSeeder::class,
             AdminSeeder::class,
@@ -25,7 +31,15 @@ class DatabaseSeeder extends Seeder
             SuperAdminBranchAccessPermissionSeeder::class,
             StaffPermissionSeeder::class,
 
-
+            // Branch masters must exist before access, Expense, Booking, Product,
+            // POS and QA attribution seeders. Branch admins are deliberately
+            // isolated to their own store_location_user assignment.
+            StoreLocationsSeederReal::class,
+            FreshInstallBranchOneSeeder::class,
+            ...($profile === 'branch_one'
+                ? []
+                : [FreshInstallBranchTwoSeeder::class]),
+            FreshInstallSharedBranchAdminSeeder::class,
 
             GlobalSeoSeedeer::class,
             SettingSeeder::class,
@@ -36,7 +50,6 @@ class DatabaseSeeder extends Seeder
             LoyaltySettingSeeder::class,
             MembershipTiersSeeder::class,
             LoyaltyRewardSeederReal::class,
-            StoreLocationsSeederReal::class,
             BranchAccessDefaultStoreLocationSeeder::class,
             FooterWidgetSeederReal::class,
             ServicesMenuAndPagesSeeder::class,
@@ -62,6 +75,7 @@ class DatabaseSeeder extends Seeder
             ExpensePermissionSeeder::class,
             AddBookingPermissionsSeeder::class,
             BookingLandingPageSeeder::class,
+            FreshInstallGlobalQaCatalogSeeder::class,
             BookingBranchAssignmentSeeder::class,
             ProductBranchAssignmentSeeder::class,
             PosBranchOperationalSeeder::class,
@@ -89,5 +103,9 @@ class DatabaseSeeder extends Seeder
             // 暂时没用到的
             // PaymentGatewaySeeder::class, 
         ]);
+
+        // Run after all global catalogue/Staff/Service seeders so both Branches
+        // reuse those identities rather than cloning them.
+        $this->call(FreshInstallMultiBranchQaDataSeeder::class);
     }
 }
