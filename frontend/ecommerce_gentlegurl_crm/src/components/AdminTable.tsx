@@ -21,6 +21,7 @@ import {
   mapAdminApiItemToRow,
 } from './adminUtils'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface AdminTableProps {
   permissions: string[]
@@ -57,6 +58,7 @@ export default function AdminTable({
   currentAdminId = null,
 }: AdminTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<AdminFilterValues>({ ...emptyAdminFilters })
@@ -197,6 +199,8 @@ export default function AdminTable({
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
+        if (selectedBranchId === null) qs.set('branch_scope', 'all')
+        else qs.set('branch_store_location_id', String(selectedBranchId))
         if (filters.username) qs.set('username', filters.username)
         if (filters.email) qs.set('email', filters.email)
         if (filters.roleId) qs.set('role_id', filters.roleId)
@@ -278,7 +282,12 @@ export default function AdminTable({
 
     fetchAdmins()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize])
+  }, [filters, currentPage, pageSize, selectedBranchId])
+
+  useEffect(() => {
+    setCurrentPage(1)
+    setRows([])
+  }, [selectedBranchId])
 
   useEffect(() => {
     if (

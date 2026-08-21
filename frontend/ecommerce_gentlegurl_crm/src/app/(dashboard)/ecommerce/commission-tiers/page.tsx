@@ -31,6 +31,7 @@ export default async function Page() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Product Commission Tiers</h2>
+      <p className="mb-4 text-sm text-gray-500">Global company commission configuration — Header Branch selection does not filter tiers.</p>
       <BookingCommissionTiersTable permissions={user.permissions} tierType="ECOMMERCE" />
     </div>
   )
