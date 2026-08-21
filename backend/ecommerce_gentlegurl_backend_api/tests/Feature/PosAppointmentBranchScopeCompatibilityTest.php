@@ -53,6 +53,43 @@ class PosAppointmentBranchScopeCompatibilityTest extends TestCase
         $this->actingAs($actor)->getJson('/api/pos/appointments/'.$bookingB->id)->assertForbidden();
     }
 
+    public function test_lightweight_calendar_pushes_filters_and_pagination_to_sql(): void
+    {
+        config(['app.debug' => true]);
+        $actor = $this->actor();
+        [$a, $inaccessible] = [$this->branch('CAL-A'), $this->branch('CAL-X')];
+        $actor->storeLocations()->attach($a);
+        [$service, $staff] = $this->eligibleServiceAndStaff([$a, $inaccessible]);
+        $first = $this->booking('CAL-SEARCH-ONE', $a->id, $service, $staff);
+        $second = $this->booking('CAL-SEARCH-TWO', $a->id, $service, $staff);
+        $this->booking('CAL-SEARCH-HIDDEN', $inaccessible->id, $service, $staff);
+        $from = now()->addDay()->toDateString();
+
+        $response = $this->actingAs($actor)->getJson('/api/pos/appointments/calendar?'.http_build_query([
+            'store_location_id' => $a->id,
+            'from_date' => $from,
+            'to_date' => $from,
+            'staff_id' => $staff->id,
+            'q' => 'CAL-SEARCH',
+            'per_page' => 1,
+            'page' => 1,
+            'profile' => 1,
+        ]))->assertOk();
+
+        $this->assertSame(2, $response->json('data.total'));
+        $this->assertSame(1, $response->json('data.per_page'));
+        $this->assertCount(1, $response->json('data.data'));
+        $this->assertContains($response->json('data.data.0.id'), [$first->id, $second->id]);
+        $this->assertLessThanOrEqual(8, $response->json('data.profile.query_count'));
+        $this->assertSame(1, $response->json('data.profile.rows_hydrated'));
+        $this->assertSame(0, $response->json('data.profile.financial_calculations'));
+
+        $this->actingAs($actor)->getJson('/api/pos/appointments/calendar?store_location_id='.$inaccessible->id)
+            ->assertForbidden();
+        $this->actingAs($actor)->getJson('/api/pos/appointments/calendar?store_location_id='.$a->id.'&customer_id=999999')
+            ->assertOk()->assertJsonCount(0, 'data.data');
+    }
+
     private function actor(): User
     {
         $role = Role::create(['name' => 'appointment-branch-'.uniqid(), 'is_active' => true, 'is_system' => false]);

@@ -68,3 +68,61 @@ Use DevTools Network with **Preserve log** and Disable cache enabled. Group by U
 ## Tests and rollout limitations
 
 The coordinator unit tests cover identical-key suppression and Branch A → B abort/latest-wins semantics. TypeScript and lint checks cover integration. Browser timing, Laravel SQL query counts, slowest SQL, duplicate SQL, and a production-size PostgreSQL plan remain mandatory staging QA. Production readiness is conditional on that staging evidence; the frontend request storm itself is bounded.
+
+## Backend performance pass
+
+### Endpoint trace and old pipeline
+
+The workspace formerly called `GET /api/pos/appointments` through the CRM proxy. Laravel routes that request to `Ecommerce\PosController::appointmentSearch`, which delegates to `runAppointmentSearch`; `PosAppointmentStartAtFilter` applies the date predicate and `applyPosAppointmentBranchScope` resolves either the authorized specific `store_location_id` or the authenticated accessible-Branch set through `StoreLocationAccessService`.
+
+The old execution order was source-confirmed as:
+
+1. apply Branch, search, date, customer, Staff and coarse status predicates in SQL;
+2. select and hydrate every matching Booking in the month, including customer, service, Staff and StoreLocation (`get()`, not SQL pagination);
+3. preload active booking Order Items for every candidate;
+4. execute the full financial, add-on, deposit, settlement, package eligibility/claim and visit-checkout calculations for every candidate;
+5. for HOLD rows, resolve review Order and sibling Bookings;
+6. apply completed paid/unpaid schedule filtering in PHP;
+7. paginate the enriched collection in PHP.
+
+The frontend's `per_page=500` was intentional: the month grid needs all visible appointments to group and count each calendar day. Changing it to 20 would make the calendar incomplete. The bottleneck was therefore not merely the count query or base Booking SQL; it was using a detail-grade DTO/calculation pipeline as a calendar feed. Source audit also found at least two visit/order existence/value queries per enriched Booking outside the existing active-Order-Item preload, plus package, Staff-split, price metadata and HOLD review lookups. Request memoization removed exact repeats but could not turn those per-Booking keys into bulk queries.
+
+### New bounded calendar pipeline
+
+The workspace now calls `GET /api/pos/appointments/calendar`. The original endpoint and response remain available for compatibility. The calendar endpoint:
+
+1. selects only the Booking columns rendered or needed for classification;
+2. pushes Branch, sargable date range, search (`EXISTS` for customer/service), Staff, customer and status/schedule-scope filters into SQL;
+3. uses database `paginate`, so count and page slicing happen before Eloquent hydration;
+4. eager-loads four constrained lookup relations only for the returned page;
+5. bulk-loads at most one latest active package-usage row per returned Booking;
+6. returns the existing list keys needed by the schedule, but performs **zero** financial-summary and visit-detail calculations.
+
+Active schedule semantics use persisted `bookings.payment_status`, while preserving completed rows that remain operational because they have a reserved package or an unfinalized range price. Opening a row continues to call the authorized detail endpoint and computes the exact financial/package/visit DTO on demand. No long-lived cache was added.
+
+The response envelope remains `data`, `current_page`, `last_page`, `per_page`, `total`, and `pending_cancellation_requests_count`. Individual calendar rows retain their existing identity, Branch, customer, service, Staff, timing, status, payment-tone and package-status keys. Detail-only monetary totals are deliberately not calculated in the feed and remain zero; persisted payment/package state drives the calendar tone, while the detail request supplies exact values.
+
+### SQL work, hydration, and index
+
+The new query budget is constant with page size: count + Booking page + four eager lookup queries + one bulk package query + cancellation count, **at most eight SQL queries** for a non-empty page. It has no per-row visit, Order Item, package-eligibility or financial queries. Before, the exact total depended on row types, but source inspection proves an `O(N)` query/calculation component after the base/eager queries. The feature regression test asserts the new non-empty page remains at or below eight queries.
+
+Hydration changes from every matching month Booking followed by heavyweight enrichment to only the SQL-requested page of lightweight Bookings. The current month UI requests up to 500 because it genuinely renders the whole visible month, but those rows no longer hydrate settlement Orders/Items or execute detail calculations. Other clients can request smaller pages and now receive real SQL pagination.
+
+A new migration adds `(store_location_id, start_at, id)` on `bookings`, exactly matching the primary authorized Branch + range + stable-order feed path. Existing `(staff_id,start_at)`, `(customer_id,start_at)`, `(status,start_at)`, package `(status,booking_id)`, Order Item `(booking_id,line_type)`, and Order Service Item `(booking_id)` indexes remain unchanged. The new index must still be validated against production PostgreSQL plans; no speculative secondary combinations were added.
+
+### Development-safe profiling
+
+In an environment with `APP_DEBUG=true`, append `profile=1` to the calendar request. Only that request temporarily enables the connection query log and returns `data.profile` containing endpoint duration, query count, summed SQL time, slowest SQL time, duplicate SQL count, hydrated/returned rows, package rows and the zero financial/visit calculation counters. The query log is disabled in `finally`; production (`APP_DEBUG=false`) ignores the flag and exposes no diagnostics.
+
+Example staging request (use an authenticated browser session and an authorized Branch):
+
+```text
+/api/proxy/pos/appointments/calendar?store_location_id=12&from_date=2026-08-01&to_date=2026-08-31&per_page=500&profile=1
+```
+
+1. In DevTools Network with Preserve log, record Status, Waiting/TTFB, Content Download and the returned profile block.
+2. Record the slowest SQL and bindings locally from the request-scoped query log while avoiding customer values in shared logs.
+3. In staging PostgreSQL, run `EXPLAIN (ANALYZE, BUFFERS)` for the emitted count and page SQL using representative bindings. Confirm the Branch/date index is selected (or document why the planner prefers another index), actual rows, removed rows, sort method/memory, buffer hits/reads and execution time.
+4. Repeat for specific PNG, another authorized Branch, accessible All scope, Staff/customer/search/status filters, a month with 300+ rows, and pages 1/2 at a smaller page size.
+
+No local before/after wall-clock or PostgreSQL plan is claimed: this container has no installed Composer dependencies or reachable representative database. The measured-in-test target is the constant query budget and page hydration count; real response time, SQL time and buffers remain a staging release gate. A normal representative month should be sub-second to a few seconds, not tens of seconds.

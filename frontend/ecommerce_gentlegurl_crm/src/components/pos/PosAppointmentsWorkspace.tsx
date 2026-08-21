@@ -1458,7 +1458,7 @@ export default function PosAppointmentsWorkspace({
       setAppointmentsLoading(true)
     }
     try {
-      const res = await appointmentFetch(`/api/proxy/pos/appointments?${params.toString()}`, {
+      const res = await appointmentFetch(`/api/proxy/pos/appointments/calendar?${params.toString()}`, {
         cache: 'no-store',
         signal: controller.signal,
       })
