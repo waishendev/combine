@@ -47,6 +47,19 @@ Exactly one mode and an exact active Branch code are mandatory. Dry-run writes n
 
 Role reconciliation treats a non-system NULL Role as deterministic only when it has legacy assignments and every assigned User already has target-Branch access. It moves those assignments to `role_user_store_location`. Unassigned Roles, mixed-access Roles, `is_system`, and `infra_core_x1` stay global/ambiguous.
 
+### Multi-Branch legacy Role replication
+
+When one legacy operational Role is the approved baseline for several Branches, direct Branch ownership means it must be **replicated**, not shared. For example, `Manager` with `store_location_id = NULL` becomes independent `Manager @ PNG` and `Manager @ XXXX` rows. Each new Role receives its own copy of the legacy `permission_role` mappings; Permission and Permission Group records themselves remain global and are never duplicated. Later customization of PNG therefore cannot change XXXX.
+
+```bash
+php artisan role-branch:replicate --store-codes=PNG,XXXX --dry-run
+php artisan role-branch:replicate --store-codes=PNG,XXXX --force
+```
+
+The command requires explicit, distinct, active Branch codes and exactly one mode. Candidates are non-system NULL Roles, excluding `infra_core_x1`; a Role without legacy assignments or without any User already authorized for a selected Branch is reported as ambiguous. Existing same-name Branch Roles are reused only when their Permission ID set exactly matches the legacy baseline. Customized/different targets are conflicts and force aborts without overwriting them.
+
+User identity remains global and `store_location_user` remains the sole Branch-access authority. For every selected Branch, only Users who already have that access receive `(user_id, store_location_id, branch_role_id)` in `role_user_store_location`. The command never inserts, updates, or deletes Branch access. Eligible migrated operational `role_user` rows are removed only after all selected eligible assignments are written and verified in the transaction; platform/system and unresolved assignments remain. The legacy NULL Role definition is retained non-destructively for history/audit compatibility. Repeated force runs reuse matching Roles and assignments.
+
 Commission reconciliation assigns legacy tier policy to the approved target only when target thresholds do not conflict. A legacy snapshot is rebuilt only when persisted earning rows prove one or more Branches; multi-Branch evidence creates separate snapshots. Logs inherit Branch only for a single proven Branch. Rows without evidence remain NULL. Output reports pre/post earning and commission totals; tier-driven commission deltas are visible rather than normalized away.
 
 ## UI behavior

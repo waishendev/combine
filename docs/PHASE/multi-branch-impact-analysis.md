@@ -4,6 +4,8 @@
 
 > **Phase 9E completion:** order, Booking, and POS package commission paths now aggregate by persisted earning Branch; snapshots/logs/reports retain that dimension. Operators reconcile approved PNG history only through `role-branch:reconcile` and `commission-branch:reconcile`, each requiring an explicit `--dry-run` or `--force`. NULL is never an implicit PNG alias.
 
+> **Phase 9E legacy Role replication:** `role-branch:replicate --store-codes=PNG,XXXX --dry-run|--force` clones an eligible legacy operational Role into one independent Role row per explicit active Branch, copies only global Permission mappings, and creates assignments only for Users already authorized through `store_location_user`. System/platform Roles and Branch access are never changed.
+
 > **Reusable QA data:** After manually creating a Branch, operators can prepare conservative Branch-specific test prerequisites with `multibranch:test-seed --store-code=CODE --dry-run|--force`. The command never clones global identities or existing PNG transactions; see `multi-branch-qa-seeder.md` for exact scope, safety, and manual workflow coverage.
 
 > **Phase 9D coverage enhancement (Expense Management):** Expenses and Expense Categories now have `store_location_id` ownership, Header Branch Context behavior, backend accessible-Branch/IDOR enforcement, category-to-Expense Branch consistency, and Branch-aware Profit/Loss attribution. Legacy `NULL` records remain explicit until an operator runs the conflict-aware `expense-branch:backfill --store-code=PNG --dry-run|--force` command. See `phase-9d-expense-multi-branch-enhancement.md`.
