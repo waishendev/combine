@@ -21,7 +21,7 @@ Exactly one of `--dry-run` and `--force` is mandatory. The command resolves `sto
 
 ## Fixture ownership and scope
 
-The stable prefix is `MBQA-{NORMALIZED_STORE_CODE}-`. The command reuses, and never creates or edits, global Product, Category, Staff, Booking Service, Customer/Member, Package, Point-balance, Voucher, Redeem Voucher, Redeem Product, Promotion, or loyalty identities.
+The stable prefix starts with `MBQA-{NORMALIZED_STORE_CODE}-` and includes a short code hash to prevent collisions between long/similar Branch codes. The command reuses, and never creates or edits, global Product, Category, Staff, Booking Service, Customer/Member, Package, Point-balance, Voucher, Redeem Voucher, Redeem Product, Promotion, or loyalty identities.
 
 For the target Branch only it safely prepares:
 
@@ -54,3 +54,21 @@ There is no cleanup command. Product/Staff/Service pivots and pre-existing inven
 - Test pickup and shipping checkout normally so persisted fulfilment and payment state remain valid.
 - Compare Expense and Profit/Loss totals and CSV output using the six recognizable Expense amounts/dates.
 - Confirm global Product/Category masters, Member Points, Package entitlement, Voucher/Reward definitions and shared Ecommerce browsing remain global.
+
+## Fresh database seeding
+
+`php artisan migrate:fresh --seed` now creates Branch One and, by default, Branch Two before any Branch-attributed seeders run. Each Branch receives a separate Admin user assigned through `store_location_user`; neither Branch Admin is granted the other Branch. `FreshInstallGlobalQaCatalogSeeder` creates one small, shared set of explicitly prefixed Product, Category, Staff and Booking Service identities only when the fresh database has QA data enabled. These identities are global—not one copy per Branch. After global catalogue/configuration seeders finish, `FreshInstallMultiBranchQaDataSeeder` invokes the same conservative QA service for the selected Branch profile, then makes QA-owned Product/Staff/Service controls explicitly shared, Branch-One-only, or Branch-Two-only.
+
+The defaults are PNG plus `BRANCH2`. They are fixture configuration—not application constants—and can be overridden in `.env`. To deliver only Branch One:
+
+```dotenv
+MULTI_BRANCH_SEED_PROFILE=branch_one
+```
+
+To prepare both Branches:
+
+```dotenv
+MULTI_BRANCH_SEED_PROFILE=both
+```
+
+`MULTI_BRANCH_SEED_QA_DATA=false` retains Branches/Admins but omits the QA data pass. Individual setup can also be run explicitly with `php artisan db:seed --class=FreshInstallBranchOneSeeder` or `FreshInstallBranchTwoSeeder` after roles/migrations exist. An unknown profile fails clearly. Fresh Branch/Admin and QA fixture seeders refuse production execution. Change the configured emails, usernames and password outside local/QA environments. Default Expense Categories and demo Expenses are now attributed to Branch One rather than creating legacy `NULL` ownership.

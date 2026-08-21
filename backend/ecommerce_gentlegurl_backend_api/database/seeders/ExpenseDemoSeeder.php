@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Models\Ecommerce\StoreLocation;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
@@ -29,7 +30,16 @@ class ExpenseDemoSeeder extends Seeder
             return;
         }
 
+        $branch = StoreLocation::query()
+            ->where('code', config('multi_branch.fresh_seed_branches.branch_one.code'))
+            ->first();
+        if (! $branch) {
+            $this->command?->warn('Expense demo records were skipped because Branch One is missing.');
+            return;
+        }
+
         $categories = ExpenseCategory::query()
+            ->where('store_location_id', $branch->id)
             ->whereIn('name', ['Utilities', 'Marketing', 'Office Supplies'])
             ->get()
             ->keyBy('name');
@@ -52,6 +62,7 @@ class ExpenseDemoSeeder extends Seeder
             Expense::updateOrCreate(
                 ['expense_no' => $data['expense_no']],
                 [
+                    'store_location_id' => $branch->id,
                     'expense_category_id' => $categories[$data['category']]->id,
                     'expense_date' => $data['expense_date']->toDateString(),
                     'title' => $data['title'],
