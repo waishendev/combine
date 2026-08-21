@@ -21,7 +21,7 @@ class RoleController extends Controller
         $query = Role::query()->with('storeLocation');
         $scope->apply($query);
         if (! $request->user()?->canManageSystemAdmins()) {
-            $query->where('is_system', false);
+            $query->where(fn ($roles) => $roles->where('is_system', false)->orWhereNotNull('store_location_id'));
         }
     
         // ✅ 只有在有 pass is_active 的时候才过滤
@@ -228,6 +228,11 @@ class RoleController extends Controller
 
     private function ensureNotSystemRole(Role $role, ?User $user = null, bool $allowSuperAdmin = false): void
     {
+        // Branch-owned built-ins may remain protected from deletion without
+        // being treated as platform-global security identities.
+        if ($role->store_location_id !== null && $allowSuperAdmin) {
+            return;
+        }
         if ($role->is_system) {
             if ($allowSuperAdmin && $user && ($user->isSuperAdmin() || $user->canManageSystemAdmins())) {
                 return;

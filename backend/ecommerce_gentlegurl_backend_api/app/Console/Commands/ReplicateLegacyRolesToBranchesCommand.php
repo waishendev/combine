@@ -80,7 +80,9 @@ class ReplicateLegacyRolesToBranchesCommand extends Command
                                 'name' => $legacy->name,
                                 'description' => $legacy->description,
                                 'is_active' => $legacy->is_active,
-                                'is_system' => false,
+                                // Preserve built-in/delete protection independently
+                                // from Branch ownership.
+                                'is_system' => $legacy->is_system,
                                 'is_default' => $legacy->is_default,
                             ]);
                             $target->permissions()->sync($permissionIds);
@@ -134,20 +136,21 @@ class ReplicateLegacyRolesToBranchesCommand extends Command
     private function audit(Collection $branches): array
     {
         $legacy = Role::query()->whereNull('store_location_id')->with(['permissions:id', 'users:id'])->orderBy('id')->get();
-        $system = $legacy->filter(fn (Role $role) => $role->is_system
-            || strcasecmp($role->name, StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE) === 0);
+        $system = $legacy->filter(fn (Role $role) => $this->isPlatformGlobal($role));
         $nonSystem = $legacy->reject(fn (Role $role) => $system->contains('id', $role->id));
         $roles = collect(); $ambiguous = collect(); $conflicts = collect();
         $branchIds = $branches->pluck('id')->map(fn ($id) => (int) $id);
 
         foreach ($nonSystem as $role) {
+            $hasExistingTargetCopy = Role::query()->whereIn('store_location_id', $branchIds)
+                ->whereRaw('LOWER(name) = LOWER(?)', [$role->name])->exists();
             $users = collect();
             foreach ($role->users as $user) {
                 $eligible = DB::table('store_location_user')->where('user_id', $user->id)
                     ->whereIn('store_location_id', $branchIds)->pluck('store_location_id')->map(fn ($id) => (int) $id)->values()->all();
                 $users->push(['user_id' => (int) $user->id, 'eligible_branch_ids' => $eligible]);
             }
-            if ($role->users->isEmpty() || $users->every(fn ($user) => $user['eligible_branch_ids'] === [])) {
+            if (! $hasExistingTargetCopy && ($role->users->isEmpty() || $users->every(fn ($user) => $user['eligible_branch_ids'] === []))) {
                 $ambiguous->push($role);
                 continue;
             }
@@ -160,7 +163,7 @@ class ReplicateLegacyRolesToBranchesCommand extends Command
                 $status = 'create';
                 if ($existing) {
                     $actual = $existing->permissions->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
-                    $status = ! $existing->is_system && $actual === $permissionIds ? 'existing/matching' : 'existing/different';
+                    $status = $existing->is_system === $role->is_system && $actual === $permissionIds ? 'existing/matching' : 'existing/different';
                     if ($status === 'existing/different') {
                         $conflicts->push("Role [{$role->name}] in Branch [{$branch->code}] has customized/different Permissions; it will not be overwritten.");
                     }
@@ -172,7 +175,12 @@ class ReplicateLegacyRolesToBranchesCommand extends Command
                 $targets->push(['branch' => $branch, 'status' => $status, 'eligible' => $eligibleUsers->count(),
                     'existing_assignments' => $existingAssignments]);
             }
-            $roles->push(['role' => $role, 'permission_ids' => $permissionIds, 'users' => $users, 'targets' => $targets]);
+            $roles->push(['role' => $role, 'reason' => $hasExistingTargetCopy
+                ? 'previously replicated source Role; matching target copies are audited/reused'
+                : ($role->is_system
+                    ? 'protected built-in business Role; is_system is protection, not platform ownership'
+                    : 'legacy NULL non-platform Role with eligible Branch users'),
+                'permission_ids' => $permissionIds, 'users' => $users, 'targets' => $targets]);
         }
 
         return ['roles' => $roles, 'system' => $system, 'ambiguous' => $ambiguous, 'conflicts' => $conflicts];
@@ -183,11 +191,17 @@ class ReplicateLegacyRolesToBranchesCommand extends Command
         $this->line('Target Branches:');
         foreach ($branches as $branch) $this->line("  {$branch->code} (#{$branch->id})");
         $this->table(['Classification', 'Count'], [
-            ['Legacy operational Roles', $audit['roles']->count()],
-            ['System/global Roles preserved', $audit['system']->count()],
+            ['Legacy/replicable operational Roles', $audit['roles']->count()],
+            ['Platform/global Roles preserved', $audit['system']->count()],
             ['Ambiguous Roles preserved', $audit['ambiguous']->count()],
             ['Conflicts', $audit['conflicts']->count()],
         ]);
+        $this->line('PLATFORM GLOBAL:');
+        foreach ($audit['system'] as $role) $this->line('  - '.$this->auditLabel($role).' — explicit platform allowlist');
+        $this->line('BRANCH OPERATIONAL:');
+        foreach ($audit['roles'] as $candidate) $this->line('  - '.$this->auditLabel($candidate['role']).' — '.$candidate['reason']);
+        $this->line('AMBIGUOUS:');
+        foreach ($audit['ambiguous'] as $role) $this->line('  - '.$this->auditLabel($role).' — no legacy assignment with access to a selected Branch');
         foreach ($audit['roles'] as $candidate) {
             $this->newLine(); $this->line($candidate['role']->name);
             foreach ($candidate['targets'] as $target) {
@@ -200,5 +214,21 @@ class ReplicateLegacyRolesToBranchesCommand extends Command
         $existing = $audit['roles']->sum(fn ($candidate) => $candidate['targets']->sum('existing_assignments'));
         $toCreate = $assignments - $existing;
         $this->line("Assignments to create: {$toCreate}; Existing assignments: {$existing}; Conflicts: {$audit['conflicts']->count()}");
+    }
+
+    private function isPlatformGlobal(Role $role): bool
+    {
+        $names = collect(config('multi_branch.platform_global_role_names', [StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE]))
+            ->map(fn ($name) => strtolower(trim((string) $name)))->filter();
+
+        return $names->contains(strtolower($role->name));
+    }
+
+    private function auditLabel(Role $role): string
+    {
+        return sprintf('%s [id=%d, is_system=%s, store_location_id=%s, permissions=%d, role_user=%d, branch_assignments=%d]',
+            $role->name, $role->id, $role->is_system ? 'true' : 'false', $role->store_location_id ?? 'NULL',
+            $role->permissions()->count(), DB::table('role_user')->where('role_id', $role->id)->count(),
+            DB::table('role_user_store_location')->where('role_id', $role->id)->count());
     }
 }

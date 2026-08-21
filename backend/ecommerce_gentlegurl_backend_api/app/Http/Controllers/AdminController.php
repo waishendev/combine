@@ -186,7 +186,7 @@ class AdminController extends Controller
         $query = Role::whereIn('id', $roleIds);
 
         if (! $actor?->canManageSystemAdmins()) {
-            $query->where('is_system', false);
+            $query->where(fn ($roles) => $roles->where('is_system', false)->orWhereNotNull('store_location_id'));
         }
 
         $assignableRoleIds = $query

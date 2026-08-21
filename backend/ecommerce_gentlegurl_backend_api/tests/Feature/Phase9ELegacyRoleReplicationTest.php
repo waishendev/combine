@@ -53,6 +53,7 @@ class Phase9ELegacyRoleReplicationTest extends TestCase
 
     public function test_dry_run_writes_nothing_and_preserves_platform_and_system_roles(): void
     {
+        config(['multi_branch.platform_global_role_names' => ['infra_core_x1', 'Audit System']]);
         $png = $this->branch('PNG'); $xxxx = $this->branch('XXXX');
         $manager = Role::create(['name' => 'Manager', 'is_active' => true, 'is_system' => false]);
         $platform = Role::create(['name' => 'infra_core_x1', 'is_active' => true, 'is_system' => true]);
@@ -84,6 +85,42 @@ class Phase9ELegacyRoleReplicationTest extends TestCase
         $this->assertSame([$custom->id], $existing->permissions()->pluck('permissions.id')->all());
         $this->assertDatabaseHas('role_user', ['user_id' => $user->id, 'role_id' => $legacy->id]);
         $this->assertDatabaseCount('role_user_store_location', 0);
+    }
+
+    public function test_protected_builtin_operational_role_is_replicated_and_existing_matching_copy_is_reused(): void
+    {
+        $png = $this->branch('PNG'); $second = $this->branch('asdsadas');
+        $permission = Permission::create(['name' => 'Staff POS', 'slug' => 'pos.checkout']);
+        $legacy = Role::create(['name' => 'Staff', 'is_active' => true, 'is_system' => true]);
+        $legacy->permissions()->attach($permission);
+        $existing = Role::create(['name' => 'Staff', 'store_location_id' => $png->id, 'is_active' => true, 'is_system' => true]);
+        $existing->permissions()->attach($permission);
+        $user = $this->user('staff@example.test', [$png->id, $second->id]);
+        $legacy->users()->attach($user);
+
+        $this->assertSame(0, Artisan::call('role-branch:replicate', ['--store-codes' => 'PNG,asdsadas', '--force' => true]));
+        $this->assertSame($existing->id, Role::where('store_location_id', $png->id)->where('name', 'Staff')->value('id'));
+        $secondRole = Role::where('store_location_id', $second->id)->where('name', 'Staff')->firstOrFail();
+        $this->assertTrue($secondRole->is_system);
+        $this->assertSame([$permission->id], $secondRole->permissions()->pluck('permissions.id')->all());
+        $this->assertAssignment($user, $png, $existing);
+        $this->assertAssignment($user, $second, $secondRole);
+        $this->assertDatabaseHas('roles', ['id' => $legacy->id, 'store_location_id' => null, 'is_system' => true]);
+    }
+
+    public function test_previous_admin_copy_is_reused_while_missing_target_copy_is_created(): void
+    {
+        $png = $this->branch('PNG'); $second = $this->branch('asdsadas');
+        $permission = Permission::create(['name' => 'Admin View', 'slug' => 'admins.view']);
+        $legacy = Role::create(['name' => 'Admin', 'is_active' => true, 'is_system' => false]);
+        $legacy->permissions()->attach($permission);
+        $existing = Role::create(['name' => 'Admin', 'store_location_id' => $png->id, 'is_active' => true, 'is_system' => false]);
+        $existing->permissions()->attach($permission);
+
+        $this->assertSame(0, Artisan::call('role-branch:replicate', ['--store-codes' => 'PNG,asdsadas', '--force' => true]));
+        $this->assertSame($existing->id, Role::where('store_location_id', $png->id)->where('name', 'Admin')->value('id'));
+        $this->assertDatabaseHas('roles', ['store_location_id' => $second->id, 'name' => 'Admin']);
+        $this->assertSame(2, Role::where('name', 'Admin')->whereNotNull('store_location_id')->count());
     }
 
     private function branch(string $code): StoreLocation
