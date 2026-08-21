@@ -513,6 +513,7 @@ export default function PosAppointmentsWorkspace({
     return new Date(n.getFullYear(), n.getMonth(), 1)
   })
   const [appointmentQuery, setAppointmentQuery] = useState('')
+  const [debouncedAppointmentQuery, setDebouncedAppointmentQuery] = useState('')
   const [appointmentDateFilter, setAppointmentDateFilter] = useState(() => {
     const now = new Date()
     const timezoneOffsetMs = now.getTimezoneOffset() * 60 * 1000
@@ -584,9 +585,13 @@ export default function PosAppointmentsWorkspace({
   const [appointmentLineSplitError, setAppointmentLineSplitError] = useState<string | null>(null)
   const [appointments, setAppointments] = useState<PosAppointmentListItem[]>([])
   const appointmentsRequest = useRef(0)
+  const appointmentsAbortController = useRef<AbortController | null>(null)
+  const appointmentsInFlightKey = useRef<string | null>(null)
   const [appointmentsLoading, setAppointmentsLoading] = useState(true)
   const [appointmentsRefreshing, setAppointmentsRefreshing] = useState(false)
-  const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
+  // Opt-in: a five-second default poll caused overlapping, expensive month-list
+  // requests on slow databases and made the workspace progressively less usable.
+  const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(false)
   const [appointmentListRefreshCountdown, setAppointmentListRefreshCountdown] = useState(5)
   const [cancellationRequestsModalOpen, setCancellationRequestsModalOpen] = useState(false)
   const [cancellationRequestsLoading, setCancellationRequestsLoading] = useState(false)
@@ -1398,16 +1403,8 @@ export default function PosAppointmentsWorkspace({
   )
 
   const fetchAppointments = useCallback(async (options?: { silent?: boolean }) => {
-    const request = ++appointmentsRequest.current
     const silent = options?.silent ?? false
-    if (silent) {
-      setAppointmentsRefreshing(true)
-    } else {
-      setAppointments([])
-      setAppointmentsLoading(true)
-    }
-    try {
-      const params = new URLSearchParams({ page: '1' })
+    const params = new URLSearchParams({ page: '1' })
       const ymdFromDate = (d: Date) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
@@ -1430,7 +1427,7 @@ export default function PosAppointmentsWorkspace({
           params.set('per_page', '100')
         }
       }
-      if (appointmentQuery.trim()) params.set('q', appointmentQuery.trim())
+      if (debouncedAppointmentQuery.trim()) params.set('q', debouncedAppointmentQuery.trim())
       if (appointmentCustomerFilter.trim()) params.set('customer_id', appointmentCustomerFilter.trim())
       if (appointmentStaffFilter.trim()) params.set('staff_id', appointmentStaffFilter.trim())
       if (scheduleScope === 'all') {
@@ -1440,7 +1437,31 @@ export default function PosAppointmentsWorkspace({
         params.set('status', appointmentStatusFilterApiValue(appointmentStatusFilter.trim()))
       }
 
-      const res = await appointmentFetch(`/api/proxy/pos/appointments?${params.toString()}`, { cache: 'no-store' })
+    const branchId = selectedBranchIdRef.current
+    if (!branchId) {
+      setAppointments([])
+      setAppointmentsLoading(false)
+      return
+    }
+    const requestKey = `${branchId}:${params.toString()}`
+    // React StrictMode, the refresh clock, and filter effects can meet in the same
+    // render. One logical query is allowed to own only one network request.
+    if (appointmentsInFlightKey.current === requestKey) return
+    appointmentsAbortController.current?.abort()
+    const controller = new AbortController()
+    appointmentsAbortController.current = controller
+    appointmentsInFlightKey.current = requestKey
+    const request = ++appointmentsRequest.current
+    if (silent) setAppointmentsRefreshing(true)
+    else {
+      setAppointments([])
+      setAppointmentsLoading(true)
+    }
+    try {
+      const res = await appointmentFetch(`/api/proxy/pos/appointments?${params.toString()}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
       const json = await res.json().catch(() => null)
       if (request !== appointmentsRequest.current) return
       if (!res.ok) {
@@ -1454,9 +1475,11 @@ export default function PosAppointmentsWorkspace({
           .map(normalizePosAppointmentListItem)
           .filter((row) => appointmentMatchesStatusFilter(row, appointmentStatusFilter)),
       )
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
       if (request === appointmentsRequest.current) setAppointments([])
     } finally {
+      if (appointmentsInFlightKey.current === requestKey) appointmentsInFlightKey.current = null
       if (request === appointmentsRequest.current) {
         if (silent) {
           setAppointmentsRefreshing(false)
@@ -1468,7 +1491,7 @@ export default function PosAppointmentsWorkspace({
   }, [
     appointmentCustomerFilter,
     appointmentDateFilter,
-    appointmentQuery,
+    debouncedAppointmentQuery,
     appointmentStaffFilter,
     appointmentStatusFilter,
     appointmentFetch,
@@ -4243,7 +4266,14 @@ export default function PosAppointmentsWorkspace({
   ])
 
   useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedAppointmentQuery(appointmentQuery), 300)
+    return () => window.clearTimeout(handle)
+  }, [appointmentQuery])
+
+  useEffect(() => {
     appointmentsRequest.current += 1
+    appointmentsAbortController.current?.abort()
+    appointmentsInFlightKey.current = null
     appointmentDetailRequest.current += 1
     setAppointments([])
     setAppointmentDetail(null)
@@ -4267,7 +4297,7 @@ export default function PosAppointmentsWorkspace({
   }, [
     appointmentCustomerFilter,
     appointmentDateFilter,
-    appointmentQuery,
+    debouncedAppointmentQuery,
     appointmentStaffFilter,
     appointmentStatusFilter,
     fetchAppointments,
@@ -4281,7 +4311,7 @@ export default function PosAppointmentsWorkspace({
   }, [
     appointmentCustomerFilter,
     appointmentDateFilter,
-    appointmentQuery,
+    debouncedAppointmentQuery,
     appointmentStaffFilter,
     appointmentStatusFilter,
     posApptCalendarMonth,
@@ -4303,14 +4333,7 @@ export default function PosAppointmentsWorkspace({
     return () => window.clearInterval(id)
   }, [appointmentListAutoRefresh, fetchAppointments])
 
-  useEffect(() => {
-    void fetchAppointmentCustomers('')
-    void fetchAppointmentStaffs('')
-  }, [fetchAppointmentCustomers, fetchAppointmentStaffs])
-
-  useEffect(() => {
-    void fetchActiveStaffs()
-  }, [fetchActiveStaffs])
+  useEffect(() => { void fetchAppointmentCustomers('') }, [fetchAppointmentCustomers])
 
   useEffect(() => {
     if (posApptViewMode !== 'day') {

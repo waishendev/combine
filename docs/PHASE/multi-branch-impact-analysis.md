@@ -7,6 +7,8 @@
 > **Phase 9E legacy Role replication:** `role-branch:replicate --store-codes=PNG,XXXX --dry-run|--force` clones an eligible legacy operational Role into one independent Role row per explicit active Branch, copies only global Permission mappings, and creates assignments only for Users already authorized through `store_location_user`. System/platform Roles and Branch access are never changed.
 
 > **Phase 9E Role classification correction:** historical `is_system` means protected/built-in as well as platform, so it is not used as Branch ownership. Only names in the explicit platform-global allowlist (`infra_core_x1` currently) remain global; eligible protected business Roles such as repository-created `Staff` and application `superAdmin` replicate per Branch while retaining protection.
+>
+> **Phase 9F POS/Appointments hardening:** the request lifecycle audit, bounded in-flight behavior, stale Branch abort rules, measured request-count reductions, and remaining database timing gate are documented in `phase-9f-pos-appointments-performance-hardening.md`. Branch scoping and `StoreLocationAccessService` authorization are unchanged.
 
 > **Reusable QA data:** After manually creating a Branch, operators can prepare conservative Branch-specific test prerequisites with `multibranch:test-seed --store-code=CODE --dry-run|--force`. The command never clones global identities or existing PNG transactions; see `multi-branch-qa-seeder.md` for exact scope, safety, and manual workflow coverage.
 

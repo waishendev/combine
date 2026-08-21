@@ -1748,6 +1748,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     qrCodeFullscreen: false,
   })
   const latestProductRequestRef = useRef(0)
+  const productRequestAbortControllerRef = useRef<AbortController | null>(null)
+  const productRequestInFlightKeyRef = useRef<string | null>(null)
   const previousCategoryIdRef = useRef<number | null>(null)
 
   const [cart, setCart] = useState<Cart | null>(null)
@@ -3285,6 +3287,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     append: boolean,
     options?: FetchProductOptions & { categoryId?: number | null },
   ) => {
+    const requestKey = `${page}:${keyword.trim()}:${options?.categoryId ?? ''}:${append ? 'append' : 'replace'}`
+    if (productRequestInFlightKeyRef.current === requestKey) return
+    productRequestAbortControllerRef.current?.abort()
+    const controller = new AbortController()
+    productRequestAbortControllerRef.current = controller
+    productRequestInFlightKeyRef.current = requestKey
     const requestId = latestProductRequestRef.current + 1
     latestProductRequestRef.current = requestId
     const silent = options?.silent ?? false
@@ -3317,7 +3325,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         if (hasCategoryFilter) {
           searchParams.set('category_id', String(normalizedCategoryId))
         }
-        const res = await fetch(`/api/proxy/pos/products/search?${searchParams.toString()}`)
+        const res = await fetch(`/api/proxy/pos/products/search?${searchParams.toString()}`, { signal: controller.signal })
         const json = await res.json().catch(() => null)
         if (!res.ok) {
           throw new Error(typeof json?.message === 'string' ? json.message : 'Unable to search POS products.')
@@ -3355,7 +3363,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           params.set('category_id', String(normalizedCategoryId))
         }
 
-        const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store' })
+        const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store', signal: controller.signal })
         const json = await res.json()
         const paged = extractPaged<ProductApiItem>(json)
 
@@ -3379,7 +3387,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       if (resetHighlight) {
         setProductHighlighted(0)
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
       if (requestId !== latestProductRequestRef.current) return
       if (!append) {
         setProducts([])
@@ -3390,6 +3399,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         setProductHighlighted(0)
       }
     } finally {
+      if (productRequestInFlightKeyRef.current === requestKey) productRequestInFlightKeyRef.current = null
       if (!silent && requestId === latestProductRequestRef.current) {
         setProductLoading(false)
       }
@@ -5863,7 +5873,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
 
     void loadBookingProductCategories()
-    void fetchBookingProducts(null)
     void fetchServicePackages()
     void fetchUnpaidCompletedAppointments('')
     return () => categoryRequest.abort()
