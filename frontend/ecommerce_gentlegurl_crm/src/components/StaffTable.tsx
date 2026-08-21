@@ -20,6 +20,7 @@ import {
   mapStaffApiItemToRow,
 } from './staffUtils'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface StaffTableProps {
   permissions: string[]
@@ -64,6 +65,7 @@ type StaffApiResponse = {
 
 export default function StaffTable({ permissions }: StaffTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<StaffFilterValues>({ ...emptyStaffFilters })
@@ -135,6 +137,8 @@ export default function StaffTable({ permissions }: StaffTableProps) {
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
+        if (selectedBranchId === null) qs.set('branch_scope', 'all')
+        else qs.set('branch_store_location_id', String(selectedBranchId))
         if (filters.search) qs.set('search', filters.search)
         if (filters.isActive) {
           qs.set('is_active', filters.isActive === 'active' ? '1' : '0')
@@ -214,7 +218,12 @@ export default function StaffTable({ permissions }: StaffTableProps) {
 
     fetchStaffs()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize, reloadToken])
+  }, [filters, currentPage, pageSize, reloadToken, selectedBranchId])
+
+  useEffect(() => {
+    setCurrentPage(1)
+    setRows([])
+  }, [selectedBranchId])
 
   const handleSort = (column: keyof StaffRowData) => {
     if (sortColumn === column) {
@@ -383,7 +392,10 @@ export default function StaffTable({ permissions }: StaffTableProps) {
   const handleExportCsv = async () => {
     setIsExporting(true)
     try {
-      const res = await fetch('/api/proxy/staffs/export', { cache: 'no-store' })
+      const qs = selectedBranchId === null
+        ? 'branch_scope=all'
+        : `branch_store_location_id=${selectedBranchId}`
+      const res = await fetch(`/api/proxy/staffs/export?${qs}`, { cache: 'no-store' })
       if (!res.ok) {
         throw new Error('Export CSV failed.')
       }

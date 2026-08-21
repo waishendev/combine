@@ -18,6 +18,11 @@ class AdminController extends Controller
     {
         $perPage = $request->integer('per_page', 15);
         $search = $request->string('search')->toString();
+        $storeLocationId = $request->integer('branch_store_location_id');
+        if ($storeLocationId > 0) {
+            $this->storeLocationAccess->authorizeStoreLocation($request->user(), $storeLocationId, false);
+        }
+        $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
 
         $admins = User::with(['roles', 'staff', 'storeLocations'])
             ->when(! $request->user()?->canManageSystemAdmins(), function ($query) {
@@ -25,6 +30,18 @@ class AdminController extends Controller
                     $roleQuery->where('is_system', true);
                 });
             })
+            ->when($storeLocationId > 0, function ($query) use ($request, $storeLocationId) {
+                $query->where(function ($scope) use ($request, $storeLocationId) {
+                    $scope->whereHas('storeLocations', fn ($locations) => $locations->where('store_locations.id', $storeLocationId));
+
+                    // Platform Admins access every Branch through the established
+                    // infra_core_x1 bypass and intentionally have no pivot rows.
+                    if ($request->user()?->canManageSystemAdmins()) {
+                        $scope->orWhereHas('roles', fn ($roles) => $roles->where('name', StoreLocationAccessService::PLATFORM_SUPER_ADMIN_ROLE));
+                    }
+                });
+            })
+            ->when($storeLocationId <= 0 && ! $this->storeLocationAccess->hasPlatformBypass($request->user()), fn ($query) => $query->whereHas('storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)))
             ->when($search, function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")

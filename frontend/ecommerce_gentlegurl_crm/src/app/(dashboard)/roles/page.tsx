@@ -49,6 +49,7 @@ export default async function RolePage() {
       <h2 className="text-3xl font-semibold mb-6">
         {t('sidebar.admin.roles')}
       </h2>
+      <p className="mb-4 text-sm text-gray-500">Global role definitions — Branch access is assigned separately to Admins.</p>
       <RoleTable
         permissions={user.permissions}
         // isSuperAdmin={isSuperAdmin}

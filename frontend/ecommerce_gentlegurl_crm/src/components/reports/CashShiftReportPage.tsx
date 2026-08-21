@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
@@ -196,6 +196,7 @@ export default function CashShiftReportPage() {
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [selectedRow, setSelectedRow] = useState<CashShiftRow | null>(null)
+  const requestSequence = useRef(0)
 
   const periodLabel = useMemo(
     () => formatFilterPeriodLabel(appliedFilters.date_from, appliedFilters.date_to),
@@ -223,8 +224,10 @@ export default function CashShiftReportPage() {
   }, [selectedBranchId])
 
   const loadData = useCallback(async (targetPage = 1, nextFilters = filters) => {
+    const requestId = ++requestSequence.current
     setLoading(true)
     setError(null)
+    setRows([])
     try {
       const qs = new URLSearchParams({ page: String(targetPage), per_page: '20' })
       if (nextFilters.date_from) qs.set('date_from', nextFilters.date_from)
@@ -240,6 +243,7 @@ export default function CashShiftReportPage() {
       ])
       const json = await reportRes.json().catch(() => null)
       if (!reportRes.ok) throw new Error(json?.message ?? 'Unable to load cash shift report.')
+      if (requestId !== requestSequence.current) return
 
       const payload = json?.data ?? {}
       setRows(Array.isArray(payload.data) ? payload.data : [])
@@ -252,19 +256,21 @@ export default function CashShiftReportPage() {
       })
       setAppliedFilters(nextFilters)
     } catch (err) {
+      if (requestId !== requestSequence.current) return
       setError(err instanceof Error ? err.message : 'Unable to load cash shift report.')
       setRows([])
       setPeriodSummary(null)
     } finally {
-      setLoading(false)
+      if (requestId === requestSequence.current) setLoading(false)
     }
   }, [filters, loadSummary, selectedBranchId])
 
   useEffect(() => {
     void loadData(1)
-    // Initial load only; subsequent loads go through Apply / pagination.
+    return () => { requestSequence.current += 1 }
+    // Header Branch is the request identity. Draft filters refetch only on Apply.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [selectedBranchId])
 
   const differenceValue = periodSummary?.difference ?? 0
   const differenceAccent = differenceValue < 0 ? 'amber' : 'emerald'

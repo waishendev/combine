@@ -43,10 +43,10 @@ export default async function PermissionPage() {
       <h2 className="text-3xl font-semibold mb-6">
         Permissions
       </h2>
+      <p className="mb-4 text-sm text-gray-500">Global security definitions — Header Branch selection does not filter this page.</p>
       <PermissionTable
         permissions={user.permissions}
       />
     </div>
   )
 }
-

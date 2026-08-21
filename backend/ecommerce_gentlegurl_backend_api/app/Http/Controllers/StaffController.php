@@ -22,16 +22,21 @@ class StaffController extends Controller
     {
         $perPage = min(50, max(1, $request->integer('per_page', 15)));
         $search = trim((string) $request->input('search', ''));
-        $storeLocationId = $request->integer('store_location_id');
+        $storeLocationId = $request->integer('branch_store_location_id');
         if ($storeLocationId > 0) {
             $this->storeLocationAccess->authorizeStoreLocation($request->user(), $storeLocationId, false);
         }
+        $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
 
         $staffs = Staff::query()
             ->with(['admin:id,staff_id,username,email', 'storeLocations:id,name,code'])
             ->when($storeLocationId > 0, fn ($query) => $query->whereHas(
                 'storeLocations',
                 fn ($locations) => $locations->where('store_locations.id', $storeLocationId),
+            ))
+            ->when($storeLocationId <= 0 && ! $this->storeLocationAccess->hasPlatformBypass($request->user()), fn ($query) => $query->whereHas(
+                'storeLocations',
+                fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds),
             ))
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
@@ -56,8 +61,15 @@ class StaffController extends Controller
 
     public function exportCsv(Request $request)
     {
+        $storeLocationId = $request->integer('branch_store_location_id');
+        if ($storeLocationId > 0) {
+            $this->storeLocationAccess->authorizeStoreLocation($request->user(), $storeLocationId, false);
+        }
+        $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
         $rows = Staff::query()
             ->with('admin:id,staff_id,username,email')
+            ->when($storeLocationId > 0, fn ($query) => $query->whereHas('storeLocations', fn ($locations) => $locations->where('store_locations.id', $storeLocationId)))
+            ->when($storeLocationId <= 0 && ! $this->storeLocationAccess->hasPlatformBypass($request->user()), fn ($query) => $query->whereHas('storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)))
             ->orderBy('id')
             ->get();
 
