@@ -1,5 +1,7 @@
 # Gentlegurls multi-branch impact analysis
 
+> **Reusable QA data:** After manually creating a Branch, operators can prepare conservative Branch-specific test prerequisites with `multibranch:test-seed --store-code=CODE --dry-run|--force`. The command never clones global identities or existing PNG transactions; see `multi-branch-qa-seeder.md` for exact scope, safety, and manual workflow coverage.
+
 > **Phase 9D coverage enhancement (Expense Management):** Expenses and Expense Categories now have `store_location_id` ownership, Header Branch Context behavior, backend accessible-Branch/IDOR enforcement, category-to-Expense Branch consistency, and Branch-aware Profit/Loss attribution. Legacy `NULL` records remain explicit until an operator runs the conflict-aware `expense-branch:backfill --store-code=PNG --dry-run|--force` command. See `phase-9d-expense-multi-branch-enhancement.md`.
 
 > **Phase 5A implementation refinement (2026-08-08):** global `Staff` and `BookingService` identities use explicit `staff_store_location` and `booking_service_store_location` pivots. Public discovery and cart submission require explicit Branch assignment plus existing service/staff eligibility. Schedules, time off, leave, blocks, collisions, commissions, and commercial fields remain unchanged pending Phase 5B. See `phase-5a-booking-branch-runbook.md`.
