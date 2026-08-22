@@ -113,6 +113,7 @@ interface RoleCreateModalProps {
   permissions: PermissionOption[]
   permissionsLoading: boolean
   storeLocationId: number
+  branchName: string
 }
 
 type RoleApiPermission = {
@@ -184,6 +185,7 @@ export default function RoleCreateModal({
   permissions,
   permissionsLoading,
   storeLocationId,
+  branchName,
 }: RoleCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -337,6 +339,10 @@ export default function RoleCreateModal({
       }
     >
       <form id="role-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
+        <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <span className="text-xs font-semibold uppercase text-slate-500">Branch</span><br />
+          {branchName}
+        </div>
           <div className="grid gap-4">
             <div>
               <label

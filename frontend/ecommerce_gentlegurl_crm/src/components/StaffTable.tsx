@@ -65,7 +65,7 @@ type StaffApiResponse = {
 
 export default function StaffTable({ permissions }: StaffTableProps) {
   const { t } = useI18n()
-  const { selectedBranchId } = useBranch()
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<StaffFilterValues>({ ...emptyStaffFilters })
@@ -331,7 +331,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 8 : 7
+  const colCount = (showActions ? 8 : 7) + (isAllBranches ? 1 : 0)
 
   const totalPages = meta.last_page || 1
 
@@ -603,6 +603,11 @@ export default function StaffTable({ permissions }: StaffTableProps) {
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              {isAllBranches && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                  Branch
+                </th>
+              )}
               {(
                 [
                   { key: 'avatarUrl', label: 'Avatar' },
@@ -646,6 +651,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
                 <StaffRow
                   key={staff.id}
                   staff={staff}
+                  showBranch={isAllBranches}
                   showActions={showActions}
                   canView={canView}
                   canUpdate={canUpdate}

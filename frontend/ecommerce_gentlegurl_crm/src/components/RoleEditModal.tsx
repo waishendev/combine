@@ -17,6 +17,7 @@ interface RoleEditModalProps {
   onSuccess: (role: RoleRowData) => void
   permissions: PermissionOption[]
   permissionsLoading: boolean
+  branchName: string
 }
 
 type RoleApiPermission = {
@@ -90,6 +91,7 @@ export default function RoleEditModal({
   onSuccess,
   permissions,
   permissionsLoading,
+  branchName,
 }: RoleEditModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -373,6 +375,10 @@ export default function RoleEditModal({
         </div>
       ) : (
         <form id="role-edit-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <span className="text-xs font-semibold uppercase text-slate-500">Branch</span><br />
+            {branchName}
+          </div>
             <div className="grid gap-4">
               <div>
                 <label

@@ -169,6 +169,7 @@ export default function BookingCommissionTiersTable({
         <BookingCommissionTierCreateModal
           tierType={tierType}
           storeLocationId={createBranchId}
+          branchName={accessibleBranches.find((branch) => branch.id === createBranchId)?.name ?? `Branch #${createBranchId}`}
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={async () => {
             setIsCreateModalOpen(false)

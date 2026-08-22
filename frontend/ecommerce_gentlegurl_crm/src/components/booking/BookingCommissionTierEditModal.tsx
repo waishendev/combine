@@ -112,6 +112,10 @@ export default function BookingCommissionTierEditModal({
       }
     >
       <form id="commission-tier-edit-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <span className="text-xs font-semibold uppercase text-slate-500">Branch</span><br />
+            {tier.store_location?.name ?? 'Unassigned'}
+          </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Min Sales</label>
             <input
@@ -142,4 +146,3 @@ export default function BookingCommissionTierEditModal({
     </CrmFormModalShell>
   )
 }
-

@@ -18,6 +18,7 @@ interface BookingCommissionTierCreateModalProps {
   onClose: () => void
   onSuccess: (tier: CommissionTierRow) => void
   storeLocationId: number
+  branchName: string
 }
 
 export default function BookingCommissionTierCreateModal({
@@ -25,6 +26,7 @@ export default function BookingCommissionTierCreateModal({
   onClose,
   onSuccess,
   storeLocationId,
+  branchName,
 }: BookingCommissionTierCreateModalProps) {
   const { t } = useI18n()
   const [minSales, setMinSales] = useState('0')
@@ -115,6 +117,10 @@ export default function BookingCommissionTierCreateModal({
       }
     >
       <form id="commission-tier-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <span className="text-xs font-semibold uppercase text-slate-500">Branch</span><br />
+            {branchName}
+          </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Min Sales</label>
             <input
