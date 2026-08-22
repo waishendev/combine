@@ -8,6 +8,7 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerTypeController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\ExpenseCategoryController;
+use App\Http\Controllers\ExpenseQueryEnhancementController;
 use App\Http\Controllers\CustomerDepositWaiverLogController;
 use App\Http\Controllers\CustomerPointsAdjustmentLogController;
 use App\Http\Controllers\Ecommerce\AnnouncementController;
@@ -404,6 +405,19 @@ $protectedRoutes = function () {
         ->middleware('permission:permission-groups.update');
 
     // Expense management
+    // NEW ENHANCEMENT
+    // Page: CRM /expenses (first paint — list + active categories dropdown)
+    Route::get('/expenses/overview', [ExpenseQueryEnhancementController::class, 'overview'])
+        ->middleware('permission:expenses.view');
+    // Page: CRM /expenses — pagination / month / category filter after first paint
+    Route::get('/expenses/query', [ExpenseQueryEnhancementController::class, 'expenses'])
+        ->middleware('permission:expenses.view');
+    // Page: CRM /expense-categories — paginated list (with expenses_count)
+    Route::get('/expense-categories/query', [ExpenseQueryEnhancementController::class, 'categories'])
+        ->middleware('permission:expense_categories.view|expenses.create|expenses.update');
+    // END NEW ENHANCEMENT
+
+    // OLD QUERY — legacy list endpoints (kept for compatibility; CRM reads use /query + /overview)
     Route::get('/expense-categories', [ExpenseCategoryController::class, 'index'])->middleware('permission:expense_categories.view|expenses.create|expenses.update');
     Route::post('/expense-categories', [ExpenseCategoryController::class, 'store'])->middleware('permission:expense_categories.create');
     Route::put('/expense-categories/{expenseCategory}', [ExpenseCategoryController::class, 'update'])->middleware('permission:expense_categories.update');
@@ -411,6 +425,7 @@ $protectedRoutes = function () {
     Route::post('/expense-categories/{expenseCategory}/move-down', [ExpenseCategoryController::class, 'moveDown'])->middleware('permission:expense_categories.update');
     Route::delete('/expense-categories/{expenseCategory}', [ExpenseCategoryController::class, 'destroy'])->middleware('permission:expense_categories.delete');
     Route::get('/expenses/export', [ExpenseController::class, 'export'])->middleware('permission:expenses.export');
+    // OLD QUERY
     Route::get('/expenses', [ExpenseController::class, 'index'])->middleware('permission:expenses.view');
     Route::post('/expenses', [ExpenseController::class, 'store'])->middleware('permission:expenses.create');
     Route::get('/expenses/{expense}', [ExpenseController::class, 'show'])->middleware('permission:expenses.view');

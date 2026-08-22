@@ -90,7 +90,7 @@ export default function ExpenseCategoriesPage({ permissions }: { permissions: st
         per_page: String(pageSize),
       })
       if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
-      const res = await fetch(`/api/proxy/expense-categories?${qs.toString()}`, { cache: 'no-store' })
+      const res = await fetch(`/api/proxy/expense-categories/query?${qs.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (sequence !== loadSequence.current) return
       const payload = json?.data || {}

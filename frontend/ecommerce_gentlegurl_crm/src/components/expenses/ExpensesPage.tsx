@@ -137,6 +137,8 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
   const showActions = can('expenses.update') || can('expenses.delete')
   const canCreateCategory = can('expense_categories.create')
 
+  const [bootstrapDone, setBootstrapDone] = useState(false)
+
   const query = useCallback(() => {
     const qs = new URLSearchParams()
     qs.set('page', String(page))
@@ -155,32 +157,59 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
     return qs.toString()
   }, [filters.expense_category_id, filters.month, selectedBranchId])
 
-  const load = useCallback(async () => {
+  const applyExpensesPayload = useCallback((payload: {
+    items?: {
+      data?: Expense[]
+      current_page?: number
+      last_page?: number
+      per_page?: number
+      total?: number
+    }
+    total_expense?: string
+  }, fallbackPage: number) => {
+    const paginated = payload.items || {}
+    setItems(Array.isArray(paginated.data) ? paginated.data : [])
+    setTotal(payload.total_expense || '0.00')
+    setMeta({
+      current_page: Number(paginated.current_page ?? fallbackPage) || 1,
+      last_page: Number(paginated.last_page ?? 1) || 1,
+      per_page: Number(paginated.per_page ?? PAGE_SIZE) || PAGE_SIZE,
+      total: Number(paginated.total ?? 0) || 0,
+    })
+  }, [])
+
+  const load = useCallback(async (options?: { refreshCategories?: boolean }) => {
     const sequence = ++loadSequence.current
     setLoading(true)
     try {
-      const [expensesRes, categoriesRes] = await Promise.all([
-        fetch(`/api/proxy/expenses?${query()}`, { cache: 'no-store' }),
-        fetch(`/api/proxy/expense-categories?active_only=1${selectedBranchId !== null ? `&branch_store_location_id=${selectedBranchId}` : ''}`, { cache: 'no-store' }),
-      ])
+      // First paint / branch change / category create: overview API.
+      // Later filter/page changes: expenses/query only (categories already loaded).
+      if (!bootstrapDone || options?.refreshCategories) {
+        const overviewRes = await fetch(`/api/proxy/expenses/overview?${query()}`, { cache: 'no-store' })
+        const overviewJson = await overviewRes.json().catch(() => null)
+        if (sequence !== loadSequence.current) return
+        const payload = overviewJson?.data || {}
+        applyExpensesPayload(payload.expenses || {}, page)
+        const categoriesPayload = payload.categories || {}
+        setCategories(
+          Array.isArray(categoriesPayload.data)
+            ? categoriesPayload.data
+            : Array.isArray(categoriesPayload)
+              ? categoriesPayload
+              : [],
+        )
+        setBootstrapDone(true)
+        return
+      }
+
+      const expensesRes = await fetch(`/api/proxy/expenses/query?${query()}`, { cache: 'no-store' })
       const expensesJson = await expensesRes.json().catch(() => null)
-      const categoriesJson = await categoriesRes.json().catch(() => null)
       if (sequence !== loadSequence.current) return
-      const payload = expensesJson?.data || {}
-      const paginated = payload.items || {}
-      setItems(Array.isArray(paginated.data) ? paginated.data : [])
-      setTotal(payload.total_expense || '0.00')
-      setMeta({
-        current_page: Number(paginated.current_page ?? page) || 1,
-        last_page: Number(paginated.last_page ?? 1) || 1,
-        per_page: Number(paginated.per_page ?? PAGE_SIZE) || PAGE_SIZE,
-        total: Number(paginated.total ?? 0) || 0,
-      })
-      setCategories(categoriesJson?.data?.data || categoriesJson?.data || [])
+      applyExpensesPayload(expensesJson?.data || {}, page)
     } finally {
       if (sequence === loadSequence.current) setLoading(false)
     }
-  }, [page, query, selectedBranchId])
+  }, [applyExpensesPayload, bootstrapDone, page, query])
 
   useEffect(() => {
     loadSequence.current += 1
@@ -189,6 +218,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
     setFilters((current) => ({ ...current, expense_category_id: '' }))
     setPage(1)
     setFormMode(null)
+    setBootstrapDone(false)
   }, [selectedBranchId])
 
   useEffect(() => { void load() }, [load])
@@ -659,7 +689,7 @@ export default function ExpensesPage({ permissions }: { permissions: string[] })
         <ExpenseCategoryCreateModal
           selectedBranchId={selectedBranchId}
           onClose={() => setCategoryCreateOpen(false)}
-          onCreated={() => void load()}
+          onCreated={() => void load({ refreshCategories: true })}
         />
       ) : null}
     </div>

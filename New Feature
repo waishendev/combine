@@ -25,6 +25,24 @@ php artisan product-branch:backfill --store-code=PNG  --force
 php artisan branch-inventory:initialize --store-code=PNG --from-global --dry-run
 php artisan branch-inventory:initialize --store-code=PNG --from-global  --force
 
+php artisan expense-branch:backfill --store-code=PNG --dry-run
+php artisan expense-branch:backfill --store-code=PNG --force
+
+
+php artisan role-branch:reconcile --store-code=PNG --dry-run
+
+php artisan commission-branch:reconcile --store-code=PNG --dry-run
+
+php artisan role-branch:reconcile --store-code=PNG --force
+
+php artisan commission-branch:reconcile --store-code=PNG --force
+
+php artisan role-branch:replicate --store-codes=PNG,asdsadas --dry-run
+php artisan role-branch:replicate --store-codes=PNG,asdsadas --force
+
+
+
+
 
 php artisan db:seed --class=SuperAdminBranchAccessPermissionSeeder 
 

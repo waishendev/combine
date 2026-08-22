@@ -18,6 +18,12 @@ final class ExpenseBranchScope
 
     public static function fromRequest(Request $request, StoreLocationAccessService $access): self
     {
+        $cacheKey = self::class;
+        $cached = $request->attributes->get($cacheKey);
+        if ($cached instanceof self) {
+            return $cached;
+        }
+
         /** @var User|null $user */
         $user = $request->user();
         abort_unless($user, 401);
@@ -28,14 +34,20 @@ final class ExpenseBranchScope
             $id = (int) $requested;
             $access->authorizeStoreLocation($user, $id);
 
-            return new self([$id], $id, false);
+            $scope = new self([$id], $id, false);
+            $request->attributes->set($cacheKey, $scope);
+
+            return $scope;
         }
 
-        return new self(
+        $scope = new self(
             $access->accessibleStoreLocations($user)->pluck('id')->map(fn ($id) => (int) $id)->all(),
             null,
             true,
         );
+        $request->attributes->set($cacheKey, $scope);
+
+        return $scope;
     }
 
     public function apply(Builder $query, string $column = 'store_location_id'): Builder

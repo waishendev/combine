@@ -12,8 +12,11 @@ class ExpenseBranchScopeTest extends TestCase
     public function test_specific_branch_filters_expenses_and_excludes_legacy_unassigned(): void
     {
         $query = (new ExpenseBranchScope([12], 12, false))->apply(Expense::query());
+        $sql = $query->toSql();
 
-        $this->assertStringNotContainsString('is null', $query->toSql());
+        // SoftDeletes adds deleted_at IS NULL; assert branch scope does not OR-in unassigned rows.
+        $this->assertStringNotContainsString('"store_location_id" is null', $sql);
+        $this->assertStringNotContainsString('or "expenses"."store_location_id" is null', $sql);
         $this->assertSame([12], $query->getBindings());
     }
 
