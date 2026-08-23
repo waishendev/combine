@@ -1389,6 +1389,32 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   Please log in first to checkout package items.
                 </p>
               ) : null}
+
+              {(depositTncEnabled && depositTncImage) || depositTncText ? (
+                <div className="space-y-3">
+                  {depositTncText ? (
+                    <p className="text-sm text-[var(--text-muted)]">{depositTncText}</p>
+                  ) : null}
+                  {depositTncEnabled && depositTncImage ? (
+                    <button
+                      type="button"
+                      onClick={() => setDepositTncImagePreviewOpen(true)}
+                      className="group relative min-w-0 w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--surface)] p-2 text-left transition hover:border-[var(--accent)]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-strong)]"
+                      aria-label="View deposit terms image larger"
+                    >
+                      <img
+                        src={depositTncImage}
+                        alt="Booking deposit terms and conditions"
+                        className="mx-auto block h-auto w-full max-w-full max-h-[min(52dvh,24rem)] cursor-zoom-in rounded-lg object-contain transition group-hover:opacity-95 sm:max-h-96"
+                      />
+                      {/* <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-[var(--foreground)]/70 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+                        Tap to enlarge
+                      </span> */}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div>
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                   {isLoggedIn ? "Contact details" : "Guest details"}
@@ -1615,31 +1641,6 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       ))}
                     </div>
                   )}
-                </div>
-              ) : null}
-
-              {(depositTncEnabled && depositTncImage) || depositTncText ? (
-                <div className="space-y-3">
-                  {depositTncEnabled && depositTncImage ? (
-                    <button
-                      type="button"
-                      onClick={() => setDepositTncImagePreviewOpen(true)}
-                      className="group relative min-w-0 w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--surface)] p-2 text-left transition hover:border-[var(--accent)]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-strong)]"
-                      aria-label="View deposit terms image larger"
-                    >
-                      <img
-                        src={depositTncImage}
-                        alt="Booking deposit terms and conditions"
-                        className="mx-auto block h-auto w-full max-w-full max-h-[min(52dvh,24rem)] cursor-zoom-in rounded-lg object-contain transition group-hover:opacity-95 sm:max-h-96"
-                      />
-                      {/* <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-[var(--foreground)]/70 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
-                        Tap to enlarge
-                      </span> */}
-                    </button>
-                  ) : null}
-                  {depositTncText ? (
-                    <p className="text-sm text-[var(--text-muted)]">{depositTncText}</p>
-                  ) : null}
                 </div>
               ) : null}
 

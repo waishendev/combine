@@ -338,6 +338,11 @@ class ServiceController extends Controller
 
         $newServiceImagePath = $data['image_path'] ?? null;
 
+        // Keep legacy price field in sync where applicable (same as bulkUpdate).
+        if (array_key_exists('service_price', $data) && ! array_key_exists('price', $data)) {
+            $data['price'] = $data['service_price'];
+        }
+
         try {
             DB::transaction(function () use (
                 $request,
