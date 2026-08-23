@@ -6,6 +6,7 @@ import Link from "next/link";
 import { lookupOrder, uploadPaymentSlip, OrderLookupResponse } from "@/lib/apiClient";
 import { bankQrImageStandardClass, BANK_QR_IMAGE_HEIGHT, BANK_QR_IMAGE_WIDTH } from "@/lib/bankQrImage";
 import { useCart } from "@/contexts/CartContext";
+import SlipUploadSuccessModal from "@/components/orders/SlipUploadSuccessModal";
 
 type Props = {
   orderNo: string;
@@ -18,6 +19,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [note, setNote] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -119,6 +121,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
       await uploadPaymentSlip(order.order_id, selectedFile, note.trim() || undefined);
       setUploadMessage("Slip submitted • Pending verification");
       closeModal();
+      setIsSuccessModalOpen(true);
       void loadOrder();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to upload payment slip.";
@@ -493,6 +496,13 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
           </div>
         </div>
       )}
+
+      <SlipUploadSuccessModal
+        isOpen={isSuccessModalOpen}
+        onClose={() => setIsSuccessModalOpen(false)}
+        orderNo={order?.order_no ?? orderNo}
+        amount={order?.grand_total}
+      />
     </main>
   );
 }
