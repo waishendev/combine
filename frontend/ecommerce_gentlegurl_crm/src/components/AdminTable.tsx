@@ -58,7 +58,7 @@ export default function AdminTable({
   currentAdminId = null,
 }: AdminTableProps) {
   const { t } = useI18n()
-  const { selectedBranchId } = useBranch()
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<AdminFilterValues>({ ...emptyAdminFilters })
@@ -415,7 +415,7 @@ export default function AdminTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 5 : 4
+  const colCount = (showActions ? 5 : 4) + (isAllBranches ? 1 : 0)
 
   const totalPages = meta.last_page || 1
 
@@ -596,6 +596,7 @@ export default function AdminTable({
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Branch</th>}
               {(
                 [
                   { key: 'email', label: t('common.email') },
@@ -636,6 +637,7 @@ export default function AdminTable({
                 <AdminRow
                   key={admin.id}
                   admin={admin}
+                  showBranch={isAllBranches}
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}

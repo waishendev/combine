@@ -18,6 +18,7 @@ export interface AdminRowData {
 interface AdminRowProps {
   admin: AdminRowData
   showActions?: boolean
+  showBranch?: boolean
   canUpdate?: boolean
   canDelete?: boolean
   isSelf?: boolean
@@ -28,6 +29,7 @@ interface AdminRowProps {
 export default function AdminRow({
   admin,
   showActions = false,
+  showBranch = false,
   canUpdate = false,
   canDelete = false,
   isSelf = false,
@@ -37,6 +39,11 @@ export default function AdminRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
+      {showBranch && (
+        <td className="px-4 py-2 border border-gray-200">
+          {admin.storeLocations?.map((branch) => branch.name).join(', ') || 'Unassigned'}
+        </td>
+      )}
       <td className="px-4 py-2 border border-gray-200">{admin.email}</td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge

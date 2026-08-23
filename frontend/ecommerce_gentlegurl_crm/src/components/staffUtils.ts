@@ -36,6 +36,7 @@ export type StaffRowData = {
   serviceCommissionRate: number
   isActive: boolean
   createdAt: string
+  storeLocations?: Array<{ id: number; name: string; code?: string }>
 }
 
 export const mapStaffApiItemToRow = (item: StaffApiItem): StaffRowData => {
@@ -59,5 +60,6 @@ export const mapStaffApiItemToRow = (item: StaffApiItem): StaffRowData => {
     serviceCommissionRate: Number.isFinite(serviceCommissionRateRaw) ? serviceCommissionRateRaw : 0,
     isActive: item.is_active === true || item.is_active === 1 || item.is_active === '1' || item.is_active === 'true',
     createdAt: item.created_at ?? '',
+    storeLocations: Array.isArray(item.store_locations) ? item.store_locations : [],
   }
 }

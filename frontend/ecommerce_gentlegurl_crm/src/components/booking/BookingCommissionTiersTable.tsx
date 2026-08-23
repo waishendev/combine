@@ -44,7 +44,6 @@ export default function BookingCommissionTiersTable({
 }: BookingCommissionTiersTableProps) {
   const { t } = useI18n()
   const { selectedBranchId, accessibleBranches, isAllBranches } = useBranch()
-  const [createBranchId, setCreateBranchId] = useState<number | null>(null)
   const [tiers, setTiers] = useState<CommissionTierRow[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
@@ -142,7 +141,7 @@ export default function BookingCommissionTiersTable({
     }
   }, [currentPage, pageSize, tierType, selectedBranchId])
 
-  useEffect(() => { setCurrentPage(1); setCreateBranchId(selectedBranchId) }, [selectedBranchId])
+  useEffect(() => { setCurrentPage(1) }, [selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -165,10 +164,11 @@ export default function BookingCommissionTiersTable({
 
   return (
     <div>
-      {isCreateModalOpen && createBranchId !== null && (
+      {isCreateModalOpen && (
         <BookingCommissionTierCreateModal
           tierType={tierType}
-          storeLocationId={createBranchId}
+          defaultStoreLocationId={selectedBranchId}
+          branchOptions={accessibleBranches}
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={async () => {
             setIsCreateModalOpen(false)
@@ -182,19 +182,12 @@ export default function BookingCommissionTiersTable({
           {canCreate && (
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-              onClick={() => { if (selectedBranchId !== null) { setCreateBranchId(selectedBranchId); setIsCreateModalOpen(true) } }}
-              disabled={selectedBranchId === null}
+              onClick={() => setIsCreateModalOpen(true)}
               type="button"
             >
               <i className="fa-solid fa-plus" />
               {t('common.create')}
             </button>
-          )}
-          {canCreate && isAllBranches && (
-            <select className="rounded border border-gray-300 px-3 py-2 text-sm" value={createBranchId ?? ''} onChange={(e) => { const id = Number(e.target.value); setCreateBranchId(id || null); if (id) setIsCreateModalOpen(true) }}>
-              <option value="">Create for Branch…</option>
-              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
           )}
         </div>
 

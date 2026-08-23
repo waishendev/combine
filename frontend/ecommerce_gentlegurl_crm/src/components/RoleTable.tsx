@@ -69,7 +69,6 @@ export default function RoleTable({
 }: RoleTableProps) {
   const { t } = useI18n()
   const { selectedBranchId, accessibleBranches, isAllBranches } = useBranch()
-  const [createBranchId, setCreateBranchId] = useState<number | null>(null)
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<RoleFilterValues>({ ...emptyRoleFilters })
@@ -271,7 +270,7 @@ export default function RoleTable({
     }
   }, [isCreateModalOpen, editingRoleId])
 
-  useEffect(() => { setCurrentPage(1); setCreateBranchId(selectedBranchId) }, [selectedBranchId])
+  useEffect(() => { setCurrentPage(1) }, [selectedBranchId])
 
   const handleSort = (column: keyof RoleRowData) => {
     if (sortColumn === column) {
@@ -463,7 +462,7 @@ export default function RoleTable({
         />
       )}
 
-      {isCreateModalOpen && createBranchId !== null && (
+      {isCreateModalOpen && (
         <RoleCreateModal
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={(role) => {
@@ -472,7 +471,8 @@ export default function RoleTable({
           }}
           permissions={permissionOptions}
           permissionsLoading={permissionsLoading}
-          storeLocationId={createBranchId}
+          defaultStoreLocationId={selectedBranchId}
+          branchOptions={accessibleBranches}
         />
       )}
 
@@ -481,21 +481,13 @@ export default function RoleTable({
           {canCreate && (
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-              onClick={() => { if (selectedBranchId !== null) { setCreateBranchId(selectedBranchId); setIsCreateModalOpen(true) } }}
-              disabled={selectedBranchId === null}
+              onClick={() => setIsCreateModalOpen(true)}
               type="button"
             >
               <i className="fa-solid fa-plus" />
               {t('role.createAction')}
             </button>
           )}
-          {canCreate && isAllBranches && (
-            <select className="rounded border border-gray-300 px-3 py-2 text-sm" value={createBranchId ?? ''} onChange={(e) => { const id = Number(e.target.value); setCreateBranchId(id || null); if (id) setIsCreateModalOpen(true) }}>
-              <option value="">Create Role for Branch…</option>
-              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
-          )}
-
           <button
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
             onClick={() => setIsFilterModalOpen(true)}

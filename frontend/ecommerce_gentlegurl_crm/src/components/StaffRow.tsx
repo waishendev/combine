@@ -11,6 +11,7 @@ export type { StaffRowData }
 interface StaffRowProps {
   staff: StaffRowData
   showActions?: boolean
+  showBranch?: boolean
   canView?: boolean
   canUpdate?: boolean
   canDelete?: boolean
@@ -23,6 +24,7 @@ interface StaffRowProps {
 export default function StaffRow({
   staff,
   showActions = false,
+  showBranch = false,
   canView = false,
   canUpdate = false,
   canDelete = false,
@@ -34,6 +36,7 @@ export default function StaffRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
+      {showBranch && <td className="px-4 py-2 border border-gray-200">{staff.storeLocations?.map((branch) => branch.name).join(', ') || 'Unassigned'}</td>}
       <td className="px-4 py-2 border border-gray-200">
         {staff.avatarUrl ? <img src={staff.avatarUrl} alt={staff.name} className="h-10 w-10 rounded-full object-cover" /> : <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center"><i className="fa-solid fa-user text-gray-500" /></div>}
       </td>

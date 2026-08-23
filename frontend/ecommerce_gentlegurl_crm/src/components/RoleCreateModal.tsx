@@ -112,7 +112,8 @@ interface RoleCreateModalProps {
   onSuccess: (role: RoleRowData) => void
   permissions: PermissionOption[]
   permissionsLoading: boolean
-  storeLocationId: number
+  defaultStoreLocationId: number | null
+  branchOptions: Array<{ id: number; name: string }>
 }
 
 type RoleApiPermission = {
@@ -183,12 +184,14 @@ export default function RoleCreateModal({
   onSuccess,
   permissions,
   permissionsLoading,
-  storeLocationId,
+  defaultStoreLocationId,
+  branchOptions,
 }: RoleCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [storeLocationId, setStoreLocationId] = useState(defaultStoreLocationId ? String(defaultStoreLocationId) : '')
   const groupedPermissions = useMemo(
     () => groupPermissionsBySlug(permissions),
     [permissions],
@@ -236,6 +239,10 @@ export default function RoleCreateModal({
       setError('Name is required')
       return
     }
+    if (!storeLocationId) {
+      setError('Branch is required')
+      return
+    }
 
     setSubmitting(true)
     setError(null)
@@ -252,7 +259,7 @@ export default function RoleCreateModal({
           description: form.description.trim() || null,
           is_active: true,
           permissions: form.permissionIds,
-          store_location_id: storeLocationId,
+          store_location_id: Number(storeLocationId),
         }),
       })
 
@@ -338,6 +345,13 @@ export default function RoleCreateModal({
     >
       <form id="role-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
           <div className="grid gap-4">
+            <div>
+              <label htmlFor="role-branch" className="mb-1 block text-sm font-medium text-gray-700">Branch <span className="text-red-500">*</span></label>
+              <select id="role-branch" value={storeLocationId} onChange={(event) => setStoreLocationId(event.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" disabled={submitting || defaultStoreLocationId !== null}>
+                <option value="">Select branch</option>
+                {branchOptions.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+              </select>
+            </div>
             <div>
               <label
                 htmlFor="name"
