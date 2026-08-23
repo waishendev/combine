@@ -10,6 +10,9 @@ use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderActionLog;
+use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\ProductStockMovement;
+use App\Models\Ecommerce\ProductVariant;
 use App\Models\Staff;
 use App\Services\Booking\StaffCommissionService;
 use Carbon\Carbon;
@@ -1264,6 +1267,8 @@ class OfflineOrderManagementService
             'payment_status' => $order->payment_status,
         ], $remark, $actorId);
 
+        $this->restoreEcommerceProductStockOnVoid($order, $remark, $actorId);
+
         if (! empty($packageIds)) {
             $packages = CustomerServicePackage::query()
                 ->whereIn('id', $packageIds)
@@ -1684,6 +1689,236 @@ class OfflineOrderManagementService
         if (in_array((string) $order->status, ['cancelled', 'draft'], true)) {
             throw new RuntimeException('Order is not in a valid state for this action.');
         }
+    }
+
+    private function restoreEcommerceProductStockOnVoid(Order $order, string $remark, ?int $actorId): void
+    {
+        $order->loadMissing('items');
+
+        $movementRemark = sprintf('VOID order %s', (string) ($order->order_number ?: $order->id));
+        if (ProductStockMovement::query()
+            ->where(function ($query) use ($movementRemark) {
+                $query->where('remark', $movementRemark)
+                    ->orWhere('remark', $movementRemark.' (bundle)');
+            })
+            ->exists()) {
+            return;
+        }
+
+        $restored = [];
+
+        foreach ($order->items as $item) {
+            if ($item->is_reward) {
+                continue;
+            }
+
+            $lineType = strtolower(trim((string) ($item->line_type ?? 'product')));
+            if ($lineType === '') {
+                $lineType = 'product';
+            }
+            if ($lineType !== 'product') {
+                continue;
+            }
+
+            $qty = max(0, (int) $item->quantity);
+            $productId = (int) ($item->product_id ?? 0);
+            if ($qty <= 0 || $productId <= 0) {
+                continue;
+            }
+
+            $variantId = (int) ($item->product_variant_id ?? 0);
+
+            $this->restoreTrackedStockForVoid(
+                $productId,
+                $variantId > 0 ? $variantId : null,
+                $qty,
+                $movementRemark,
+                $actorId,
+                $restored,
+            );
+        }
+
+        if ($restored !== []) {
+            $this->log('order', (int) $order->id, 'void_restore_stock', null, [
+                'restored' => $restored,
+            ], $remark, $actorId);
+        }
+    }
+
+    /**
+     * @param  list<array<string, int|string|null>>  $restored
+     */
+    private function restoreTrackedStockForVoid(
+        int $productId,
+        ?int $variantId,
+        int $qty,
+        string $movementRemark,
+        ?int $actorId,
+        array &$restored,
+    ): void {
+        if ($variantId) {
+            $variant = ProductVariant::query()
+                ->with(['bundleItems.componentVariant.product'])
+                ->where('id', $variantId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $variant) {
+                return;
+            }
+
+            if ($variant->is_bundle) {
+                $variant->loadMissing('bundleItems.componentVariant.product');
+                foreach ($variant->bundleItems as $bundleItem) {
+                    $component = $bundleItem->componentVariant;
+                    if (! $component || ! $component->track_stock) {
+                        continue;
+                    }
+
+                    $required = max(1, (int) ($bundleItem->quantity ?? 1)) * $qty;
+                    if ($required <= 0) {
+                        continue;
+                    }
+
+                    $this->increaseTrackedStockAndLog(
+                        (int) ($component->product_id ?: $productId),
+                        (int) $component->id,
+                        $required,
+                        $movementRemark.' (bundle)',
+                        $actorId,
+                        $restored,
+                    );
+                }
+
+                return;
+            }
+
+            if (! $variant->track_stock) {
+                return;
+            }
+
+            $this->increaseTrackedStockAndLog(
+                (int) ($variant->product_id ?: $productId),
+                (int) $variant->id,
+                $qty,
+                $movementRemark,
+                $actorId,
+                $restored,
+            );
+
+            return;
+        }
+
+        $product = Product::query()->where('id', $productId)->lockForUpdate()->first();
+        if (! $product || ! $product->track_stock) {
+            return;
+        }
+
+        $this->increaseTrackedStockAndLog(
+            (int) $product->id,
+            null,
+            $qty,
+            $movementRemark,
+            $actorId,
+            $restored,
+        );
+    }
+
+    /**
+     * @param  list<array<string, int|string|null>>  $restored
+     */
+    private function increaseTrackedStockAndLog(
+        int $productId,
+        ?int $variantId,
+        int $qty,
+        string $movementRemark,
+        ?int $actorId,
+        array &$restored,
+    ): void {
+        if ($qty <= 0) {
+            return;
+        }
+
+        if ($variantId) {
+            $lockedVariant = ProductVariant::query()
+                ->where('id', $variantId)
+                ->lockForUpdate()
+                ->first();
+            if (! $lockedVariant || ! $lockedVariant->track_stock) {
+                return;
+            }
+
+            $beforeQty = (int) ($lockedVariant->stock ?? 0);
+            $afterQty = $beforeQty + $qty;
+            $unitCost = (float) ($lockedVariant->cost_price ?? 0);
+            $beforeInventory = round($beforeQty * $unitCost, 2);
+            $afterInventory = round($afterQty * $unitCost, 2);
+
+            $lockedVariant->stock = $afterQty;
+            $lockedVariant->save();
+
+            ProductStockMovement::create([
+                'product_id' => (int) ($lockedVariant->product_id ?: $productId),
+                'product_variant_id' => (int) $lockedVariant->id,
+                'type' => 'stock_in',
+                'quantity_before' => $beforeQty,
+                'quantity_change' => $qty,
+                'quantity_after' => $afterQty,
+                'cost_price_before' => $unitCost,
+                'cost_price_after' => $unitCost,
+                'inventory_value_before' => $beforeInventory,
+                'inventory_value_after' => $afterInventory,
+                'input_cost_price_per_unit' => null,
+                'remark' => $movementRemark,
+                'created_by_user_id' => $actorId,
+            ]);
+
+            $restored[] = [
+                'product_id' => (int) ($lockedVariant->product_id ?: $productId),
+                'product_variant_id' => (int) $lockedVariant->id,
+                'quantity' => $qty,
+            ];
+
+            return;
+        }
+
+        $lockedProduct = Product::query()->where('id', $productId)->lockForUpdate()->first();
+        if (! $lockedProduct || ! $lockedProduct->track_stock) {
+            return;
+        }
+
+        $beforeQty = (int) ($lockedProduct->stock ?? 0);
+        $afterQty = $beforeQty + $qty;
+        $unitCost = (float) ($lockedProduct->cost_price ?? 0);
+        $beforeInventory = round($beforeQty * $unitCost, 2);
+        $afterInventory = round($afterQty * $unitCost, 2);
+
+        $lockedProduct->stock = $afterQty;
+        $lockedProduct->stock_quantity = $afterQty;
+        $lockedProduct->inventory_value = $afterInventory;
+        $lockedProduct->save();
+
+        ProductStockMovement::create([
+            'product_id' => (int) $lockedProduct->id,
+            'product_variant_id' => null,
+            'type' => 'stock_in',
+            'quantity_before' => $beforeQty,
+            'quantity_change' => $qty,
+            'quantity_after' => $afterQty,
+            'cost_price_before' => $unitCost,
+            'cost_price_after' => $unitCost,
+            'inventory_value_before' => $beforeInventory,
+            'inventory_value_after' => $afterInventory,
+            'input_cost_price_per_unit' => null,
+            'remark' => $movementRemark,
+            'created_by_user_id' => $actorId,
+        ]);
+
+        $restored[] = [
+            'product_id' => (int) $lockedProduct->id,
+            'product_variant_id' => null,
+            'quantity' => $qty,
+        ];
     }
 
     private function log(
