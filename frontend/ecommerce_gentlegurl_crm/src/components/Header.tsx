@@ -182,7 +182,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
             className="flex touch-pan-x justify-end overflow-x-auto overflow-y-visible py-0.5 pl-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:py-0 [&::-webkit-scrollbar]:hidden"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
-            <WorkspaceSwitcher permissions={permissions} />
+            <WorkspaceSwitcher permissions={permissions} showStaffConsumables={showStaffConsumablesLink} />
           </div>
         </div>
 

@@ -15,6 +15,7 @@ const OPTIONS: Array<{ label: string; value: Workspace }> = [
 
 type WorkspaceSwitcherProps = {
   permissions?: string[]
+  showStaffConsumables?: boolean
 }
 
 const segmentClass = (active: boolean) =>
@@ -27,7 +28,7 @@ const mobileRowClass = (active: boolean) =>
     active ? 'bg-blue-50 text-blue-700' : 'text-slate-700 active:bg-slate-100'
   }`
 
-export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitcherProps) {
+export default function WorkspaceSwitcher({ permissions = [], showStaffConsumables = false }: WorkspaceSwitcherProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
@@ -46,6 +47,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   const isPosRoute = pathname === '/pos' || pathname.startsWith('/pos/')
   const isSalesVisualRoute = pathname === '/reports/sales/visual' || pathname.startsWith('/reports/sales/visual/')
   const isDailyBookingRoute = pathname === '/daily-booking' || pathname.startsWith('/daily-booking/')
+  const isStaffConsumablesRoute = pathname === '/staff-consumables' || pathname.startsWith('/staff-consumables/')
 
   useEffect(() => {
     const handleWorkspaceChanged = () => {
@@ -120,12 +122,15 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
     router.prefetch('/pos/appointments')
     router.prefetch('/daily-booking')
     router.prefetch('/reports/sales/visual')
-  }, [router])
+    if (showStaffConsumables) {
+      router.prefetch('/staff-consumables')
+    }
+  }, [router, showStaffConsumables])
 
   const handleSwitch = (ws: Workspace) => {
     const landing = getWorkspaceLanding(ws)
     // POS 页不会改 workspace cookie，这里常仍是 ecommerce — 旧逻辑会 `ws === workspace` 直接 return，导致点 Ecommerce 不跳转、像卡住。
-    if (ws === workspace && !isPosRoute) {
+    if (ws === workspace && !isPosRoute && !isStaffConsumablesRoute) {
       return
     }
 
@@ -140,6 +145,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   }
 
   const mobileActiveLabel = (() => {
+    if (isStaffConsumablesRoute) return 'Consumables'
     if (isSalesVisualRoute) return 'Daily Sales'
     if (isDailyBookingRoute) return 'Daily Booking'
     if (isPosAppointments) return 'Appointments'
@@ -154,7 +160,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   const mobileMenuItems = (
     <>
       {workspaceOptions.map((option) => {
-        const isActive = option.value === workspace && !isPosRoute
+        const isActive = option.value === workspace && !isPosRoute && !isStaffConsumablesRoute
         return (
           <button
             key={option.value}
@@ -208,6 +214,18 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
         >
           {isDailyBookingRoute ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
           Daily Booking
+        </Link>
+      )}
+      {showStaffConsumables && (
+        <Link
+          href="/staff-consumables"
+          role="option"
+          aria-selected={isStaffConsumablesRoute}
+          onClick={closeMenu}
+          className={mobileRowClass(isStaffConsumablesRoute)}
+        >
+          {isStaffConsumablesRoute ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
+          Consumables
         </Link>
       )}
       {showSalesReport && (
@@ -273,7 +291,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
       {/* sm+: compact segmented control */}
       <div className="hidden shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 sm:inline-flex sm:gap-1 sm:p-1">
         {workspaceOptions.map((option) => {
-          const isActive = option.value === workspace && !isPosRoute
+          const isActive = option.value === workspace && !isPosRoute && !isStaffConsumablesRoute
 
           return (
             <button
