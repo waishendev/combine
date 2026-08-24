@@ -473,6 +473,7 @@ export default function RoleTable({
           permissions={permissionOptions}
           permissionsLoading={permissionsLoading}
           storeLocationId={createBranchId}
+          branchName={accessibleBranches.find((branch) => branch.id === createBranchId)?.name ?? `Branch #${createBranchId}`}
         />
       )}
 
@@ -631,6 +632,7 @@ export default function RoleTable({
           }}
           permissions={permissionOptions}
           permissionsLoading={permissionsLoading}
+          branchName={rows.find((role) => role.id === editingRoleId)?.branchName ?? 'Unassigned'}
         />
       )}
 
