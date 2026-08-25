@@ -42,7 +42,16 @@ class ProductController extends Controller
             ->where('status', BranchInventoryCutoverState::ACTIVE)->pluck('store_location_id')->map(fn ($id) => (int) $id)->all();
         $branchAuthorityActive = $branchId && in_array($branchId, $activeInventoryBranchIds, true);
         $branchInventoryReporting = $branchAuthorityActive || ($allBranchScope && $activeInventoryBranchIds !== []);
-        $products = Product::with(['categories', 'images', 'video', 'variants', 'storeLocations:id,name,code,is_active,is_pos_available'])
+        $productRelations = ['categories', 'images', 'video', 'variants'];
+        if ($allBranchScope) {
+            $productRelations['storeLocations'] = fn ($branches) => $branches
+                ->select('store_locations.id', 'store_locations.name', 'store_locations.code')
+                ->whereIn('store_locations.id', $accessibleIds)
+                ->where('store_location_product.is_available', true)
+                ->orderBy('store_locations.name');
+        }
+
+        $products = Product::with($productRelations)
             ->when($branchInventoryReporting, fn ($query) => $query->with(['branchInventories' => fn ($inventory) => $inventory
                 ->whereIn('store_location_id', $activeInventoryBranchIds)->with('storeLocation:id,name,code')]))
             ->when($branchId, fn ($query) => $query->whereHas('storeLocations', fn ($branches) => $branches

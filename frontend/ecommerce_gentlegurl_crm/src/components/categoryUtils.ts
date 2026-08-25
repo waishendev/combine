@@ -25,6 +25,7 @@ export type CategoryApiItem = {
   menu_ids?: (number | string)[] | null
   menus?: CategoryApiMenu[] | null
   products_count?: number | string | null
+  available_branches?: Array<{ id?: number | string | null; name?: string | null; code?: string | null }> | null
   children?: CategoryApiItem[] | null
   created_at?: string | null
   updated_at?: string | null
@@ -79,6 +80,13 @@ export const mapCategoryApiItemToRow = (item: CategoryApiItem): CategoryRowData 
     menuIds: Array.isArray(item.menu_ids) ? item.menu_ids.map(id => typeof id === 'number' ? id : Number(id)).filter(id => Number.isFinite(id)) : [],
     menuNames,
     productCount: Number(item.products_count ?? 0) || 0,
+    availableBranches: Array.isArray(item.available_branches)
+      ? item.available_branches.map((branch) => ({
+          id: Number(branch.id),
+          name: String(branch.name ?? ''),
+          code: branch.code ? String(branch.code) : undefined,
+        })).filter((branch) => branch.id > 0)
+      : [],
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
   }
