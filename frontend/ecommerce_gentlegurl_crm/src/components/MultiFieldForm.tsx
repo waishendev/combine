@@ -42,7 +42,7 @@ export default function MultiFieldForm({
     const controller = new AbortController()
     const fetchCategories = async () => {
       try {
-        const res = await fetch('/api/proxy/ecommerce/categories?page=1&per_page=1000', {
+        const res = await fetch('/api/proxy/ecommerce/categories/options/query?page=1&per_page=1000', {
           cache: 'no-store',
           signal: controller.signal,
         })

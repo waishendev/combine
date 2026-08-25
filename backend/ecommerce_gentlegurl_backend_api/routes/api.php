@@ -773,8 +773,16 @@ $protectedRoutes = function () {
     // Ecommerce Admin APIs
     Route::prefix('ecommerce')->group(function () {
         // Categories
+        // OLD QUERY — kept for POS / legacy
         Route::get('/categories', [CategoryController::class, 'index'])
             ->middleware('permission:ecommerce.categories.view|pos.checkout');
+
+        // NEW ENHANCEMENT — products-categories-query-v1
+        Route::get('/categories/query', [CategoryController::class, 'queryIndex'])
+            ->middleware('permission:ecommerce.categories.view');
+        Route::get('/categories/options/query', [CategoryController::class, 'optionsQuery'])
+            ->middleware('permission:ecommerce.categories.view|ecommerce.products.view|ecommerce.products.create|ecommerce.products.update|pos.checkout');
+        // END NEW ENHANCEMENT
 
         Route::get('/categories/export', [CategoryController::class, 'exportCsv'])
             ->middleware('permission:ecommerce.categories.view');
@@ -802,8 +810,16 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.categories.delete');
 
         // Products
+        // OLD QUERY — full graph (POS / legacy)
         Route::get('/products', [ProductController::class, 'index'])
             ->middleware('permission:ecommerce.products.view|pos.checkout');
+
+        // NEW ENHANCEMENT — products-categories-query-v1 (slim CRM list)
+        Route::get('/products/query', [ProductController::class, 'queryIndex'])
+            ->middleware('permission:ecommerce.products.view');
+        Route::get('/products/{product}/query', [ProductController::class, 'queryShow'])
+            ->middleware('permission:ecommerce.products.view|ecommerce.stock-movements-logs.view');
+        // END NEW ENHANCEMENT
 
         Route::get('/products/export', [ProductController::class, 'exportCsv'])
             ->middleware('permission:ecommerce.products.view');
@@ -829,8 +845,10 @@ $protectedRoutes = function () {
         Route::post('/products/{product}/stock-adjustment', [ProductController::class, 'adjustStock'])
             ->middleware('permission:ecommerce.products.update');
 
+        // NEW ENHANCEMENT — products-categories-query-v1b (sargable dates + indexes; FE picker uses /products/query)
         Route::get('/product-stock-movements', [ProductStockMovementController::class, 'index'])
             ->middleware('permission:ecommerce.stock-movements-logs.view');
+        // END NEW ENHANCEMENT
 
         Route::post('/product-stock-movements/{id}/revoke', [ProductStockMovementController::class, 'revoke'])
             ->middleware('permission:ecommerce.products.update');

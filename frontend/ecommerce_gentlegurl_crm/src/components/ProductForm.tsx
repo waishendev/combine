@@ -732,7 +732,7 @@ export default function ProductForm({
     const fetchCategories = async () => {
       setLoadingCategories(true)
       try {
-        const res = await fetch('/api/proxy/ecommerce/categories?page=1&per_page=200', {
+        const res = await fetch('/api/proxy/ecommerce/categories/options/query?page=1&per_page=200', {
           cache: 'no-store',
           signal: controller.signal,
         })

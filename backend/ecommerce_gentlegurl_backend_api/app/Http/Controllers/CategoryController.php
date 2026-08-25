@@ -20,7 +20,7 @@ class CategoryController extends Controller
         if ($branchId && $request->user()) {
             app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
         }
-        $categories = Category::with(['parent', 'shopMenus'])
+        $categories = Category::with(['shopMenus:id,name,slug'])
             ->withCount(['products as products_count' => function ($query) use ($branchId) {
                 if ($branchId) {
                     $query->whereHas('storeLocations', fn ($branches) => $branches
@@ -34,15 +34,100 @@ class CategoryController extends Controller
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
             })
+            ->when($request->filled('slug'), function ($query) use ($request) {
+                $query->where('slug', 'like', '%' . $request->get('slug') . '%');
+            })
             ->when($request->has('is_active'), function ($query) use ($request) {
                 $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
             })
             ->orderBy('sort_order')
+            ->orderBy('id')
             ->paginate($perPage);
 
         $categories->getCollection()->transform(fn ($category) => $this->formatCategory($category));
 
         return $this->respond($categories);
+    }
+
+    /**
+     * Slim CRM categories list — same formatCategory keys, lighter relations.
+     * Enhancement: products-categories-query-v1
+     */
+    public function queryIndex(Request $request)
+    {
+        $perPage = max(1, min(200, $request->integer('per_page', 15)));
+        $branchId = $request->integer('branch_store_location_id') ?: null;
+        if ($branchId && $request->user()) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
+        }
+
+        $categories = Category::query()
+            ->select([
+                'id',
+                'parent_id',
+                'name',
+                'cn_name',
+                'slug',
+                'description',
+                'meta_title',
+                'meta_description',
+                'meta_keywords',
+                'meta_og_image',
+                'is_active',
+                'show_in_pos_filter',
+                'sort_order',
+                'created_at',
+                'updated_at',
+            ])
+            ->with(['shopMenus:id,name,slug'])
+            ->withCount(['products as products_count' => function ($query) use ($branchId) {
+                if ($branchId) {
+                    $query->whereHas('storeLocations', fn ($branches) => $branches
+                        ->where('store_locations.id', $branchId)
+                        ->where('store_location_product.is_available', true));
+                }
+            }])
+            ->when($branchId, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
+                ->where('store_locations.id', $branchId)
+                ->where('store_location_product.is_available', true)))
+            ->when($request->filled('name'), function ($query) use ($request) {
+                $query->where('name', 'like', '%' . $request->get('name') . '%');
+            })
+            ->when($request->filled('slug'), function ($query) use ($request) {
+                $query->where('slug', 'like', '%' . $request->get('slug') . '%');
+            })
+            ->when($request->has('is_active'), function ($query) use ($request) {
+                $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->paginate($perPage);
+
+        $categories->getCollection()->transform(fn ($category) => $this->formatCategory($category));
+
+        return $this->respond($categories);
+    }
+
+    /**
+     * Dropdown / filter options — id, name, slug only.
+     */
+    public function optionsQuery(Request $request)
+    {
+        $perPage = max(1, min(1000, $request->integer('per_page', 200)));
+
+        $items = Category::query()
+            ->select(['id', 'name', 'slug', 'is_active', 'sort_order'])
+            ->when($request->has('is_active'), function ($query) use ($request) {
+                $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
+            ->when($request->filled('name'), function ($query) use ($request) {
+                $query->where('name', 'like', '%' . $request->get('name') . '%');
+            })
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->paginate($perPage);
+
+        return $this->respond($items);
     }
 
     public function store(Request $request)

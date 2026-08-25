@@ -140,7 +140,7 @@ export default function CategoryTable({
       }
       if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
 
-      const res = await fetch(`/api/proxy/ecommerce/categories?${qs.toString()}`, {
+      const res = await fetch(`/api/proxy/ecommerce/categories/query?${qs.toString()}`, {
         cache: 'no-store',
         signal,
       })

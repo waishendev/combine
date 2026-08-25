@@ -222,7 +222,7 @@ export default function ProductStockMovementLogsPage({
       is_reward_only: 'false',
     })
     if (selectedBranchId) params.set('branch_store_location_id', String(selectedBranchId))
-    const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, {
+    const res = await fetch(`/api/proxy/ecommerce/products/query?include_variants=0&${params.toString()}`, {
       cache: 'no-store', signal,
     })
     if (!res.ok) return

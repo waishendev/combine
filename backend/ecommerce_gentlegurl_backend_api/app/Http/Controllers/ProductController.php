@@ -131,6 +131,303 @@ class ProductController extends Controller
         return $this->respond($products);
     }
 
+    /**
+     * Slim CRM product list — cover image only, no video/meta/description bloat.
+     * Enhancement: products-categories-query-v1
+     */
+    public function queryIndex(Request $request)
+    {
+        $perPage = max(1, min(200, $request->integer('per_page', 15)));
+
+        $branchId = $request->integer('branch_store_location_id') ?: null;
+        if ($branchId && $request->user()) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
+        }
+        $allBranchScope = ! $branchId && $request->query('branch_scope') === 'all' && $request->user();
+        $accessibleIds = $allBranchScope
+            ? app(StoreLocationAccessService::class)->accessibleStoreLocations($request->user())->pluck('id')->map(fn ($id) => (int) $id)->all()
+            : [];
+        $inventoryBranchIds = $branchId ? [$branchId] : $accessibleIds;
+        $activeInventoryBranchIds = BranchInventoryCutoverState::query()->whereIn('store_location_id', $inventoryBranchIds)
+            ->where('status', BranchInventoryCutoverState::ACTIVE)->pluck('store_location_id')->map(fn ($id) => (int) $id)->all();
+        $branchAuthorityActive = $branchId && in_array($branchId, $activeInventoryBranchIds, true);
+        $branchInventoryReporting = $branchAuthorityActive || ($allBranchScope && $activeInventoryBranchIds !== []);
+
+        $products = Product::query()
+            ->select([
+                'id',
+                'name',
+                'cn_name',
+                'slug',
+                'sku',
+                'barcode',
+                'type',
+                'price',
+                'sale_price',
+                'sale_price_start_at',
+                'sale_price_end_at',
+                'cost_price',
+                'stock',
+                'stock_quantity',
+                'low_stock_threshold',
+                'dummy_sold_count',
+                'track_stock',
+                'is_active',
+                'is_featured',
+                'is_hidden_in_shop',
+                'is_staff_free',
+                'is_reward_only',
+                'created_at',
+                'updated_at',
+            ])
+            ->with([
+                'categories:id,name',
+            ])
+            ->when($request->boolean('include_store_locations'), fn ($query) => $query->with([
+                'storeLocations:id,name,code,is_active,is_pos_available',
+            ]))
+            ->when($request->boolean('include_variants'), fn ($query) => $query->with([
+                'variants' => fn ($q) => $q->select([
+                    'id',
+                    'product_id',
+                    'title',
+                    'cn_name',
+                    'sku',
+                    'barcode',
+                    'price',
+                    'sale_price',
+                    'sale_price_start_at',
+                    'sale_price_end_at',
+                    'cost_price',
+                    'stock',
+                    'low_stock_threshold',
+                    'track_stock',
+                    'is_bundle',
+                    'is_active',
+                    'sort_order',
+                ])->orderBy('sort_order')->orderBy('id'),
+            ]))
+            ->withCount(['variants as variants_count'])
+            ->withMin('variants', 'price')
+            ->withMax('variants', 'price')
+            ->when(! $request->boolean('include_variants'), fn ($query) => $query->withSum(
+                ['variants as variants_stock_sum' => fn ($q) => $q->where('is_bundle', false)],
+                'stock'
+            ))
+            ->when($branchInventoryReporting, fn ($query) => $query->with(['branchInventories' => fn ($inventory) => $inventory
+                ->whereIn('store_location_id', $activeInventoryBranchIds)
+                ->select([
+                    'id',
+                    'store_location_id',
+                    'product_id',
+                    'product_variant_id',
+                    'quantity',
+                ])
+                ->with('storeLocation:id,name,code')]))
+            ->when($branchId, fn ($query) => $query->whereHas('storeLocations', fn ($branches) => $branches
+                ->where('store_locations.id', $branchId)->where('store_location_product.is_available', true)))
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $term = trim((string) $request->get('search'));
+                if ($term === '') {
+                    return;
+                }
+                $pattern = $this->likeContainsPattern($term);
+                $query->where(function ($q) use ($pattern) {
+                    $q->where('name', 'like', $pattern)
+                        ->orWhere('sku', 'like', $pattern)
+                        ->orWhereHas('variants', function ($vq) use ($pattern) {
+                            $vq->where('sku', 'like', $pattern);
+                        });
+                });
+            })
+            ->when($request->filled('name'), function ($query) use ($request) {
+                $term = trim((string) $request->get('name'));
+                if ($term === '') {
+                    return;
+                }
+                $query->where('name', 'like', $this->likeContainsPattern($term));
+            })
+            ->when($request->filled('sku'), function ($query) use ($request) {
+                $term = trim((string) $request->get('sku'));
+                if ($term === '') {
+                    return;
+                }
+                $pattern = $this->likeContainsPattern($term);
+                $query->where(function ($q) use ($pattern) {
+                    $q->where('sku', 'like', $pattern)
+                        ->orWhereHas('variants', function ($vq) use ($pattern) {
+                            $vq->where('sku', 'like', $pattern);
+                        });
+                });
+            })
+            ->when($request->filled('category_id'), function ($query) use ($request) {
+                $query->whereHas('categories', function ($q) use ($request) {
+                    $q->where('categories.id', $request->integer('category_id'));
+                });
+            })
+            ->when($request->has('is_active'), function ($query) use ($request) {
+                $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
+            ->when($request->has('is_reward_only'), function ($query) use ($request) {
+                $query->where('is_reward_only', filter_var($request->get('is_reward_only'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
+            ->orderByDesc('id')
+            ->paginate($perPage);
+
+        $coverImages = ProductMedia::query()
+            ->where('type', 'image')
+            ->whereIn('product_id', $products->getCollection()->pluck('id')->all())
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get([
+                'id',
+                'product_id',
+                'type',
+                'path',
+                'thumbnail_path',
+                'sort_order',
+                'status',
+                'size_bytes',
+                'width',
+                'height',
+            ])
+            ->groupBy('product_id')
+            ->map(fn ($rows) => $rows->first());
+
+        $products->getCollection()->transform(function (Product $product) use ($branchInventoryReporting, $coverImages) {
+            $variants = $product->relationLoaded('variants') ? $product->variants : collect();
+            if ($branchInventoryReporting) {
+                $inventory = $product->branchInventories->groupBy(fn ($row) => (int) ($row->product_variant_id ?? 0));
+                // Sum all branch rows so list stock stays correct when variants are not embedded.
+                $totalQty = (int) $product->branchInventories->sum('quantity');
+                $product->setAttribute('stock', $totalQty);
+                $product->setAttribute('stock_quantity', $totalQty);
+                $variants->each(fn (ProductVariant $variant) => ! $variant->is_bundle
+                    ? $variant->setAttribute('stock', (int) ($inventory->get((int) $variant->id)?->sum('quantity') ?? 0))
+                    : null);
+                $product->setAttribute('branch_inventory_breakdown', $product->branchInventories->map(fn ($row) => [
+                    'store_location_id' => (int) $row->store_location_id,
+                    'branch_name' => $row->storeLocation?->name,
+                    'branch_code' => $row->storeLocation?->code,
+                    'product_variant_id' => $row->product_variant_id ? (int) $row->product_variant_id : null,
+                    'quantity' => (int) $row->quantity,
+                ])->values());
+            } elseif (! $product->relationLoaded('variants') && (int) ($product->variants_count ?? 0) > 0) {
+                $sum = $product->getAttribute('variants_stock_sum');
+                if ($sum !== null) {
+                    $product->setAttribute('stock', (int) $sum);
+                    $product->setAttribute('stock_quantity', (int) $sum);
+                }
+            }
+            $variantPrices = $variants
+                ->map(fn (ProductVariant $variant) => $variant->price)
+                ->filter(fn ($value) => $value !== null)
+                ->map(fn ($value) => (float) $value)
+                ->values();
+
+            if ($variantPrices->isNotEmpty()) {
+                $product->setAttribute('min_variant_price', $variantPrices->min());
+                $product->setAttribute('max_variant_price', $variantPrices->max());
+            } else {
+                $minAgg = $product->getAttribute('variants_min_price');
+                $maxAgg = $product->getAttribute('variants_max_price');
+                $product->setAttribute('min_variant_price', $minAgg !== null ? (float) $minAgg : null);
+                $product->setAttribute('max_variant_price', $maxAgg !== null ? (float) $maxAgg : null);
+            }
+            if (! $product->relationLoaded('variants')) {
+                $product->setRelation('variants', collect());
+            } else {
+                $product->setAttribute('variants_count', $variants->count());
+            }
+            $product->offsetUnset('video');
+            $cover = $coverImages->get($product->id);
+            $product->setRelation('images', $cover ? collect([$cover]) : collect());
+
+            return $product;
+        });
+
+        return $this->respond($products);
+    }
+
+    /**
+     * Slim product for CRM stock modal / light detail (variants + cover).
+     */
+    public function queryShow(Request $request, Product $product)
+    {
+        $branchId = $request->integer('branch_store_location_id') ?: null;
+        if ($branchId && $request->user()) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
+        }
+
+        $activeInventoryBranchIds = [];
+        if ($branchId) {
+            $activeInventoryBranchIds = BranchInventoryCutoverState::query()
+                ->where('store_location_id', $branchId)
+                ->where('status', BranchInventoryCutoverState::ACTIVE)
+                ->pluck('store_location_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        $product->load([
+            'categories:id,name',
+            'variants' => fn ($q) => $q->select([
+                'id',
+                'product_id',
+                'title',
+                'cn_name',
+                'sku',
+                'barcode',
+                'price',
+                'sale_price',
+                'cost_price',
+                'stock',
+                'low_stock_threshold',
+                'track_stock',
+                'is_bundle',
+                'is_active',
+                'sort_order',
+            ])->orderBy('sort_order')->orderBy('id'),
+            'storeLocations:id,name,code,is_active,is_pos_available',
+        ]);
+
+        if ($activeInventoryBranchIds !== []) {
+            $product->load(['branchInventories' => fn ($inventory) => $inventory
+                ->whereIn('store_location_id', $activeInventoryBranchIds)
+                ->select(['id', 'store_location_id', 'product_id', 'product_variant_id', 'quantity'])
+                ->with('storeLocation:id,name,code')]);
+
+            $inventory = $product->branchInventories->groupBy(fn ($row) => (int) ($row->product_variant_id ?? 0));
+            $product->setAttribute('stock', (int) ($inventory->get(0)?->sum('quantity') ?? 0));
+            $product->setAttribute('stock_quantity', (int) ($inventory->get(0)?->sum('quantity') ?? 0));
+            $product->variants->each(fn (ProductVariant $variant) => ! $variant->is_bundle
+                ? $variant->setAttribute('stock', (int) ($inventory->get((int) $variant->id)?->sum('quantity') ?? 0))
+                : null);
+        }
+
+        $cover = ProductMedia::query()
+            ->where('product_id', $product->id)
+            ->where('type', 'image')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->first([
+                'id',
+                'product_id',
+                'type',
+                'path',
+                'thumbnail_path',
+                'sort_order',
+                'status',
+                'size_bytes',
+                'width',
+                'height',
+            ]);
+        $product->setRelation('images', $cover ? collect([$cover]) : collect());
+        $product->setAttribute('variants_count', $product->variants->count());
+
+        return $this->respond($product);
+    }
+
     public function store(Request $request)
     {
     //     try {
@@ -524,7 +821,16 @@ class ProductController extends Controller
             return $lockedProduct;
         });
 
-        return $this->respond($updatedProduct->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct']), __('Stock adjusted successfully.'));
+        return $this->respond($updatedProduct->load([
+            'categories:id,name',
+            'images' => fn ($q) => $q->select([
+                'id', 'product_id', 'type', 'path', 'thumbnail_path', 'sort_order', 'status', 'size_bytes', 'width', 'height',
+            ]),
+            'variants' => fn ($q) => $q->select([
+                'id', 'product_id', 'title', 'cn_name', 'sku', 'barcode', 'price', 'sale_price', 'cost_price',
+                'stock', 'low_stock_threshold', 'track_stock', 'is_bundle', 'is_active', 'sort_order',
+            ])->orderBy('sort_order')->orderBy('id'),
+        ]), __('Stock adjusted successfully.'));
     }
 
     public function exportCsv(Request $request)
@@ -1060,12 +1366,31 @@ class ProductController extends Controller
             ->orderBy('id')
             ->get();
 
-        DB::transaction(function () use ($products, $prefix, $field, &$counter, &$assignedCodes) {
+        $existingProductCodes = Product::query()
+            ->whereNotNull($field)
+            ->pluck($field)
+            ->map(fn ($value) => (string) $value)
+            ->flip()
+            ->all();
+        $existingVariantCodes = ProductVariant::query()
+            ->whereNotNull($field)
+            ->pluck($field)
+            ->map(fn ($value) => (string) $value)
+            ->flip()
+            ->all();
+
+        DB::transaction(function () use ($products, $prefix, $field, &$counter, &$assignedCodes, &$existingProductCodes, &$existingVariantCodes) {
             foreach ($products as $product) {
                 $variants = $product->variants;
 
                 if ($variants->isEmpty()) {
-                    $product->{$field} = $this->nextBulkCodeCandidate($prefix, $counter, $assignedCodes, $field);
+                    $product->{$field} = $this->nextBulkCodeCandidate(
+                        $prefix,
+                        $counter,
+                        $assignedCodes,
+                        $existingProductCodes,
+                        $existingVariantCodes
+                    );
                     $counter++;
                     $product->save();
 
@@ -1073,7 +1398,13 @@ class ProductController extends Controller
                 }
 
                 foreach ($variants as $variant) {
-                    $variant->{$field} = $this->nextBulkCodeCandidate($prefix, $counter, $assignedCodes, $field);
+                    $variant->{$field} = $this->nextBulkCodeCandidate(
+                        $prefix,
+                        $counter,
+                        $assignedCodes,
+                        $existingProductCodes,
+                        $existingVariantCodes
+                    );
                     $counter++;
                     $variant->save();
                 }
@@ -1084,8 +1415,13 @@ class ProductController extends Controller
         });
     }
 
-    protected function nextBulkCodeCandidate(string $prefix, int $startNumber, array &$assignedCodes, string $field): string
-    {
+    protected function nextBulkCodeCandidate(
+        string $prefix,
+        int $startNumber,
+        array &$assignedCodes,
+        array &$existingProductCodes,
+        array &$existingVariantCodes,
+    ): string {
         $number = $startNumber;
 
         while (true) {
@@ -1093,10 +1429,11 @@ class ProductController extends Controller
 
             if (
                 ! in_array($code, $assignedCodes, true)
-                && ! Product::query()->where($field, $code)->exists()
-                && ! ProductVariant::query()->where($field, $code)->exists()
+                && ! isset($existingProductCodes[$code])
+                && ! isset($existingVariantCodes[$code])
             ) {
                 $assignedCodes[] = $code;
+                $existingProductCodes[$code] = true;
 
                 return $code;
             }

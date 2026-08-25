@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductStockMovement;
 use App\Models\Ecommerce\ProductVariant;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -53,16 +54,20 @@ class ProductStockMovementController extends Controller
                 $builder->where('type', $validated['type']);
             })
             ->when(isset($validated['date_from']), function ($builder) use ($validated) {
-                $builder->whereDate('created_at', '>=', $validated['date_from']);
+                $builder->where('created_at', '>=', Carbon::parse($validated['date_from'])->startOfDay());
             })
             ->when(isset($validated['date_to']), function ($builder) use ($validated) {
-                $builder->whereDate('created_at', '<=', $validated['date_to']);
+                $builder->where('created_at', '<', Carbon::parse($validated['date_to'])->addDay()->startOfDay());
             })
             ->when((bool) ($validated['revokable_only'] ?? false), function ($builder) {
                 $builder->whereIn('type', ['stock_in', 'stock_out'])
                     ->where('is_revoked', false)
                     ->whereNull('reversal_of_movement_id')
-                    ->whereDoesntHave('reversalMovement')
+                    ->whereNotExists(function ($sub) {
+                        $sub->select(DB::raw(1))
+                            ->from('product_stock_movements as psm_rev')
+                            ->whereColumn('psm_rev.reversal_of_movement_id', 'product_stock_movements.id');
+                    })
                     ->where(function ($nested) {
                         $nested->whereNull('remark')
                             ->orWhereRaw('LOWER(TRIM(remark)) != ?', ['pos checkout']);

@@ -6,6 +6,7 @@ use App\Jobs\ProcessProductVideoJob;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductMedia;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -168,13 +169,30 @@ class ProductMediaController extends Controller
             ->get()
             ->keyBy('id');
 
+        $caseParts = [];
+        $bindings = [];
+        $validIds = [];
         foreach ($validated['items'] as $item) {
-            $media = $mediaItems->get($item['id']);
-            if (! $media) {
+            $id = (int) $item['id'];
+            if (! $mediaItems->has($id)) {
                 continue;
             }
-            $media->sort_order = $item['sort_order'];
-            $media->save();
+            $caseParts[] = 'WHEN ? THEN ?';
+            $bindings[] = $id;
+            $bindings[] = (int) $item['sort_order'];
+            $validIds[] = $id;
+        }
+
+        if ($caseParts !== []) {
+            $bindings[] = (int) $product->id;
+            foreach ($validIds as $id) {
+                $bindings[] = $id;
+            }
+            $inPlaceholders = implode(',', array_fill(0, count($validIds), '?'));
+            DB::update(
+                'UPDATE product_media SET sort_order = CASE id '.implode(' ', $caseParts).' END WHERE product_id = ? AND id IN ('.$inPlaceholders.')',
+                $bindings
+            );
         }
 
         return $this->respond($product->load(['images', 'video']), __('Media order updated successfully.'));

@@ -235,7 +235,7 @@ export default function ProductTable({
       const qs = new URLSearchParams()
       qs.set('page', '1')
       qs.set('per_page', '1000')
-      const res = await fetch(`/api/proxy/ecommerce/categories?${qs.toString()}`, {
+      const res = await fetch(`/api/proxy/ecommerce/categories/options/query?${qs.toString()}`, {
         cache: 'no-store',
         signal,
       })
@@ -288,7 +288,7 @@ export default function ProductTable({
       if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
       else qs.set('branch_scope', 'all')
 
-      const res = await fetch(`/api/proxy/ecommerce/products?${qs.toString()}`, {
+      const res = await fetch(`/api/proxy/ecommerce/products/query?${qs.toString()}`, {
         cache: 'no-store',
         signal,
       })
@@ -1257,16 +1257,39 @@ export default function ProductTable({
                       handleDelete(product)
                     }
                   }}
-                  onStockAdjustment={() => {
-                    const firstAdjustable = (product.variants ?? []).find((variant) => !variant.isBundle)
-                    setStockAdjustment({
-                      product,
-                      selectedVariantId: firstAdjustable ? String(firstAdjustable.id) : '',
-                      adjustmentType: 'stock_in',
-                      quantity: '',
-                      costPricePerUnit: '',
-                      remark: '',
-                    })
+                  onStockAdjustment={async () => {
+                    if (!canUpdate) return
+                    try {
+                      const qs = new URLSearchParams()
+                      if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
+                      const res = await fetch(
+                        `/api/proxy/ecommerce/products/${product.id}/query${qs.toString() ? `?${qs}` : ''}`,
+                        { cache: 'no-store' },
+                      )
+                      if (!res.ok) {
+                        window.alert('Failed to load product stock details.')
+                        return
+                      }
+                      const json = await res.json().catch(() => null)
+                      const payload = json?.data as ProductApiItem | undefined
+                      if (!payload) {
+                        window.alert('Failed to load product stock details.')
+                        return
+                      }
+                      const detailed = mapProductApiItemToRow(payload)
+                      const firstAdjustable = (detailed.variants ?? []).find((variant) => !variant.isBundle)
+                      setStockAdjustment({
+                        product: detailed,
+                        selectedVariantId: firstAdjustable ? String(firstAdjustable.id) : '',
+                        adjustmentType: 'stock_in',
+                        quantity: '',
+                        costPricePerUnit: '',
+                        remark: '',
+                      })
+                    } catch (error) {
+                      console.error(error)
+                      window.alert('Failed to load product stock details.')
+                    }
                   }}
                   onViewStockLogs={() => router.push(`/products/stock-movements?product_id=${product.id}`)}
                 />
