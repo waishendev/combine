@@ -10,6 +10,8 @@ import TableLoadingRow from './TableLoadingRow'
 import RewardProductDeleteModal from './RewardProductDeleteModal'
 import StatusBadge from './StatusBadge'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
+import { rewardAvailabilityLabels, type BranchLabel } from '@/lib/catalogApplicability'
 
 type RewardProductRow = {
   id: number
@@ -19,6 +21,8 @@ type RewardProductRow = {
   productId: number
   productName: string
   productStock: number
+  availableBranches: BranchLabel[]
+  availableAtAllAccessibleBranches: boolean
 }
 
 type Meta = {
@@ -38,6 +42,8 @@ type RewardApiItem = {
     id?: number | string | null
     name?: string | null
     stock?: number | string | null
+    store_locations?: Array<{ id: number; name: string }>
+    available_at_all_accessible_branches?: boolean
   } | null
 }
 
@@ -70,6 +76,7 @@ const toBoolean = (value: unknown): boolean =>
 
 export default function RewardProductTable({ permissions }: RewardProductTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId, isAllBranches } = useBranch()
   const router = useRouter()
   const [rows, setRows] = useState<RewardProductRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -98,6 +105,7 @@ export default function RewardProductTable({ permissions }: RewardProductTablePr
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
         qs.set('type', 'product')
+        if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
 
         const res = await fetch(`/api/proxy/ecommerce/loyalty/rewards?${qs.toString()}`, {
           cache: 'no-store',
@@ -156,6 +164,8 @@ export default function RewardProductTable({ permissions }: RewardProductTablePr
               productId,
               productName: item.product?.name ?? `Product #${productId}`,
               productStock: toNumber(item.product?.stock),
+              availableBranches: item.product?.store_locations ?? [],
+              availableAtAllAccessibleBranches: Boolean(item.product?.available_at_all_accessible_branches),
             }
           })
           .filter(Boolean) as RewardProductRow[]
@@ -181,14 +191,16 @@ export default function RewardProductTable({ permissions }: RewardProductTablePr
 
     fetchRewards()
     return () => controller.abort()
-  }, [currentPage, pageSize])
+  }, [currentPage, pageSize, selectedBranchId])
+
+  useEffect(() => { setCurrentPage(1) }, [selectedBranchId])
 
   const handlePageSizeChange = (size: number) => {
     setPageSize(size)
     setCurrentPage(1)
   }
 
-  const tableColumns = showActions ? 6 : 5
+  const tableColumns = (showActions ? 6 : 5) + (isAllBranches ? 1 : 0)
 
   return (
     <div>
@@ -246,6 +258,7 @@ export default function RewardProductTable({ permissions }: RewardProductTablePr
                 [
                   { key: 'title', label: 'Title' },
                   { key: 'productName', label: 'Product' },
+                  ...(isAllBranches ? [{ key: 'availableBranches', label: 'Available At' }] : []),
                   { key: 'pointsRequired', label: 'Points' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'productStock', label: 'Stock' },
@@ -280,6 +293,16 @@ export default function RewardProductTable({ permissions }: RewardProductTablePr
                 <tr key={reward.id} className="text-sm">
                   <td className="px-4 py-2 border border-gray-200">{reward.title}</td>
                   <td className="px-4 py-2 border border-gray-200">{reward.productName}</td>
+                  {isAllBranches && (
+                    <td className="px-4 py-2 border border-gray-200">
+                      <div className="flex min-w-32 flex-wrap gap-1">
+                        {rewardAvailabilityLabels(reward.availableBranches, reward.availableAtAllAccessibleBranches).map((label) => (
+                          <span key={label} className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800">{label}</span>
+                        ))}
+                        {reward.availableBranches.length === 0 && !reward.availableAtAllAccessibleBranches && <span className="text-gray-500">Unassigned</span>}
+                      </div>
+                    </td>
+                  )}
                   <td className="px-4 py-2 border border-gray-200">
                     {reward.pointsRequired}
                   </td>

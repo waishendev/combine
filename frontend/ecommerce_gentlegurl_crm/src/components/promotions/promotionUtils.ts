@@ -29,6 +29,7 @@ export type PromotionApiItem = {
   is_active: boolean
   is_online_enabled?: boolean
   offline_store_locations?: Array<{ id: number; name: string; code: string }>
+  offline_all_accessible?: boolean
   trigger_type: TriggerType
   created_at?: string
   promotion_products?: Array<{
@@ -48,6 +49,9 @@ export type PromotionRowData = {
   productCount: number
   tierCount: number
   createdAt: string | null
+  isOnlineEnabled: boolean
+  offlineStoreLocations: Array<{ id: number; name: string }>
+  offlineAllAccessible: boolean
 }
 
 export type PromotionFormState = {
@@ -121,6 +125,9 @@ export function mapPromotionApiItemToRow(
     productCount: item.promotion_products?.length ?? 0,
     tierCount: item.promotion_tiers?.length ?? 0,
     createdAt: item.created_at ?? null,
+    isOnlineEnabled: Boolean(item.is_online_enabled),
+    offlineStoreLocations: item.offline_store_locations ?? [],
+    offlineAllAccessible: Boolean(item.offline_all_accessible),
   }
 }
 

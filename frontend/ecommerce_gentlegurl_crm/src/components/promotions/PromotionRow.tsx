@@ -6,6 +6,7 @@ import {
   type PromotionRowData,
 } from './promotionUtils'
 import { useI18n } from '@/lib/i18n'
+import { promotionApplicabilityBadges } from '@/lib/catalogApplicability'
 
 interface PromotionRowProps {
   promotion: PromotionRowData
@@ -16,6 +17,8 @@ interface PromotionRowProps {
   onView: () => void
   onEdit: () => void
   onDelete: () => void
+  isAllBranches: boolean
+  selectedBranchId: number | null
 }
 
 export default function PromotionRow({
@@ -27,6 +30,8 @@ export default function PromotionRow({
   onView,
   onEdit,
   onDelete,
+  isAllBranches,
+  selectedBranchId,
 }: PromotionRowProps) {
   const { t } = useI18n()
 
@@ -34,6 +39,22 @@ export default function PromotionRow({
     <tr className="hover:bg-gray-50">
       <td className="px-4 py-2 text-sm text-left text-gray-900 font-medium">
         {promotion.name}
+      </td>
+      <td className="px-4 py-2 text-sm text-left">
+        <div className="flex min-w-40 flex-wrap gap-1">
+          {promotionApplicabilityBadges({
+            isAllBranches,
+            isOnlineEnabled: promotion.isOnlineEnabled,
+            offlineBranches: isAllBranches
+              ? promotion.offlineStoreLocations
+              : promotion.offlineStoreLocations.filter((branch) => branch.id === selectedBranchId),
+            offlineAllAccessible: promotion.offlineAllAccessible,
+          }).map((badge) => (
+            <span key={badge.label} className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${badge.tone === 'online' ? 'bg-sky-100 text-sky-800' : 'bg-violet-100 text-violet-800'}`}>
+              {badge.label}
+            </span>
+          ))}
+        </div>
       </td>
       <td className="px-4 py-2 text-sm text-left text-gray-700">
         <DiscountTypeText type={promotion.tierDiscountPreview} />

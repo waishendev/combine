@@ -5,14 +5,39 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Product;
 use App\Models\Promotion;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class PromotionController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, StoreLocationAccessService $branchAccess)
     {
-        $query = Promotion::query()->with(['promotionProducts.product:id,name', 'promotionTiers', 'offlineStoreLocations:id,name,code']);
+        $accessibleBranches = $branchAccess->accessibleStoreLocations($request->user(), false)
+            ->where('is_pos_available', true)
+            ->get(['id', 'name', 'code']);
+        $accessibleIds = $accessibleBranches->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $branchId = $request->filled('branch_store_location_id')
+            ? (int) $request->integer('branch_store_location_id')
+            : null;
+
+        if ($branchId !== null) {
+            $branchAccess->authorizeStoreLocation($request->user(), $branchId, false);
+        }
+
+        $query = Promotion::query()->with([
+            'promotionProducts.product:id,name',
+            'promotionTiers',
+            'offlineStoreLocations' => fn ($branches) => $branches
+                ->whereIn('store_locations.id', $accessibleIds)
+                ->select('store_locations.id', 'name', 'code'),
+        ]);
+
+        if ($branchId !== null) {
+            $query->where(fn ($scope) => $scope
+                ->where('is_online_enabled', true)
+                ->orWhereHas('offlineStoreLocations', fn ($branches) => $branches->whereKey($branchId)));
+        }
 
         if ($request->filled('is_active')) {
             $query->where('is_active', (bool) $request->boolean('is_active'));
@@ -32,6 +57,15 @@ class PromotionController extends Controller
             ->orderByDesc('priority')
             ->orderByDesc('id')
             ->paginate((int) $request->get('per_page', 20));
+
+        $accessibleIdSet = array_fill_keys($accessibleIds, true);
+        $promotions->getCollection()->each(function (Promotion $promotion) use ($accessibleIdSet) {
+            $visibleIds = $promotion->offlineStoreLocations->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $promotion->setAttribute(
+                'offline_all_accessible',
+                $accessibleIdSet !== [] && count($visibleIds) === count($accessibleIdSet)
+            );
+        });
 
         return $this->respond($promotions);
     }
