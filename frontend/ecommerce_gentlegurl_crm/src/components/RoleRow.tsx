@@ -29,6 +29,7 @@ interface RoleRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  editLoading?: boolean
   onEdit?: (role: RoleRowData) => void
   onDelete?: (role: RoleRowData) => void
   onViewPermissions?: (role: RoleRowData) => void
@@ -40,6 +41,7 @@ export default function RoleRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  editLoading = false,
   onEdit,
   onDelete,
   onViewPermissions,
@@ -82,7 +84,7 @@ export default function RoleRow({
       ? `${previewNames.join(', ')}${
           remaining > 0 ? ` +${remaining} ${t('role.moreSuffix')}` : ''
         }`
-      : '-'
+      : role.permissionNames || (role.permissionCount > 0 ? String(role.permissionCount) : '-')
 
   return (
     <tr className="text-sm">
@@ -125,12 +127,17 @@ export default function RoleRow({
             {canUpdate && (
               <button
                 type="button"
-                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
+                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => onEdit?.(role)}
+                disabled={editLoading}
                 aria-label={t('role.editAction')}
                 title={t('role.editAction')}
               >
-                <i className="fa-solid fa-pen-to-square" />
+                {editLoading ? (
+                  <i className="fa-solid fa-spinner fa-spin" />
+                ) : (
+                  <i className="fa-solid fa-pen-to-square" />
+                )}
               </button>
             )}
             {canDelete && (

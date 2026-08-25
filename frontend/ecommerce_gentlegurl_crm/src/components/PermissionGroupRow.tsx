@@ -17,6 +17,7 @@ interface PermissionGroupRowProps {
   canDelete?: boolean
   isFirst?: boolean
   isLast?: boolean
+  editLoading?: boolean
   onEdit?: (group: PermissionGroupRowData) => void
   onDelete?: (group: PermissionGroupRowData) => void
   onMoveUp?: (group: PermissionGroupRowData) => void
@@ -30,6 +31,7 @@ export default function PermissionGroupRow({
   canDelete = false,
   isFirst = false,
   isLast = false,
+  editLoading = false,
   onEdit,
   onDelete,
   onMoveUp,
@@ -76,12 +78,17 @@ export default function PermissionGroupRow({
             {canUpdate && (
               <button
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => onEdit?.(group)}
+                disabled={editLoading}
                 aria-label={t('permissionGroup.editAction')}
                 title={t('permissionGroup.editAction')}
               >
-                <i className="fa-solid fa-pen-to-square" />
+                {editLoading ? (
+                  <i className="fa-solid fa-spinner fa-spin" />
+                ) : (
+                  <i className="fa-solid fa-pen-to-square" />
+                )}
               </button>
             )}
             {canDelete && (

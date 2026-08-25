@@ -22,6 +22,7 @@ interface AdminRowProps {
   canUpdate?: boolean
   canDelete?: boolean
   isSelf?: boolean
+  editLoading?: boolean
   onEdit?: (admin: AdminRowData) => void
   onDelete?: (admin: AdminRowData) => void
 }
@@ -33,6 +34,7 @@ export default function AdminRow({
   canUpdate = false,
   canDelete = false,
   isSelf = false,
+  editLoading = false,
   onEdit,
   onDelete,
 }: AdminRowProps) {
@@ -61,12 +63,17 @@ export default function AdminRow({
             {canUpdate && (
               <button
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => onEdit?.(admin)}
+                disabled={editLoading}
                 aria-label={t('admin.editAction')}
                 title={t('admin.editAction')}
               >
-                <i className="fa-solid fa-pen-to-square" />
+                {editLoading ? (
+                  <i className="fa-solid fa-spinner fa-spin" />
+                ) : (
+                  <i className="fa-solid fa-pen-to-square" />
+                )}
               </button>
             )}
             {canDelete && (

@@ -15,6 +15,7 @@ import {
 import PermissionCreateModal from './PermissionCreateModal'
 import PermissionEditModal from './PermissionEditModal'
 import PermissionDeleteModal from './PermissionDeleteModal'
+import CrmPageLoadingOverlay from './CrmPageLoadingOverlay'
 import {
   type PermissionApiItem,
   mapPermissionApiItemToRow,
@@ -65,6 +66,7 @@ export default function PermissionTable({
   const [groupsLoading, setGroupsLoading] = useState(false)
   const [hasFetchedGroups, setHasFetchedGroups] = useState(false)
   const [editingPermissionId, setEditingPermissionId] = useState<number | null>(null)
+  const [editLoadingId, setEditLoadingId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<PermissionRowData | null>(null)
 
   const canCreate = permissions.includes('permissions.create')
@@ -112,7 +114,7 @@ export default function PermissionTable({
   const fetchGroups = async (controller: AbortController) => {
     setGroupsLoading(true)
     try {
-      const res = await fetch('/api/proxy/permission-groups?per_page=200&showPermission=false', {
+      const res = await fetch('/api/proxy/permission-groups/query?per_page=200', {
         cache: 'no-store',
         signal: controller.signal,
       })
@@ -167,7 +169,7 @@ export default function PermissionTable({
         if (filters.slug) qs.set('slug', filters.slug)
         if (filters.groupId) qs.set('group_id', filters.groupId)
 
-        const res = await fetch(`/api/proxy/permissions?${qs.toString()}`, {
+        const res = await fetch(`/api/proxy/permissions/query?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -245,7 +247,7 @@ export default function PermissionTable({
 
   useEffect(() => {
     if (
-      (!isFilterModalOpen && !isCreateModalOpen && editingPermissionId === null) ||
+      (!isFilterModalOpen && !isCreateModalOpen && editingPermissionId === null && editLoadingId === null) ||
       hasFetchedGroups
     )
       return
@@ -254,7 +256,7 @@ export default function PermissionTable({
     fetchGroups(controller).catch(() => {})
 
     return () => controller.abort()
-  }, [isFilterModalOpen, isCreateModalOpen, editingPermissionId, hasFetchedGroups])
+  }, [isFilterModalOpen, isCreateModalOpen, editingPermissionId, editLoadingId, hasFetchedGroups])
 
   const handleSort = (column: keyof PermissionRowData) => {
     if (sortColumn === column) {
@@ -438,6 +440,9 @@ export default function PermissionTable({
 
   return (
     <div>
+      {editLoadingId !== null && (
+        <CrmPageLoadingOverlay message={t('common.loadingDetails')} />
+      )}
       {isFilterModalOpen && (
         <PermissionFiltersWrapper
           inputs={inputs}
@@ -575,8 +580,10 @@ export default function PermissionTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  editLoading={editLoadingId === permission.id}
                   onEdit={() => {
                     if (canUpdate) {
+                      setEditLoadingId(permission.id)
                       setEditingPermissionId(permission.id)
                     }
                   }}
@@ -597,9 +604,14 @@ export default function PermissionTable({
       {editingPermissionId !== null && (
         <PermissionEditModal
           permissionId={editingPermissionId}
-          onClose={() => setEditingPermissionId(null)}
+          onClose={() => {
+            setEditingPermissionId(null)
+            setEditLoadingId(null)
+          }}
+          onReady={() => setEditLoadingId(null)}
           onSuccess={(permission) => {
             setEditingPermissionId(null)
+            setEditLoadingId(null)
             handlePermissionUpdated(permission)
           }}
           groups={groups}

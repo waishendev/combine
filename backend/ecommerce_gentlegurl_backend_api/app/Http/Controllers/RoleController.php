@@ -109,6 +109,13 @@ class RoleController extends Controller
             $this->resolvePermissionIds($requested, $delegatable)
         );
 
+        if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
+            $role->loadCount('permissions');
+            $role->load('storeLocation:id,name');
+
+            return $this->respond($role, __('Role created successfully.'));
+        }
+
         return $this->respond($role->load('permissions'), __('Role created successfully.'));
     }
 
@@ -197,6 +204,13 @@ class RoleController extends Controller
             );
         }
 
+        if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
+            $role->loadCount('permissions');
+            $role->load('storeLocation:id,name');
+
+            return $this->respond($role, __('Role updated successfully.'));
+        }
+
         return $this->respond($role->load('permissions'), __('Role updated successfully.'));
     }
 
@@ -208,6 +222,16 @@ class RoleController extends Controller
         $role->delete();
 
         return $this->respond(null, __('Role deleted successfully.'));
+    }
+
+    public function authorizeRoleForEnhancement(Request $request, Role $role): void
+    {
+        $this->authorizeRole($request, $role);
+    }
+
+    public function ensureNotSystemRoleForEnhancement(Role $role, ?User $user = null, bool $allowSuperAdmin = false): void
+    {
+        $this->ensureNotSystemRole($role, $user, $allowSuperAdmin);
     }
 
     private function resolveWriteBranch(Request $request): int

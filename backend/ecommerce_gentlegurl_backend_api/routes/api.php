@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AdminManagementMutationEnhancementController;
+use App\Http\Controllers\AdminManagementQueryEnhancementController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\MeStoreLocationController;
 use App\Http\Controllers\CategoryController;
@@ -326,18 +328,74 @@ $protectedRoutes = function () {
     Route::get('/me/store-locations', MeStoreLocationController::class);
 
     // Admins (users)
+    // NEW ENHANCEMENT
+    // Page: CRM /admins (first paint — admins list + slim roles for filters/create)
+    Route::get('/admins/overview', [AdminManagementQueryEnhancementController::class, 'adminsOverview'])
+        ->middleware('permission:users.view');
+    // Page: CRM /admins — pagination + server-side filters
+    Route::get('/admins/query', [AdminManagementQueryEnhancementController::class, 'admins'])
+        ->middleware('permission:users.view');
+    // Page: CRM /roles (first paint — slim roles, permissions_count only)
+    Route::get('/roles/overview', [AdminManagementQueryEnhancementController::class, 'rolesOverview'])
+        ->middleware('permission:roles.view');
+    // Page: CRM /roles — pagination / name / active (slim)
+    Route::get('/roles/query', [AdminManagementQueryEnhancementController::class, 'roles'])
+        ->middleware('permission:roles.view');
+    // Page: CRM /permission (first paint — permissions + groups dropdown)
+    Route::get('/permissions/overview', [AdminManagementQueryEnhancementController::class, 'permissionsOverview'])
+        ->middleware('permission:permissions.view');
+    // Page: CRM /permission — pagination / filters (honors group_id)
+    Route::get('/permissions/query', [AdminManagementQueryEnhancementController::class, 'permissions'])
+        ->middleware('permission:permissions.view');
+    // Page: CRM /roles create/edit — slim delegatable catalog
+    Route::get('/permissions/delegatable/query', [AdminManagementQueryEnhancementController::class, 'delegatable'])
+        ->middleware('permission:roles.view');
+    // Page: CRM /permission-groups — list without nested permissions by default
+    Route::get('/permission-groups/query', [AdminManagementQueryEnhancementController::class, 'permissionGroups'])
+        ->middleware('permission:permission-groups.view');
+
+    // Mutation enhancement (create / edit / delete / move) — admin-management-mutation-v1
+    Route::post('/admins/query', [AdminManagementMutationEnhancementController::class, 'adminStore'])
+        ->middleware('permission:users.create');
+    Route::get('/admins/{admin}/query', [AdminManagementMutationEnhancementController::class, 'adminShow'])
+        ->middleware('permission:users.view');
+    Route::put('/admins/{admin}/query', [AdminManagementMutationEnhancementController::class, 'adminUpdate'])
+        ->middleware('permission:users.update');
+    Route::delete('/admins/{admin}/query', [AdminManagementMutationEnhancementController::class, 'adminDestroy'])
+        ->middleware('permission:users.delete');
+
+    Route::post('/roles/query', [AdminManagementMutationEnhancementController::class, 'roleStore'])
+        ->middleware('permission:roles.create');
+    Route::get('/roles/{role}/edit/query', [AdminManagementMutationEnhancementController::class, 'roleEdit'])
+        ->middleware('permission:roles.update');
+    Route::put('/roles/{role}/query', [AdminManagementMutationEnhancementController::class, 'roleUpdate'])
+        ->middleware('permission:roles.update');
+    Route::delete('/roles/{role}/query', [AdminManagementMutationEnhancementController::class, 'roleDestroy'])
+        ->middleware('permission:roles.delete');
+
+    Route::post('/permission-groups/{group}/move-up/query', [AdminManagementMutationEnhancementController::class, 'permissionGroupMoveUp'])
+        ->middleware('permission:permission-groups.update');
+    Route::post('/permission-groups/{group}/move-down/query', [AdminManagementMutationEnhancementController::class, 'permissionGroupMoveDown'])
+        ->middleware('permission:permission-groups.update');
+    // END NEW ENHANCEMENT
+
+    // OLD QUERY
     Route::get('/admins', [AdminController::class, 'index'])
         ->middleware('permission:users.view');
 
+    // OLD QUERY
     Route::post('/admins', [AdminController::class, 'store'])
         ->middleware('permission:users.create');
 
+    // OLD QUERY
     Route::get('/admins/{admin}', [AdminController::class, 'show'])
         ->middleware('permission:users.view');
 
+    // OLD QUERY
     Route::put('/admins/{admin}', [AdminController::class, 'update'])
         ->middleware('permission:users.update');
 
+    // OLD QUERY
     Route::delete('/admins/{admin}', [AdminController::class, 'destroy'])
         ->middleware('permission:users.delete');
 
@@ -345,28 +403,35 @@ $protectedRoutes = function () {
     // Route::get('/roles/all', [RoleController::class, 'indexAll'])
     //     ->middleware('permission:roles.view-all');
 
+    // OLD QUERY
     Route::get('/roles', [RoleController::class, 'index'])
         ->middleware('permission:roles.view');
 
+    // OLD QUERY
     Route::post('/roles', [RoleController::class, 'store'])
         ->middleware('permission:roles.create');
 
     Route::get('/roles/{role}', [RoleController::class, 'show'])
         ->middleware('permission:roles.view');
 
+    // OLD QUERY
     Route::get('/roles/{role}/edit', [RoleController::class, 'edit'])
         ->middleware('permission:roles.update');
 
+    // OLD QUERY
     Route::put('/roles/{role}', [RoleController::class, 'update'])
         ->middleware('permission:roles.update');
 
+    // OLD QUERY
     Route::delete('/roles/{role}', [RoleController::class, 'destroy'])
         ->middleware('permission:roles.delete');
 
     // Permissions
+    // OLD QUERY
     Route::get('/permissions/delegatable', [PermissionController::class, 'delegatable'])
         ->middleware('permission:roles.view');
 
+    // OLD QUERY
     Route::get('/permissions', [PermissionController::class, 'index'])
         ->middleware('permission:permissions.view');
 
@@ -383,6 +448,7 @@ $protectedRoutes = function () {
         ->middleware('permission:permissions.delete');
 
     // Permission Groups
+    // OLD QUERY
     Route::get('/permission-groups', [PermissionGroupController::class, 'index'])
         ->middleware('permission:permission-groups.view');
 
@@ -398,9 +464,11 @@ $protectedRoutes = function () {
     Route::delete('/permission-groups/{group}', [PermissionGroupController::class, 'destroy'])
         ->middleware('permission:permission-groups.delete');
 
+    // OLD QUERY
     Route::post('/permission-groups/{group}/move-up', [PermissionGroupController::class, 'moveUp'])
         ->middleware('permission:permission-groups.update');
 
+    // OLD QUERY
     Route::post('/permission-groups/{group}/move-down', [PermissionGroupController::class, 'moveDown'])
         ->middleware('permission:permission-groups.update');
 
@@ -534,6 +602,13 @@ $protectedRoutes = function () {
         ->middleware('permission:customer-service-packages.update|pos.checkout');
 
     // Staffs
+    // NEW ENHANCEMENT
+    // Page: CRM /logs/staff-consumables — slim staff dropdown (id, name)
+    Route::get('/staffs/options/query', [StaffController::class, 'options'])
+        ->middleware('permission:staff.view|pos.checkout|pos.appointments.manage|pos.staff_consumables.view_logs');
+    // END NEW ENHANCEMENT
+
+    // OLD QUERY
     Route::get('/staffs', [StaffController::class, 'index'])
         ->middleware('permission:staff.view|pos.checkout|pos.appointments.manage');
     Route::get('/staffs/export', [StaffController::class, 'exportCsv'])
@@ -1445,8 +1520,10 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::get('/reports/summary', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'summary']);
     Route::get('/reports/summary/export.csv', [\App\Http\Controllers\Admin\Booking\ReportController::class, 'summaryExport']);
 
+    // NEW ENHANCEMENT — booking-logs-query-v1 (batched actor_name + indexes; export streams all filtered rows)
     Route::get('/logs', [\App\Http\Controllers\Admin\Booking\LogController::class, 'index']);
     Route::get('/logs/export.csv', [\App\Http\Controllers\Admin\Booking\LogController::class, 'export']);
+    // END NEW ENHANCEMENT
 
 
     Route::get('/cancellation-requests', [\App\Http\Controllers\Admin\Booking\CancellationRequestController::class, 'index']);

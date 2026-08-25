@@ -83,42 +83,83 @@ class User extends Authenticatable
 
     public function getAllPermissions(): Collection
     {
-        return $this->roles()->with('permissions')->get()
+        $cacheKey = 'user_all_permission_slugs_'.$this->getKey();
+        $cached = request()->attributes->get($cacheKey);
+        if ($cached instanceof Collection) {
+            return $cached;
+        }
+
+        $slugs = $this->roles()->with('permissions')->get()
             ->concat($this->branchRoles()->with('permissions')->get())
             ->flatMap(fn (Role $role) => $role->permissions)
             ->pluck('slug')
             ->unique()
             ->values();
+
+        request()->attributes->set($cacheKey, $slugs);
+
+        return $slugs;
     }
 
     public function isSuperAdmin(): bool
     {
+        $cacheKey = 'user_is_super_admin_'.$this->getKey();
+        if (request()->attributes->has($cacheKey)) {
+            return (bool) request()->attributes->get($cacheKey);
+        }
+
         $superAdminRoles = array_unique([
             (string) config('auth.super_admin_role', 'infra_core_x1'),
             'infra_core_x1',
         ]);
 
-        return $this->roles()->whereIn('name', $superAdminRoles)->exists();
+        $isSuper = $this->roles()->whereIn('name', $superAdminRoles)->exists();
+        request()->attributes->set($cacheKey, $isSuper);
+
+        return $isSuper;
     }
 
     public function canManageSystemAdmins(): bool
     {
-        return $this->getAllPermissions()->contains('admins.manage-system');
+        $cacheKey = 'user_can_manage_system_admins_'.$this->getKey();
+        if (request()->attributes->has($cacheKey)) {
+            return (bool) request()->attributes->get($cacheKey);
+        }
+
+        $can = $this->getAllPermissions()->contains('admins.manage-system');
+        request()->attributes->set($cacheKey, $can);
+
+        return $can;
     }
 
     public function delegatablePermissions(): Collection
     {
-        if ($this->isSuperAdmin()) {
-            return Permission::all();
+        $cacheKey = 'user_delegatable_permissions_'.$this->getKey();
+        $cached = request()->attributes->get($cacheKey);
+        if ($cached instanceof Collection) {
+            return $cached;
         }
 
-        return $this->roles()
-            ->with('permissions')
+        if ($this->isSuperAdmin()) {
+            $permissions = Permission::query()
+                ->orderBy('name')
+                ->get(['id', 'name', 'slug', 'group_id', 'description']);
+            request()->attributes->set($cacheKey, $permissions);
+
+            return $permissions;
+        }
+
+        $permissions = $this->roles()
+            ->with('permissions:id,name,slug,group_id,description')
             ->get()
-            ->concat($this->branchRoles()->with('permissions')->get())
+            ->concat($this->branchRoles()->with('permissions:id,name,slug,group_id,description')->get())
             ->flatMap(fn (Role $role) => $role->permissions)
             ->unique('id')
             ->values();
+
+        request()->attributes->set($cacheKey, $permissions);
+
+        return $permissions;
     }
 
     /**

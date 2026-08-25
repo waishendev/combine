@@ -25,7 +25,7 @@ export default function RoleDeleteModal({
     setError(null)
 
     try {
-      const res = await fetch(`/api/proxy/roles/${role.id}`, {
+      const res = await fetch(`/api/proxy/roles/${role.id}/query`, {
         method: 'DELETE',
         headers: {
           Accept: 'application/json',

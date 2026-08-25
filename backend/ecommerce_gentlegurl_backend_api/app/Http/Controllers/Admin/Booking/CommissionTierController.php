@@ -115,12 +115,18 @@ class CommissionTierController extends Controller
     {
         $resolvedType = $this->staffCommissionService->normalizeType($type);
 
+        $tiers = StaffCommissionTier::query()
+            ->where('type', $resolvedType)
+            ->where('store_location_id', $branchId)
+            ->orderByDesc('min_sales')
+            ->get();
+
         StaffMonthlySale::query()
             ->where('type', $resolvedType)
             ->where('store_location_id', $branchId)
-            ->chunkById(100, function ($rows) {
+            ->chunkById(100, function ($rows) use ($tiers) {
                 foreach ($rows as $row) {
-                    $this->staffCommissionService->recalculateMonthly($row);
+                    $this->staffCommissionService->recalculateMonthly($row, false, $tiers);
                 }
             });
     }

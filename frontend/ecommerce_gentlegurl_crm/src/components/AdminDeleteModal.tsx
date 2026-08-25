@@ -33,7 +33,7 @@ export default function AdminDeleteModal({
     setError(null)
 
     try {
-      const res = await fetch(`/api/proxy/admins/${admin.id}`, {
+      const res = await fetch(`/api/proxy/admins/${admin.id}/query`, {
         method: 'DELETE',
         headers: {
           Accept: 'application/json',

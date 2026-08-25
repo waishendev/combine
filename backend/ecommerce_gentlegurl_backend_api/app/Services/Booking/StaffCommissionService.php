@@ -208,19 +208,31 @@ class StaffCommissionService
         $this->syncBookingCommissionState($booking->fresh(['service']));
     }
 
-    public function recalculateMonthly(StaffMonthlySale $monthly, bool $force = false): StaffMonthlySale
+    public function recalculateMonthly(StaffMonthlySale $monthly, bool $force = false, ?Collection $preloadedTiers = null): StaffMonthlySale
     {
         $resolvedType = $this->normalizeType((string) ($monthly->type ?? self::TYPE_BOOKING));
         if (! $force && $this->isFrozen($monthly)) {
             return $monthly->refresh();
         }
 
-        $tier = StaffCommissionTier::query()
-            ->where('type', $resolvedType)
-            ->where('store_location_id', $monthly->store_location_id)
-            ->where('min_sales', '<=', $monthly->total_sales)
-            ->orderByDesc('min_sales')
-            ->first();
+        $tier = null;
+        if ($preloadedTiers !== null) {
+            $sales = (float) $monthly->total_sales;
+            foreach ($preloadedTiers as $candidate) {
+                if ((float) $candidate->min_sales <= $sales) {
+                    $tier = $candidate;
+                    break;
+                }
+            }
+        } else {
+            $tier = StaffCommissionTier::query()
+                ->where('type', $resolvedType)
+                ->where('store_location_id', $monthly->store_location_id)
+                ->where('min_sales', '<=', $monthly->total_sales)
+                ->orderByDesc('min_sales')
+                ->first();
+        }
+
         if ($monthly->store_location_id !== null && ! $tier) {
             throw new \RuntimeException('No commission tier is configured for the earning Branch and commission type.');
         }
@@ -242,7 +254,7 @@ class StaffCommissionService
 
         $monthly->save();
 
-        return $monthly->refresh();
+        return $monthly;
     }
 
     private function recalculateBookingForStaffMonth(int $staffId, int $year, int $month, bool $force = false, ?int $storeLocationId = null): StaffMonthlySale

@@ -13,6 +13,7 @@ import { useI18n } from '@/lib/i18n'
 interface PermissionGroupEditModalProps {
   groupId: number
   onClose: () => void
+  onReady?: () => void
   onSuccess: (group: PermissionGroupRowData) => void
 }
 
@@ -27,6 +28,7 @@ const initialFormState: FormState = {
 export default function PermissionGroupEditModal({
   groupId,
   onClose,
+  onReady,
   onSuccess,
 }: PermissionGroupEditModalProps) {
   const { t } = useI18n()
@@ -91,13 +93,18 @@ export default function PermissionGroupEditModal({
           setError(t('permissionGroup.loadError'))
         }
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+          onReady?.()
+        }
       }
     }
 
     loadGroup().catch(() => {
+      if (controller.signal.aborted) return
       setLoading(false)
       setError(t('permissionGroup.loadError'))
+      onReady?.()
     })
 
     return () => controller.abort()
@@ -193,7 +200,11 @@ export default function PermissionGroupEditModal({
     }
   }
 
-  const disableForm = loading || submitting
+  const disableForm = submitting
+
+  if (loading) {
+    return null
+  }
 
   return (
     <CrmFormModalShell
@@ -225,12 +236,6 @@ export default function PermissionGroupEditModal({
       }
     >
       <form id="permission-group-edit-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
-          {loading ? (
-            <div className="py-8 text-center text-sm text-gray-500">
-              {t('common.loadingDetails')}
-            </div>
-          ) : (
-            <>
               <div>
                 <label
                   htmlFor="edit-name"
@@ -249,8 +254,6 @@ export default function PermissionGroupEditModal({
                   disabled={disableForm}
                 />
               </div>
-            </>
-          )}
 
           {error && (
             <div className="text-sm text-red-600" role="alert">

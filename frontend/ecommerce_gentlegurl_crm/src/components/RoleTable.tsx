@@ -14,6 +14,7 @@ import {
 import RoleCreateModal from './RoleCreateModal'
 import RoleEditModal from './RoleEditModal'
 import RoleDeleteModal from './RoleDeleteModal'
+import CrmPageLoadingOverlay from './CrmPageLoadingOverlay'
 import RolePermissionPanel from './RolePermissionPanel'
 import {
   type RoleApiItem,
@@ -79,6 +80,7 @@ export default function RoleTable({
   const [sortColumn, setSortColumn] = useState<keyof RoleRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingRoleId, setEditingRoleId] = useState<number | null>(null)
+  const [editLoadingId, setEditLoadingId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RoleRowData | null>(null)
   const [viewingPermissions, setViewingPermissions] = useState<RoleRowData | null>(null)
   const [permissionOptions, setPermissionOptions] = useState<PermissionOption[]>([])
@@ -130,7 +132,7 @@ export default function RoleTable({
   const fetchPermissions = async (controller: AbortController) => {
     setPermissionsLoading(true)
     try {
-      const res = await fetch('/api/proxy/permissions/delegatable', {
+      const res = await fetch('/api/proxy/permissions/delegatable/query', {
         cache: 'no-store',
         signal: controller.signal,
       })
@@ -185,7 +187,7 @@ export default function RoleTable({
         //   signal: controller.signal,
         // })
 
-        const res = await fetch(`/api/proxy/roles?${qs.toString()}`, {
+        const res = await fetch(`/api/proxy/roles/query?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -263,12 +265,12 @@ export default function RoleTable({
   // }, [filters, currentPage, pageSize, isSuperAdmin])
 
   useEffect(() => {
-    if (isCreateModalOpen || editingRoleId !== null) {
+    if (isCreateModalOpen || editingRoleId !== null || editLoadingId !== null) {
       const controller = new AbortController()
       fetchPermissions(controller).catch(() => {})
       return () => controller.abort()
     }
-  }, [isCreateModalOpen, editingRoleId])
+  }, [isCreateModalOpen, editingRoleId, editLoadingId])
 
   useEffect(() => { setCurrentPage(1) }, [selectedBranchId])
 
@@ -290,25 +292,9 @@ export default function RoleTable({
   }
 
   const filteredRows = useMemo(() => {
-    const nameFilter = filters.name.trim().toLowerCase()
-    const statusFilter = filters.isActive
-
-    return rows.filter((role) => {
-      if (nameFilter && !role.name.toLowerCase().includes(nameFilter)) {
-        return false
-      }
-
-      if (statusFilter) {
-        const isActiveMatch =
-          statusFilter === 'active' ? role.isActive : !role.isActive
-        if (!isActiveMatch) {
-          return false
-        }
-      }
-
-      return true
-    })
-  }, [filters.isActive, filters.name, rows])
+    // Server-side name/active filters on /roles/query.
+    return rows
+  }, [rows])
 
   const sortedRows = useMemo(() => {
     if (!sortColumn || !sortDirection) return filteredRows
@@ -451,6 +437,9 @@ export default function RoleTable({
 
   return (
     <div>
+      {editLoadingId !== null && (
+        <CrmPageLoadingOverlay message={t('common.loadingDetails')} />
+      )}
       {isFilterModalOpen && (
         <RoleFiltersWrapper
           inputs={inputs}
@@ -589,8 +578,10 @@ export default function RoleTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  editLoading={editLoadingId === Number(role.id)}
                   onEdit={() => {
                     if (canUpdate) {
+                      setEditLoadingId(role.id as number)
                       setEditingRoleId(role.id as number)
                     }
                   }}
@@ -616,9 +607,14 @@ export default function RoleTable({
       {editingRoleId !== null && (
         <RoleEditModal
           roleId={editingRoleId}
-          onClose={() => setEditingRoleId(null)}
+          onClose={() => {
+            setEditingRoleId(null)
+            setEditLoadingId(null)
+          }}
+          onReady={() => setEditLoadingId(null)}
           onSuccess={(role) => {
             setEditingRoleId(null)
+            setEditLoadingId(null)
             handleRoleUpdated(role)
           }}
           permissions={permissionOptions}
