@@ -39,7 +39,7 @@ export default function ServicesMenuEditModal({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/proxy/ecommerce/services-menu-items/${servicesMenuId}`, {
+        const res = await fetch(`/api/proxy/ecommerce/services-menu-items/${servicesMenuId}/query`, {
           cache: 'no-store',
           signal,
         })

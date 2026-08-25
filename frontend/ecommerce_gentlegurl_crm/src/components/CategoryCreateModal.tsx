@@ -64,7 +64,7 @@ export default function CategoryCreateModal({
     const fetchMenus = async () => {
       setMenusLoading(true)
       try {
-        const res = await fetch('/api/proxy/ecommerce/shop-menu-items?page=1&per_page=200', {
+        const res = await fetch('/api/proxy/ecommerce/shop-menu-items/query?page=1&per_page=200', {
           cache: 'no-store',
           signal: controller.signal,
         })

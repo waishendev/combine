@@ -107,7 +107,7 @@ export default function ServicesMenuTable({
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
 
-        const res = await fetch(`/api/proxy/ecommerce/services-menu-items?${qs.toString()}`, {
+        const res = await fetch(`/api/proxy/ecommerce/services-menu-items/query?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })

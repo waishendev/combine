@@ -9,6 +9,8 @@ use Illuminate\Validation\Rule;
 
 class ServicesMenuItemController extends Controller
 {
+    public const ENHANCEMENT = 'catalog-menus-query-v1';
+
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 15);
@@ -23,6 +25,64 @@ class ServicesMenuItemController extends Controller
             ->paginate($perPage);
 
         return $this->respond($items);
+    }
+
+    /**
+     * Slim CRM list. Pass include_page=1 for services-pages Ready flag (id/slug only).
+     */
+    public function queryIndex(Request $request)
+    {
+        $perPage = max(1, min(200, $request->integer('per_page', 15)));
+        $includePage = $request->boolean('include_page');
+
+        $query = ServicesMenuItem::query()
+            ->select(['id', 'name', 'slug', 'sort_order', 'is_active', 'created_at', 'updated_at'])
+            ->when($includePage, fn ($q) => $q->with(['page:id,services_menu_item_id,slug']))
+            ->when($request->filled('name'), function ($q) use ($request) {
+                $q->where('name', 'like', '%' . $request->get('name') . '%');
+            })
+            ->when($request->has('is_active'), function ($q) use ($request) {
+                $q->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
+            ->orderBy('sort_order')
+            ->orderBy('id');
+
+        $items = $query->paginate($perPage);
+
+        if ($includePage) {
+            $items->getCollection()->transform(function (ServicesMenuItem $item) {
+                $page = $item->relationLoaded('page') ? $item->page : null;
+
+                return [
+                    'id' => $item->id,
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'sort_order' => $item->sort_order,
+                    'is_active' => $item->is_active,
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                    'page' => $page ? [
+                        'id' => $page->id,
+                        'slug' => $page->slug,
+                    ] : null,
+                ];
+            });
+        }
+
+        return $this->respond($items);
+    }
+
+    public function queryShow(ServicesMenuItem $servicesMenuItem)
+    {
+        return $this->respond($servicesMenuItem->only([
+            'id',
+            'name',
+            'slug',
+            'sort_order',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]));
     }
 
     public function store(Request $request)
@@ -41,9 +101,16 @@ class ServicesMenuItemController extends Controller
             'sort_order' => $sortOrder,
             'is_active' => $validated['is_active'] ?? true,
         ]);
-        $item->load('page');
 
-        return $this->respond($item, __('Services menu item created successfully.'));
+        return $this->respond($item->only([
+            'id',
+            'name',
+            'slug',
+            'sort_order',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]), __('Services menu item created successfully.'));
     }
 
     public function show(ServicesMenuItem $servicesMenuItem)
@@ -65,9 +132,16 @@ class ServicesMenuItemController extends Controller
         $servicesMenuItem->fill($validated);
         $servicesMenuItem->save();
         $this->syncLinkedServicesPage($servicesMenuItem, $validated);
-        $servicesMenuItem->load('page');
 
-        return $this->respond($servicesMenuItem, __('Services menu item updated successfully.'));
+        return $this->respond($servicesMenuItem->only([
+            'id',
+            'name',
+            'slug',
+            'sort_order',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]), __('Services menu item updated successfully.'));
     }
 
     private function syncLinkedServicesPage(ServicesMenuItem $servicesMenuItem, array $validated): void

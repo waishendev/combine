@@ -52,8 +52,8 @@ export default function ServicesPagesTable({ permissions }: { permissions: strin
       setLoading(true)
       setError(null)
       try {
-        const qs = new URLSearchParams({ per_page: '200' })
-        const res = await fetch(`/api/proxy/ecommerce/services-menu-items?${qs.toString()}`, {
+        const qs = new URLSearchParams({ per_page: '200', include_page: '1' })
+        const res = await fetch(`/api/proxy/ecommerce/services-menu-items/query?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })

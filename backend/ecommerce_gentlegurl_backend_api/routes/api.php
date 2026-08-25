@@ -856,8 +856,16 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.products.update');
 
         // Shop Menu Items
+        // OLD QUERY — full categories graph (kept for legacy / category tools that still need it)
         Route::get('/shop-menu-items', [ShopMenuItemController::class, 'index'])
             ->middleware('permission:ecommerce.shop-menu.view');
+
+        // NEW ENHANCEMENT — catalog-menus-query-v1 (slim list/show, no categories)
+        Route::get('/shop-menu-items/query', [ShopMenuItemController::class, 'queryIndex'])
+            ->middleware('permission:ecommerce.shop-menu.view');
+        Route::get('/shop-menu-items/{shopMenuItem}/query', [ShopMenuItemController::class, 'queryShow'])
+            ->middleware('permission:ecommerce.shop-menu.view');
+        // END NEW ENHANCEMENT
 
         Route::get('/shop-menu-items/export', [ShopMenuItemController::class, 'exportCsv'])
             ->middleware('permission:ecommerce.shop-menu.view');
@@ -884,8 +892,16 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.shop-menu.update');
 
         // Services Menu Items
+        // OLD QUERY — full page relation
         Route::get('/services-menu-items', [ServicesMenuItemController::class, 'index'])
             ->middleware('permission:ecommerce.services-menu.view');
+
+        // NEW ENHANCEMENT — catalog-menus-query-v1 (slim list; include_page=1 for services-pages)
+        Route::get('/services-menu-items/query', [ServicesMenuItemController::class, 'queryIndex'])
+            ->middleware('permission:ecommerce.services-menu.view');
+        Route::get('/services-menu-items/{servicesMenuItem}/query', [ServicesMenuItemController::class, 'queryShow'])
+            ->middleware('permission:ecommerce.services-menu.view');
+        // END NEW ENHANCEMENT
 
         Route::post('/services-menu-items', [ServicesMenuItemController::class, 'store'])
             ->middleware('permission:ecommerce.services-menu.create');

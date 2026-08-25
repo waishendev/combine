@@ -44,7 +44,7 @@ export default function ShopMenuEditModal({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/proxy/ecommerce/shop-menu-items/${shopMenuId}`, {
+        const res = await fetch(`/api/proxy/ecommerce/shop-menu-items/${shopMenuId}/query`, {
           cache: 'no-store',
           signal: controller.signal,
           headers: {

@@ -119,7 +119,7 @@ export default function ShopMenuTable({
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
 
-      const res = await fetch(`/api/proxy/ecommerce/shop-menu-items?${qs.toString()}`, {
+      const res = await fetch(`/api/proxy/ecommerce/shop-menu-items/query?${qs.toString()}`, {
         cache: 'no-store',
         signal,
       })
@@ -181,7 +181,9 @@ export default function ShopMenuTable({
         setMeta((prev) => ({ ...prev, total: 0 }))
       }
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
     }
   }, [currentPage, pageSize])
 

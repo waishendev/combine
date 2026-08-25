@@ -135,8 +135,15 @@ class ServicesPageController extends Controller
         $existingGalleryPaths = $existingPage ? $this->extractGalleryPaths($existingPage->sections ?? []) : [];
 
         $page = DB::transaction(function () use ($servicesMenuItem, $validated, $normalizedSlides, $normalizedSections, $existingPage, $existingGalleryPaths) {
-            if ($existingPage) {
+            $slidesChanged = ! $existingPage || $this->slidesSignature($normalizedSlides) !== $this->slidesSignature(
+                $this->slidesToComparable($existingPage)
+            );
+
+            if ($existingPage && $slidesChanged) {
                 $this->deleteSlideFiles($existingPage->slides);
+            }
+
+            if ($existingPage) {
                 $this->deleteGalleryFiles($existingGalleryPaths, $normalizedSections);
             }
 
@@ -152,20 +159,22 @@ class ServicesPageController extends Controller
                 ]
             );
 
-            $page->slides()->delete();
+            if ($slidesChanged) {
+                $page->slides()->delete();
 
-            if (! empty($normalizedSlides)) {
-                $page->slides()->createMany(array_map(function (array $slide) {
-                    return [
-                        'sort_order' => $slide['sort_order'],
-                        'image_path' => $slide['src'],
-                        'mobile_image_path' => $slide['mobileSrc'] ?: null,
-                        'title' => $slide['title'] ?: null,
-                        'description' => $slide['description'] ?: null,
-                        'button_label' => $slide['buttonLabel'] ?: null,
-                        'button_link' => $slide['buttonHref'] ?: null,
-                    ];
-                }, $normalizedSlides));
+                if (! empty($normalizedSlides)) {
+                    $page->slides()->createMany(array_map(function (array $slide) {
+                        return [
+                            'sort_order' => $slide['sort_order'],
+                            'image_path' => $slide['src'],
+                            'mobile_image_path' => $slide['mobileSrc'] ?: null,
+                            'title' => $slide['title'] ?: null,
+                            'description' => $slide['description'] ?: null,
+                            'button_label' => $slide['buttonLabel'] ?: null,
+                            'button_link' => $slide['buttonHref'] ?: null,
+                        ];
+                    }, $normalizedSlides));
+                }
             }
 
             // Keep menu slug and name aligned when the page slug/title changes.
@@ -401,6 +410,50 @@ class ServicesPageController extends Controller
         }, $sections['gallery']['items'])));
 
         return $sections;
+    }
+
+    private function slidesToComparable(ServicesPage $page): array
+    {
+        if (is_array($page->hero_slides) && $page->hero_slides !== []) {
+            return array_values($page->hero_slides);
+        }
+
+        if (! $page->relationLoaded('slides')) {
+            $page->load('slides');
+        }
+
+        return $page->slides->map(function ($slide) {
+            return [
+                'sort_order' => (int) ($slide->sort_order ?? 0),
+                'src' => (string) ($slide->image_path ?? ''),
+                'mobileSrc' => (string) ($slide->mobile_image_path ?? ''),
+                'title' => (string) ($slide->title ?? ''),
+                'description' => (string) ($slide->description ?? ''),
+                'buttonLabel' => (string) ($slide->button_label ?? ''),
+                'buttonHref' => (string) ($slide->button_link ?? ''),
+            ];
+        })->values()->all();
+    }
+
+    private function slidesSignature(array $slides): string
+    {
+        $normalized = array_map(static function ($slide) {
+            if (! is_array($slide)) {
+                return null;
+            }
+
+            return [
+                'sort_order' => (int) ($slide['sort_order'] ?? 0),
+                'src' => (string) ($slide['src'] ?? ''),
+                'mobileSrc' => (string) ($slide['mobileSrc'] ?? ''),
+                'title' => (string) ($slide['title'] ?? ''),
+                'description' => (string) ($slide['description'] ?? $slide['subtitle'] ?? ''),
+                'buttonLabel' => (string) ($slide['buttonLabel'] ?? ''),
+                'buttonHref' => (string) ($slide['buttonHref'] ?? ''),
+            ];
+        }, array_values($slides));
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
     }
 
     private function deleteSlideFiles($slides): void

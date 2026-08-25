@@ -10,6 +10,8 @@ use Illuminate\Validation\Rule;
 
 class ShopMenuItemController extends Controller
 {
+    public const ENHANCEMENT = 'catalog-menus-query-v1';
+
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 15);
@@ -26,6 +28,45 @@ class ShopMenuItemController extends Controller
         return $this->respond($items);
     }
 
+    /**
+     * Slim CRM list — no categories graph.
+     * Enhancement: catalog-menus-query-v1
+     */
+    public function queryIndex(Request $request)
+    {
+        $perPage = max(1, min(200, $request->integer('per_page', 15)));
+
+        $items = ShopMenuItem::query()
+            ->select(['id', 'name', 'slug', 'sort_order', 'is_active', 'created_at', 'updated_at'])
+            ->when($request->filled('name'), function ($query) use ($request) {
+                $query->where('name', 'like', '%' . $request->get('name') . '%');
+            })
+            ->when($request->has('is_active'), function ($query) use ($request) {
+                $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->paginate($perPage);
+
+        return $this->respond($items);
+    }
+
+    /**
+     * Slim show for CRM edit modal (name/slug/active only).
+     */
+    public function queryShow(ShopMenuItem $shopMenuItem)
+    {
+        return $this->respond($shopMenuItem->only([
+            'id',
+            'name',
+            'slug',
+            'sort_order',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]));
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -34,7 +75,6 @@ class ShopMenuItemController extends Controller
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
-        // Auto-set sort_order: first item gets 1, subsequent items get max + 1
         $sortOrder = (ShopMenuItem::max('sort_order') ?? 0) + 1;
 
         $item = ShopMenuItem::create([
@@ -43,37 +83,42 @@ class ShopMenuItemController extends Controller
             'sort_order' => $sortOrder,
             'is_active' => $validated['is_active'] ?? true,
         ]);
-        $item->load('categories');
 
-        return $this->respond($item, __('Shop menu item created successfully.'));
+        return $this->respond($item->only([
+            'id',
+            'name',
+            'slug',
+            'sort_order',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]), __('Shop menu item created successfully.'));
     }
 
 
     public function exportCsv(Request $request)
     {
-        $items = ShopMenuItem::with('categories')
+        $items = ShopMenuItem::query()
+            ->select(['id', 'name', 'slug', 'sort_order', 'is_active', 'created_at', 'updated_at'])
+            ->with(['categories:id'])
             ->orderBy('sort_order')
+            ->orderBy('id')
             ->get();
 
         $rows = $items->map(function (ShopMenuItem $item) {
-            $payload = $item->toArray();
-            $payload['category_ids'] = $item->categories->pluck('id')->values()->all();
-
-            return $payload;
+            return [
+                'id' => $item->id,
+                'name' => $item->name,
+                'slug' => $item->slug,
+                'sort_order' => $item->sort_order,
+                'is_active' => $item->is_active,
+                'category_ids' => $item->categories->pluck('id')->values()->all(),
+                'created_at' => $item->created_at,
+                'updated_at' => $item->updated_at,
+            ];
         })->values()->all();
 
-        $headers = [];
-        foreach ($rows as $row) {
-            foreach (array_keys($row) as $key) {
-                if (! in_array($key, $headers, true)) {
-                    $headers[] = $key;
-                }
-            }
-        }
-
-        if (empty($headers)) {
-            $headers = ['id', 'name', 'slug', 'sort_order', 'is_active', 'category_ids', 'categories', 'created_at', 'updated_at'];
-        }
+        $headers = ['id', 'name', 'slug', 'sort_order', 'is_active', 'category_ids', 'created_at', 'updated_at'];
 
         $stream = fopen('php://temp', 'r+');
         if (! $stream) {
@@ -151,13 +196,14 @@ class ShopMenuItemController extends Controller
         ];
 
         $rowNumber = 1;
+        $nextSortOrder = (int) (ShopMenuItem::max('sort_order') ?? 0);
         while (($cells = fgetcsv($handle)) !== false) {
             $rowNumber++;
             if (! is_array($cells)) {
                 continue;
             }
 
-            $isAllEmpty = count(array_filter($cells, fn($v) => trim((string) $v) !== '')) === 0;
+            $isAllEmpty = count(array_filter($cells, fn ($v) => trim((string) $v) !== '')) === 0;
             if ($isAllEmpty) {
                 continue;
             }
@@ -229,8 +275,15 @@ class ShopMenuItemController extends Controller
             $clean = $validator->validated();
 
             try {
-                DB::transaction(function () use ($clean, &$existingLookup, &$summary) {
-                    $sortOrder = $clean['sort_order'] ?? ((ShopMenuItem::max('sort_order') ?? 0) + 1);
+                DB::transaction(function () use ($clean, &$existingLookup, &$summary, &$nextSortOrder) {
+                    if (array_key_exists('sort_order', $clean)) {
+                        $sortOrder = (int) $clean['sort_order'];
+                        $nextSortOrder = max($nextSortOrder, $sortOrder);
+                    } else {
+                        $nextSortOrder++;
+                        $sortOrder = $nextSortOrder;
+                    }
+
                     $item = ShopMenuItem::create([
                         'name' => $clean['name'],
                         'slug' => $clean['slug'],
@@ -273,9 +326,16 @@ class ShopMenuItemController extends Controller
 
         $shopMenuItem->fill($validated);
         $shopMenuItem->save();
-        $shopMenuItem->load('categories');
 
-        return $this->respond($shopMenuItem, __('Shop menu item updated successfully.'));
+        return $this->respond($shopMenuItem->only([
+            'id',
+            'name',
+            'slug',
+            'sort_order',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]), __('Shop menu item updated successfully.'));
     }
 
     public function destroy(ShopMenuItem $shopMenuItem)
