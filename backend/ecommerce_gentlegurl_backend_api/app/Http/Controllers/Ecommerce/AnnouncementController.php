@@ -12,6 +12,7 @@ class AnnouncementController extends Controller
 {
     public function index(Request $request)
     {
+        // NEW ENHANCEMENT — announcements-marquees-query-v1: slim list cols + truncated body for table
         $type = $this->resolveType($request);
         $query = Announcement::query()->ofType($type);
 
@@ -26,6 +27,25 @@ class AnnouncementController extends Controller
         if ($request->boolean('current_only', false)) {
             $query->current();
         }
+
+        $query->select([
+            'id',
+            'key',
+            'type',
+            'title',
+            'subtitle',
+            DB::raw('LEFT(body_text, 500) as body_text'),
+            'image_path',
+            'button_label',
+            'button_link',
+            'is_active',
+            'start_at',
+            'end_at',
+            'show_once_per_session',
+            'sort_order',
+            'created_at',
+            'updated_at',
+        ]);
 
         $announcements = $query
             ->orderBy('sort_order')

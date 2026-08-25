@@ -12,6 +12,7 @@ class HomeSliderController extends Controller
 {
     public function index(Request $request)
     {
+        // NEW ENHANCEMENT — home-sliders-query-v1: slim list columns (show/edit still full)
         $sliderType = $request->input('type', 'ecommerce');
         $query = HomeSlider::query()->where('type', $sliderType);
 
@@ -20,6 +21,27 @@ class HomeSliderController extends Controller
         }
 
         $sliders = $query
+            ->select([
+                'id',
+                'title',
+                'subtitle',
+                'image_path',
+                'mobile_image_path',
+                'type',
+                'button_label',
+                'button_link',
+                'content_align',
+                'content_vertical',
+                'button_align',
+                'text_color',
+                'button_style',
+                'start_at',
+                'end_at',
+                'is_active',
+                'sort_order',
+                'created_at',
+                'updated_at',
+            ])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->paginate($request->get('per_page', 20));

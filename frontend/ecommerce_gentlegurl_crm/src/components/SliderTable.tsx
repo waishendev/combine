@@ -303,6 +303,25 @@ export default function SliderTable({
     })
   }
 
+  const swapAdjacentRows = (
+    id: number,
+    direction: 'up' | 'down',
+  ) => {
+    setRows((prev) => {
+      const index = prev.findIndex((row) => row.id === id)
+      if (index < 0) return prev
+      const swapWith = direction === 'up' ? index - 1 : index + 1
+      if (swapWith < 0 || swapWith >= prev.length) return prev
+
+      const next = [...prev]
+      const current = next[index]
+      const neighbor = next[swapWith]
+      next[swapWith] = { ...current, sort_order: neighbor.sort_order }
+      next[index] = { ...neighbor, sort_order: current.sort_order }
+      return next
+    })
+  }
+
   const handleMoveUp = async (slider: SliderRowData) => {
     if (movingSliderId === slider.id) return
     setMovingSliderId(slider.id)
@@ -332,67 +351,8 @@ export default function SliderTable({
         return
       }
 
-      // Refresh the list after successful move
-      const qs = new URLSearchParams()
-      qs.set('page', String(currentPage))
-      qs.set('per_page', String(pageSize))
-
-      const refreshRes = await fetch(
-        `/api/proxy/ecommerce/home-sliders?${qs.toString()}`,
-        {
-          cache: 'no-store',
-        },
-      )
-
-      if (refreshRes.ok) {
-        const refreshResponse: SliderApiResponse = await refreshRes
-          .json()
-          .catch(() => ({} as SliderApiResponse))
-
-        let sliderItems: SliderApiItem[] = []
-        let paginationData: Partial<Meta> = {}
-
-        if (refreshResponse?.data) {
-          if (Array.isArray(refreshResponse.data)) {
-            sliderItems = refreshResponse.data
-          } else if (
-            typeof refreshResponse.data === 'object' &&
-            'data' in refreshResponse.data
-          ) {
-            const nestedData = refreshResponse.data as {
-              data?: SliderApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            sliderItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
-          }
-        }
-
-        if (refreshResponse?.meta) {
-          paginationData = { ...paginationData, ...refreshResponse.meta }
-        }
-
-        const list: SliderRowData[] = sliderItems.map((item) =>
-          mapSliderApiItemToRow(item),
-        )
-
-        setRows(list)
-        setMeta({
-          current_page:
-            Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      }
+      // NEW ENHANCEMENT — home-sliders-query-v1: local swap (also avoids booking type= drop)
+      swapAdjacentRows(slider.id, 'up')
     } catch (err) {
       console.error(err)
     } finally {
@@ -429,67 +389,7 @@ export default function SliderTable({
         return
       }
 
-      // Refresh the list after successful move
-      const qs = new URLSearchParams()
-      qs.set('page', String(currentPage))
-      qs.set('per_page', String(pageSize))
-
-      const refreshRes = await fetch(
-        `/api/proxy/ecommerce/home-sliders?${qs.toString()}`,
-        {
-          cache: 'no-store',
-        },
-      )
-
-      if (refreshRes.ok) {
-        const refreshResponse: SliderApiResponse = await refreshRes
-          .json()
-          .catch(() => ({} as SliderApiResponse))
-
-        let sliderItems: SliderApiItem[] = []
-        let paginationData: Partial<Meta> = {}
-
-        if (refreshResponse?.data) {
-          if (Array.isArray(refreshResponse.data)) {
-            sliderItems = refreshResponse.data
-          } else if (
-            typeof refreshResponse.data === 'object' &&
-            'data' in refreshResponse.data
-          ) {
-            const nestedData = refreshResponse.data as {
-              data?: SliderApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            sliderItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
-          }
-        }
-
-        if (refreshResponse?.meta) {
-          paginationData = { ...paginationData, ...refreshResponse.meta }
-        }
-
-        const list: SliderRowData[] = sliderItems.map((item) =>
-          mapSliderApiItemToRow(item),
-        )
-
-        setRows(list)
-        setMeta({
-          current_page:
-            Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      }
+      swapAdjacentRows(slider.id, 'down')
     } catch (err) {
       console.error(err)
     } finally {

@@ -11,11 +11,19 @@ class MarqueeController extends Controller
 {
     public function index(Request $request)
     {
+        // NEW ENHANCEMENT — announcements-marquees-query-v1: text filter + type/sort indexes
         $type = $this->resolveType($request);
         $query = Marquee::query()->ofType($type);
 
         if ($request->filled('is_active')) {
             $query->where('is_active', $request->boolean('is_active'));
+        }
+
+        if ($request->filled('text')) {
+            $term = trim((string) $request->get('text'));
+            if ($term !== '') {
+                $query->where('text', 'like', '%' . $term . '%');
+            }
         }
 
         if ($request->boolean('current_only', false)) {

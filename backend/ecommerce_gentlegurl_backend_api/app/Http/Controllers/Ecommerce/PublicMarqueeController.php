@@ -6,13 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Marquee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 class PublicMarqueeController extends Controller
 {
     public function index(Request $request)
     {
         try {
+            // NEW ENHANCEMENT — announcements-marquees-query-v1: drop per-request Schema::hasColumn
             $type = $this->resolveType($request);
             $query = Marquee::query()->ofType($type);
 
@@ -27,12 +27,8 @@ class PublicMarqueeController extends Controller
                 $query->current();
             }
 
-            $marqueesTable = (new Marquee())->getTable();
-            if (Schema::hasColumn($marqueesTable, 'sort_order')) {
-                $query->orderBy('sort_order');
-            }
-
             $marquees = $query
+                ->orderBy('sort_order')
                 ->orderByDesc('id')
                 ->get();
 

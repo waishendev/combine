@@ -362,6 +362,25 @@ export default function MarqueeTable({
     })
   }
 
+  const swapAdjacentRows = (
+    id: number,
+    direction: 'up' | 'down',
+  ) => {
+    setRows((prev) => {
+      const index = prev.findIndex((row) => row.id === id)
+      if (index < 0) return prev
+      const swapWith = direction === 'up' ? index - 1 : index + 1
+      if (swapWith < 0 || swapWith >= prev.length) return prev
+
+      const next = [...prev]
+      const current = next[index]
+      const neighbor = next[swapWith]
+      next[swapWith] = { ...current, sortOrder: neighbor.sortOrder }
+      next[index] = { ...neighbor, sortOrder: current.sortOrder }
+      return next
+    })
+  }
+
   const handleMoveUp = async (marquee: MarqueeRowData) => {
     if (movingMarqueeId === marquee.id) return
     setMovingMarqueeId(marquee.id)
@@ -391,71 +410,8 @@ export default function MarqueeTable({
         return
       }
 
-      // Refresh the list after successful move
-      const qs = new URLSearchParams()
-      qs.set('page', String(currentPage))
-      qs.set('per_page', String(pageSize))
-      if (filters.text) qs.set('text', filters.text)
-      if (filters.isActive) {
-        qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
-      }
-
-      const refreshRes = await fetch(
-        `/api/proxy/ecommerce/marquees?${qs.toString()}`,
-        {
-          cache: 'no-store',
-        },
-      )
-
-      if (refreshRes.ok) {
-        const refreshResponse: MarqueeApiResponse = await refreshRes
-          .json()
-          .catch(() => ({} as MarqueeApiResponse))
-
-        let marqueeItems: MarqueeApiItem[] = []
-        let paginationData: Partial<Meta> = {}
-
-        if (refreshResponse?.data) {
-          if (Array.isArray(refreshResponse.data)) {
-            marqueeItems = refreshResponse.data
-          } else if (
-            typeof refreshResponse.data === 'object' &&
-            'data' in refreshResponse.data
-          ) {
-            const nestedData = refreshResponse.data as {
-              data?: MarqueeApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            marqueeItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
-          }
-        }
-
-        if (refreshResponse?.meta) {
-          paginationData = { ...paginationData, ...refreshResponse.meta }
-        }
-
-        const list: MarqueeRowData[] = marqueeItems.map((item) =>
-          mapMarqueeApiItemToRow(item),
-        )
-
-        setRows(list)
-        setMeta({
-          current_page:
-            Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      }
+      // NEW ENHANCEMENT — announcements-marquees-query-v1: local swap, no list refetch
+      swapAdjacentRows(marquee.id, 'up')
     } catch (err) {
       console.error(err)
     } finally {
@@ -492,71 +448,7 @@ export default function MarqueeTable({
         return
       }
 
-      // Refresh the list after successful move
-      const qs = new URLSearchParams()
-      qs.set('page', String(currentPage))
-      qs.set('per_page', String(pageSize))
-      if (filters.text) qs.set('text', filters.text)
-      if (filters.isActive) {
-        qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
-      }
-
-      const refreshRes = await fetch(
-        `/api/proxy/ecommerce/marquees?${qs.toString()}`,
-        {
-          cache: 'no-store',
-        },
-      )
-
-      if (refreshRes.ok) {
-        const refreshResponse: MarqueeApiResponse = await refreshRes
-          .json()
-          .catch(() => ({} as MarqueeApiResponse))
-
-        let marqueeItems: MarqueeApiItem[] = []
-        let paginationData: Partial<Meta> = {}
-
-        if (refreshResponse?.data) {
-          if (Array.isArray(refreshResponse.data)) {
-            marqueeItems = refreshResponse.data
-          } else if (
-            typeof refreshResponse.data === 'object' &&
-            'data' in refreshResponse.data
-          ) {
-            const nestedData = refreshResponse.data as {
-              data?: MarqueeApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            marqueeItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
-          }
-        }
-
-        if (refreshResponse?.meta) {
-          paginationData = { ...paginationData, ...refreshResponse.meta }
-        }
-
-        const list: MarqueeRowData[] = marqueeItems.map((item) =>
-          mapMarqueeApiItemToRow(item),
-        )
-
-        setRows(list)
-        setMeta({
-          current_page:
-            Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      }
+      swapAdjacentRows(marquee.id, 'down')
     } catch (err) {
       console.error(err)
     } finally {

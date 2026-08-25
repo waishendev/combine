@@ -311,6 +311,25 @@ export default function AnnouncementTable({
     })
   }
 
+  const swapAdjacentRows = (
+    id: number,
+    direction: 'up' | 'down',
+  ) => {
+    setRows((prev) => {
+      const index = prev.findIndex((row) => row.id === id)
+      if (index < 0) return prev
+      const swapWith = direction === 'up' ? index - 1 : index + 1
+      if (swapWith < 0 || swapWith >= prev.length) return prev
+
+      const next = [...prev]
+      const current = next[index]
+      const neighbor = next[swapWith]
+      next[swapWith] = { ...current, sortOrder: neighbor.sortOrder }
+      next[index] = { ...neighbor, sortOrder: current.sortOrder }
+      return next
+    })
+  }
+
   const handleMoveUp = async (announcement: AnnouncementRowData) => {
     if (movingAnnouncementId === announcement.id) return
     setMovingAnnouncementId(announcement.id)
@@ -340,67 +359,8 @@ export default function AnnouncementTable({
         return
       }
 
-      // Refresh the list after successful move
-      const qs = new URLSearchParams()
-      qs.set('page', String(currentPage))
-      qs.set('per_page', String(pageSize))
-
-      const refreshRes = await fetch(
-        `/api/proxy/ecommerce/announcements?${qs.toString()}`,
-        {
-          cache: 'no-store',
-        },
-      )
-
-      if (refreshRes.ok) {
-        const refreshResponse: AnnouncementApiResponse = await refreshRes
-          .json()
-          .catch(() => ({} as AnnouncementApiResponse))
-
-        let announcementItems: AnnouncementApiItem[] = []
-        let paginationData: Partial<Meta> = {}
-
-        if (refreshResponse?.data) {
-          if (Array.isArray(refreshResponse.data)) {
-            announcementItems = refreshResponse.data
-          } else if (
-            typeof refreshResponse.data === 'object' &&
-            'data' in refreshResponse.data
-          ) {
-            const nestedData = refreshResponse.data as {
-              data?: AnnouncementApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            announcementItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
-          }
-        }
-
-        if (refreshResponse?.meta) {
-          paginationData = { ...paginationData, ...refreshResponse.meta }
-        }
-
-        const list: AnnouncementRowData[] = announcementItems.map((item) =>
-          mapAnnouncementApiItemToRow(item),
-        )
-
-        setRows(list)
-        setMeta({
-          current_page:
-            Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      }
+      // NEW ENHANCEMENT — announcements-marquees-query-v1: local swap, no list refetch
+      swapAdjacentRows(announcement.id, 'up')
     } catch (err) {
       console.error(err)
     } finally {
@@ -437,67 +397,7 @@ export default function AnnouncementTable({
         return
       }
 
-      // Refresh the list after successful move
-      const qs = new URLSearchParams()
-      qs.set('page', String(currentPage))
-      qs.set('per_page', String(pageSize))
-
-      const refreshRes = await fetch(
-        `/api/proxy/ecommerce/announcements?${qs.toString()}`,
-        {
-          cache: 'no-store',
-        },
-      )
-
-      if (refreshRes.ok) {
-        const refreshResponse: AnnouncementApiResponse = await refreshRes
-          .json()
-          .catch(() => ({} as AnnouncementApiResponse))
-
-        let announcementItems: AnnouncementApiItem[] = []
-        let paginationData: Partial<Meta> = {}
-
-        if (refreshResponse?.data) {
-          if (Array.isArray(refreshResponse.data)) {
-            announcementItems = refreshResponse.data
-          } else if (
-            typeof refreshResponse.data === 'object' &&
-            'data' in refreshResponse.data
-          ) {
-            const nestedData = refreshResponse.data as {
-              data?: AnnouncementApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            announcementItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
-          }
-        }
-
-        if (refreshResponse?.meta) {
-          paginationData = { ...paginationData, ...refreshResponse.meta }
-        }
-
-        const list: AnnouncementRowData[] = announcementItems.map((item) =>
-          mapAnnouncementApiItemToRow(item),
-        )
-
-        setRows(list)
-        setMeta({
-          current_page:
-            Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      }
+      swapAdjacentRows(announcement.id, 'down')
     } catch (err) {
       console.error(err)
     } finally {

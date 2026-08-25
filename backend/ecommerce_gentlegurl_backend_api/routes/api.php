@@ -1306,6 +1306,8 @@ $protectedRoutes = function () {
         // END NEW ENHANCEMENT
 
         // Announcements Admin
+        // Announcements Admin
+        // NEW ENHANCEMENT — announcements-marquees-query-v1 (slim list + indexes)
         Route::get('/announcements', [AnnouncementController::class, 'index'])
             ->middleware('permission:ecommerce.announcements.view');
 
@@ -1326,8 +1328,10 @@ $protectedRoutes = function () {
 
         Route::post('/announcements/{announcement}/move-down', [AnnouncementController::class, 'moveDown'])
             ->middleware('permission:ecommerce.announcements.update');
+        // END NEW ENHANCEMENT
 
         // Home Sliders Admin
+        // NEW ENHANCEMENT — home-sliders-query-v1 (slim list + indexes; booking shares type=)
         Route::get('/home-sliders', [HomeSliderController::class, 'index'])
             ->middleware('permission:ecommerce.sliders.view');
 
@@ -1348,8 +1352,11 @@ $protectedRoutes = function () {
 
         Route::post('/home-sliders/{slider}/move-down', [HomeSliderController::class, 'moveDown'])
             ->middleware('permission:ecommerce.sliders.update');
+        // END NEW ENHANCEMENT
 
         // Marquees Admin
+        // Marquees Admin
+        // NEW ENHANCEMENT — announcements-marquees-query-v1 (text filter + indexes; booking shares type=)
         Route::get('/marquees', [MarqueeController::class, 'index'])
             ->middleware('permission:ecommerce.marquees.view');
 
@@ -1370,6 +1377,7 @@ $protectedRoutes = function () {
 
         Route::post('/marquees/{marquee}/move-down', [MarqueeController::class, 'moveDown'])
             ->middleware('permission:ecommerce.marquees.update');
+        // END NEW ENHANCEMENT
 
         Route::get('/landing-page', [\App\Http\Controllers\Ecommerce\LandingPageController::class, 'adminShow'])
             ->middleware('permission:ecommerce.landing-page.view');

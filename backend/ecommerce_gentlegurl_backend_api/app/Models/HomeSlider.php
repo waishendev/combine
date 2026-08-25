@@ -38,56 +38,35 @@ class HomeSlider extends Model
     ];
 
     /**
-     * Get the full URL for the image
+     * Get the full URL for the image.
+     * NEW ENHANCEMENT — home-sliders-query-v1: no Storage::exists (avoids FS per serialize).
      */
     public function getImageUrlAttribute(): ?string
     {
-        if (!$this->image_path) {
-            return null;
-        }
-
-        // If it's already a full URL, return it as is
-        if (filter_var($this->image_path, FILTER_VALIDATE_URL)) {
-            return $this->image_path;
-        }
-
-        // Normalize path: remove leading slash to avoid double slashes
-        $normalizedPath = ltrim($this->image_path, '/');
-
-        // If it's a storage path, return the full URL
-        if (Storage::disk('public')->exists($normalizedPath)) {
-            return Storage::disk('public')->url($normalizedPath);
-        }
-
-        // Fallback: construct URL manually (ensure no double slashes)
-        $path = ltrim($this->image_path, '/');
-        return url('storage/' . $path);
+        return $this->resolvePublicUrl($this->image_path);
     }
 
     /**
-     * Get the full URL for the mobile image
+     * Get the full URL for the mobile image.
+     * NEW ENHANCEMENT — home-sliders-query-v1: no Storage::exists (avoids FS per serialize).
      */
     public function getMobileImageUrlAttribute(): ?string
     {
-        if (!$this->mobile_image_path) {
+        return $this->resolvePublicUrl($this->mobile_image_path);
+    }
+
+    protected function resolvePublicUrl(?string $path): ?string
+    {
+        if (! $path) {
             return null;
         }
 
-        // If it's already a full URL, return it as is
-        if (filter_var($this->mobile_image_path, FILTER_VALIDATE_URL)) {
-            return $this->mobile_image_path;
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
         }
 
-        // Normalize path: remove leading slash to avoid double slashes
-        $normalizedPath = ltrim($this->mobile_image_path, '/');
+        $normalizedPath = ltrim($path, '/');
 
-        // If it's a storage path, return the full URL
-        if (Storage::disk('public')->exists($normalizedPath)) {
-            return Storage::disk('public')->url($normalizedPath);
-        }
-
-        // Fallback: construct URL manually (ensure no double slashes)
-        $path = ltrim($this->mobile_image_path, '/');
-        return url('storage/' . $path);
+        return Storage::disk('public')->url($normalizedPath);
     }
 }
