@@ -21,6 +21,7 @@ import {
   type PromotionRowData,
 } from './promotionUtils'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface PromotionsTableProps {
   permissions: string[]
@@ -50,6 +51,7 @@ type PromotionApiResponse = {
 
 export default function PromotionsTable({ permissions }: PromotionsTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<PromotionFilterValues>({
@@ -137,6 +139,7 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
             filters.isActive === 'active' ? 'true' : 'false',
           )
         }
+        if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
 
         const res = await fetch(
           `/api/proxy/ecommerce/promotions?${qs.toString()}`,
@@ -212,7 +215,7 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
         setLoading(false)
       }
     },
-    [currentPage, filters, pageSize],
+    [currentPage, filters, pageSize, selectedBranchId],
   )
 
   useEffect(() => {
@@ -220,6 +223,8 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
     fetchPromotions(controller.signal)
     return () => controller.abort()
   }, [fetchPromotions])
+
+  useEffect(() => { setCurrentPage(1) }, [selectedBranchId])
 
   const handleSort = (column: keyof PromotionRowData) => {
     if (sortColumn === column) {
@@ -300,7 +305,7 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 8 : 7
+  const colCount = showActions ? 9 : 8
 
   const totalPages = meta.last_page || 1
 
@@ -502,6 +507,7 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
               {(
                 [
                   { key: 'name', label: t('common.name') },
+                  { key: 'isOnlineEnabled', label: 'Available In' },
                   { key: 'tierDiscountPreview', label: 'Discount' },
                   { key: 'triggerType', label: 'Trigger' },
                   { key: 'isActive', label: t('common.status') },
@@ -542,6 +548,8 @@ export default function PromotionsTable({ permissions }: PromotionsTableProps) {
                 <PromotionRow
                   key={promotion.id}
                   promotion={promotion}
+                  isAllBranches={isAllBranches}
+                  selectedBranchId={selectedBranchId}
                   showActions={showActions}
                   canView={canView}
                   canUpdate={canUpdate}
