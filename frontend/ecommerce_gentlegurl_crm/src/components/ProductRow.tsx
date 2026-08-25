@@ -96,6 +96,7 @@ export interface ProductRowData {
 interface ProductRowProps {
   product: ProductRowData
   hideCategories?: boolean
+  showBranches?: boolean
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
@@ -115,6 +116,7 @@ interface ProductRowProps {
 export default function ProductRow({
   product,
   hideCategories = false,
+  showBranches = false,
   showActions = false,
   canUpdate = false,
   canDelete = false,
@@ -194,6 +196,11 @@ export default function ProductRow({
       )}
       <td className="px-4 py-2 border border-gray-200">{renderPrice()}</td>
       <td className="px-4 py-2 border border-gray-200">{product.stock}</td>
+      {showBranches && (
+        <td className="px-4 py-2 border border-gray-200">
+          {product.storeLocations?.map((branch) => branch.name).join(', ') || 'Unassigned'}
+        </td>
+      )}
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={product.isActive ? 'active' : 'inactive'}

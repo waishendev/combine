@@ -9,6 +9,7 @@ use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\StoreLocationProductInventory;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Tests\TestCase;
@@ -78,6 +79,40 @@ class ProductBranchContextTest extends TestCase
 
         $category->update(['name' => 'Edited globally']);
         $this->assertSame(4, Category::query()->count(), 'Branch context must not clone Category identity.');
+    }
+
+    public function test_all_scope_returns_only_accessible_product_and_derived_category_branches_without_n_plus_one(): void
+    {
+        $a = $this->branch('A'); $b = $this->branch('B'); $hidden = $this->branch('HIDDEN');
+        $actor = User::factory()->create();
+        $actor->storeLocations()->sync([$a->id, $b->id]);
+        $product = $this->product('MULTI', 0);
+        $product->storeLocations()->sync([
+            $a->id => ['is_available' => true],
+            $b->id => ['is_available' => true],
+            $hidden->id => ['is_available' => true],
+        ]);
+        $category = Category::create(['name' => 'Derived', 'slug' => 'derived', 'is_active' => true]);
+        $category->products()->attach($product);
+
+        $productRequest = Request::create('/products', 'GET', ['branch_scope' => 'all', 'per_page' => 50]);
+        $productRequest->setUserResolver(fn () => $actor);
+        $productRows = app(ProductController::class)->index($productRequest)->getData(true)['data']['data'];
+        $this->assertSame(['A', 'B'], collect($productRows[0]['store_locations'])->pluck('code')->all());
+
+        \DB::flushQueryLog();
+        \DB::enableQueryLog();
+        $categoryRequest = Request::create('/categories', 'GET', ['branch_scope' => 'all', 'per_page' => 50]);
+        $categoryRequest->setUserResolver(fn () => $actor);
+        $categoryRows = app(CategoryController::class)->index($categoryRequest)->getData(true)['data']['data'];
+        $queryCount = count(\DB::getQueryLog());
+        \DB::disableQueryLog();
+
+        $derived = collect($categoryRows)->firstWhere('id', $category->id);
+        $this->assertSame(['A', 'B'], collect($derived['available_branches'])->pluck('code')->all());
+        $this->assertLessThanOrEqual(8, $queryCount, 'Category branch metadata must use a bounded grouped query, not one query per category.');
+        $this->assertFalse(\Schema::hasColumn('categories', 'store_location_id'));
+        $this->assertFalse(\Schema::hasTable('category_store_location'));
     }
 
     private function productIds(?int $branchId): array

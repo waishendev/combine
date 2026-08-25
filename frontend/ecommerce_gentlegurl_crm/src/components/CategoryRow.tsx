@@ -21,6 +21,7 @@ export interface CategoryRowData {
   menuIds: number[]
   menuNames: string
   productCount: number
+  availableBranches: Array<{ id: number; name: string; code?: string }>
   createdAt: string
   updatedAt: string
 }
@@ -32,6 +33,7 @@ interface CategoryRowProps {
   selected?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  showBranches?: boolean
   onSelectChange?: (category: CategoryRowData, checked: boolean) => void
   onEdit?: (category: CategoryRowData) => void
   onDelete?: (category: CategoryRowData) => void
@@ -44,6 +46,7 @@ export default function CategoryRow({
   selected = false,
   canUpdate = false,
   canDelete = false,
+  showBranches = false,
   onSelectChange,
   onEdit,
   onDelete,
@@ -70,6 +73,11 @@ export default function CategoryRow({
       <td className="px-4 py-2 border border-gray-200">{category.description}</td>
       <td className="px-4 py-2 border border-gray-200">{category.menuNames}</td>
       <td className="px-4 py-2 border border-gray-200">{category.productCount}</td>
+      {showBranches && (
+        <td className="px-4 py-2 border border-gray-200">
+          {category.availableBranches.map((branch) => branch.name).join(', ') || 'Unassigned'}
+        </td>
+      )}
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={category.showInPosFilter ? 'active' : 'inactive'}
