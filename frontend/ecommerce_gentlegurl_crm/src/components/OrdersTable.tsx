@@ -224,7 +224,7 @@ export default function OrdersTable({
           }
         }
 
-        const res = await fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, {
+        const res = await fetch(`/api/proxy/ecommerce/orders/query?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -258,14 +258,29 @@ export default function OrdersTable({
               current_page?: number
               last_page?: number
               per_page?: number
-              total?: number
+              total?: number | null
+              next_page_url?: string | null
+              has_more?: boolean
             }
             orderItems = Array.isArray(nestedData.data) ? nestedData.data : []
+            const hasMore =
+              typeof nestedData.has_more === 'boolean'
+                ? nestedData.has_more
+                : Boolean(nestedData.next_page_url)
+            const current = Number(nestedData.current_page ?? currentPage) || 1
             paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
+              current_page: current,
+              last_page:
+                nestedData.last_page != null
+                  ? Number(nestedData.last_page)
+                  : hasMore
+                    ? current + 1
+                    : current,
               per_page: nestedData.per_page,
-              total: nestedData.total,
+              total:
+                nestedData.total == null
+                  ? undefined
+                  : Number(nestedData.total),
             }
           }
         }
@@ -283,7 +298,16 @@ export default function OrdersTable({
           current_page: Number(paginationData.current_page ?? currentPage) || 1,
           last_page: Number(paginationData.last_page ?? 1) || 1,
           per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
+          total:
+            paginationData.total != null
+              ? Number(paginationData.total) || list.length
+              : (Number(paginationData.current_page ?? currentPage) - 1) *
+                  (Number(paginationData.per_page ?? pageSize) || pageSize) +
+                list.length +
+                ((Number(paginationData.last_page ?? 1) || 1) >
+                (Number(paginationData.current_page ?? currentPage) || 1)
+                  ? 1
+                  : 0),
         })
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {

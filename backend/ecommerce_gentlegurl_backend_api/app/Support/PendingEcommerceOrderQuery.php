@@ -50,6 +50,9 @@ class PendingEcommerceOrderQuery
     protected static function applyNonBookingOrderScope(Builder $query): void
     {
         $query
+            ->where(function ($q) {
+                $q->where('is_booking_checkout', false)->orWhereNull('is_booking_checkout');
+            })
             ->whereDoesntHave('items', function ($itemQuery) {
                 $itemQuery->whereIn('line_type', [
                     'booking_deposit',
@@ -59,15 +62,15 @@ class PendingEcommerceOrderQuery
                     'service_package',
                 ]);
             })
-            ->whereDoesntHave('serviceItems')
-            ->where(function ($noteQuery) {
-                $noteQuery->whereNull('notes')
-                    ->orWhere('notes', 'not like', '%Booking cart checkout%');
-            });
+            ->whereDoesntHave('serviceItems');
     }
 
     public static function isBookingOrder(Order $order): bool
     {
+        if ((bool) ($order->is_booking_checkout ?? false)) {
+            return true;
+        }
+
         $items = $order->relationLoaded('items') ? $order->items : $order->items()->get(['id', 'order_id', 'line_type']);
 
         $hasBookingLineItems = $items->contains(fn ($item) => in_array((string) ($item->line_type ?? ''), [

@@ -42,57 +42,108 @@ class OrderController extends Controller
 
     public function index(Request $request)
     {
-        $perPage = $request->integer('per_page', 15);
+        $perPage = max(1, min(100, $request->integer('per_page', 15)));
+
+        $orders = $this->buildShopOrdersListQuery($request)
+            ->paginate($perPage)
+            ->through(fn (Order $order) => $this->mapShopOrderListRow($order));
+
+        return $this->respond($orders);
+    }
+
+    /**
+     * Slim CRM list — simplePaginate (no COUNT), same row shape as index.
+     * Enhancement: orders-shop-returns-query-v2
+     */
+    public function queryIndex(Request $request)
+    {
+        $perPage = max(1, min(100, $request->integer('per_page', 15)));
+
+        $orders = $this->buildShopOrdersListQuery($request)
+            ->simplePaginate($perPage)
+            ->through(fn (Order $order) => $this->mapShopOrderListRow($order));
+
+        $payload = $orders->toArray();
+        $hasMore = ! empty($payload['next_page_url']);
+        $currentPage = (int) ($payload['current_page'] ?? 1);
+        $payload['last_page'] = $hasMore ? $currentPage + 1 : $currentPage;
+        $payload['total'] = null;
+        $payload['has_more'] = $hasMore;
+        $payload['enhancement'] = 'orders-shop-returns-query-v2';
+
+        return $this->respond($payload);
+    }
+
+    protected function buildShopOrdersListQuery(Request $request)
+    {
         $orderType = strtolower(trim((string) $request->query('order_type', '')));
         $includePaidBookingCompleted = $request->boolean('include_paid_booking_completed');
         $excludePaidBooking = $request->boolean('exclude_paid_booking');
-    
-        // Accept both array and single value for status
+
         $status = null;
         if ($request->has('status')) {
             $statusInput = $request->input('status');
             $status = is_array($statusInput) ? $statusInput : [$statusInput];
-            $status = array_filter($status, fn($s) => !empty($s)); // Remove empty values
-            $status = !empty($status) ? $status : null;
+            $status = array_filter($status, fn ($s) => ! empty($s));
+            $status = ! empty($status) ? $status : null;
         }
-        
-        // Accept both array and single value for payment_status
+
         $paymentStatus = null;
         if ($request->has('payment_status')) {
             $paymentStatusInput = $request->input('payment_status');
             $paymentStatus = is_array($paymentStatusInput) ? $paymentStatusInput : [$paymentStatusInput];
-            $paymentStatus = array_filter($paymentStatus, fn($ps) => !empty($ps)); // Remove empty values
-            $paymentStatus = !empty($paymentStatus) ? $paymentStatus : null;
+            $paymentStatus = array_filter($paymentStatus, fn ($ps) => ! empty($ps));
+            $paymentStatus = ! empty($paymentStatus) ? $paymentStatus : null;
         }
-    
-        $orders = ReportBranchScope::applyCurrent(Order::with([
+
+        return ReportBranchScope::applyCurrent(Order::query()->select([
+            'id',
+            'order_number',
+            'customer_id',
+            'status',
+            'payment_status',
+            'subtotal',
+            'discount_total',
+            'shipping_fee',
+            'grand_total',
+            'refund_total',
+            'pickup_or_shipping',
+            'store_location_id',
+            'shipping_name',
+            'billing_name',
+            'notes',
+            'is_booking_checkout',
+            'created_at',
+            'created_by_user_id',
+            'pickup_store_id',
+            'pickup_ready_at',
+        ])->with([
             'storeLocation:id,name,code',
             'customer:id,name,email,phone',
             'items:id,order_id,line_type',
             'serviceItems:id,order_id',
-            'returns:id,order_id,status,created_at',
-            'returns.items:id,return_request_id,quantity',
+            'returns' => fn ($query) => $query
+                ->select(['id', 'order_id', 'status', 'created_at'])
+                ->withSum('items as items_quantity', 'quantity')
+                ->orderByDesc('created_at'),
         ]), 'orders.store_location_id')
-            // Only include eCommerce shop orders here.
-            // POS orders are created by an admin user and have created_by_user_id set.
             ->whereNull('created_by_user_id')
-            ->when($orderType === 'booking', fn($q) => $this->applyBookingOrderScope($q))
-            ->when($orderType === 'ecommerce', fn($q) => $this->applyNonBookingOrderScope($q))
+            ->when($orderType === 'booking', fn ($q) => $this->applyBookingOrderScope($q))
+            ->when($orderType === 'ecommerce', fn ($q) => $this->applyNonBookingOrderScope($q))
             ->when($orderType === 'mixed', function ($q) {
                 $this->applyBookingOrderScope($q);
-                $q->whereHas('items', fn($itemQuery) => $itemQuery->where('line_type', 'product'));
+                $q->whereHas('items', fn ($itemQuery) => $itemQuery->where('line_type', 'product'));
             })
             ->when($status, function ($q) use ($status, $paymentStatus, $includePaidBookingCompleted, $orderType) {
                 $applyStatusFilter = function ($statusQuery) use ($status, $paymentStatus) {
-                    // If filtering ONLY by cancelled status (no other statuses) and payment_status is not specified
-                    // (or doesn't include 'refunded'), exclude refunded orders to show only cancelled (non-refunded) orders.
                     $onlyCancelled = count($status) === 1 && $status[0] === 'cancelled';
-                    if ($onlyCancelled && (!$paymentStatus || !in_array('refunded', $paymentStatus))) {
+                    if ($onlyCancelled && (! $paymentStatus || ! in_array('refunded', $paymentStatus))) {
                         $statusQuery->where('status', 'cancelled')
                             ->where(function ($notRefundQuery) {
                                 $notRefundQuery->where('payment_status', '!=', 'refunded')
                                     ->orWhereNull('payment_status');
                             });
+
                         return;
                     }
 
@@ -107,12 +158,13 @@ class OrderController extends Controller
                             $paidBookingQuery->where('payment_status', 'paid');
                         });
                     });
+
                     return;
                 }
 
                 $applyStatusFilter($q);
             })
-            ->when($paymentStatus, fn($q) => $q->whereIn('payment_status', $paymentStatus))
+            ->when($paymentStatus, fn ($q) => $q->whereIn('payment_status', $paymentStatus))
             ->when($excludePaidBooking, function ($q) {
                 $q->where(function ($excludeQuery) {
                     $excludeQuery->where('payment_status', '!=', 'paid')
@@ -122,64 +174,67 @@ class OrderController extends Controller
                         });
                 });
             })
-    
-            ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->integer('customer_id')))
-            ->when($request->filled('order_no'), fn($q) => $q->where('order_number', 'like', '%' . $request->string('order_no')->toString() . '%'))
-            ->when($request->filled('reference'), fn($q) => $q->where('order_number', 'like', '%' . $request->string('reference')->toString() . '%'))
-            ->when($request->filled('date_from'), fn($q) => $q->whereDate('created_at', '>=', $request->date('date_from')))
-            ->when($request->filled('date_to'), fn($q) => $q->whereDate('created_at', '<=', $request->date('date_to')))
-            ->when($request->filled('store_location_id'), fn($q) => $q->where('pickup_store_id', $request->integer('store_location_id')))
-            ->when($request->filled('pickup_ready_at_from'), fn($q) => $q->whereDate('pickup_ready_at', '>=', $request->date('pickup_ready_at_from')))
-            ->when($request->filled('pickup_ready_at_to'), fn($q) => $q->whereDate('pickup_ready_at', '<=', $request->date('pickup_ready_at_to')))
+            ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->integer('customer_id')))
+            ->when($request->filled('order_no'), fn ($q) => $q->where('order_number', 'like', '%' . $request->string('order_no')->toString() . '%'))
+            ->when($request->filled('reference'), fn ($q) => $q->where('order_number', 'like', '%' . $request->string('reference')->toString() . '%'))
+            ->when($request->filled('date_from'), function ($q) use ($request) {
+                $q->where('created_at', '>=', Carbon::parse($request->date('date_from'))->startOfDay());
+            })
+            ->when($request->filled('date_to'), function ($q) use ($request) {
+                $q->where('created_at', '<', Carbon::parse($request->date('date_to'))->addDay()->startOfDay());
+            })
+            ->when($request->filled('store_location_id'), fn ($q) => $q->where('pickup_store_id', $request->integer('store_location_id')))
+            ->when($request->filled('pickup_ready_at_from'), function ($q) use ($request) {
+                $q->where('pickup_ready_at', '>=', Carbon::parse($request->date('pickup_ready_at_from'))->startOfDay());
+            })
+            ->when($request->filled('pickup_ready_at_to'), function ($q) use ($request) {
+                $q->where('pickup_ready_at', '<', Carbon::parse($request->date('pickup_ready_at_to'))->addDay()->startOfDay());
+            })
             ->orderByDesc('created_at')
-            ->paginate($perPage)
-            ->through(function (Order $order) {
-                $latestReturn = $order->returns
-                    ->sortByDesc('created_at')
-                    ->first();
-                $returnItemsTotalQty = $order->returns
-                    ->flatMap(fn($return) => $return->items)
-                    ->sum('quantity');
-                $returnSummary = [
-                    'has_return' => $order->returns->isNotEmpty(),
-                    'return_count' => $order->returns->count(),
-                    'return_statuses' => $latestReturn ? [$latestReturn->status] : [],
-                    'return_items_total_qty' => $returnItemsTotalQty,
-                    'latest_return_id' => $latestReturn?->id,
-                ];
+            ->orderByDesc('id');
+    }
 
-                $customerName = $order->customer?->name
-                    ?: $order->shipping_name
-                    ?: $order->billing_name;
-                $customerEmail = $order->customer?->email;
+    protected function mapShopOrderListRow(Order $order): array
+    {
+        $latestReturn = $order->returns->first();
+        $returnItemsTotalQty = (int) $order->returns->sum(fn ($return) => (int) ($return->items_quantity ?? 0));
+        $returnSummary = [
+            'has_return' => $order->returns->isNotEmpty(),
+            'return_count' => $order->returns->count(),
+            'return_statuses' => $latestReturn ? [$latestReturn->status] : [],
+            'return_items_total_qty' => $returnItemsTotalQty,
+            'latest_return_id' => $latestReturn?->id,
+        ];
 
-                return [
-                    'id' => $order->id,
-                    'order_no' => $order->order_number,
-                    'customer' => $customerName || $customerEmail ? [
-                        'id' => $order->customer?->id,
-                        'name' => $customerName,
-                        'email' => $customerEmail,
-                    ] : null,
-                    'line_types' => $order->items->pluck('line_type')->unique()->values()->all(),
-                    'order_type' => $this->detectOrderType($order),
-                    'status' => $order->status,
-                    'payment_status' => $order->payment_status,
-                    'subtotal' => $order->subtotal,
-                    'discount_total' => $order->discount_total,
-                    'shipping_fee' => $order->shipping_fee,
-                    'grand_total' => $order->grand_total,
-                    'net_total' => (float) $order->grand_total - (float) ($order->refund_total ?? 0),
-                    'shipping_method' => $order->pickup_or_shipping,
-                    'store_location_id' => $order->store_location_id,
-                    'store_location' => $order->storeLocation,
-                    'created_at' => $order->created_at,
-                    'refund_total' => $order->refund_total,
-                    'return_summary' => $returnSummary,
-                ];
-            });
-    
-        return $this->respond($orders);
+        $customerName = $order->customer?->name
+            ?: $order->shipping_name
+            ?: $order->billing_name;
+        $customerEmail = $order->customer?->email;
+
+        return [
+            'id' => $order->id,
+            'order_no' => $order->order_number,
+            'customer' => $customerName || $customerEmail ? [
+                'id' => $order->customer?->id,
+                'name' => $customerName,
+                'email' => $customerEmail,
+            ] : null,
+            'line_types' => $order->items->pluck('line_type')->unique()->values()->all(),
+            'order_type' => $this->detectOrderType($order),
+            'status' => $order->status,
+            'payment_status' => $order->payment_status,
+            'subtotal' => $order->subtotal,
+            'discount_total' => $order->discount_total,
+            'shipping_fee' => $order->shipping_fee,
+            'grand_total' => $order->grand_total,
+            'net_total' => (float) $order->grand_total - (float) ($order->refund_total ?? 0),
+            'shipping_method' => $order->pickup_or_shipping,
+            'store_location_id' => $order->store_location_id,
+            'store_location' => $order->storeLocation,
+            'created_at' => $order->created_at,
+            'refund_total' => $order->refund_total,
+            'return_summary' => $returnSummary,
+        ];
     }
     
 
@@ -197,6 +252,7 @@ class OrderController extends Controller
             'items.booking.itemPhotos:id,booking_id,file_path,original_name,mime_type,size,sort_order,created_at',
             'items.booking.servicePhotos:id,booking_id,image_path,caption,sort_order,created_at,updated_at',
             'items.booking.payments:id,booking_id,provider,amount,status,raw_response,created_at,updated_at',
+            'items.booking.orderItems:id,booking_id,line_type,line_total',
             'items.bookingService:id,name,cn_name',
             'serviceItems.assignedStaff',
             'customer',
@@ -207,11 +263,54 @@ class OrderController extends Controller
 
         $orderLineItems = $order->items->values();
 
-        $claimsByBooking = CustomerServicePackageUsage::query()
-            ->whereIn('booking_id', $order->serviceItems->pluck('booking_id')->filter()->all())
-            ->orderByDesc('id')
-            ->get()
-            ->groupBy('booking_id');
+        $bookingIds = $orderLineItems->pluck('booking_id')
+            ->merge($order->serviceItems->pluck('booking_id'))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $packageClaimRows = empty($bookingIds)
+            ? collect()
+            : CustomerServicePackageUsage::query()
+                ->with(['customerServicePackage.servicePackage:id,name'])
+                ->where(function ($query) use ($bookingIds) {
+                    $query->whereIn('booking_id', $bookingIds)
+                        ->orWhere(function ($posQuery) use ($bookingIds) {
+                            $posQuery->where('used_from', 'POS')
+                                ->whereIn('used_ref_id', $bookingIds);
+                        });
+                })
+                ->whereIn('status', ['reserved', 'consumed', 'released'])
+                ->orderByDesc('id')
+                ->get();
+
+        $claimsByBooking = $packageClaimRows
+            ->groupBy(function (CustomerServicePackageUsage $usage) {
+                $bookingId = (int) ($usage->booking_id ?: 0);
+                if ($bookingId > 0) {
+                    return $bookingId;
+                }
+
+                return (int) ($usage->used_ref_id ?: 0);
+            });
+
+        $packageClaimsForBooking = function (?int $bookingId) use ($claimsByBooking): array {
+            if (! $bookingId) {
+                return [];
+            }
+
+            return ($claimsByBooking->get($bookingId) ?? collect())
+                ->filter(fn (CustomerServicePackageUsage $usage) => in_array((string) $usage->status, ['reserved', 'consumed'], true))
+                ->map(fn (CustomerServicePackageUsage $usage) => [
+                    'package_name' => (string) ($usage->customerServicePackage?->servicePackage?->name ?? 'Package'),
+                    'booking_service_id' => (int) $usage->booking_service_id,
+                    'status' => (string) $usage->status,
+                ])
+                ->values()
+                ->all();
+        };
 
         return $this->respond([
             'id' => $order->id,
@@ -277,7 +376,7 @@ class OrderController extends Controller
                     'cover_image_url' => $thumbnail,
                 ];
             }),
-            'booking_deposit_items' => $orderLineItems->where('line_type', 'booking_deposit')->values()->map(function ($item) {
+            'booking_deposit_items' => $orderLineItems->where('line_type', 'booking_deposit')->values()->map(function ($item) use ($packageClaimsForBooking) {
                 return [
                     'item_type' => 'booking_deposit',
                     'display_name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
@@ -288,13 +387,16 @@ class OrderController extends Controller
                     'booking_service_id' => $item->booking_service_id,
                     'booking_service_name' => $item->bookingService?->name,
                     'booking_service_cn_name' => $item->bookingService?->cn_name,
-                    'booking_details' => $this->mapBookingDetail($item->booking),
+                    'booking_details' => $this->mapBookingDetail(
+                        $item->booking,
+                        $packageClaimsForBooking($item->booking_id ? (int) $item->booking_id : null)
+                    ),
                 ];
             }),
             'booking_addon_items' => $orderLineItems->where('line_type', 'booking_addon')
                 ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
                 ->values()
-                ->map(function ($item) {
+                ->map(function ($item) use ($packageClaimsForBooking) {
                     return [
                         'item_type' => 'booking_addon',
                         'display_name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
@@ -305,7 +407,10 @@ class OrderController extends Controller
                         'booking_service_id' => $item->booking_service_id,
                         'booking_service_name' => $item->bookingService?->name,
                         'booking_service_cn_name' => $item->bookingService?->cn_name,
-                        'booking_details' => $this->mapBookingDetail($item->booking),
+                        'booking_details' => $this->mapBookingDetail(
+                            $item->booking,
+                            $packageClaimsForBooking($item->booking_id ? (int) $item->booking_id : null)
+                        ),
                     ];
                 }),
             'service_items' => $order->serviceItems->values()->map(function ($item) use ($claimsByBooking) {
@@ -413,8 +518,39 @@ class OrderController extends Controller
 
     protected function applyBookingOrderScope($query): void
     {
+        // Prefer denormalized flag (indexed). Legacy OR keeps pre-backfill safety.
         $query->where(function ($bookingQuery) {
-            $bookingQuery->whereHas('items', function ($itemQuery) {
+            $bookingQuery
+                ->where('is_booking_checkout', true)
+                ->orWhere(function ($legacy) {
+                    $legacy
+                        ->where(function ($flag) {
+                            $flag->where('is_booking_checkout', false)->orWhereNull('is_booking_checkout');
+                        })
+                        ->where(function ($detect) {
+                            $detect
+                                ->whereHas('items', function ($itemQuery) {
+                                    $itemQuery->whereIn('line_type', [
+                                        'booking_deposit',
+                                        'booking_addon',
+                                        'booking_settlement',
+                                        'booking_product',
+                                        'service_package',
+                                    ]);
+                                })
+                                ->orWhereHas('serviceItems');
+                        });
+                });
+        });
+    }
+
+    protected function applyNonBookingOrderScope($query): void
+    {
+        $query
+            ->where(function ($q) {
+                $q->where('is_booking_checkout', false)->orWhereNull('is_booking_checkout');
+            })
+            ->whereDoesntHave('items', function ($itemQuery) {
                 $itemQuery->whereIn('line_type', [
                     'booking_deposit',
                     'booking_addon',
@@ -423,30 +559,10 @@ class OrderController extends Controller
                     'service_package',
                 ]);
             })
-                ->orWhereHas('serviceItems')
-                ->orWhere('notes', 'like', '%Booking cart checkout%');
-        });
+            ->whereDoesntHave('serviceItems');
     }
 
-    protected function applyNonBookingOrderScope($query): void
-    {
-        $query->whereDoesntHave('items', function ($itemQuery) {
-            $itemQuery->whereIn('line_type', [
-                'booking_deposit',
-                'booking_addon',
-                'booking_settlement',
-                'booking_product',
-                'service_package',
-            ]);
-        })
-            ->whereDoesntHave('serviceItems')
-            ->where(function ($noteQuery) {
-                $noteQuery->whereNull('notes')
-                    ->orWhere('notes', 'not like', '%Booking cart checkout%');
-            });
-    }
-
-    protected function mapBookingDetail(?Booking $booking): ?array
+    protected function mapBookingDetail(?Booking $booking, $packageClaims = null): ?array
     {
         if (! $booking) {
             return null;
@@ -475,25 +591,29 @@ class OrderController extends Controller
             : (float) $booking->payments()->where('status', 'PAID')->sum('amount');
         $depositPaid = max($orderDepositPaid, $bookingPaymentPaid, (float) ($booking->payment_status === 'PAID' ? $booking->deposit_amount : 0));
 
-        $packageClaims = CustomerServicePackageUsage::query()
-            ->with(['customerServicePackage.servicePackage:id,name'])
-            ->where(function ($query) use ($booking) {
-                $query->where('booking_id', (int) $booking->id)
-                    ->orWhere(function ($posQuery) use ($booking) {
-                        $posQuery->where('used_from', 'POS')
-                            ->where('used_ref_id', (int) $booking->id);
-                    });
-            })
-            ->whereIn('status', ['reserved', 'consumed'])
-            ->orderByDesc('id')
-            ->get()
-            ->map(fn (CustomerServicePackageUsage $usage) => [
-                'package_name' => (string) ($usage->customerServicePackage?->servicePackage?->name ?? 'Package'),
-                'booking_service_id' => (int) $usage->booking_service_id,
-                'status' => (string) $usage->status,
-            ])
-            ->values()
-            ->all();
+        if ($packageClaims === null) {
+            $packageClaims = CustomerServicePackageUsage::query()
+                ->with(['customerServicePackage.servicePackage:id,name'])
+                ->where(function ($query) use ($booking) {
+                    $query->where('booking_id', (int) $booking->id)
+                        ->orWhere(function ($posQuery) use ($booking) {
+                            $posQuery->where('used_from', 'POS')
+                                ->where('used_ref_id', (int) $booking->id);
+                        });
+                })
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->orderByDesc('id')
+                ->get()
+                ->map(fn (CustomerServicePackageUsage $usage) => [
+                    'package_name' => (string) ($usage->customerServicePackage?->servicePackage?->name ?? 'Package'),
+                    'booking_service_id' => (int) $usage->booking_service_id,
+                    'status' => (string) $usage->status,
+                ])
+                ->values()
+                ->all();
+        } else {
+            $packageClaims = collect($packageClaims)->values()->all();
+        }
 
         $packageUsage = collect($packageClaims)->first();
         $packageOffset = $packageUsage ? max(0.0, $serviceTotal) : 0.0;
@@ -593,8 +713,9 @@ class OrderController extends Controller
         $hasServiceItems = $order->relationLoaded('serviceItems')
             ? $order->serviceItems->isNotEmpty()
             : $order->serviceItems()->exists();
+        $hasBookingCheckoutFlag = (bool) ($order->is_booking_checkout ?? false);
         $hasBookingCheckoutNote = stripos((string) ($order->notes ?? ''), 'Booking cart checkout') !== false;
-        $hasBookingItems = $hasBookingLineItems || $hasServiceItems || $hasBookingCheckoutNote;
+        $hasBookingItems = $hasBookingLineItems || $hasServiceItems || $hasBookingCheckoutFlag || $hasBookingCheckoutNote;
 
         if ($hasBookingItems && $hasProductItems) {
             return 'mixed';

@@ -251,7 +251,10 @@ Route::prefix('/public/shop')->group(function () {
 
         Route::post('/returns', [PublicReturnController::class, 'store']);
         Route::post('/orders/{order}/returns', [PublicReturnController::class, 'store']);
+        // NEW ENHANCEMENT — orders-shop-returns-query-v2 (snapshot-only list items; no live product/images join)
         Route::get('/returns', [PublicReturnController::class, 'index']);
+        // END NEW ENHANCEMENT
+        // END NEW ENHANCEMENT
         Route::get('/returns/{returnRequest}', [PublicReturnController::class, 'show']);
         Route::post('/returns/{returnRequest}/tracking', [PublicReturnController::class, 'submitTracking']);
 
@@ -1017,8 +1020,14 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.customers.delete');
 
         // Orders Admin
+        // OLD QUERY — full paginate + COUNT (kept for PosRequestCenter / legacy callers)
         Route::get('/orders', [OrderController::class, 'index'])
             ->middleware('permission:ecommerce.orders.view');
+
+        // NEW ENHANCEMENT — orders-shop-returns-query-v2 (is_booking_checkout, simplePaginate, slim select)
+        Route::get('/orders/query', [OrderController::class, 'queryIndex'])
+            ->middleware('permission:ecommerce.orders.view');
+        // END NEW ENHANCEMENT
 
         Route::get('/orders/{order}', [OrderController::class, 'show'])
             ->middleware('permission:ecommerce.orders.view');

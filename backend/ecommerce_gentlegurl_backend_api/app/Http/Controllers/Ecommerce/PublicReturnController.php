@@ -219,7 +219,10 @@ class PublicReturnController extends Controller
             'per_page' => ['nullable', 'integer'],
         ]);
 
-        $query = ReturnRequest::with(['order', 'items.orderItem.product', 'items.orderItem.productVariant'])
+        $query = ReturnRequest::with([
+            'order:id,order_number',
+            'items.orderItem:id,order_id,product_id,product_variant_id,product_name_snapshot,sku_snapshot,variant_name_snapshot,variant_sku_snapshot,quantity,price_snapshot',
+        ])
             ->where('customer_id', $customer->id);
 
         if (!empty($validated['status'])) {
@@ -230,17 +233,26 @@ class PublicReturnController extends Controller
             $query->where('order_id', $validated['order_id']);
         }
 
+        $perPage = max(1, min(100, (int) ($validated['per_page'] ?? 15)));
+
         $returns = $query
             ->withCount('items')
             ->withSum('items as items_quantity', 'quantity')
-            ->latest()
-            ->paginate($validated['per_page'] ?? 15);
+            ->latest('created_at')
+            ->latest('id')
+            ->paginate($perPage);
 
-        $returns->getCollection()->transform(function (ReturnRequest $request) {
+        $refundPayloads = $this->returnRefundService->refundPayloadsForReturns(
+            $returns->getCollection()->pluck('id')->map(static fn ($id) => (int) $id)->all(),
+            null,
+            false,
+        );
+
+        $returns->getCollection()->transform(function (ReturnRequest $request) use ($refundPayloads) {
             $refundProofUrl = $request->refund_proof_path
                 ? Storage::disk('public')->url($request->refund_proof_path)
                 : null;
-            $refundMeta = $this->returnRefundService->refundPayloadForReturn((int) $request->id);
+            $refundMeta = $refundPayloads[(int) $request->id] ?? null;
 
             return [
                 'id' => $request->id,
@@ -259,25 +271,25 @@ class PublicReturnController extends Controller
                 'refund_no' => $refundMeta['refund_no'] ?? null,
                 'receipt_public_url' => $refundMeta['receipt_public_url'] ?? null,
                 'items' => $request->items->map(function (ReturnRequestItem $item) {
-                    $thumbnail = $item->orderItem?->product?->cover_image_url;
-                    $productType = $item->orderItem?->product?->type;
+                    $orderItem = $item->orderItem;
+                    $hasVariant = (bool) ($orderItem?->product_variant_id);
 
                     return [
                         'order_item_id' => $item->order_item_id,
-                        'product_name' => $item->orderItem?->product_name_snapshot,
-                        'cn_name' => $item->orderItem?->displayCnName(),
+                        'product_name' => $orderItem?->product_name_snapshot,
+                        'cn_name' => null,
                         'requested_quantity' => $item->quantity,
-                        'quantity' => $item->orderItem?->quantity,
-                        'sku' => $item->orderItem?->sku_snapshot,
-                        'product_sku' => $item->orderItem?->sku_snapshot,
-                        'product_variant_id' => $item->orderItem?->product_variant_id,
-                        'product_type' => $productType,
-                        'is_variant_product' => $productType === 'variant',
-                        'variant_name' => $item->orderItem?->variant_name_snapshot,
-                        'variant_cn_name' => $item->orderItem?->displayVariantCnName(),
-                        'variant_sku' => $item->orderItem?->variant_sku_snapshot,
-                        'product_image' => $thumbnail,
-                        'cover_image_url' => $thumbnail,
+                        'quantity' => $orderItem?->quantity,
+                        'sku' => $orderItem?->sku_snapshot,
+                        'product_sku' => $orderItem?->sku_snapshot,
+                        'product_variant_id' => $orderItem?->product_variant_id,
+                        'product_type' => $hasVariant ? 'variant' : 'simple',
+                        'is_variant_product' => $hasVariant,
+                        'variant_name' => $orderItem?->variant_name_snapshot,
+                        'variant_cn_name' => null,
+                        'variant_sku' => $orderItem?->variant_sku_snapshot,
+                        'product_image' => null,
+                        'cover_image_url' => null,
                     ];
                 })->values(),
             ];

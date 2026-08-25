@@ -636,6 +636,7 @@ class CartController extends Controller
                 'notes' => $customer
                     ? 'Booking cart checkout'
                     : ('Booking cart checkout | guest_token:' . (string) ($cart->guest_token ?? '')),
+                'is_booking_checkout' => true,
             ]);
 
             foreach ($activeItems as $item) {
