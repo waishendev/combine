@@ -17,20 +17,23 @@ interface BookingCommissionTierCreateModalProps {
   tierType: 'BOOKING' | 'ECOMMERCE'
   onClose: () => void
   onSuccess: (tier: CommissionTierRow) => void
-  storeLocationId: number
+  defaultStoreLocationId: number | null
+  branchOptions: Array<{ id: number; name: string }>
 }
 
 export default function BookingCommissionTierCreateModal({
   tierType,
   onClose,
   onSuccess,
-  storeLocationId,
+  defaultStoreLocationId,
+  branchOptions,
 }: BookingCommissionTierCreateModalProps) {
   const { t } = useI18n()
   const [minSales, setMinSales] = useState('0')
   const [commissionPercent, setCommissionPercent] = useState('0')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [storeLocationId, setStoreLocationId] = useState(defaultStoreLocationId ? String(defaultStoreLocationId) : '')
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -38,6 +41,10 @@ export default function BookingCommissionTierCreateModal({
 
     const minSalesNum = Number(minSales)
     const percentNum = Number(commissionPercent)
+    if (!storeLocationId) {
+      setError('Branch is required.')
+      return
+    }
     if (!Number.isFinite(minSalesNum) || minSalesNum < 0 || !Number.isFinite(percentNum) || percentNum < 0) {
       setError('Please enter valid values.')
       return
@@ -52,7 +59,7 @@ export default function BookingCommissionTierCreateModal({
           type: tierType,
           min_sales: minSalesNum,
           commission_percent: percentNum,
-          store_location_id: storeLocationId,
+          store_location_id: Number(storeLocationId),
         }),
       })
 
@@ -115,6 +122,13 @@ export default function BookingCommissionTierCreateModal({
       }
     >
       <form id="commission-tier-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="commission-tier-branch">Branch <span className="text-red-500">*</span></label>
+            <select id="commission-tier-branch" value={storeLocationId} onChange={(event) => setStoreLocationId(event.target.value)} className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" disabled={submitting || defaultStoreLocationId !== null}>
+              <option value="">Select branch</option>
+              {branchOptions.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+            </select>
+          </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Min Sales</label>
             <input
