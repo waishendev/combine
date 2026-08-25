@@ -20,16 +20,28 @@ class CategoryController extends Controller
         if ($branchId && $request->user()) {
             app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
         }
+        $allBranchScope = ! $branchId && $request->query('branch_scope') === 'all' && $request->user();
+        $accessibleIds = $allBranchScope
+            ? app(StoreLocationAccessService::class)->accessibleStoreLocations($request->user())->pluck('id')->map(fn ($id) => (int) $id)->all()
+            : [];
+        // Slim menus (no unused parent) — keep multi-branch count/filter from remote.
         $categories = Category::with(['shopMenus:id,name,slug'])
-            ->withCount(['products as products_count' => function ($query) use ($branchId) {
+            ->withCount(['products as products_count' => function ($query) use ($branchId, $allBranchScope, $accessibleIds) {
                 if ($branchId) {
                     $query->whereHas('storeLocations', fn ($branches) => $branches
                         ->where('store_locations.id', $branchId)
+                        ->where('store_location_product.is_available', true));
+                } elseif ($allBranchScope) {
+                    $query->whereHas('storeLocations', fn ($branches) => $branches
+                        ->whereIn('store_locations.id', $accessibleIds)
                         ->where('store_location_product.is_available', true));
                 }
             }])
             ->when($branchId, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
                 ->where('store_locations.id', $branchId)
+                ->where('store_location_product.is_available', true)))
+            ->when($allBranchScope, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
+                ->whereIn('store_locations.id', $accessibleIds)
                 ->where('store_location_product.is_available', true)))
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
@@ -43,6 +55,31 @@ class CategoryController extends Controller
             ->orderBy('sort_order')
             ->orderBy('id')
             ->paginate($perPage);
+
+        if ($allBranchScope) {
+            $categoryIds = $categories->getCollection()->pluck('id')->all();
+            $branchesByCategory = DB::table('product_categories')
+                ->join('store_location_product', function ($join) {
+                    $join->on('store_location_product.product_id', '=', 'product_categories.product_id')
+                        ->where('store_location_product.is_available', true);
+                })
+                ->join('store_locations', 'store_locations.id', '=', 'store_location_product.store_location_id')
+                ->whereIn('product_categories.category_id', $categoryIds)
+                ->whereIn('store_locations.id', $accessibleIds)
+                ->select('product_categories.category_id', 'store_locations.id', 'store_locations.name', 'store_locations.code')
+                ->distinct()
+                ->orderBy('store_locations.name')
+                ->get()
+                ->groupBy('category_id');
+
+            $categories->getCollection()->each(function (Category $category) use ($branchesByCategory) {
+                $category->setAttribute('available_branches', collect($branchesByCategory->get($category->id, []))->map(fn ($branch) => [
+                    'id' => (int) $branch->id,
+                    'name' => $branch->name,
+                    'code' => $branch->code,
+                ])->values()->all());
+            });
+        }
 
         $categories->getCollection()->transform(fn ($category) => $this->formatCategory($category));
 
@@ -60,6 +97,10 @@ class CategoryController extends Controller
         if ($branchId && $request->user()) {
             app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
         }
+        $allBranchScope = ! $branchId && $request->query('branch_scope') === 'all' && $request->user();
+        $accessibleIds = $allBranchScope
+            ? app(StoreLocationAccessService::class)->accessibleStoreLocations($request->user())->pluck('id')->map(fn ($id) => (int) $id)->all()
+            : [];
 
         $categories = Category::query()
             ->select([
@@ -80,15 +121,22 @@ class CategoryController extends Controller
                 'updated_at',
             ])
             ->with(['shopMenus:id,name,slug'])
-            ->withCount(['products as products_count' => function ($query) use ($branchId) {
+            ->withCount(['products as products_count' => function ($query) use ($branchId, $allBranchScope, $accessibleIds) {
                 if ($branchId) {
                     $query->whereHas('storeLocations', fn ($branches) => $branches
                         ->where('store_locations.id', $branchId)
+                        ->where('store_location_product.is_available', true));
+                } elseif ($allBranchScope) {
+                    $query->whereHas('storeLocations', fn ($branches) => $branches
+                        ->whereIn('store_locations.id', $accessibleIds)
                         ->where('store_location_product.is_available', true));
                 }
             }])
             ->when($branchId, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
                 ->where('store_locations.id', $branchId)
+                ->where('store_location_product.is_available', true)))
+            ->when($allBranchScope, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
+                ->whereIn('store_locations.id', $accessibleIds)
                 ->where('store_location_product.is_available', true)))
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
@@ -102,6 +150,31 @@ class CategoryController extends Controller
             ->orderBy('sort_order')
             ->orderBy('id')
             ->paginate($perPage);
+
+        if ($allBranchScope) {
+            $categoryIds = $categories->getCollection()->pluck('id')->all();
+            $branchesByCategory = DB::table('product_categories')
+                ->join('store_location_product', function ($join) {
+                    $join->on('store_location_product.product_id', '=', 'product_categories.product_id')
+                        ->where('store_location_product.is_available', true);
+                })
+                ->join('store_locations', 'store_locations.id', '=', 'store_location_product.store_location_id')
+                ->whereIn('product_categories.category_id', $categoryIds)
+                ->whereIn('store_locations.id', $accessibleIds)
+                ->select('product_categories.category_id', 'store_locations.id', 'store_locations.name', 'store_locations.code')
+                ->distinct()
+                ->orderBy('store_locations.name')
+                ->get()
+                ->groupBy('category_id');
+
+            $categories->getCollection()->each(function (Category $category) use ($branchesByCategory) {
+                $category->setAttribute('available_branches', collect($branchesByCategory->get($category->id, []))->map(fn ($branch) => [
+                    'id' => (int) $branch->id,
+                    'name' => $branch->name,
+                    'code' => $branch->code,
+                ])->values()->all());
+            });
+        }
 
         $categories->getCollection()->transform(fn ($category) => $this->formatCategory($category));
 
@@ -650,6 +723,7 @@ class CategoryController extends Controller
                 ];
             })->all(),
             'products_count' => (int) ($category->products_count ?? 0),
+            'available_branches' => $category->getAttribute('available_branches') ?? [],
             'children' => $category->relationLoaded('children')
                 ? $category->children->map(fn (Category $child) => $this->formatCategory($child))->all()
                 : [],

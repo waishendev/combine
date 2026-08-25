@@ -96,6 +96,7 @@ export default function CategoryTable({
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
   const [importFailedRows, setImportFailedRows] = useState<Array<{ row: number; reason: string }>>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const categoriesFetchGenRef = useRef(0)
 
   function DualSortIcons({
     active,
@@ -127,6 +128,7 @@ export default function CategoryTable({
   }
 
   const fetchCategories = useCallback(async (signal?: AbortSignal) => {
+    const gen = ++categoriesFetchGenRef.current
     setLoading(true)
     setRows([])
     try {
@@ -139,6 +141,7 @@ export default function CategoryTable({
         qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
       }
       if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
+      else qs.set('branch_scope', 'all')
 
       const res = await fetch(`/api/proxy/ecommerce/categories/query?${qs.toString()}`, {
         cache: 'no-store',
@@ -189,6 +192,7 @@ export default function CategoryTable({
 
       const list: CategoryRowData[] = categoryItems.map((item) => mapCategoryApiItemToRow(item))
 
+      if (categoriesFetchGenRef.current !== gen) return
       setRows(list)
       setMeta({
         current_page: Number(paginationData.current_page ?? currentPage) || 1,
@@ -202,7 +206,7 @@ export default function CategoryTable({
         setMeta((prev) => ({ ...prev, total: 0 }))
       }
     } finally {
-      setLoading(false)
+      if (categoriesFetchGenRef.current === gen) setLoading(false)
     }
   }, [currentPage, filters, pageSize, selectedBranchId])
 
@@ -410,7 +414,7 @@ export default function CategoryTable({
     setCurrentPage(1)
   }
 
-  const colCount = (showActions ? 8 : 7) + (showSelection ? 1 : 0)
+  const colCount = (showActions ? 8 : 7) + (showSelection ? 1 : 0) + (isAllBranches ? 1 : 0)
 
   const totalPages = meta.last_page || 1
 
@@ -669,6 +673,7 @@ export default function CategoryTable({
                   { key: 'description', label: 'Description' },
                   { key: 'menuNames', label: 'Menus' },
                   { key: 'productCount', label: 'Products' },
+                  ...(isAllBranches ? [{ key: 'availableBranches', label: 'Branch' } as const] : []),
                   { key: 'showInPosFilter', label: 'POS Filter' },
                   { key: 'isActive', label: t('common.status') },
                 ] as const
@@ -710,6 +715,7 @@ export default function CategoryTable({
                   selected={selectedIds.has(category.id)}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  showBranches={isAllBranches}
                   onSelectChange={(_, checked) => handleToggleSelect(category.id, checked)}
                   onEdit={() => {
                     if (canUpdate) {
