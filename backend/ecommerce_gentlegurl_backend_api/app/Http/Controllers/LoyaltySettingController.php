@@ -10,12 +10,13 @@ class LoyaltySettingController extends Controller
 {
     public function index()
     {
+        // NEW ENHANCEMENT — membership-loyalty-store-query-v1: derive current from history (no 2nd SELECT)
         $settings = LoyaltySetting::orderByDesc('rules_effective_at')
             ->orderByDesc('created_at')
             ->get();
 
         return $this->respond([
-            'current' => $this->getActiveSetting(),
+            'current' => $this->resolveActiveFromCollection($settings),
             'history' => $settings,
         ]);
     }
@@ -58,6 +59,22 @@ class LoyaltySettingController extends Controller
             'evaluation_cycle_months' => ['required', 'integer'],
             'rules_effective_at' => ['nullable', 'date'],
         ]);
+    }
+
+    /**
+     * Same rule as getActiveSetting(), applied to an already-ordered collection.
+     */
+    protected function resolveActiveFromCollection($settings): ?LoyaltySetting
+    {
+        $today = Carbon::now()->toDateString();
+
+        return $settings->first(function (LoyaltySetting $setting) use ($today) {
+            if ($setting->rules_effective_at === null) {
+                return true;
+            }
+
+            return $setting->rules_effective_at->toDateString() <= $today;
+        });
     }
 
     protected function getActiveSetting(): ?LoyaltySetting

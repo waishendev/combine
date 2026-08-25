@@ -62,11 +62,11 @@ export default function VoucherCreateModal({
       setLoadingOptions(true)
       try {
         const [productsRes, categoriesRes] = await Promise.all([
-          fetch('/api/proxy/ecommerce/products?page=1&per_page=200', {
+          fetch('/api/proxy/ecommerce/products/options/query?page=1&per_page=200', {
             cache: 'no-store',
             signal: controller.signal,
           }),
-          fetch('/api/proxy/ecommerce/categories?page=1&per_page=200', {
+          fetch('/api/proxy/ecommerce/categories/options/query?page=1&per_page=200', {
             cache: 'no-store',
             signal: controller.signal,
           }),

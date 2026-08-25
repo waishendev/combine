@@ -17,7 +17,13 @@ class StoreLocationController extends Controller
 {
     public function index(Request $request)
     {
+        // NEW ENHANCEMENT — membership-loyalty-store-query-v1
         $perPage = $request->integer('per_page', 15);
+        $hasFilters = $request->filled('name')
+            || $request->filled('code')
+            || $request->filled('city')
+            || $request->has('is_active');
+
         $locations = StoreLocation::when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
             })
@@ -32,12 +38,18 @@ class StoreLocationController extends Controller
             })
             ->orderBy('sort_order')
             ->orderBy('name')
-            ->with('images')
             ->paginate($perPage);
+
+        $this->attachCoverImages($locations->getCollection());
+
+        // Capacity count must stay unfiltered; reuse paginator total when no filters.
+        $branchUsage = $hasFilters
+            ? app(BranchCapacityService::class)->usage()
+            : app(BranchCapacityService::class)->usage((int) $locations->total());
 
         return response()->json([
             'data' => $locations,
-            'branch_usage' => app(BranchCapacityService::class)->usage(),
+            'branch_usage' => $branchUsage,
             'message' => null,
             'success' => true,
         ]);
@@ -128,6 +140,60 @@ class StoreLocationController extends Controller
             __('Branches cannot be deleted. Deactivate the branch instead.'),
             422
         );
+    }
+
+    /**
+     * List only needs the first image (thumbnail). Keep `images` array shape (0–1 items).
+     */
+    protected function attachCoverImages($locations): void
+    {
+        $ids = $locations->pluck('id')->all();
+        if ($ids === []) {
+            $locations->each(fn (StoreLocation $location) => $location->setRelation('images', collect()));
+
+            return;
+        }
+
+        $covers = collect();
+        if (DB::getDriverName() === 'pgsql') {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $rows = DB::select(
+                "SELECT DISTINCT ON (store_location_id) id, store_location_id, image_path, sort_order, created_at, updated_at
+                 FROM store_location_images
+                 WHERE store_location_id IN ({$placeholders})
+                 ORDER BY store_location_id, sort_order ASC, id ASC",
+                $ids
+            );
+            foreach ($rows as $row) {
+                $image = new StoreLocationImage([
+                    'store_location_id' => $row->store_location_id,
+                    'image_path' => $row->image_path,
+                    'sort_order' => $row->sort_order,
+                ]);
+                $image->id = $row->id;
+                $image->exists = true;
+                if (isset($row->created_at)) {
+                    $image->created_at = $row->created_at;
+                }
+                if (isset($row->updated_at)) {
+                    $image->updated_at = $row->updated_at;
+                }
+                $covers->put((int) $row->store_location_id, $image);
+            }
+        } else {
+            $covers = StoreLocationImage::query()
+                ->whereIn('store_location_id', $ids)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get()
+                ->groupBy('store_location_id')
+                ->map(fn ($rows) => $rows->first());
+        }
+
+        $locations->each(function (StoreLocation $location) use ($covers) {
+            $cover = $covers->get((int) $location->id);
+            $location->setRelation('images', $cover ? collect([$cover]) : collect());
+        });
     }
 
     protected function handleImageUploads(StoreLocation $storeLocation, array $files): array

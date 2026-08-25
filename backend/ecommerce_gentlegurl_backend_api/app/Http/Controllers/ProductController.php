@@ -141,6 +141,39 @@ class ProductController extends Controller
     }
 
     /**
+     * Ultra-slim product picker — id/name/sku only (no cover append / media).
+     * Enhancement: vouchers-promotions-query-v1
+     */
+    public function optionsQuery(Request $request)
+    {
+        $perPage = max(1, min(500, $request->integer('per_page', 200)));
+
+        $items = Product::query()
+            ->select(['id', 'name', 'sku', 'is_active'])
+            ->when($request->has('is_active'), function ($query) use ($request) {
+                $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
+            })
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $term = trim((string) $request->get('search'));
+                if ($term === '') {
+                    return;
+                }
+                $pattern = $this->likeContainsPattern($term);
+                $query->where(function ($q) use ($pattern) {
+                    $q->where('name', 'like', $pattern)
+                        ->orWhere('sku', 'like', $pattern);
+                });
+            })
+            ->orderBy('name')
+            ->orderBy('id')
+            ->paginate($perPage);
+
+        $items->getCollection()->each(fn (Product $product) => $product->setAppends([]));
+
+        return $this->respond($items);
+    }
+
+    /**
      * Slim CRM product list — cover image only, no video/meta/description bloat.
      * Enhancement: products-categories-query-v1
      */

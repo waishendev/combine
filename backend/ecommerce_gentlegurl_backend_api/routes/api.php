@@ -186,7 +186,7 @@ Route::prefix('/public/shop')->group(function () {
     Route::post('/homepage/flush-cache', [PublicHomepageController::class, 'flushCache']);
     Route::get('/loyalty/rewards', [PublicLoyaltyController::class, 'rewards'])
         ->middleware('api.session');
-    Route::get('/membership/tiers', [PublicLoyaltyController::class, 'membershipTiers']);
+    Route::get('/membership/tiers', [PublicLoyaltyController::class, 'membershipTiers']); // NEW ENHANCEMENT — membership-loyalty-store-query-v1 (indexes)
     Route::get('/shipping', [PublicShopController::class, 'shipping']);
     Route::get('/store-locations', [PublicStoreLocationController::class, 'index']);
     Route::get('/store-locations/{storeLocation}', [PublicStoreLocationController::class, 'show']);
@@ -818,6 +818,9 @@ $protectedRoutes = function () {
         // NEW ENHANCEMENT — products-categories-query-v1 (slim CRM list)
         Route::get('/products/query', [ProductController::class, 'queryIndex'])
             ->middleware('permission:ecommerce.products.view');
+        // NEW ENHANCEMENT — vouchers-promotions-query-v1 (dropdown id/name/sku only)
+        Route::get('/products/options/query', [ProductController::class, 'optionsQuery'])
+            ->middleware('permission:ecommerce.products.view|ecommerce.vouchers.create|ecommerce.vouchers.update|ecommerce.promotions.view|pos.checkout');
         Route::get('/products/{product}/query', [ProductController::class, 'queryShow'])
             ->middleware('permission:ecommerce.products.view|ecommerce.stock-movements-logs.view');
         // END NEW ENHANCEMENT
@@ -957,6 +960,7 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.services-pages.delete');
 
         // Store Locations
+        // NEW ENHANCEMENT — membership-loyalty-store-query-v1 (cover-only list + shared COUNT + indexes)
         Route::get('/store-locations', [StoreLocationController::class, 'index'])
             ->middleware('permission:ecommerce.stores.view');
 
@@ -971,6 +975,7 @@ $protectedRoutes = function () {
 
         Route::delete('/store-locations/{storeLocation}', [StoreLocationController::class, 'destroy'])
             ->middleware('permission:ecommerce.stores.delete');
+        // END NEW ENHANCEMENT
 
         // Bank Accounts Admin
         Route::get('/bank-accounts', [BankAccountController::class, 'index'])
@@ -1168,6 +1173,7 @@ $protectedRoutes = function () {
         Route::put('/seo-global', [SeoGlobalController::class, 'update']);
 
         // Loyalty Settings
+        // NEW ENHANCEMENT — membership-loyalty-store-query-v1 (derive current + indexes)
         Route::get('/loyalty-settings', [LoyaltySettingController::class, 'index'])
             ->middleware('permission:ecommerce.loyalty.settings.view');
 
@@ -1182,8 +1188,10 @@ $protectedRoutes = function () {
 
         Route::delete('/loyalty-settings/{loyaltySetting}', [LoyaltySettingController::class, 'destroy'])
             ->middleware('permission:ecommerce.loyalty.settings.delete');
+        // END NEW ENHANCEMENT
 
         // Membership Tier Rules
+        // NEW ENHANCEMENT — membership-loyalty-store-query-v1 (indexes for list / public tiers / move)
         Route::get('/membership-tiers', [MembershipTierRuleController::class, 'index'])
             ->middleware('permission:ecommerce.loyalty.tiers.view');
 
@@ -1204,6 +1212,7 @@ $protectedRoutes = function () {
 
         Route::post('/membership-tiers/{membershipTierRule}/move-down', [MembershipTierRuleController::class, 'moveDown'])
             ->middleware('permission:ecommerce.loyalty.tiers.update');
+        // END NEW ENHANCEMENT
 
         Route::get('/customers/{customer}/loyalty-summary', [LoyaltyAdminController::class, 'summary'])
             ->middleware('permission:ecommerce.customers.view');
@@ -1276,6 +1285,7 @@ $protectedRoutes = function () {
         Route::post('/branding/crm-favicon', [BrandingController::class, 'uploadCrmFavicon']);
 
         // Promotions Admin
+        // NEW ENHANCEMENT — vouchers-promotions-query-v1 (slim list select + cover N+1 fix + cover-only options)
         Route::get('/promotions', [PromotionController::class, 'index'])
             ->middleware('permission:ecommerce.promotions.view');
 
@@ -1293,6 +1303,7 @@ $protectedRoutes = function () {
 
         Route::get('/promotions-product-options', [PromotionController::class, 'productOptions'])
             ->middleware('permission:ecommerce.promotions.view');
+        // END NEW ENHANCEMENT
 
         // Announcements Admin
         Route::get('/announcements', [AnnouncementController::class, 'index'])

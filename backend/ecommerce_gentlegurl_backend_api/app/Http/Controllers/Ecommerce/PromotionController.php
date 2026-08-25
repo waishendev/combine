@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\ProductMedia;
 use App\Models\Promotion;
 use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
@@ -25,13 +26,38 @@ class PromotionController extends Controller
             $branchAccess->authorizeStoreLocation($request->user(), $branchId, false);
         }
 
-        $query = Promotion::query()->with([
-            'promotionProducts.product:id,name',
-            'promotionTiers',
-            'offlineStoreLocations' => fn ($branches) => $branches
-                ->whereIn('store_locations.id', $accessibleIds)
-                ->select('store_locations.id', 'name', 'code'),
-        ]);
+        // NEW ENHANCEMENT — vouchers-promotions-query-v1: slim list columns + eager images (kill cover_image_url N+1)
+        $query = Promotion::query()
+            ->select([
+                'id',
+                'type',
+                'display_position',
+                'name',
+                'title',
+                'code',
+                'description',
+                'is_active',
+                'is_online_enabled',
+                'trigger_type',
+                'priority',
+                'starts_at',
+                'ends_at',
+                'start_at',
+                'end_at',
+                'image_path',
+                'button_label',
+                'button_link',
+                'sort_order',
+                'created_at',
+                'updated_at',
+            ])
+            ->with([
+                'promotionProducts.product:id,name',
+                'promotionTiers',
+                'offlineStoreLocations' => fn ($branches) => $branches
+                    ->whereIn('store_locations.id', $accessibleIds)
+                    ->select('store_locations.id', 'name', 'code'),
+            ]);
 
         if ($branchId !== null) {
             $query->where(fn ($scope) => $scope
@@ -60,6 +86,10 @@ class PromotionController extends Controller
 
         $accessibleIdSet = array_fill_keys($accessibleIds, true);
         $promotions->getCollection()->each(function (Promotion $promotion) use ($accessibleIdSet) {
+            // List UI only needs product id/name counts — skip cover_image_url append queries.
+            $promotion->promotionProducts->each(function ($row) {
+                $row->product?->setAppends([]);
+            });
             $visibleIds = $promotion->offlineStoreLocations->pluck('id')->map(fn ($id) => (int) $id)->all();
             $promotion->setAttribute(
                 'offline_all_accessible',
@@ -98,12 +128,17 @@ class PromotionController extends Controller
             $promotion->offlineStoreLocations()->sync($data['offline_store_location_ids'] ?? []);
         });
 
-        return $this->respond($promotion->load(['promotionProducts.product:id,name', 'promotionTiers', 'offlineStoreLocations:id,name,code']), __('Promotion created successfully.'), true, 201);
+        return $this->respond(
+            $this->loadPromotionRelations($promotion),
+            __('Promotion created successfully.'),
+            true,
+            201
+        );
     }
 
     public function show(Promotion $promotion)
     {
-        return $this->respond($promotion->load(['promotionProducts.product:id,name,is_active', 'promotionTiers', 'offlineStoreLocations:id,name,code']));
+        return $this->respond($this->loadPromotionRelations($promotion, true));
     }
 
     public function update(Request $request, Promotion $promotion)
@@ -133,7 +168,10 @@ class PromotionController extends Controller
             $promotion->offlineStoreLocations()->sync($data['offline_store_location_ids'] ?? []);
         });
 
-        return $this->respond($promotion->load(['promotionProducts.product:id,name', 'promotionTiers', 'offlineStoreLocations:id,name,code']), __('Promotion updated successfully.'));
+        return $this->respond(
+            $this->loadPromotionRelations($promotion),
+            __('Promotion updated successfully.')
+        );
     }
 
     public function destroy(Promotion $promotion)
@@ -153,22 +191,66 @@ class PromotionController extends Controller
             ->get()
             ->keyBy('product_id');
 
+        // NEW ENHANCEMENT — vouchers-promotions-query-v1: active products + one cover image each
         $products = Product::query()
             ->where('is_active', true)
-            ->with(['images' => function ($query) {
-                $query->where('type', 'image')
-                    ->orderBy('sort_order')
-                    ->orderBy('id');
-            }])
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $data = $products->map(function (Product $product) use ($productPromotionMap, $editingPromotionId) {
+        $products->each(fn (Product $product) => $product->setAppends([]));
+
+        $productIds = $products->pluck('id')->all();
+        $coverByProductId = collect();
+        if ($productIds !== []) {
+            if (\DB::getDriverName() === 'pgsql') {
+                $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+                $rows = \DB::select(
+                    "SELECT DISTINCT ON (product_id) id, product_id, type, disk, path, thumbnail_path, sort_order
+                     FROM product_media
+                     WHERE type = 'image' AND product_id IN ({$placeholders})
+                     ORDER BY product_id, sort_order ASC, id ASC",
+                    $productIds
+                );
+                $coverByProductId = collect($rows)->mapWithKeys(function ($row) {
+                    $media = new ProductMedia([
+                        'product_id' => $row->product_id,
+                        'type' => $row->type,
+                        'disk' => $row->disk,
+                        'path' => $row->path,
+                        'thumbnail_path' => $row->thumbnail_path,
+                        'sort_order' => $row->sort_order,
+                    ]);
+                    $media->id = $row->id;
+                    $media->exists = true;
+
+                    return [(int) $row->product_id => $media];
+                });
+            } else {
+                $coverByProductId = ProductMedia::query()
+                    ->where('type', 'image')
+                    ->whereIn('product_id', $productIds)
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->get([
+                        'id',
+                        'product_id',
+                        'type',
+                        'disk',
+                        'path',
+                        'thumbnail_path',
+                        'sort_order',
+                    ])
+                    ->groupBy('product_id')
+                    ->map(fn ($rows) => $rows->first());
+            }
+        }
+
+        $data = $products->map(function (Product $product) use ($productPromotionMap, $editingPromotionId, $coverByProductId) {
             $used = $productPromotionMap->get($product->id);
             $usedByOther = $used && (int) $used->promotion_id !== (int) $editingPromotionId;
             $promotionName = $used ? ($used->name ?: $used->title) : null;
 
-            $cover = $product->images->first();
+            $cover = $coverByProductId->get($product->id);
             $coverUrl = null;
             if ($cover) {
                 $coverUrl = $cover->thumbnail_url ?: $cover->url;
@@ -186,6 +268,25 @@ class PromotionController extends Controller
         })->values();
 
         return $this->respond(['data' => $data]);
+    }
+
+    /**
+     * Eager-load nested product images so Product::$appends cover_image_url does not N+1.
+     */
+    protected function loadPromotionRelations(Promotion $promotion, bool $includeInactiveFlag = false): Promotion
+    {
+        $productSelect = $includeInactiveFlag ? ['id', 'name', 'is_active'] : ['id', 'name'];
+
+        return $promotion->load([
+            'promotionProducts.product' => fn ($products) => $products
+                ->select($productSelect)
+                ->with(['images' => fn ($images) => $images
+                    ->where('type', 'image')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')]),
+            'promotionTiers',
+            'offlineStoreLocations:id,name,code',
+        ]);
     }
 
     protected function validatePayload(Request $request, ?int $promotionId = null): array
