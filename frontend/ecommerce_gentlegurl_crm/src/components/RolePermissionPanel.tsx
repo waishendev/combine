@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { RoleRowData } from './RoleRow'
 import { useI18n } from '@/lib/i18n'
@@ -10,20 +10,69 @@ interface RolePermissionPanelProps {
   onClose: () => void
 }
 
+type LoadedPermission = {
+  id: number | string
+  name: string
+  slug: string
+}
+
 export default function RolePermissionPanel({
   role,
   onClose,
 }: RolePermissionPanelProps) {
   const { t } = useI18n()
+  const [loadedPermissions, setLoadedPermissions] = useState<LoadedPermission[] | null>(
+    Array.isArray(role.permissions) && role.permissions.length > 0 ? role.permissions : null,
+  )
+  const [loading, setLoading] = useState(!(Array.isArray(role.permissions) && role.permissions.length > 0))
+  const [error, setError] = useState('')
 
-  const permissionItems = useMemo(() => {
-    if (!Array.isArray(role.permissions)) return []
-    return role.permissions.map((permission) => ({
-      id: permission.id,
-      name: permission.name,
-      slug: permission.slug,
-    }))
-  }, [role.permissions])
+  useEffect(() => {
+    if (Array.isArray(role.permissions) && role.permissions.length > 0) {
+      setLoadedPermissions(role.permissions)
+      setLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const res = await fetch(`/api/proxy/roles/${role.id}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          setError('Unable to load permissions.')
+          setLoadedPermissions([])
+          return
+        }
+        const json = await res.json().catch(() => null)
+        const payload = json?.data || {}
+        const permissions = Array.isArray(payload.permissions) ? payload.permissions : []
+        setLoadedPermissions(
+          permissions.map((permission: { id?: number | string; name?: string; slug?: string }) => ({
+            id: permission.id ?? '',
+            name: permission.name ?? '-',
+            slug: permission.slug ?? '-',
+          })),
+        )
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          setError('Unable to load permissions.')
+          setLoadedPermissions([])
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => controller.abort()
+  }, [role.id, role.permissions])
+
+  const permissionItems = useMemo(() => loadedPermissions ?? [], [loadedPermissions])
 
   return (
     <div
@@ -64,11 +113,15 @@ export default function RolePermissionPanel({
             <section className="rounded border border-gray-200">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
                 <p className="text-sm font-semibold text-gray-900">
-                  {t('common.permissions')} ({permissionItems.length})
+                  {t('common.permissions')} ({loading ? '…' : permissionItems.length})
                 </p>
               </div>
               <div className="px-4 py-3">
-                {permissionItems.length > 0 ? (
+                {loading ? (
+                  <p className="text-sm text-gray-500">Loading permissions…</p>
+                ) : error ? (
+                  <p className="text-sm text-red-600">{error}</p>
+                ) : permissionItems.length > 0 ? (
                   <ul className="space-y-2 text-sm text-gray-700">
                     {permissionItems.map((permission) => (
                       <li key={permission.id} className="rounded border border-gray-200 px-3 py-2">

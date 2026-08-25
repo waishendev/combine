@@ -5892,8 +5892,13 @@ class PosController extends Controller
 
     public function adminStaffConsumableLogs(Request $request)
     {
-        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
-        $query = $this->staffConsumableClaimQuery();
+        $perPage = max(1, min(200, (int) $request->query('per_page', 50)));
+        $dateFrom = trim((string) ($request->query('from_date', $request->query('date_from', ''))));
+        $dateTo = trim((string) ($request->query('to_date', $request->query('date_to', ''))));
+        $query = $this->staffConsumableClaimQuery(
+            $dateFrom !== '' ? $dateFrom : null,
+            $dateTo !== '' ? $dateTo : null,
+        );
         $this->applyStaffConsumableLogFilters($query, $request);
 
         $logs = $query
@@ -5928,7 +5933,7 @@ class PosController extends Controller
         return $this->respond(['data' => $items]);
     }
 
-    protected function staffConsumableClaimQuery()
+    protected function staffConsumableClaimQuery(?string $dateFrom = null, ?string $dateTo = null)
     {
         return OrderItem::query()
             ->with([
@@ -5938,29 +5943,27 @@ class PosController extends Controller
                 'productVariant:id,title,cn_name,sku',
             ])
             ->where('is_staff_free_applied', true)
-            ->whereHas('order', function ($builder) {
+            ->whereHas('order', function ($builder) use ($dateFrom, $dateTo) {
                 $builder->where(function ($orderQuery) {
                     $orderQuery
                         ->where('notes', 'like', '%staff_free_consumable_claim%')
                         ->orWhere('payment_method', 'staff_free');
                 });
+
+                if ($dateFrom !== null && $dateFrom !== '') {
+                    $builder->where('created_at', '>=', Carbon::parse($dateFrom)->startOfDay());
+                }
+
+                if ($dateTo !== null && $dateTo !== '') {
+                    $builder->where('created_at', '<', Carbon::parse($dateTo)->addDay()->startOfDay());
+                }
             });
     }
 
     protected function applyStaffConsumableLogFilters($query, Request $request): void
     {
-        $dateFrom = trim((string) ($request->query('from_date', $request->query('date_from', ''))));
-        $dateTo = trim((string) ($request->query('to_date', $request->query('date_to', ''))));
         $search = trim((string) ($request->query('search', $request->query('q', ''))));
         $staffId = (int) $request->query('staff_id', 0);
-
-        if ($dateFrom !== '') {
-            $query->whereHas('order', fn ($orderQuery) => $orderQuery->whereDate('created_at', '>=', $dateFrom));
-        }
-
-        if ($dateTo !== '') {
-            $query->whereHas('order', fn ($orderQuery) => $orderQuery->whereDate('created_at', '<=', $dateTo));
-        }
 
         if ($staffId > 0) {
             $query->where(function ($staffQuery) use ($staffId) {
@@ -5971,6 +5974,8 @@ class PosController extends Controller
         }
 
         if ($search !== '') {
+            // Snapshots + order_number cover the CRM search box for claim rows in practice;
+            // keep relation OR branches for identical match semantics.
             $query->where(function ($searchQuery) use ($search) {
                 $searchQuery
                     ->where('product_name_snapshot', 'like', "%{$search}%")
@@ -5978,14 +5983,14 @@ class PosController extends Controller
                     ->orWhere('variant_name_snapshot', 'like', "%{$search}%")
                     ->orWhere('sku_snapshot', 'like', "%{$search}%")
                     ->orWhere('variant_sku_snapshot', 'like', "%{$search}%")
+                    ->orWhereHas('order', fn ($orderQuery) => $orderQuery->where('order_number', 'like', "%{$search}%"))
+                    ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('name', 'like', "%{$search}%"))
                     ->orWhereHas('product', fn ($productQuery) => $productQuery
                         ->where('name', 'like', "%{$search}%")
                         ->orWhere('cn_name', 'like', "%{$search}%"))
                     ->orWhereHas('productVariant', fn ($variantQuery) => $variantQuery
                         ->where('title', 'like', "%{$search}%")
                         ->orWhere('cn_name', 'like', "%{$search}%"))
-                    ->orWhereHas('order', fn ($orderQuery) => $orderQuery->where('order_number', 'like', "%{$search}%"))
-                    ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('name', 'like', "%{$search}%"))
                     ->orWhereHas('order.creator', function ($creatorQuery) use ($search) {
                         $creatorQuery
                             ->where('name', 'like', "%{$search}%")

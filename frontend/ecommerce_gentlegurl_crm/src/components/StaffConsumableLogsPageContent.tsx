@@ -52,8 +52,10 @@ const extractRows = <T,>(json: unknown): T[] => {
   return []
 }
 
+const PAGE_SIZE_OPTIONS = [50, 100, 150, 200] as const
+
 const extractMeta = (json: unknown): Meta => {
-  const fallback = { current_page: 1, last_page: 1, per_page: 20, total: 0 }
+  const fallback = { current_page: 1, last_page: 1, per_page: 50, total: 0 }
   if (!json || typeof json !== 'object') return fallback
   const data = (json as { data?: unknown }).data
   const source = data && typeof data === 'object' ? data as Partial<Meta> : {}
@@ -79,13 +81,14 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
     search: initialFilters.search ?? '',
   })
   const [page, setPage] = useState(1)
-  const [meta, setMeta] = useState<Meta>({ current_page: 1, last_page: 1, per_page: 20, total: 0 })
+  const [pageSize, setPageSize] = useState(50)
+  const [meta, setMeta] = useState<Meta>({ current_page: 1, last_page: 1, per_page: 50, total: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const loadStaff = useCallback(async () => {
     try {
-      const res = await fetch('/api/proxy/staffs?per_page=100', { cache: 'no-store' })
+      const res = await fetch('/api/proxy/staffs/options/query?per_page=500', { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       const raw = extractRows<{ id?: number; name?: string }>(json)
       setStaffOptions(raw.map((item) => ({ id: Number(item.id), name: String(item.name ?? `Staff #${item.id}`) })).filter((item) => Number.isFinite(item.id)))
@@ -98,7 +101,7 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams({ page: String(page), per_page: '20' })
+      const params = new URLSearchParams({ page: String(page), per_page: String(pageSize) })
       if (appliedFilters.dateFrom) params.set('from_date', appliedFilters.dateFrom)
       if (appliedFilters.dateTo) params.set('to_date', appliedFilters.dateTo)
       if (appliedFilters.staffId) params.set('staff_id', appliedFilters.staffId)
@@ -115,7 +118,7 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters, page])
+  }, [appliedFilters, page, pageSize])
 
   useEffect(() => {
     loadStaff()
@@ -143,6 +146,11 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
     setStaffId('')
     setPage(1)
     setAppliedFilters((current) => ({ ...current, staffId: '' }))
+  }
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size)
+    setPage(1)
   }
 
   return (
@@ -191,6 +199,25 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
       </section>
 
       {error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+
+      <div className="mb-4 flex items-center justify-end gap-3">
+        <label htmlFor="staff-consumable-page-size" className="text-sm text-gray-700">
+          Show
+        </label>
+        <select
+          id="staff-consumable-page-size"
+          value={pageSize}
+          onChange={(event) => handlePageSizeChange(Number(event.target.value))}
+          className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+          disabled={loading}
+        >
+          {PAGE_SIZE_OPTIONS.map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">

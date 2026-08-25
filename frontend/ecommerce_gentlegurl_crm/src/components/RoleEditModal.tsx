@@ -14,6 +14,7 @@ import type { RoleRowData } from './RoleRow'
 interface RoleEditModalProps {
   roleId: number | string
   onClose: () => void
+  onReady?: () => void
   onSuccess: (role: RoleRowData) => void
   permissions: PermissionOption[]
   permissionsLoading: boolean
@@ -31,6 +32,7 @@ type RoleApiItem = {
   description?: string | null
   is_active?: boolean | number | string | null
   permissions?: RoleApiPermission[] | null
+  permissions_count?: number | string | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -44,10 +46,17 @@ const mapApiRoleToRow = (item: RoleApiItem): RoleRowData => {
       }))
     : []
 
+  const permissionCountFromApi = Number(item.permissions_count)
+  const permissionCount = Number.isFinite(permissionCountFromApi)
+    ? permissionCountFromApi
+    : permissions.length
+
   const permissionNames =
     permissions.length > 0
       ? permissions.map((permission) => permission.name).join(', ')
-      : ''
+      : permissionCount > 0
+        ? `${permissionCount} permission${permissionCount === 1 ? '' : 's'}`
+        : ''
 
   const isActiveValue = item.is_active
   const isActive =
@@ -63,7 +72,7 @@ const mapApiRoleToRow = (item: RoleApiItem): RoleRowData => {
     isActive,
     permissions,
     permissionNames,
-    permissionCount: permissions.length,
+    permissionCount,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
     branchName: 'Current Branch',
@@ -87,6 +96,7 @@ const initialFormState: FormState = {
 export default function RoleEditModal({
   roleId,
   onClose,
+  onReady,
   onSuccess,
   permissions,
   permissionsLoading,
@@ -116,7 +126,7 @@ export default function RoleEditModal({
       setLoading(true)
       setLoadError(null)
       try {
-        const res = await fetch(`/api/proxy/roles/${roleId}/edit`, {
+        const res = await fetch(`/api/proxy/roles/${roleId}/edit/query`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -154,25 +164,12 @@ export default function RoleEditModal({
                   slug?: string | null
                 }>
               } | null
-              delegatable_permissions?: Array<{
-                id?: number | string | null
-                name?: string | null
-                slug?: string | null
-              }>
             }
           | null
           | undefined
 
         const roleData = responseData?.role ?? null
-        if (Array.isArray(responseData?.delegatable_permissions)) {
-          setAvailablePermissions(
-            responseData.delegatable_permissions.map((permission) => ({
-              id: permission?.slug ?? permission?.id ?? '',
-              name: permission?.name ?? '',
-              slug: permission?.slug ?? '',
-            })),
-          )
-        }
+        // Catalog comes from /permissions/delegatable/query (parent); do not replace it here.
 
         const permissionIds = Array.isArray(roleData?.permissions)
           ? roleData?.permissions
@@ -202,6 +199,7 @@ export default function RoleEditModal({
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false)
+          onReady?.()
         }
       }
     }
@@ -262,7 +260,7 @@ export default function RoleEditModal({
     setError(null)
 
     try {
-      const res = await fetch(`/api/proxy/roles/${roleId}`, {
+      const res = await fetch(`/api/proxy/roles/${roleId}/query`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -325,7 +323,11 @@ export default function RoleEditModal({
     }
   }
 
-  const disableForm = loading || submitting
+  const disableForm = submitting
+
+  if (loading) {
+    return null
+  }
 
   return (
     <CrmFormModalShell

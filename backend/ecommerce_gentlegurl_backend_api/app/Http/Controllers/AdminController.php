@@ -86,12 +86,20 @@ class AdminController extends Controller
         $this->syncStoreLocations($request, $user, $validated['store_location_ids'] ?? null);
         $this->syncRoles($user, $roleIds, $validated['store_location_ids'] ?? []);
 
+        if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
+            return $this->respond($user->load(['roles', 'storeLocations']), __('Admin created successfully.'));
+        }
+
         return $this->respond($user->load(['roles', 'staff', 'storeLocations']), __('Admin created successfully.'));
     }
 
     public function show(Request $request, User $admin)
     {
         $this->ensureSystemAdminAllowed($request->user(), $admin);
+
+        if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
+            return $this->respond($admin->load(['roles', 'storeLocations']));
+        }
 
         return $this->respond($admin->load(['roles', 'staff', 'storeLocations']));
     }
@@ -134,6 +142,10 @@ class AdminController extends Controller
         }
 
         $this->syncStoreLocations($request, $admin, $validated['store_location_ids'] ?? null);
+
+        if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
+            return $this->respond($admin->load(['roles', 'storeLocations']), __('Admin updated successfully.'));
+        }
 
         return $this->respond($admin->load(['roles', 'staff', 'storeLocations']), __('Admin updated successfully.'));
     }

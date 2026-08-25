@@ -11,6 +11,7 @@ import PermissionGroupRow, {
 import PermissionGroupCreateModal from './PermissionGroupCreateModal'
 import PermissionGroupEditModal from './PermissionGroupEditModal'
 import PermissionGroupDeleteModal from './PermissionGroupDeleteModal'
+import CrmPageLoadingOverlay from './CrmPageLoadingOverlay'
 import {
   type PermissionGroupApiItem,
   mapPermissionGroupApiItemToRow,
@@ -61,6 +62,7 @@ export default function PermissionGroupTable({
     null,
   )
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null)
+  const [editLoadingId, setEditLoadingId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] =
     useState<PermissionGroupRowData | null>(null)
   const [movingGroupId, setMovingGroupId] = useState<number | null>(null)
@@ -116,7 +118,7 @@ export default function PermissionGroupTable({
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
 
-        const res = await fetch(`/api/proxy/permission-groups?${qs.toString()}`, {
+        const res = await fetch(`/api/proxy/permission-groups/query?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -314,13 +316,33 @@ export default function PermissionGroupTable({
     })
   }
 
+  const applyLocalReorder = (
+    movedId: number,
+    swappedId: number,
+    movedSortOrder: number | null,
+    swappedSortOrder: number | null,
+  ) => {
+    setRows((prev) => {
+      const fromIndex = prev.findIndex((item) => item.id === movedId)
+      const toIndex = prev.findIndex((item) => item.id === swappedId)
+      if (fromIndex === -1 || toIndex === -1) return prev
+
+      const next = [...prev]
+      const fromRow = { ...next[fromIndex], sortOrder: movedSortOrder }
+      const toRow = { ...next[toIndex], sortOrder: swappedSortOrder }
+      next[fromIndex] = toRow
+      next[toIndex] = fromRow
+      return next
+    })
+  }
+
   const handleMoveUp = async (group: PermissionGroupRowData) => {
     if (movingGroupId === group.id) return
     setMovingGroupId(group.id)
 
     try {
       const res = await fetch(
-        `/api/proxy/permission-groups/${group.id}/move-up`,
+        `/api/proxy/permission-groups/${group.id}/move-up/query`,
         {
           method: 'POST',
           headers: {
@@ -343,67 +365,25 @@ export default function PermissionGroupTable({
         return
       }
 
-      // Refresh the list after successful move
-      const qs = new URLSearchParams()
-      qs.set('page', String(currentPage))
-      qs.set('per_page', String(pageSize))
+      const payload = (data as { data?: {
+        moved?: { id?: number; sort_order?: number }
+        swapped?: { id?: number; sort_order?: number }
+      } })?.data
 
-      const refreshRes = await fetch(
-        `/api/proxy/permission-groups?${qs.toString()}`,
-        {
-          cache: 'no-store',
-        },
+      const movedId = Number(payload?.moved?.id)
+      const swappedId = Number(payload?.swapped?.id)
+      if (!Number.isFinite(movedId) || !Number.isFinite(swappedId)) return
+
+      applyLocalReorder(
+        movedId,
+        swappedId,
+        Number.isFinite(Number(payload?.moved?.sort_order))
+          ? Number(payload?.moved?.sort_order)
+          : null,
+        Number.isFinite(Number(payload?.swapped?.sort_order))
+          ? Number(payload?.swapped?.sort_order)
+          : null,
       )
-
-      if (refreshRes.ok) {
-        const refreshResponse: PermissionGroupApiResponse = await refreshRes
-          .json()
-          .catch(() => ({} as PermissionGroupApiResponse))
-
-        let groupItems: PermissionGroupApiItem[] = []
-        let paginationData: Partial<Meta> = {}
-
-        if (refreshResponse?.data) {
-          if (Array.isArray(refreshResponse.data)) {
-            groupItems = refreshResponse.data
-          } else if (
-            typeof refreshResponse.data === 'object' &&
-            'data' in refreshResponse.data
-          ) {
-            const nestedData = refreshResponse.data as {
-              data?: PermissionGroupApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            groupItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
-          }
-        }
-
-        if (refreshResponse?.meta) {
-          paginationData = { ...paginationData, ...refreshResponse.meta }
-        }
-
-        const list: PermissionGroupRowData[] = groupItems.map((item) =>
-          mapPermissionGroupApiItemToRow(item),
-        )
-
-        setRows(list)
-        setMeta({
-          current_page:
-            Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      }
     } catch (err) {
       console.error(err)
     } finally {
@@ -417,7 +397,7 @@ export default function PermissionGroupTable({
 
     try {
       const res = await fetch(
-        `/api/proxy/permission-groups/${group.id}/move-down`,
+        `/api/proxy/permission-groups/${group.id}/move-down/query`,
         {
           method: 'POST',
           headers: {
@@ -440,67 +420,25 @@ export default function PermissionGroupTable({
         return
       }
 
-      // Refresh the list after successful move
-      const qs = new URLSearchParams()
-      qs.set('page', String(currentPage))
-      qs.set('per_page', String(pageSize))
+      const payload = (data as { data?: {
+        moved?: { id?: number; sort_order?: number }
+        swapped?: { id?: number; sort_order?: number }
+      } })?.data
 
-      const refreshRes = await fetch(
-        `/api/proxy/permission-groups?${qs.toString()}`,
-        {
-          cache: 'no-store',
-        },
+      const movedId = Number(payload?.moved?.id)
+      const swappedId = Number(payload?.swapped?.id)
+      if (!Number.isFinite(movedId) || !Number.isFinite(swappedId)) return
+
+      applyLocalReorder(
+        movedId,
+        swappedId,
+        Number.isFinite(Number(payload?.moved?.sort_order))
+          ? Number(payload?.moved?.sort_order)
+          : null,
+        Number.isFinite(Number(payload?.swapped?.sort_order))
+          ? Number(payload?.swapped?.sort_order)
+          : null,
       )
-
-      if (refreshRes.ok) {
-        const refreshResponse: PermissionGroupApiResponse = await refreshRes
-          .json()
-          .catch(() => ({} as PermissionGroupApiResponse))
-
-        let groupItems: PermissionGroupApiItem[] = []
-        let paginationData: Partial<Meta> = {}
-
-        if (refreshResponse?.data) {
-          if (Array.isArray(refreshResponse.data)) {
-            groupItems = refreshResponse.data
-          } else if (
-            typeof refreshResponse.data === 'object' &&
-            'data' in refreshResponse.data
-          ) {
-            const nestedData = refreshResponse.data as {
-              data?: PermissionGroupApiItem[]
-              current_page?: number
-              last_page?: number
-              per_page?: number
-              total?: number
-            }
-            groupItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            paginationData = {
-              current_page: nestedData.current_page,
-              last_page: nestedData.last_page,
-              per_page: nestedData.per_page,
-              total: nestedData.total,
-            }
-          }
-        }
-
-        if (refreshResponse?.meta) {
-          paginationData = { ...paginationData, ...refreshResponse.meta }
-        }
-
-        const list: PermissionGroupRowData[] = groupItems.map((item) =>
-          mapPermissionGroupApiItemToRow(item),
-        )
-
-        setRows(list)
-        setMeta({
-          current_page:
-            Number(paginationData.current_page ?? currentPage) || 1,
-          last_page: Number(paginationData.last_page ?? 1) || 1,
-          per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
-          total: Number(paginationData.total ?? list.length) || list.length,
-        })
-      }
     } catch (err) {
       console.error(err)
     } finally {
@@ -510,6 +448,9 @@ export default function PermissionGroupTable({
 
   return (
     <div>
+      {editLoadingId !== null && (
+        <CrmPageLoadingOverlay message={t('common.loadingDetails')} />
+      )}
       {isCreateModalOpen && (
         <PermissionGroupCreateModal
           onClose={() => setIsCreateModalOpen(false)}
@@ -619,8 +560,10 @@ export default function PermissionGroupTable({
                       canDelete={canDelete}
                       isFirst={isFirst}
                       isLast={isLast}
+                      editLoading={editLoadingId === group.id}
                       onEdit={() => {
                         if (canUpdate) {
+                          setEditLoadingId(group.id)
                           setEditingGroupId(group.id)
                         }
                       }}
@@ -653,9 +596,14 @@ export default function PermissionGroupTable({
       {editingGroupId !== null && (
         <PermissionGroupEditModal
           groupId={editingGroupId}
-          onClose={() => setEditingGroupId(null)}
+          onClose={() => {
+            setEditingGroupId(null)
+            setEditLoadingId(null)
+          }}
+          onReady={() => setEditLoadingId(null)}
           onSuccess={(group) => {
             setEditingGroupId(null)
+            setEditLoadingId(null)
             handleGroupUpdated(group)
           }}
         />

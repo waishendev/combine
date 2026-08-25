@@ -15,6 +15,7 @@ import {
 import AdminCreateModal from './AdminCreateModal'
 import AdminEditModal from './AdminEditModal'
 import AdminDeleteModal from './AdminDeleteModal'
+import CrmPageLoadingOverlay from './CrmPageLoadingOverlay'
 import {
   type AdminApiItem,
   type AdminApiRole,
@@ -72,6 +73,7 @@ export default function AdminTable({
   const [rolesLoading, setRolesLoading] = useState(false)
   const [hasFetchedRoles, setHasFetchedRoles] = useState(false)
   const [editingAdminId, setEditingAdminId] = useState<number | null>(null)
+  const [editLoadingId, setEditLoadingId] = useState<number | null>(null)
   const [branchOptions, setBranchOptions] = useState<BranchOption[]>([])
   const [deleteTarget, setDeleteTarget] = useState<AdminRowData | null>(null)
 
@@ -145,7 +147,7 @@ export default function AdminTable({
   const fetchRoles = async (controller: AbortController) => {
     setRolesLoading(true)
     try {
-      const res = await fetch('/api/proxy/roles?per_page=200&is_active=true&showPermission=false', {
+      const res = await fetch('/api/proxy/roles/query?per_page=200&is_active=true', {
         cache: 'no-store',
         signal: controller.signal,
       })
@@ -208,7 +210,7 @@ export default function AdminTable({
           qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
         }
 
-        const res = await fetch(`/api/proxy/admins?${qs.toString()}`, {
+        const res = await fetch(`/api/proxy/admins/query?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -291,7 +293,7 @@ export default function AdminTable({
 
   useEffect(() => {
     if (
-      (!isFilterModalOpen && !isCreateModalOpen && editingAdminId === null) ||
+      (!isFilterModalOpen && !isCreateModalOpen && editingAdminId === null && editLoadingId === null) ||
       hasFetchedRoles
     )
       return
@@ -300,7 +302,7 @@ export default function AdminTable({
     fetchRoles(controller).catch(() => {})
 
     return () => controller.abort()
-  }, [isFilterModalOpen, isCreateModalOpen, editingAdminId, hasFetchedRoles])
+  }, [isFilterModalOpen, isCreateModalOpen, editingAdminId, editLoadingId, hasFetchedRoles])
 
   const handleSort = (column: keyof AdminRowData) => {
     if (sortColumn === column) {
@@ -320,38 +322,9 @@ export default function AdminTable({
   }
 
   const filteredRows = useMemo(() => {
-    const usernameFilter = filters.username.trim().toLowerCase()
-    const emailFilter = filters.email.trim().toLowerCase()
-    const roleFilter = filters.roleId
-    const statusFilter = filters.isActive
-
-    return rows.filter((admin) => {
-      if (
-        usernameFilter &&
-        !admin.username.toLowerCase().includes(usernameFilter)
-      ) {
-        return false
-      }
-
-      if (emailFilter && !admin.email.toLowerCase().includes(emailFilter)) {
-        return false
-      }
-
-      if (roleFilter && String(admin.roleId ?? '') !== roleFilter) {
-        return false
-      }
-
-      if (statusFilter) {
-        const statusMatches =
-          statusFilter === 'active' ? admin.isActive : !admin.isActive
-        if (!statusMatches) {
-          return false
-        }
-      }
-
-      return true
-    })
-  }, [filters.email, filters.isActive, filters.roleId, filters.username, rows])
+    // Server-side filters on /admins/query; keep client sort only.
+    return rows
+  }, [rows])
 
   const sortedRows = useMemo(() => {
     if (!sortColumn || !sortDirection) return filteredRows
@@ -500,6 +473,9 @@ export default function AdminTable({
 
   return (
     <div>
+      {editLoadingId !== null && (
+        <CrmPageLoadingOverlay message={t('common.loadingDetails')} />
+      )}
       {isFilterModalOpen && (
         <AdminFiltersWrapper
           inputs={inputs}
@@ -642,8 +618,10 @@ export default function AdminTable({
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   isSelf={currentAdminId != null && admin.id === currentAdminId}
+                  editLoading={editLoadingId === admin.id}
                   onEdit={() => {
                     if (canUpdate) {
+                      setEditLoadingId(admin.id)
                       setEditingAdminId(admin.id)
                     }
                   }}
@@ -664,9 +642,14 @@ export default function AdminTable({
       {editingAdminId !== null && (
         <AdminEditModal
           adminId={editingAdminId}
-          onClose={() => setEditingAdminId(null)}
+          onClose={() => {
+            setEditingAdminId(null)
+            setEditLoadingId(null)
+          }}
+          onReady={() => setEditLoadingId(null)}
           onSuccess={(admin) => {
             setEditingAdminId(null)
+            setEditLoadingId(null)
             handleAdminUpdated(admin)
           }}
           roles={roles}

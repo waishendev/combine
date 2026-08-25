@@ -80,8 +80,16 @@ class StoreLocationAccessService
 
     public function hasPlatformBypass(User $user): bool
     {
-        return $user->roles()
+        $cacheKey = 'store_location_platform_bypass_'.$user->getKey();
+        if (request()->attributes->has($cacheKey)) {
+            return (bool) request()->attributes->get($cacheKey);
+        }
+
+        $bypass = $user->roles()
             ->where('name', self::PLATFORM_SUPER_ADMIN_ROLE)
             ->exists();
+        request()->attributes->set($cacheKey, $bypass);
+
+        return $bypass;
     }
 }

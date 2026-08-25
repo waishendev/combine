@@ -73,7 +73,7 @@ export default function AdminCreateModal({
     setError(null)
 
     try {
-      const res = await fetch('/api/proxy/admins', {
+      const res = await fetch('/api/proxy/admins/query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

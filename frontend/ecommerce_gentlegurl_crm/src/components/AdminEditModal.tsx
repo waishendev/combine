@@ -15,6 +15,7 @@ type BranchOption = BranchAccessOption
 interface AdminEditModalProps {
   adminId: number
   onClose: () => void
+  onReady?: () => void
   onSuccess: (admin: AdminRowData) => void
   roles: AdminRoleOption[]
   rolesLoading: boolean
@@ -44,6 +45,7 @@ const initialFormState: FormState = {
 export default function AdminEditModal({
   adminId,
   onClose,
+  onReady,
   onSuccess,
   roles,
   rolesLoading,
@@ -66,7 +68,7 @@ export default function AdminEditModal({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/proxy/admins/${adminId}`, {
+        const res = await fetch(`/api/proxy/admins/${adminId}/query`, {
           cache: 'no-store',
           signal: controller.signal,
           headers: {
@@ -149,13 +151,18 @@ export default function AdminEditModal({
           setError(t('admin.loadError'))
         }
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+          onReady?.()
+        }
       }
     }
 
     loadAdmin().catch(() => {
+      if (controller.signal.aborted) return
       setLoading(false)
       setError(t('admin.loadError'))
+      onReady?.()
     })
 
     return () => controller.abort()
@@ -201,7 +208,7 @@ export default function AdminEditModal({
         payload.password = trimmedPassword
       }
 
-      const res = await fetch(`/api/proxy/admins/${adminId}`, {
+      const res = await fetch(`/api/proxy/admins/${adminId}/query`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -279,7 +286,7 @@ export default function AdminEditModal({
     }
   }
 
-  const disableForm = loading || submitting
+  const disableForm = submitting
   const roleReadOnly =
     !canManageSystemRoles &&
     !!currentRole &&
@@ -296,6 +303,10 @@ export default function AdminEditModal({
 
     return hasCurrentRole ? roles : [currentRole, ...roles]
   }, [currentRole, roles])
+
+  if (loading) {
+    return null
+  }
 
   return (
     <CrmFormModalShell
@@ -327,10 +338,6 @@ export default function AdminEditModal({
       }
     >
       <form id="admin-edit-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
-          {loading ? (
-            <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
-          ) : (
-            <>
               <div>
                 <label
                   htmlFor="edit-password"
@@ -434,8 +441,6 @@ export default function AdminEditModal({
                   <option value="false">{t('common.inactive')}</option>
                 </select>
               </div>
-            </>
-          )}
 
           {error && (
             <div className="text-sm text-red-600" role="alert">

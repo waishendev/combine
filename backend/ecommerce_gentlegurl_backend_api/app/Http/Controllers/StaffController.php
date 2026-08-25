@@ -66,12 +66,12 @@ class StaffController extends Controller
             $this->storeLocationAccess->authorizeStoreLocation($request->user(), $storeLocationId, false);
         }
         $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
-        $rows = Staff::query()
+
+        $query = Staff::query()
             ->with('admin:id,staff_id,username,email')
-            ->when($storeLocationId > 0, fn ($query) => $query->whereHas('storeLocations', fn ($locations) => $locations->where('store_locations.id', $storeLocationId)))
-            ->when($storeLocationId <= 0 && ! $this->storeLocationAccess->hasPlatformBypass($request->user()), fn ($query) => $query->whereHas('storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)))
-            ->orderBy('id')
-            ->get();
+            ->when($storeLocationId > 0, fn ($builder) => $builder->whereHas('storeLocations', fn ($locations) => $locations->where('store_locations.id', $storeLocationId)))
+            ->when($storeLocationId <= 0 && ! $this->storeLocationAccess->hasPlatformBypass($request->user()), fn ($builder) => $builder->whereHas('storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)))
+            ->orderBy('id');
 
         $stream = fopen('php://temp', 'r+');
         if (! $stream) {
@@ -84,21 +84,23 @@ class StaffController extends Controller
         ];
         fputcsv($stream, $headers);
 
-        foreach ($rows as $staff) {
-            fputcsv($stream, [
-                $staff->id,
-                $staff->code,
-                $staff->name,
-                $staff->phone,
-                $staff->email,
-                optional($staff->admin)->username,
-                $staff->position,
-                $staff->description,
-                $staff->commission_rate,
-                $staff->service_commission_rate,
-                $staff->is_active ? 'true' : 'false',
-            ]);
-        }
+        $query->chunkById(200, function ($rows) use ($stream) {
+            foreach ($rows as $staff) {
+                fputcsv($stream, [
+                    $staff->id,
+                    $staff->code,
+                    $staff->name,
+                    $staff->phone,
+                    $staff->email,
+                    optional($staff->admin)->username,
+                    $staff->position,
+                    $staff->description,
+                    $staff->commission_rate,
+                    $staff->service_commission_rate,
+                    $staff->is_active ? 'true' : 'false',
+                ]);
+            }
+        });
 
         rewind($stream);
         $csv = stream_get_contents($stream) ?: '';
@@ -109,6 +111,40 @@ class StaffController extends Controller
             'Content-Disposition' => 'attachment; filename="staffs-export_' . now()->format('Y-m-d_His') . '.csv"',
             'Cache-Control' => 'no-store, no-cache',
         ]);
+    }
+
+    /**
+     * Slim staff catalog for dropdowns (id + name only).
+     * Enhancement: staff-consumables-commission-query-v1
+     */
+    public function options(Request $request)
+    {
+        $perPage = min(500, max(1, $request->integer('per_page', 200)));
+        $storeLocationId = $request->integer('branch_store_location_id');
+        if ($storeLocationId > 0) {
+            $this->storeLocationAccess->authorizeStoreLocation($request->user(), $storeLocationId, false);
+        }
+        $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
+
+        $staffs = Staff::query()
+            ->select(['id', 'name'])
+            ->when($storeLocationId > 0, fn ($query) => $query->whereHas(
+                'storeLocations',
+                fn ($locations) => $locations->where('store_locations.id', $storeLocationId),
+            ))
+            ->when($storeLocationId <= 0 && ! $this->storeLocationAccess->hasPlatformBypass($request->user()), fn ($query) => $query->whereHas(
+                'storeLocations',
+                fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds),
+            ))
+            ->when($request->has('is_active'), function ($query) use ($request) {
+                $query->where('is_active', $request->boolean('is_active'));
+            }, function ($query) {
+                $query->where('is_active', true);
+            })
+            ->orderBy('name')
+            ->paginate($perPage);
+
+        return $this->respond($staffs);
     }
 
     public function importCsv(Request $request)

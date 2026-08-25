@@ -20,6 +20,7 @@ export type RoleApiItem = {
   description?: string | null
   is_active?: boolean | number | string | null
   permissions?: RoleApiPermission[] | null
+  permissions_count?: number | string | null
   created_at?: string | null
   updated_at?: string | null
   store_location?: { id?: number; name?: string | null } | null
@@ -40,10 +41,17 @@ export const mapRoleApiItemToRow = (item: RoleApiItem): RoleRowData => {
       }))
     : []
 
+  const permissionCountFromApi = Number(item.permissions_count)
+  const permissionCount = Number.isFinite(permissionCountFromApi)
+    ? permissionCountFromApi
+    : permissions.length
+
   const permissionNames =
     permissions.length > 0
       ? permissions.map((permission) => permission.name).join(', ')
-      : ''
+      : permissionCount > 0
+        ? `${permissionCount} permission${permissionCount === 1 ? '' : 's'}`
+        : ''
 
   const isActiveValue = item.is_active
   const isActive =
@@ -59,7 +67,7 @@ export const mapRoleApiItemToRow = (item: RoleApiItem): RoleRowData => {
     isActive,
     permissions,
     permissionNames,
-    permissionCount: permissions.length,
+    permissionCount,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
     branchName: item.store_location?.name ?? 'Global / Unassigned',
