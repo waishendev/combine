@@ -5,54 +5,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import BookingAppointmentDrawer from '@/components/booking/BookingAppointmentDrawer'
 import OrderViewPanel from '@/components/OrderViewPanel'
+import PaginationControls from '@/components/PaginationControls'
 import StatusBadge from '@/components/StatusBadge'
 import WalletTransactionDetailDrawer from '@/components/wallet/WalletTransactionDetailDrawer'
-
-type HistoryResponse = {
-  data?: {
-    customer_summary?: {
-      id: number
-      name: string
-      phone?: string | null
-      email?: string | null
-      customer_type?: string | null
-      total_spent?: number
-      total_orders_bookings?: number
-      last_activity_date?: string | null
-    }
-    ecommerce_orders?: HistoryOrder[]
-    pos_orders?: HistoryPosOrder[]
-    booking_appointments?: HistoryBooking[]
-    service_packages?: HistoryPackage[]
-  }
-}
-
-type HistoryOrder = {
-  id: number
-  order_number?: string | null
-  date?: string | null
-  status?: string | null
-  total_amount?: number | null
-}
-
-type HistoryPosOrder = {
-  id: number
-  receipt_number?: string | null
-  date?: string | null
-  payment_method?: string | null
-  status?: string | null
-  total_amount?: number | null
-}
-
-type HistoryBooking = {
-  id: number
-  booking_no?: string | null
-  date_time?: string | null
-  service_names?: string[]
-  staff?: string | null
-  status?: string | null
-  amount?: number | null
-}
 
 type HistoryPackage = {
   id: number
@@ -74,7 +29,6 @@ type HistoryPackage = {
     remaining_qty?: number
   }>
 }
-
 
 type WalletTx = {
   id: number
@@ -124,6 +78,51 @@ type CustomerDetailBrief = {
   } | null
 }
 
+type PageMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+type EcommerceRow = {
+  order_id: number
+  order_no: string
+  order_datetime: string
+  payment_method: string
+  status: string
+  net_amount: number
+}
+
+type BookingRow = {
+  order_id: number
+  order_no: string
+  order_datetime: string
+  payment_method: string
+  status: string
+  type: string
+  booking_id?: number | null
+  booking_no?: string | null
+  package_name?: string | null
+  net_amount: number
+}
+
+type SalesReportJson = {
+  rows?: EcommerceRow[] | BookingRow[]
+  grand_totals?: { net_amount?: number; orders_count?: number }
+  pagination?: Partial<PageMeta>
+}
+
+const HISTORY_PAGE_SIZES = [20, 50, 100] as const
+const DEFAULT_PER_PAGE = 20
+
+const EMPTY_META: PageMeta = {
+  current_page: 1,
+  last_page: 1,
+  per_page: DEFAULT_PER_PAGE,
+  total: 0,
+}
+
 const GENDER_LABELS: Record<string, string> = {
   male: 'Male',
   female: 'Female',
@@ -162,6 +161,26 @@ function formatAmount(value?: number | null) {
     style: 'currency',
     currency: 'MYR',
   }).format(value)
+}
+
+function formatYmd(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function parsePageMeta(partial: Partial<PageMeta> | undefined, fallbackPage: number, fallbackPerPage: number): PageMeta {
+  return {
+    current_page: Number(partial?.current_page ?? fallbackPage) || fallbackPage,
+    last_page: Math.max(1, Number(partial?.last_page ?? 1) || 1),
+    per_page: Number(partial?.per_page ?? fallbackPerPage) || fallbackPerPage,
+    total: Math.max(0, Number(partial?.total ?? 0) || 0),
+  }
+}
+
+function recordCountLabel(onPage: number, total: number) {
+  return `${onPage} on page · ${total} total`
 }
 
 function PackageDetailsDrawer({ data, onClose }: { data: HistoryPackage; onClose: () => void }) {
@@ -247,206 +266,266 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const [activeTab, setActiveTab] = useState<TabKey>('all')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [payload, setPayload] = useState<HistoryResponse['data']>()
-  const [customerDetail, setCustomerDetail] = useState<CustomerDetailBrief | null>(null)
-  const [drawer, setDrawer] = useState<DrawerState | null>(null)
-  const [ecommerceTx, setEcommerceTx] = useState<
-    Array<{
-      order_id: number
-      order_no: string
-      order_datetime: string
-      payment_method: string
-      status: string
-      net_amount: number
-    }>
-  >([])
-  const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null)
-  const [walletTx, setWalletTx] = useState<WalletTx[]>([])
-  const [walletDetailTx, setWalletDetailTx] = useState<WalletTx | null>(null)
-  const [bookingTx, setBookingTx] = useState<
-    Array<{
-      order_id: number
-      order_no: string
-      order_datetime: string
-      payment_method: string
-      status: string
-      type: string
-      booking_id?: number | null
-      booking_no?: string | null
-      package_name?: string | null
-      net_amount: number
-    }>
-  >([])
-
-  const formatYmd = (d: Date) => {
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-  }
-
-  // Re-fetch whenever date filter query changes.
   const dateFromQuery = searchParams.get('date_from') ?? ''
   const dateToQuery = searchParams.get('date_to') ?? ''
-  const filterKey = `${dateFromQuery}|${dateToQuery}`
+  const pageQuery = Number(searchParams.get('page'))
+  const perPageRaw = Number(searchParams.get('per_page'))
+  const currentPage = Number.isFinite(pageQuery) && pageQuery > 0 ? pageQuery : 1
+  const perPage = (HISTORY_PAGE_SIZES as readonly number[]).includes(perPageRaw)
+    ? perPageRaw
+    : DEFAULT_PER_PAGE
 
+  const [activeTab, setActiveTab] = useState<TabKey>('all')
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [reportsLoading, setReportsLoading] = useState(true)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [reportsError, setReportsError] = useState<string | null>(null)
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetailBrief | null>(null)
+  const [drawer, setDrawer] = useState<DrawerState | null>(null)
+  const [ecommerceTx, setEcommerceTx] = useState<EcommerceRow[]>([])
+  const [ecommerceMeta, setEcommerceMeta] = useState<PageMeta>(EMPTY_META)
+  const [ecommerceGrandNet, setEcommerceGrandNet] = useState(0)
+  const [bookingTx, setBookingTx] = useState<BookingRow[]>([])
+  const [bookingMeta, setBookingMeta] = useState<PageMeta>(EMPTY_META)
+  const [bookingGrandNet, setBookingGrandNet] = useState(0)
+  const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null)
+  const [walletTx, setWalletTx] = useState<WalletTx[]>([])
+  const [walletMeta, setWalletMeta] = useState<PageMeta>(EMPTY_META)
+  const [walletDetailTx, setWalletDetailTx] = useState<WalletTx | null>(null)
+  const [dateInputs, setDateInputs] = useState({ dateFrom: dateFromQuery, dateTo: dateToQuery })
+
+  const resolvedDateRange = useMemo(() => {
+    const hasRange = Boolean(dateFromQuery.trim() && dateToQuery.trim())
+    if (hasRange) {
+      return { from: dateFromQuery.trim(), to: dateToQuery.trim() }
+    }
+    const to = formatYmd(new Date())
+    const from = formatYmd(new Date(new Date().setFullYear(new Date().getFullYear() - 1)))
+    return { from, to }
+  }, [dateFromQuery, dateToQuery])
+
+  useEffect(() => {
+    setDateInputs({ dateFrom: dateFromQuery, dateTo: dateToQuery })
+  }, [dateFromQuery, dateToQuery])
+
+  const replaceQuery = (mutate: (next: URLSearchParams) => void) => {
+    const next = new URLSearchParams(searchParams.toString())
+    mutate(next)
+    const qs = next.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }
+
+  const setPageInUrl = (page: number) => {
+    replaceQuery((next) => {
+      if (page <= 1) next.delete('page')
+      else next.set('page', String(page))
+    })
+  }
+
+  const resetPageInUrl = (mutate?: (next: URLSearchParams) => void) => {
+    replaceQuery((next) => {
+      mutate?.(next)
+      next.delete('page')
+    })
+  }
+
+  // Effect 1: customer profile + wallet summary (once per customer)
   useEffect(() => {
     const controller = new AbortController()
 
-    const fetchHistory = async () => {
-      setLoading(true)
-      setError(null)
+    const fetchProfile = async () => {
+      setProfileLoading(true)
+      setProfileError(null)
       try {
-        const dateFromParam = dateFromQuery.trim()
-        const dateToParam = dateToQuery.trim()
-        const hasRange = Boolean(dateFromParam && dateToParam)
-
-        const to = hasRange ? dateToParam : formatYmd(new Date())
-        const from = hasRange ? dateFromParam : '2000-01-01'
-
-        const qs = new URLSearchParams()
-        qs.set('date_from', from)
-        qs.set('date_to', to)
-        qs.set('per_page', '200')
-        qs.set('page', '1')
-        qs.set('customer_id', customerId)
-
-        const [ecommerceResponse, bookingResponse, customerResponse, walletResponse, walletTransactionsResponse] = await Promise.all([
-          fetch(`/api/proxy/ecommerce/reports/sales/ecommerce?${qs.toString()}`, {
-            cache: 'no-store',
-            signal: controller.signal,
-          }),
-          fetch(`/api/proxy/ecommerce/reports/sales/booking?${qs.toString()}`, {
-            cache: 'no-store',
-            signal: controller.signal,
-          }),
+        const [customerResponse, walletResponse] = await Promise.all([
           fetch(`/api/proxy/customers/${customerId}`, {
             cache: 'no-store',
             signal: controller.signal,
             headers: { Accept: 'application/json', 'Accept-Language': 'en' },
           }),
-          fetch(`/api/proxy/admin/customers/${customerId}/wallet`, { cache: 'no-store', signal: controller.signal, headers: { Accept: 'application/json' } }),
-          fetch(`/api/proxy/admin/customers/${customerId}/wallet/transactions?per_page=100`, { cache: 'no-store', signal: controller.signal, headers: { Accept: 'application/json' } }),
+          fetch(`/api/proxy/admin/customers/${customerId}/wallet`, {
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: { Accept: 'application/json' },
+          }),
         ])
 
-        if (!ecommerceResponse.ok || !bookingResponse.ok) {
-          throw new Error('Failed to load customer history.')
+        if (!customerResponse.ok) {
+          throw new Error('Failed to load customer profile.')
         }
 
-        type EcommerceRow = {
-          order_id: number
-          order_no: string
-          order_datetime: string
-          payment_method: string
-          status: string
-          net_amount: number
-        }
-
-        type BookingRow = {
-          order_id: number
-          order_no: string
-          order_datetime: string
-          payment_method: string
-          status: string
-          type: string
-          booking_id?: number | null
-          booking_no?: string | null
-          package_name?: string | null
-          net_amount: number
-        }
-
-        const ecommerceJson = (await ecommerceResponse.json().catch(() => null)) as { rows?: EcommerceRow[] } | null
-        const bookingJson = (await bookingResponse.json().catch(() => null)) as { rows?: BookingRow[] } | null
-        const ecRows = Array.isArray(ecommerceJson?.rows) ? ecommerceJson!.rows! : []
-        const bkRows = Array.isArray(bookingJson?.rows) ? bookingJson!.rows! : []
-
-        setEcommerceTx(ecRows)
-        setBookingTx(bkRows)
+        const customerJson = (await customerResponse.json().catch(() => null)) as
+          | { data?: CustomerDetailBrief }
+          | null
+        const detail = customerJson?.data
+        setCustomerDetail(detail && typeof detail === 'object' ? detail : null)
 
         if (walletResponse.ok) {
-          const walletJson = await walletResponse.json().catch(() => null) as { data?: WalletSummary } | null
+          const walletJson = (await walletResponse.json().catch(() => null)) as { data?: WalletSummary } | null
           setWalletSummary(walletJson?.data ?? null)
         } else {
           setWalletSummary(null)
         }
-        if (walletTransactionsResponse.ok) {
-          const walletTxJson = await walletTransactionsResponse.json().catch(() => null) as { data?: { transactions?: { data?: WalletTx[] } | WalletTx[] } } | null
-          const txPayload = walletTxJson?.data?.transactions
-          setWalletTx(Array.isArray(txPayload) ? txPayload : txPayload?.data ?? [])
-        } else {
-          setWalletTx([])
-        }
-
-        const parseTime = (value?: string | null) => {
-          if (!value) return null
-          const d = new Date(value)
-          const t = d.getTime()
-          return Number.isNaN(t) ? null : t
-        }
-
-        const latestActivityMs = Math.max(
-          0,
-          ...ecRows.map((r) => parseTime(r.order_datetime) ?? 0),
-          ...bkRows.map((r) => parseTime(r.order_datetime) ?? 0),
-        )
-
-        const totalSpent =
-          ecRows.reduce((sum, r) => sum + Number(r.net_amount ?? 0), 0) +
-          bkRows.reduce((sum, r) => sum + Number(r.net_amount ?? 0), 0)
-
-        const totalOrdersBookings = ecRows.length + bkRows.length
-
-        let customerJson: { data?: CustomerDetailBrief } | null = null
-        if (customerResponse.ok) {
-          customerJson = (await customerResponse.json().catch(() => null)) as
-            | { data?: CustomerDetailBrief }
-            | null
-          const detail = customerJson?.data
-          if (detail && typeof detail === 'object') {
-            setCustomerDetail(detail)
-          } else {
-            setCustomerDetail(null)
-          }
-        } else {
-          setCustomerDetail(null)
-        }
-
-        setPayload({
-          customer_summary: {
-            id: Number(customerId),
-            name: customerJson?.data?.name ?? '-',
-            phone: customerJson?.data?.phone ?? '-',
-            email: customerJson?.data?.email ?? '-',
-            customer_type: customerJson?.data?.customer_type ?? '-',
-            total_spent: totalSpent,
-            total_orders_bookings: totalOrdersBookings,
-            last_activity_date: latestActivityMs ? new Date(latestActivityMs).toISOString() : null,
-          },
-          ecommerce_orders: [],
-          pos_orders: [],
-          booking_appointments: [],
-          service_packages: [],
-        })
       } catch (fetchError) {
         if (!(fetchError instanceof DOMException && fetchError.name === 'AbortError')) {
-          setError(fetchError instanceof Error ? fetchError.message : 'Failed to load customer history.')
+          setProfileError(fetchError instanceof Error ? fetchError.message : 'Failed to load customer profile.')
         }
       } finally {
         if (!controller.signal.aborted) {
-          setLoading(false)
+          setProfileLoading(false)
         }
       }
     }
 
-    fetchHistory()
+    void fetchProfile()
     return () => controller.abort()
-  }, [customerId, filterKey])
+  }, [customerId])
+
+  // Effect 2: tab / date / page report fetches
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const fetchReports = async () => {
+      setReportsLoading(true)
+      setReportsError(null)
+      try {
+        const qs = new URLSearchParams()
+        qs.set('date_from', resolvedDateRange.from)
+        qs.set('date_to', resolvedDateRange.to)
+        qs.set('per_page', String(perPage))
+        qs.set('page', String(currentPage))
+        qs.set('customer_id', customerId)
+
+        const needEcommerce = activeTab === 'all' || activeTab === 'ecommerce'
+        const needBooking = activeTab === 'all' || activeTab === 'booking'
+        const needWallet = activeTab === 'all' || activeTab === 'balance'
+
+        const requests: Array<Promise<Response | null>> = [
+          needEcommerce
+            ? fetch(`/api/proxy/ecommerce/reports/sales/ecommerce?${qs.toString()}`, {
+                cache: 'no-store',
+                signal: controller.signal,
+              })
+            : Promise.resolve(null),
+          needBooking
+            ? fetch(`/api/proxy/ecommerce/reports/sales/booking?${qs.toString()}`, {
+                cache: 'no-store',
+                signal: controller.signal,
+              })
+            : Promise.resolve(null),
+          needWallet
+            ? fetch(
+                `/api/proxy/admin/customers/${customerId}/wallet/transactions?page=${currentPage}&per_page=${perPage}`,
+                {
+                  cache: 'no-store',
+                  signal: controller.signal,
+                  headers: { Accept: 'application/json' },
+                },
+              )
+            : Promise.resolve(null),
+        ]
+
+        const [ecommerceResponse, bookingResponse, walletTxResponse] = await Promise.all(requests)
+
+        if (needEcommerce) {
+          if (!ecommerceResponse?.ok) {
+            throw new Error('Failed to load ecommerce history.')
+          }
+          const ecommerceJson = (await ecommerceResponse.json().catch(() => null)) as SalesReportJson | null
+          const ecRows = Array.isArray(ecommerceJson?.rows) ? (ecommerceJson!.rows as EcommerceRow[]) : []
+          setEcommerceTx(ecRows)
+          setEcommerceMeta(parsePageMeta(ecommerceJson?.pagination, currentPage, perPage))
+          setEcommerceGrandNet(Number(ecommerceJson?.grand_totals?.net_amount ?? 0) || 0)
+        }
+
+        if (needBooking) {
+          if (!bookingResponse?.ok) {
+            throw new Error('Failed to load booking history.')
+          }
+          const bookingJson = (await bookingResponse.json().catch(() => null)) as SalesReportJson | null
+          const bkRows = Array.isArray(bookingJson?.rows) ? (bookingJson!.rows as BookingRow[]) : []
+          setBookingTx(bkRows)
+          setBookingMeta(parsePageMeta(bookingJson?.pagination, currentPage, perPage))
+          setBookingGrandNet(Number(bookingJson?.grand_totals?.net_amount ?? 0) || 0)
+        }
+
+        if (needWallet) {
+          if (walletTxResponse?.ok) {
+            const walletTxJson = (await walletTxResponse.json().catch(() => null)) as {
+              data?: {
+                transactions?:
+                  | WalletTx[]
+                  | {
+                      data?: WalletTx[]
+                      current_page?: number
+                      last_page?: number
+                      per_page?: number
+                      total?: number
+                    }
+              }
+            } | null
+            const txPayload = walletTxJson?.data?.transactions
+            if (Array.isArray(txPayload)) {
+              setWalletTx(txPayload)
+              setWalletMeta({
+                current_page: currentPage,
+                last_page: 1,
+                per_page: perPage,
+                total: txPayload.length,
+              })
+            } else {
+              setWalletTx(Array.isArray(txPayload?.data) ? txPayload.data : [])
+              setWalletMeta(
+                parsePageMeta(
+                  {
+                    current_page: txPayload?.current_page,
+                    last_page: txPayload?.last_page,
+                    per_page: txPayload?.per_page,
+                    total: txPayload?.total,
+                  },
+                  currentPage,
+                  perPage,
+                ),
+              )
+            }
+          } else if (walletTxResponse) {
+            setWalletTx([])
+            setWalletMeta({ ...EMPTY_META, per_page: perPage, current_page: currentPage })
+          }
+        }
+      } catch (fetchError) {
+        if (!(fetchError instanceof DOMException && fetchError.name === 'AbortError')) {
+          setReportsError(fetchError instanceof Error ? fetchError.message : 'Failed to load customer history.')
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setReportsLoading(false)
+        }
+      }
+    }
+
+    void fetchReports()
+    return () => controller.abort()
+  }, [customerId, resolvedDateRange.from, resolvedDateRange.to, currentPage, perPage, activeTab])
+
+  const lastActivityDate = useMemo(() => {
+    const parseTime = (value?: string | null) => {
+      if (!value) return 0
+      const t = new Date(value).getTime()
+      return Number.isNaN(t) ? 0 : t
+    }
+    const latest = Math.max(
+      0,
+      ...ecommerceTx.map((r) => parseTime(r.order_datetime)),
+      ...bookingTx.map((r) => parseTime(r.order_datetime)),
+    )
+    return latest ? new Date(latest).toISOString() : null
+  }, [ecommerceTx, bookingTx])
+
+  const totalSpent = ecommerceGrandNet + bookingGrandNet
+  const totalOrdersBookings = ecommerceMeta.total + bookingMeta.total
 
   const summaryCards = useMemo(() => {
-    const summary = payload?.customer_summary
     const statusValue = customerDetail?.is_active == null ? null : customerDetail.is_active ? 'active' : 'inactive'
     const tierValue = customerDetail?.tier?.trim() ? customerDetail.tier : null
     const pointsValue =
@@ -455,10 +534,7 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
         : null
 
     const cards: Array<{ label: string; value: ReactNode }> = [
-      {
-        label: 'Customer Name',
-        value: summary?.name ?? '-',
-      },
+      { label: 'Customer Name', value: customerDetail?.name ?? '-' },
       { label: 'Tier', value: tierValue ? <span className="capitalize">{tierValue}</span> : '-' },
       {
         label: 'Status',
@@ -471,55 +547,100 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
       { label: 'Available Points', value: pointsValue != null ? pointsValue.toLocaleString() : '-' },
       { label: 'Gender', value: formatGenderLabel(customerDetail?.gender) },
       { label: 'Date of Birth', value: formatDateOnly(customerDetail?.date_of_birth) },
-      { label: 'Phone', value: summary?.phone ?? '-' },
-      { label: 'Email', value: summary?.email ?? '-' },
-      { label: 'Customer Type', value: summary?.customer_type ?? '-' },
-      { label: 'Total Spent', value: formatAmount(summary?.total_spent) },
-      { label: 'Total Orders/Bookings', value: String(summary?.total_orders_bookings ?? 0) },
-      { label: 'Last Activity Date', value: formatDate(summary?.last_activity_date) },
+      { label: 'Phone', value: customerDetail?.phone ?? '-' },
+      { label: 'Email', value: customerDetail?.email ?? '-' },
+      { label: 'Customer Type', value: customerDetail?.customer_type ?? '-' },
+      { label: 'Total Spent', value: formatAmount(totalSpent) },
+      { label: 'Total Orders/Bookings', value: String(totalOrdersBookings) },
+      { label: 'Last Activity Date', value: formatDate(lastActivityDate) },
       { label: 'Current Balance', value: formatAmount(Number(walletSummary?.wallet_balance ?? 0)) },
       { label: 'Total Wallet Credits', value: formatAmount(Number(walletSummary?.total_deposited ?? 0)) },
       { label: 'Total Wallet Debits', value: formatAmount(Number(walletSummary?.total_withdrawn ?? 0)) },
-      { label: 'Pending Top Up Amount', value: formatAmount((walletSummary?.pending_topups ?? []).reduce((sum, tx) => sum + Number(tx.amount ?? 0), 0)) },
+      {
+        label: 'Pending Top Up Amount',
+        value: formatAmount(
+          (walletSummary?.pending_topups ?? []).reduce((sum, tx) => sum + Number(tx.amount ?? 0), 0),
+        ),
+      },
     ]
     return cards
-  }, [customerDetail?.gender, customerDetail?.date_of_birth, customerDetail?.is_active, customerDetail?.loyalty_summary, customerDetail?.tier, payload?.customer_summary, walletSummary])
+  }, [
+    customerDetail,
+    lastActivityDate,
+    totalOrdersBookings,
+    totalSpent,
+    walletSummary,
+  ])
 
-  const dateFrom = dateFromQuery
-  const dateTo = dateToQuery
-  const [dateInputs, setDateInputs] = useState({ dateFrom, dateTo })
-  useEffect(() => {
-    setDateInputs({ dateFrom, dateTo })
-  }, [dateFrom, dateTo])
+  const activeMeta = useMemo(() => {
+    if (activeTab === 'ecommerce') return ecommerceMeta
+    if (activeTab === 'booking') return bookingMeta
+    if (activeTab === 'balance') return walletMeta
+    return {
+      current_page: currentPage,
+      per_page: perPage,
+      last_page: Math.max(ecommerceMeta.last_page, bookingMeta.last_page, walletMeta.last_page, 1),
+      total: Math.max(ecommerceMeta.total, bookingMeta.total, walletMeta.total),
+    }
+  }, [activeTab, bookingMeta, currentPage, ecommerceMeta, perPage, walletMeta])
 
   const applyDateRange = () => {
-    const next = new URLSearchParams(searchParams.toString())
     const from = dateInputs.dateFrom.trim()
     const to = dateInputs.dateTo.trim()
-    if (from && to) {
-      next.set('date_from', from)
-      next.set('date_to', to)
-    } else {
-      next.delete('date_from')
-      next.delete('date_to')
-    }
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+    resetPageInUrl((next) => {
+      if (from && to) {
+        next.set('date_from', from)
+        next.set('date_to', to)
+      } else {
+        next.delete('date_from')
+        next.delete('date_to')
+      }
+    })
   }
 
   const clearDateRange = () => {
-    const next = new URLSearchParams(searchParams.toString())
-    next.delete('date_from')
-    next.delete('date_to')
     setDateInputs({ dateFrom: '', dateTo: '' })
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+    resetPageInUrl((next) => {
+      next.delete('date_from')
+      next.delete('date_to')
+    })
   }
 
-  if (loading) {
+  const applyAllTimeRange = () => {
+    const from = '2000-01-01'
+    const to = formatYmd(new Date())
+    setDateInputs({ dateFrom: from, dateTo: to })
+    resetPageInUrl((next) => {
+      next.set('date_from', from)
+      next.set('date_to', to)
+    })
+  }
+
+  const handleTabChange = (key: TabKey) => {
+    setActiveTab(key)
+    if (currentPage !== 1) {
+      setPageInUrl(1)
+    }
+  }
+
+  const handlePageSizeChange = (size: number) => {
+    resetPageInUrl((next) => {
+      if (size === DEFAULT_PER_PAGE) next.delete('per_page')
+      else next.set('per_page', String(size))
+    })
+  }
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > (activeMeta.last_page || 1)) return
+    setPageInUrl(page)
+  }
+
+  if (profileLoading) {
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading customer history...</div>
   }
 
-  if (error) {
-    return <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-600">{error}</div>
+  if (profileError) {
+    return <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-600">{profileError}</div>
   }
 
   return (
@@ -549,23 +670,41 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
         <div className="rounded-xl border border-slate-300 bg-slate-50 p-5 shadow-sm">
           <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap items-center gap-2">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  activeTab === tab.key
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleTabChange(tab.key)}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    activeTab === tab.key
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
             <div className="flex flex-wrap items-end gap-2">
+              <div className="flex items-center gap-2 pb-0.5">
+                <label htmlFor="historyPageSize" className="text-sm text-slate-700">
+                  Show
+                </label>
+                <select
+                  id="historyPageSize"
+                  value={perPage}
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm disabled:opacity-50"
+                  disabled={reportsLoading}
+                >
+                  {HISTORY_PAGE_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Date from</p>
                 <input
@@ -593,7 +732,7 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
               </button>
               <button
                 type="button"
-                onClick={clearDateRange}
+                onClick={applyAllTimeRange}
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 All time
@@ -601,12 +740,12 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
             </div>
           </div>
 
-          {(dateFrom || dateTo) && (
+          {(dateFromQuery || dateToQuery) && (
             <div className="mb-4 flex flex-wrap items-center gap-2">
-              {dateFrom ? (
+              {dateFromQuery ? (
                 <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-blue-700">
                   <span className="text-slate-700">Date From</span>
-                  <span>{dateFrom}</span>
+                  <span>{dateFromQuery}</span>
                   <button
                     type="button"
                     onClick={clearDateRange}
@@ -618,10 +757,10 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
                 </span>
               ) : null}
 
-              {dateTo ? (
+              {dateToQuery ? (
                 <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-blue-700">
                   <span className="text-slate-700">Date To</span>
-                  <span>{dateTo}</span>
+                  <span>{dateToQuery}</span>
                   <button
                     type="button"
                     onClick={clearDateRange}
@@ -635,140 +774,247 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
             </div>
           )}
 
-          <div className="space-y-6">
-          {(activeTab === 'all' || activeTab === 'ecommerce') && (
-            <section className="rounded-xl border border-slate-300 bg-white">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
-                <h4 className="text-base font-semibold text-slate-900">Ecommerce</h4>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  {ecommerceTx.length} records
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Order No</th>
-                      <th className="px-4 py-3 font-semibold">Date</th>
-                      <th className="px-4 py-3 font-semibold">Payment</th>
-                      <th className="px-4 py-3 font-semibold">Status</th>
-                      <th className="px-4 py-3 font-semibold">Net</th>
-                      <th className="px-4 py-3 font-semibold">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {ecommerceTx.map((row, index) => (
-                      <tr key={`ec-${row.order_id}-${index}`} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}>
-                        <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">{row.order_no ?? '-'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatDate(row.order_datetime)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.payment_method ?? '-'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.status ?? '-'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-900">{formatAmount(row.net_amount)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => setDrawer({ type: 'order', orderId: row.order_id })}
-                            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {ecommerceTx.length === 0 && (
-                      <tr>
-                        <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
-                          No ecommerce transactions.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
+          {reportsError ? (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600">{reportsError}</div>
+          ) : null}
 
-          {(activeTab === 'all' || activeTab === 'booking') && (
-            <section className="rounded-xl border border-slate-300 bg-white">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
-                <h4 className="text-base font-semibold text-slate-900">Booking</h4>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  {bookingTx.length} records
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Order No</th>
-                      <th className="px-4 py-3 font-semibold">Date</th>
-                      <th className="px-4 py-3 font-semibold">Type</th>
-                      <th className="px-4 py-3 font-semibold">Ref</th>
-                      <th className="px-4 py-3 font-semibold">Net</th>
-                      <th className="px-4 py-3 font-semibold">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {bookingTx.map((row, index) => {
-                      const ref = row.type === 'package_purchase' ? row.package_name : row.booking_no
-                      const canOpenBooking = Boolean(row.booking_id)
-                      return (
-                        <tr key={`bk-${row.order_id}-${index}`} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}>
-                          <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">{row.order_no ?? '-'}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatDate(row.order_datetime)}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.type ?? '-'}</td>
-                          <td className="px-4 py-3 text-slate-700">{ref ?? '-'}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-slate-900">{formatAmount(row.net_amount)}</td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (canOpenBooking) {
-                                  setDrawer({ type: 'booking', bookingId: Number(row.booking_id) })
-                                } else {
-                                  setDrawer({ type: 'order', orderId: row.order_id })
-                                }
-                              }}
-                              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              View
-                            </button>
+          <div className="space-y-6">
+            {(activeTab === 'all' || activeTab === 'ecommerce') && (
+              <section className="rounded-xl border border-slate-300 bg-white">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
+                  <h4 className="text-base font-semibold text-slate-900">Ecommerce</h4>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {recordCountLabel(ecommerceTx.length, ecommerceMeta.total)}
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Order No</th>
+                        <th className="px-4 py-3 font-semibold">Date</th>
+                        <th className="px-4 py-3 font-semibold">Payment</th>
+                        <th className="px-4 py-3 font-semibold">Status</th>
+                        <th className="px-4 py-3 font-semibold">Net</th>
+                        <th className="px-4 py-3 font-semibold">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {reportsLoading ? (
+                        <tr>
+                          <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
+                            Loading ecommerce transactions...
                           </td>
                         </tr>
-                      )
-                    })}
-                    {bookingTx.length === 0 && (
+                      ) : (
+                        <>
+                          {ecommerceTx.map((row, index) => (
+                            <tr key={`ec-${row.order_id}-${index}`} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}>
+                              <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">{row.order_no ?? '-'}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatDate(row.order_datetime)}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.payment_method ?? '-'}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.status ?? '-'}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-slate-900">{formatAmount(row.net_amount)}</td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => setDrawer({ type: 'order', orderId: row.order_id })}
+                                  className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  View
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {ecommerceTx.length === 0 && (
+                            <tr>
+                              <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
+                                No ecommerce transactions.
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {(activeTab === 'all' || activeTab === 'booking') && (
+              <section className="rounded-xl border border-slate-300 bg-white">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
+                  <h4 className="text-base font-semibold text-slate-900">Booking</h4>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {recordCountLabel(bookingTx.length, bookingMeta.total)}
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
                       <tr>
-                        <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
-                          No booking transactions.
-                        </td>
+                        <th className="px-4 py-3 font-semibold">Order No</th>
+                        <th className="px-4 py-3 font-semibold">Date</th>
+                        <th className="px-4 py-3 font-semibold">Type</th>
+                        <th className="px-4 py-3 font-semibold">Ref</th>
+                        <th className="px-4 py-3 font-semibold">Net</th>
+                        <th className="px-4 py-3 font-semibold">Action</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {reportsLoading ? (
+                        <tr>
+                          <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
+                            Loading booking transactions...
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {bookingTx.map((row, index) => {
+                            const ref = row.type === 'package_purchase' ? row.package_name : row.booking_no
+                            const canOpenBooking = Boolean(row.booking_id)
+                            return (
+                              <tr key={`bk-${row.order_id}-${index}`} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}>
+                                <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">{row.order_no ?? '-'}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatDate(row.order_datetime)}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.type ?? '-'}</td>
+                                <td className="px-4 py-3 text-slate-700">{ref ?? '-'}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-slate-900">{formatAmount(row.net_amount)}</td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (canOpenBooking) {
+                                        setDrawer({ type: 'booking', bookingId: Number(row.booking_id) })
+                                      } else {
+                                        setDrawer({ type: 'order', orderId: row.order_id })
+                                      }
+                                    }}
+                                    className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                  >
+                                    View
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                          {bookingTx.length === 0 && (
+                            <tr>
+                              <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
+                                No booking transactions.
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
 
-
-          {(activeTab === 'all' || activeTab === 'balance') && (
-            <section className="rounded-xl border border-slate-300 bg-white">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
-                <h4 className="text-base font-semibold text-slate-900">Customer Balance History</h4>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{walletTx.length} records</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600"><tr><th className="px-4 py-3">Transaction No</th><th className="px-4 py-3">Date/time</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Workspace</th><th className="px-4 py-3">Payment Method</th><th className="px-4 py-3">Credit</th><th className="px-4 py-3">Debit</th><th className="px-4 py-3">Before</th><th className="px-4 py-3">After</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Processed By</th><th className="px-4 py-3">Reason</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3">Receipt</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">{walletTx.map((tx) => <tr key={tx.id}><td className="px-4 py-3 font-medium">{tx.transaction_no ?? '-'}</td><td className="px-4 py-3">{formatDate(tx.created_at)}</td><td className="px-4 py-3">{tx.type === 'topup' ? 'Customer Top Up' : tx.type === 'admin_credit' ? 'CRM Deposit' : tx.type === 'admin_debit' ? 'CRM Withdrawal' : tx.type ?? '-'}</td><td className="px-4 py-3">{tx.workspace_type ?? '-'}</td><td className="px-4 py-3">{tx.payment_method_label ?? '-'}</td><td className="px-4 py-3 text-emerald-700">{tx.direction === 'credit' ? `+${formatAmount(Number(tx.amount ?? 0))}` : '-'}</td><td className="px-4 py-3 text-rose-700">{tx.direction === 'debit' ? `-${formatAmount(Number(tx.amount ?? 0))}` : '-'}</td><td className="px-4 py-3">{formatAmount(Number(tx.balance_before ?? 0))}</td><td className="px-4 py-3">{formatAmount(Number(tx.balance_after ?? 0))}</td><td className="px-4 py-3">{tx.status === 'pending' ? 'Pending Verification' : tx.status ?? '-'}</td><td className="px-4 py-3">{tx.creator?.name ?? '-'}</td><td className="px-4 py-3">{tx.remark ?? '-'}</td><td className="px-4 py-3">{tx.reference_no ?? '-'}</td><td className="px-4 py-3"><button type="button" onClick={() => setWalletDetailTx(tx)} className="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">{tx.status === 'completed' ? 'Receipt' : 'Details'}</button></td></tr>)}{walletTx.length === 0 ? <tr><td className="px-4 py-8 text-center text-slate-500" colSpan={14}>No balance transactions.</td></tr> : null}</tbody>
-                </table>
-              </div>
-            </section>
-          )}
+            {(activeTab === 'all' || activeTab === 'balance') && (
+              <section className="rounded-xl border border-slate-300 bg-white">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
+                  <h4 className="text-base font-semibold text-slate-900">Customer Balance History</h4>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {recordCountLabel(walletTx.length, walletMeta.total)}
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
+                      <tr>
+                        <th className="px-4 py-3">Transaction No</th>
+                        <th className="px-4 py-3">Date/time</th>
+                        <th className="px-4 py-3">Type</th>
+                        <th className="px-4 py-3">Workspace</th>
+                        <th className="px-4 py-3">Payment Method</th>
+                        <th className="px-4 py-3">Credit</th>
+                        <th className="px-4 py-3">Debit</th>
+                        <th className="px-4 py-3">Before</th>
+                        <th className="px-4 py-3">After</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Processed By</th>
+                        <th className="px-4 py-3">Reason</th>
+                        <th className="px-4 py-3">Reference</th>
+                        <th className="px-4 py-3">Receipt</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {reportsLoading ? (
+                        <tr>
+                          <td className="px-4 py-8 text-center text-slate-500" colSpan={14}>
+                            Loading balance transactions...
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {walletTx.map((tx) => (
+                            <tr key={tx.id}>
+                              <td className="px-4 py-3 font-medium">{tx.transaction_no ?? '-'}</td>
+                              <td className="px-4 py-3">{formatDate(tx.created_at)}</td>
+                              <td className="px-4 py-3">
+                                {tx.type === 'topup'
+                                  ? 'Customer Top Up'
+                                  : tx.type === 'admin_credit'
+                                    ? 'CRM Deposit'
+                                    : tx.type === 'admin_debit'
+                                      ? 'CRM Withdrawal'
+                                      : tx.type ?? '-'}
+                              </td>
+                              <td className="px-4 py-3">{tx.workspace_type ?? '-'}</td>
+                              <td className="px-4 py-3">{tx.payment_method_label ?? '-'}</td>
+                              <td className="px-4 py-3 text-emerald-700">
+                                {tx.direction === 'credit' ? `+${formatAmount(Number(tx.amount ?? 0))}` : '-'}
+                              </td>
+                              <td className="px-4 py-3 text-rose-700">
+                                {tx.direction === 'debit' ? `-${formatAmount(Number(tx.amount ?? 0))}` : '-'}
+                              </td>
+                              <td className="px-4 py-3">{formatAmount(Number(tx.balance_before ?? 0))}</td>
+                              <td className="px-4 py-3">{formatAmount(Number(tx.balance_after ?? 0))}</td>
+                              <td className="px-4 py-3">
+                                {tx.status === 'pending' ? 'Pending Verification' : tx.status ?? '-'}
+                              </td>
+                              <td className="px-4 py-3">{tx.creator?.name ?? '-'}</td>
+                              <td className="px-4 py-3">{tx.remark ?? '-'}</td>
+                              <td className="px-4 py-3">{tx.reference_no ?? '-'}</td>
+                              <td className="px-4 py-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setWalletDetailTx(tx)}
+                                  className="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  {tx.status === 'completed' ? 'Receipt' : 'Details'}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {walletTx.length === 0 ? (
+                            <tr>
+                              <td className="px-4 py-8 text-center text-slate-500" colSpan={14}>
+                                No balance transactions.
+                              </td>
+                            </tr>
+                          ) : null}
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
           </div>
+
+          <PaginationControls
+            currentPage={activeMeta.current_page}
+            totalPages={activeMeta.last_page}
+            pageSize={activeMeta.per_page}
+            onPageChange={handlePageChange}
+            disabled={reportsLoading}
+          />
         </div>
       </div>
-
 
       {walletDetailTx ? (
         <WalletTransactionDetailDrawer

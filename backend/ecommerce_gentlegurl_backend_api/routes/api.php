@@ -504,9 +504,10 @@ $protectedRoutes = function () {
     Route::post('/expenses/{expense}', [ExpenseController::class, 'update'])->middleware('permission:expenses.update');
     Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->middleware('permission:expenses.delete');
 
-    // Customers
+    // NEW ENHANCEMENT — customers-query-v1 (batched list aggregates + indexes)
     Route::get('/customers', [CustomerController::class, 'index'])
         ->middleware('permission:customers.view|customers.create|pos.checkout|pos.appointments.manage');
+    // END NEW ENHANCEMENT
 
     Route::get('/customers/export', [CustomerController::class, 'exportCsv'])
         ->middleware('permission:customers.view');

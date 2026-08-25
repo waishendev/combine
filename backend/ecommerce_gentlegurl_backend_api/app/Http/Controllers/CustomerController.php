@@ -35,6 +35,7 @@ class CustomerController extends Controller
         $tierRules = $this->getActiveTierRules();
         $window = $this->getWindowDates($loyaltySetting?->evaluation_cycle_months ?? 6);
 
+        // NEW ENHANCEMENT — customers-query-v1 (batch loyalty aggregates after paginate)
         $customers = Customer::query()
             ->when($request->filled('name'), fn ($query) => $query->where('name', 'like', '%' . $request->string('name')->toString() . '%'))
             ->when($request->filled('email'), fn ($query) => $query->where('email', 'like', '%' . $request->string('email')->toString() . '%'))
@@ -53,10 +54,27 @@ class CustomerController extends Controller
                 });
             })
             ->orderByDesc('created_at')
-            ->paginate($perPage)
-            ->through(function ($customer) use ($loyaltySetting, $tierRules, $window) {
-                return $this->formatCustomerWithSummary($customer, $loyaltySetting, $tierRules, $window);
-            });
+            ->paginate($perPage);
+
+        $customerIds = $customers->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $pointsByCustomer = $this->getAvailablePointsForCustomers($customerIds);
+        $spentByCustomer = $this->getSpentInWindowForCustomers($customerIds, $window['start'], $window['end']);
+
+        $customers->setCollection(
+            $customers->getCollection()->map(function (Customer $customer) use ($loyaltySetting, $tierRules, $window, $pointsByCustomer, $spentByCustomer) {
+                $id = (int) $customer->id;
+
+                return $this->formatCustomerWithSummary(
+                    $customer,
+                    $loyaltySetting,
+                    $tierRules,
+                    $window,
+                    $pointsByCustomer[$id] ?? 0,
+                    $spentByCustomer[$id] ?? 0.0,
+                );
+            })
+        );
+        // END NEW ENHANCEMENT
 
         return $this->respond($customers);
     }
@@ -94,6 +112,7 @@ class CustomerController extends Controller
         $loyaltySetting = $this->getActiveLoyaltySetting();
         $tierRules = $this->getActiveTierRules();
         $window = $this->getWindowDates($loyaltySetting?->evaluation_cycle_months ?? 6);
+        $customer->loadMissing(['customerType:id,name']);
 
         return $this->respond($this->formatCustomerWithDetails($customer, $loyaltySetting, $tierRules, $window));
     }
@@ -244,12 +263,16 @@ class CustomerController extends Controller
             ->orderBy('id')
             ->get();
 
-        $rows = $customers->map(function (Customer $customer) {
+        $pointsByCustomer = $this->getAvailablePointsForCustomers(
+            $customers->pluck('id')->map(fn ($id) => (int) $id)->all()
+        );
+
+        $rows = $customers->map(function (Customer $customer) use ($pointsByCustomer) {
             $payload = $customer->toArray();
             $payload['type'] = $customer->customerType?->name;
             unset($payload['password'], $payload['remember_token']);
 
-            $payload['member_points'] = $this->getAvailablePoints($customer);
+            $payload['member_points'] = $pointsByCustomer[(int) $customer->id] ?? 0;
             $payload['addresses'] = $customer->addresses
                 ->map(function (CustomerAddress $address) {
                     return [
@@ -852,10 +875,16 @@ class CustomerController extends Controller
         return $selectedTier;
     }
 
-    protected function formatCustomerWithSummary(Customer $customer, ?LoyaltySetting $loyaltySetting, $tierRules, array $window)
-    {
-        $availablePoints = $this->getAvailablePoints($customer);
-        $spentInWindow = $this->getSpentInWindow($customer, $window['start'], $window['end']);
+    protected function formatCustomerWithSummary(
+        Customer $customer,
+        ?LoyaltySetting $loyaltySetting,
+        $tierRules,
+        array $window,
+        ?int $availablePoints = null,
+        ?float $spentInWindow = null,
+    ) {
+        $availablePoints ??= $this->getAvailablePoints($customer);
+        $spentInWindow ??= $this->getSpentInWindow($customer, $window['start'], $window['end']);
         $nextTierData = $this->calculateNextTier($customer, $tierRules, $spentInWindow);
 
         return $customer->toArray() + [
@@ -868,7 +897,9 @@ class CustomerController extends Controller
 
     protected function formatCustomerWithDetails(Customer $customer, ?LoyaltySetting $loyaltySetting, $tierRules, array $window)
     {
-        $availablePoints = $this->getAvailablePoints($customer);
+        $customer->loadMissing(['customerType:id,name']);
+        $pointsStats = $this->getPointsStatsForCustomer((int) $customer->id);
+        $availablePoints = $pointsStats['available'];
         $spentInWindow = $this->getSpentInWindow($customer, $window['start'], $window['end']);
         $nextTierData = $this->calculateNextTier($customer, $tierRules, $spentInWindow);
         $latestDepositWaiverLog = CustomerDepositWaiverLog::query()
@@ -879,6 +910,7 @@ class CustomerController extends Controller
 
         $base = $customer->toArray();
         $base['date_of_birth'] = $customer->date_of_birth?->toDateString();
+        $base['customer_type'] = $customer->customerType?->name;
 
         return $base + [
             'latest_deposit_waiver_log' => $latestDepositWaiverLog ? [
@@ -893,7 +925,7 @@ class CustomerController extends Controller
             ] : null,
             'loyalty_summary' => [
                 'available_points' => $availablePoints,
-                'total_earned' => $this->getTotalEarnedPoints($customer),
+                'total_earned' => $pointsStats['earned'],
                 'total_redeemed' => $this->getTotalRedeemedPoints($customer),
                 'window' => [
                     'months_window' => $window['months'],
@@ -938,16 +970,58 @@ class CustomerController extends Controller
 
     protected function getAvailablePoints(Customer $customer): int
     {
-        return (int) PointsEarnBatch::where('customer_id', $customer->id)
+        return $this->getAvailablePointsForCustomers([(int) $customer->id])[(int) $customer->id] ?? 0;
+    }
+
+    /**
+     * Single-query available + earned points for show/details (customers-query-v1b).
+     *
+     * @return array{available: int, earned: int}
+     */
+    protected function getPointsStatsForCustomer(int $customerId): array
+    {
+        $now = Carbon::now();
+        $row = PointsEarnBatch::query()
+            ->where('customer_id', $customerId)
+            ->selectRaw('COALESCE(SUM(points_total), 0) as earned')
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN points_remaining > 0 AND expires_at > ? THEN points_remaining ELSE 0 END), 0) as available',
+                [$now]
+            )
+            ->first();
+
+        return [
+            'available' => (int) ($row?->available ?? 0),
+            'earned' => (int) ($row?->earned ?? 0),
+        ];
+    }
+
+    /**
+     * Batch available points for a page of customers (customers-query-v1).
+     *
+     * @param  list<int>  $customerIds
+     * @return array<int, int>
+     */
+    protected function getAvailablePointsForCustomers(array $customerIds): array
+    {
+        if ($customerIds === []) {
+            return [];
+        }
+
+        return PointsEarnBatch::query()
+            ->selectRaw('customer_id, COALESCE(SUM(points_remaining), 0) as aggregate_points')
+            ->whereIn('customer_id', $customerIds)
             ->where('points_remaining', '>', 0)
             ->where('expires_at', '>', Carbon::now())
-            ->sum('points_remaining');
+            ->groupBy('customer_id')
+            ->pluck('aggregate_points', 'customer_id')
+            ->map(fn ($value) => (int) $value)
+            ->all();
     }
 
     protected function getTotalEarnedPoints(Customer $customer): int
     {
-        return (int) PointsEarnBatch::where('customer_id', $customer->id)
-            ->sum('points_total');
+        return $this->getPointsStatsForCustomer((int) $customer->id)['earned'];
     }
 
     protected function getTotalRedeemedPoints(Customer $customer): int
@@ -959,10 +1033,30 @@ class CustomerController extends Controller
 
     protected function getSpentInWindow(Customer $customer, Carbon $startDate, Carbon $endDate): float
     {
-        return (float) Order::where('customer_id', $customer->id)
+        return $this->getSpentInWindowForCustomers([(int) $customer->id], $startDate, $endDate)[(int) $customer->id] ?? 0.0;
+    }
+
+    /**
+     * Batch spent-in-window for a page of customers (customers-query-v1).
+     *
+     * @param  list<int>  $customerIds
+     * @return array<int, float>
+     */
+    protected function getSpentInWindowForCustomers(array $customerIds, Carbon $startDate, Carbon $endDate): array
+    {
+        if ($customerIds === []) {
+            return [];
+        }
+
+        return Order::query()
+            ->selectRaw('customer_id, COALESCE(SUM(grand_total), 0) as aggregate_spent')
+            ->whereIn('customer_id', $customerIds)
             ->whereIn('status', ['paid', 'completed'])
             ->whereBetween('created_at', [$startDate, $endDate])
-            ->sum('grand_total');
+            ->groupBy('customer_id')
+            ->pluck('aggregate_spent', 'customer_id')
+            ->map(fn ($value) => (float) $value)
+            ->all();
     }
 
     protected function calculateNextTier(Customer $customer, $tierRules, float $spentInWindow): array
