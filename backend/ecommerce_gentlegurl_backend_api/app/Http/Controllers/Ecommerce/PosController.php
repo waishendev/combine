@@ -22,6 +22,7 @@ use App\Models\Ecommerce\PosCartItem;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductStockMovement;
 use App\Models\Ecommerce\ProductVariant;
+use App\Models\Ecommerce\StoreLocationProductInventory;
 use App\Models\Booking\Booking;
 use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageBalance;
@@ -5799,6 +5800,83 @@ class PosController extends Controller
             'last_page' => $variants->lastPage(),
             'per_page' => $variants->perPage(),
             'total' => $variants->total(),
+        ]);
+    }
+
+    /**
+     * Minimal, Branch-authorized checkout catalogue.
+     *
+     * Unlike the ecommerce management index this deliberately omits video,
+     * descriptions, SEO fields, every Branch pivot and inventory breakdown.
+     * Current stock is read from the authoritative Branch inventory snapshot;
+     * movement history is never aggregated on this read path.
+     */
+    public function productCatalog(Request $request)
+    {
+        $branchId = $request->integer('store_location_id');
+        if ($branchId <= 0) {
+            throw ValidationException::withMessages(['store_location_id' => __('A Branch is required for POS catalogue access.')]);
+        }
+        app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
+
+        $page = max(1, $request->integer('page', 1));
+        $perPage = max(1, min(100, $request->integer('per_page', 60)));
+        $categoryId = $request->integer('category_id');
+
+        $products = Product::query()
+            ->select(['id', 'name', 'cn_name', 'sku', 'barcode', 'type', 'price', 'sale_price', 'sale_price_start_at', 'sale_price_end_at', 'track_stock'])
+            ->with([
+                'images:id,product_id,disk,path,thumbnail_path,sort_order,type',
+                'categories:id,name,cn_name',
+                'variants' => fn ($query) => $query->select(['id', 'product_id', 'title', 'cn_name', 'sku', 'barcode', 'price', 'sale_price', 'sale_price_start_at', 'sale_price_end_at', 'track_stock', 'is_bundle', 'is_active', 'sort_order', 'image_path'])
+                    ->where('is_active', true),
+            ])
+            ->where('is_active', true)
+            ->where('is_reward_only', false)
+            ->whereHas('storeLocations', fn ($query) => $query
+                ->where('store_locations.id', $branchId)
+                ->where('store_location_product.is_available', true))
+            ->when($categoryId > 0, fn ($query) => $query->whereHas('categories', fn ($categories) => $categories->where('categories.id', $categoryId)))
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $productIds = collect($products->items())->pluck('id');
+        $inventory = StoreLocationProductInventory::query()
+            ->where('store_location_id', $branchId)
+            ->whereIn('product_id', $productIds)
+            ->get(['product_id', 'product_variant_id', 'quantity'])
+            ->keyBy(fn ($row) => $row->product_id.'-'.($row->product_variant_id ?: 0));
+
+        $data = collect($products->items())->map(function (Product $product) use ($inventory) {
+            $productStock = (int) ($inventory->get($product->id.'-0')?->quantity ?? 0);
+            $variants = $product->variants->map(function (ProductVariant $variant) use ($inventory, $product) {
+                $pricing = ProductPricing::build($product, $variant);
+                return [
+                    'id' => (int) $variant->id, 'name' => $variant->title, 'title' => $variant->title,
+                    'cn_name' => $variant->cn_name, 'sku' => $variant->sku, 'barcode' => $variant->barcode,
+                    'price' => (float) ($pricing['effective_price'] ?? $variant->price ?? 0),
+                    'image_url' => $variant->image_url, 'is_active' => true,
+                    'track_stock' => (bool) $variant->track_stock, 'is_bundle' => (bool) $variant->is_bundle,
+                    'stock' => (int) ($inventory->get($product->id.'-'.$variant->id)?->quantity ?? 0),
+                ];
+            })->values();
+            $pricing = ProductPricing::build($product);
+
+            return [
+                'id' => (int) $product->id, 'product_id' => (int) $product->id,
+                'name' => $product->name, 'cn_name' => $product->cn_name,
+                'sku' => $product->sku, 'barcode' => $product->barcode,
+                'price' => (float) ($pricing['effective_price'] ?? $product->price ?? 0),
+                'cover_image_url' => $product->cover_image_url,
+                'categories' => $product->categories->map->only(['id', 'name', 'cn_name'])->values(),
+                'variants' => $variants, 'variants_count' => $variants->count(),
+                'track_stock' => (bool) $product->track_stock, 'stock' => $productStock,
+            ];
+        })->values();
+
+        return $this->respond([
+            'data' => $data, 'current_page' => $products->currentPage(), 'last_page' => $products->lastPage(),
+            'per_page' => $products->perPage(), 'total' => $products->total(),
         ]);
     }
 

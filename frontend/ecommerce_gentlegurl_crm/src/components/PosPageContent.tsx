@@ -3287,7 +3287,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     append: boolean,
     options?: FetchProductOptions & { categoryId?: number | null },
   ) => {
-    const requestKey = `${page}:${keyword.trim()}:${options?.categoryId ?? ''}:${append ? 'append' : 'replace'}`
+    const requestKey = `${selectedBranchId ?? 'none'}:${page}:${keyword.trim()}:${options?.categoryId ?? ''}:${append ? 'append' : 'replace'}`
     if (productRequestInFlightKeyRef.current === requestKey) return
     productRequestAbortControllerRef.current?.abort()
     const controller = new AbortController()
@@ -3301,6 +3301,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     if (!silent) {
       setProductLoading(true)
     }
+    if (!append) setProducts([])
 
     try {
       let mapped: ProductOption[] = []
@@ -3363,7 +3364,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           params.set('category_id', String(normalizedCategoryId))
         }
 
-        const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store', signal: controller.signal })
+        if (!selectedBranchId) return
+        params.set('store_location_id', String(selectedBranchId))
+        const res = await fetch(`/api/proxy/pos/products/catalog?${params.toString()}`, { cache: 'no-store', signal: controller.signal })
         const json = await res.json()
         const paged = extractPaged<ProductApiItem>(json)
 
@@ -3404,7 +3407,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         setProductLoading(false)
       }
     }
-  }, [productSearchMode])
+  }, [productSearchMode, selectedBranchId])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     const trimmedKeyword = keyword.trim()
@@ -3647,6 +3650,25 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       )
     } finally {
       setBookingProductsLoading(false)
+    }
+  }, [])
+
+  const fetchBookingProductCategories = useCallback(async () => {
+    try {
+      const res = await fetch('/api/proxy/admin/booking/product-categories', { cache: 'no-store' })
+      if (!res.ok) return setBookingProductCategories([])
+      const json = await res.json().catch(() => null)
+      const payload = json && typeof json === 'object' && 'data' in json ? (json as { data?: unknown }).data : json
+      const rows = Array.isArray(payload) ? payload : []
+      setBookingProductCategories(rows.map((row: any) => ({
+        id: Number(row?.id), name: String(row?.name ?? '').trim(),
+        cn_name: typeof row?.cn_name === 'string' ? row.cn_name.trim() || null : null,
+        sort_order: Number(row?.sort_order ?? 0), is_active: Boolean(row?.is_active ?? true),
+        show_in_pos_filter: row?.show_in_pos_filter !== false,
+      })).filter((row) => row.id > 0 && row.name && row.is_active)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name)))
+    } catch {
+      setBookingProductCategories([])
     }
   }, [])
 
@@ -5841,40 +5863,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
     void loadCategories()
     void fetchActiveStaffs()
-    void fetchServices()
-      void fetchBookingServiceCategories()
-    const loadBookingProductCategories = async () => {
-      try {
-        const res = await fetch('/api/proxy/admin/booking/product-categories', { cache: 'no-store' })
-        if (!res.ok) {
-          setBookingProductCategories([])
-          return
-        }
-        const json = await res.json().catch(() => null)
-        const payload = (json && typeof json === 'object' && 'data' in json)
-          ? (json as { data?: unknown }).data
-          : json
-        const rows = Array.isArray(payload) ? payload : []
-        const mapped = rows
-          .map((row: any) => ({
-            id: Number(row?.id),
-            name: String(row?.name ?? '').trim(),
-            cn_name: typeof row?.cn_name === 'string' ? row.cn_name.trim() || null : null,
-            sort_order: Number(row?.sort_order ?? 0),
-            is_active: Boolean(row?.is_active ?? true),
-            show_in_pos_filter: row?.show_in_pos_filter !== false,
-          }))
-          .filter((row) => row.id > 0 && row.name && row.is_active)
-          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
-        setBookingProductCategories(mapped)
-      } catch {
-        setBookingProductCategories([])
-      }
-    }
-
-    void loadBookingProductCategories()
-    void fetchServicePackages()
-    void fetchUnpaidCompletedAppointments('')
+    // Service, booking-product, package and settlement resources are loaded by
+    // their tabs. They are not required to scan/sell a catalogue product.
     return () => categoryRequest.abort()
   }, [fetchActiveStaffs, fetchBookingProducts, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments, selectedBranchId])
 
@@ -5886,8 +5876,20 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [bookingProductQuery])
 
   useEffect(() => {
+    if (catalogTab !== 'booking-products') return
     void fetchBookingProducts(selectedBookingProductCategoryId)
-  }, [fetchBookingProducts, selectedBookingProductCategoryId])
+    if (bookingProductCategories.length === 0) void fetchBookingProductCategories()
+  }, [bookingProductCategories.length, catalogTab, fetchBookingProductCategories, fetchBookingProducts, selectedBookingProductCategoryId])
+
+  useEffect(() => {
+    if (catalogTab === 'book-service' && services.length === 0 && !servicesLoading) {
+      void Promise.all([fetchServices(), fetchBookingServiceCategories()])
+    } else if (catalogTab === 'service-packages' && servicePackages.length === 0 && !servicePackagesLoading) {
+      void fetchServicePackages()
+    } else if (catalogTab === 'settlement' && settlementAppointments.length === 0 && !settlementLoading) {
+      void fetchUnpaidCompletedAppointments('')
+    }
+  }, [catalogTab, fetchBookingServiceCategories, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments, servicePackages.length, services.length, settlementAppointments.length])
 
   const filteredBookingProducts = useMemo(() => {
     const keyword = debouncedBookingProductQuery.trim().toLowerCase()
@@ -6259,7 +6261,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
   useEffect(() => {
     void fetchProductPage(1, effectiveServerProductQuery, false, { categoryId: selectedCategoryId })
-  }, [effectiveServerProductQuery, fetchProductPage, selectedCategoryId])
+    return () => productRequestAbortControllerRef.current?.abort()
+  }, [effectiveServerProductQuery, fetchProductPage, selectedBranchId, selectedCategoryId])
 
   useEffect(() => {
     const previousCategoryId = Number(previousCategoryIdRef.current)
@@ -9004,7 +9007,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   <div className="w-[120px] h-full bg-gradient-to-br from-gray-100 to-gray-50 overflow-hidden flex-shrink-0">
                     {catalogCoverImageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={catalogCoverImageUrl} alt={item.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                      <img src={catalogCoverImageUrl} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
                         <svg className="h-10 w-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -9150,7 +9153,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     >
                       <PosCatalogInCartBadge qty={cartQty} />
                       <div className="flex items-start gap-3">
-                        {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
+                        {item.image_url ? <img src={item.image_url} alt={item.name} loading="lazy" decoding="async" className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-gray-900">{item.name}</p>
                           {item.cn_name ? <p className="truncate text-xs text-gray-500">{item.cn_name}</p> : null}
