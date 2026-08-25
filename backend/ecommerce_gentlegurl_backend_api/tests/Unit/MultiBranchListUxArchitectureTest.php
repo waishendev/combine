@@ -11,9 +11,10 @@ class MultiBranchListUxArchitectureTest extends TestCase
         $table = $this->frontend('ProductTable.tsx');
         $row = $this->frontend('ProductRow.tsx');
 
-        $this->assertStringContainsString("...(isAllBranches ? [{ key: 'storeLocations', label: 'Branches' }", $table);
+        $this->assertStringContainsString("...(isAllBranches ? [{ key: 'storeLocations', label: 'Branch' }", $table);
         $this->assertStringContainsString('showBranches={isAllBranches}', $table);
         $this->assertStringContainsString('{showBranches && (', $row);
+        $this->assertStringContainsString("map((branch) => branch.name).join(', ') || 'Unassigned'", $row);
         $this->assertStringContainsString('const colCount = columns.length', $table);
     }
 
@@ -23,10 +24,11 @@ class MultiBranchListUxArchitectureTest extends TestCase
         $row = $this->frontend('CategoryRow.tsx');
 
         $this->assertStringContainsString("else qs.set('branch_scope', 'all')", $table);
-        $this->assertStringContainsString("...(isAllBranches ? [{ key: 'availableBranches', label: 'Branches' }", $table);
+        $this->assertStringContainsString("...(isAllBranches ? [{ key: 'availableBranches', label: 'Branch' }", $table);
         $this->assertStringContainsString('(isAllBranches ? 1 : 0)', $table);
         $this->assertStringContainsString('showBranches={isAllBranches}', $table);
         $this->assertStringContainsString('{showBranches && (', $row);
+        $this->assertStringContainsString("map((branch) => branch.name).join(', ') || 'Unassigned'", $row);
     }
 
     private function frontend(string $file): string

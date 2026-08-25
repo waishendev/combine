@@ -673,7 +673,7 @@ export default function CategoryTable({
                   { key: 'description', label: 'Description' },
                   { key: 'menuNames', label: 'Menus' },
                   { key: 'productCount', label: 'Products' },
-                  ...(isAllBranches ? [{ key: 'availableBranches', label: 'Branches' } as const] : []),
+                  ...(isAllBranches ? [{ key: 'availableBranches', label: 'Branch' } as const] : []),
                   { key: 'showInPosFilter', label: 'POS Filter' },
                   { key: 'isActive', label: t('common.status') },
                 ] as const

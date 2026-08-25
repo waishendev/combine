@@ -75,13 +75,7 @@ export default function CategoryRow({
       <td className="px-4 py-2 border border-gray-200">{category.productCount}</td>
       {showBranches && (
         <td className="px-4 py-2 border border-gray-200">
-          <div className="flex max-w-xs flex-wrap gap-1">
-            {category.availableBranches.length ? category.availableBranches.map((branch) => (
-              <span key={branch.id} className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700" title={branch.name}>
-                {branch.code || branch.name}
-              </span>
-            )) : <span className="text-gray-400">—</span>}
-          </div>
+          {category.availableBranches.map((branch) => branch.name).join(', ') || 'Unassigned'}
         </td>
       )}
       <td className="px-4 py-2 border border-gray-200">

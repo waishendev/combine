@@ -570,7 +570,7 @@ export default function ProductTable({
     ...(showCategories ? [{ key: 'categories', label: 'Categories' } as const] : []),
     { key: 'price', label: 'Price' },
     { key: 'stock', label: 'Stock' },
-    ...(isAllBranches ? [{ key: 'storeLocations', label: 'Branches' } as const] : []),
+    ...(isAllBranches ? [{ key: 'storeLocations', label: 'Branch' } as const] : []),
     { key: 'isActive', label: t('common.status') },
   ] as const
   const showSelection = canUpdate
