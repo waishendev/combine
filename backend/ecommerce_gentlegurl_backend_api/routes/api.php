@@ -660,6 +660,8 @@ $protectedRoutes = function () {
         Route::get('/members/{memberId}', [PosController::class, 'memberDetail']);
         Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
         Route::get('/products/search', [PosController::class, 'productSearch']);
+        Route::get('/products/catalog', [PosController::class, 'productCatalog']);
+        Route::get('/booking-products/search', [PosController::class, 'bookingProductSearch']);
         Route::get('/services/search', [PosController::class, 'serviceSearch']);
         Route::get('/service-packages/search', [PosController::class, 'packageSearch']);
         Route::get('/appointments', [PosController::class, 'appointmentSearch']);

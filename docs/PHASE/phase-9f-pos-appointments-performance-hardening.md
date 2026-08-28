@@ -3,6 +3,31 @@
 **Classification:** Phase 9 enhancement/hardening (not Phase 10)  
 **Scope:** CRM POS checkout and POS Appointments; existing multi-Branch authorization is unchanged.
 
+## POS catalogue Branch-context correction (2026-08-28)
+
+POS now has one mandatory operational context: the specific Header Branch. The Product grid calls
+`GET /api/pos/products/catalog?store_location_id={branch}` (and the search endpoint uses the same
+parameter). The server authorizes it with `StoreLocationAccessService`, requires an available
+`store_location_product` row, and reads stock from that Branch's
+`store_location_product_inventories`; it does not fall back to global Product stock.
+
+The lazy tab request inventory is:
+
+| Tab | Frontend loader | Endpoint and scope | Server semantics |
+|---|---|---|---|
+| Products | `fetchProductPage` | `/api/pos/products/catalog` or `/api/pos/products/search`; `store_location_id`, page/category/search | Explicit authorized Branch; Product availability pivot and Branch inventory |
+| Booking Products | `fetchBookingProducts` | `/api/pos/booking-products/search`; `store_location_id`, category/page | Global Booking Product definition is eligible only through its existing linked Booking Service assignment at the Branch |
+| Book Service | `fetchServices` | `/api/pos/services/search`; `store_location_id` | Global service identity; operational availability through `booking_service_store_location` |
+| Service Packages | `fetchServicePackages` | `/api/service-packages`; pagination only | Global sellable definitions remain global; there is no evidenced Package/Branch eligibility model |
+| Settlement | `fetchUnpaidCompletedAppointments` | `/api/pos/appointments`; `store_location_id`, unpaid/search/page | Persisted `bookings.store_location_id` only; specific scope excludes NULL legacy rows |
+
+Booking Products, Booking Services, Packages, and Settlement remain tab-selected lazy loads. Their
+Branch-sensitive in-flight keys include `store_location_id`. A Header Branch change aborts Product
+and opened-tab requests, clears Product/Booking Product/Booking Service/Settlement state, resets lazy
+keys, and reloads only Products plus the currently visible lazy tab. Late old-Branch responses fail
+the controller/request-identity check and cannot win. Unopened tabs stay unloaded. The prior Product
+timer refresh was removed, so this correction adds no polling or eager catalogue requests.
+
 ## Audit and root causes
 
 Static request-flow tracing found three independent amplification paths:
