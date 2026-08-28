@@ -69,6 +69,29 @@ class PosBranchOperationsPhase6CTest extends TestCase
         $this->actingAs($actor)->putJson('/api/ecommerce/thermal-printer-settings', $base + ['is_enabled' => true, 'copies' => 3])->assertUnprocessable();
     }
 
+    public function test_missing_new_branch_pool_is_initialized_without_claiming_legacy_cash(): void
+    {
+        $actor = $this->actor();
+        [$legacyBranch, $newBranch] = [$this->branch('PNG'), $this->branch('NEW')];
+        $actor->storeLocations()->sync([$legacyBranch->id, $newBranch->id]);
+        PosCashPoolAccount::query()->where('store_location_id', $newBranch->id)->delete();
+        $legacy = PosCashPoolAccount::query()->create([
+            'store_location_id' => null, 'code' => 'legacy-unresolved',
+            'total_initial_cash' => 91, 'total_withdraw' => 17,
+        ]);
+
+        $this->actingAs($actor)->getJson('/api/pos/cash-shifts/current?store_location_id='.$newBranch->id)
+            ->assertOk()->assertJsonPath('data.shift', null)
+            ->assertJsonPath('data.pool_balances.total_initial_cash', 0);
+
+        $this->assertDatabaseHas('pos_cash_pool_accounts', [
+            'store_location_id' => $newBranch->id, 'code' => 'default',
+            'total_initial_cash' => 0, 'total_withdraw' => 0,
+        ]);
+        $this->assertNull($legacy->fresh()->store_location_id);
+        $this->assertSame('91.00', $legacy->fresh()->total_initial_cash);
+    }
+
     public function test_cutover_visibility_never_activates_and_backfill_preserves_conflicts(): void
     {
         $actor = $this->actor(); $branch = $this->branch('A'); $actor->storeLocations()->attach($branch);

@@ -17,6 +17,7 @@ import {
   type BookingServiceCategoryApiItem,
 } from './bookingServiceCategoryUtils'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface BookingServiceCategoriesTableProps {
   permissions: string[]
@@ -59,6 +60,7 @@ type CategoriesApiResponse = {
 
 export default function BookingServiceCategoriesTable({ permissions }: BookingServiceCategoriesTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [rows, setRows] = useState<BookingServiceCategoryRowData[]>([])
   const [pageSize, setPageSize] = useState(50)
@@ -127,6 +129,7 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
+        if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
 
         const res = await fetch(`/api/proxy/admin/booking/categories?${qs.toString()}`, {
           cache: 'no-store',
@@ -189,8 +192,10 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
         setLoading(false)
       }
     },
-    [currentPage, pageSize],
+    [currentPage, pageSize, selectedBranchId],
   )
+
+  useEffect(() => { setRows([]); setCurrentPage(1) }, [selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -291,7 +296,7 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
     setCurrentPage(1)
   }
 
-  const colCount = 5 + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
+  const colCount = 5 + (isAllBranches ? 1 : 0) + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
   const totalPages = meta.last_page || 1
 
   const handleCategoryCreated = (category: BookingServiceCategoryRowData) => {
@@ -575,6 +580,7 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
               {importFailedRows.map((item, index) => (
                 <div key={`${item.row}-${index}`}>Row {item.row}: {item.reason}</div>
               ))}
+              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Available At</th>}
             </div>
           )}
         </div>
@@ -654,6 +660,7 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
                       category={category}
                       showActions={showActions}
                       showSelection={showSelection}
+                      showBranches={isAllBranches}
                       selected={selectedIds.has(category.id)}
                       canUpdate={canUpdate}
                       canDelete={canDelete}

@@ -11,6 +11,7 @@ interface BookingServiceCategoryRowProps {
   category: BookingServiceCategoryRowData
   showActions?: boolean
   showSelection?: boolean
+  showBranches?: boolean
   selected?: boolean
   canUpdate?: boolean
   canDelete?: boolean
@@ -27,6 +28,7 @@ export default function BookingServiceCategoryRow({
   category,
   showActions = false,
   showSelection = false,
+  showBranches = false,
   selected = false,
   canUpdate = false,
   canDelete = false,
@@ -102,6 +104,7 @@ export default function BookingServiceCategoryRow({
           label={category.showInPosFilter ? 'Yes' : 'No'}
         />
       </td>
+      {showBranches && <td className="px-4 py-2 border border-gray-200">{category.branchNames?.join(', ') || 'Unassigned'}</td>}
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={category.isActive ? 'active' : 'inactive'}

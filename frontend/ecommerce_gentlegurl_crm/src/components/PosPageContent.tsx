@@ -3565,7 +3565,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         ? (json as { data?: unknown }).data
         : json
 
-      const list = Array.isArray(payload) ? payload : []
+      const list = Array.isArray(payload)
+        ? payload
+        : payload && typeof payload === 'object' && 'data' in payload && Array.isArray((payload as { data?: unknown }).data)
+          ? (payload as { data: unknown[] }).data
+          : []
       const mapped = list
         .map((item): BookingServiceOption | null => {
           if (!item || typeof item !== 'object') return null

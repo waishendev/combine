@@ -30,6 +30,18 @@ class PosCatalogueBranchScopeArchitectureTest extends TestCase
         $this->assertStringContainsString("params.set('store_location_id', String(selectedBranchId))", $source);
         $this->assertStringContainsString('Object.values(lazyRequestAbortRef.current).forEach((controller) => controller.abort())', $source);
         $this->assertStringContainsString("if (catalogTab === 'book-service')", $source);
+        $this->assertStringContainsString("'data' in payload && Array.isArray", $source);
         $this->assertStringNotContainsString('window.setTimeout(tick, 60_000)', $source);
+    }
+
+
+    public function test_booking_management_lists_use_authorized_branch_scope_and_metadata(): void
+    {
+        foreach (['ServiceController.php', 'BookingProductController.php', 'CategoryController.php', 'BookingProductCategoryController.php'] as $controller) {
+            $source = file_get_contents(__DIR__.'/../../app/Http/Controllers/Admin/Booking/'.$controller);
+            $this->assertStringContainsString('accessibleStoreLocations', $source);
+            $this->assertStringContainsString('authorizeStoreLocation', $source);
+            $this->assertStringContainsString('store_location_id', $source);
+        }
     }
 }

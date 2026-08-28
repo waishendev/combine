@@ -15,6 +15,7 @@ import BookingProductCategoriesPanel from './BookingProductCategoriesPanel'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import type { BookingProductCategory, BookingProductRowData } from './bookingProductTypes'
 import { getApiErrorMessage } from '@/lib/api-errors'
+import { useBranch } from '@/contexts/BranchContext'
 
 const formatBookingProductPrice = (p: BookingProductRowData) =>
   p.price_mode === 'range'
@@ -43,6 +44,7 @@ type BookingProductApiResponse = {
 }
 
 export default function BookingProductsTable({ permissions = [] as string[] }) {
+  const { selectedBranchId, isAllBranches } = useBranch()
   const canCreate = permissions.includes('booking.services.create')
   const canUpdate = permissions.includes('booking.services.update')
   const canDelete = permissions.includes('booking.services.delete')
@@ -101,6 +103,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
       if (filters.search.trim()) qs.set('search', filters.search.trim())
       if (filters.status) qs.set('is_active', filters.status === 'active' ? 'true' : 'false')
       if (filters.category_id) qs.set('category_id', filters.category_id)
+      if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
 
       const r = await fetch(`/api/proxy/admin/booking/products?${qs.toString()}`, { cache: 'no-store', signal })
       if (!r.ok) {
@@ -142,7 +145,9 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
     } finally {
       setLoading(false)
     }
-  }, [currentPage, pageSize, filters])
+  }, [currentPage, pageSize, filters, selectedBranchId])
+
+  useEffect(() => { setRows([]); setCurrentPage(1) }, [selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -231,7 +236,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
     }
   }
 
-  const colCount = 5 + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
+  const colCount = 5 + (isAllBranches ? 1 : 0) + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
 
   const handleExportCsv = async () => {
     setIsExporting(true)
@@ -552,6 +557,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Price</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Category</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Status</th>
+              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Available At</th>}
               {showActions && (
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Actions</th>
               )}
@@ -597,6 +603,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
                       {p.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
+                  {isAllBranches && <td className="px-4 py-2 border border-gray-200">{p.linked_booking_service?.store_locations?.map((branch) => branch.name ?? branch.code).filter(Boolean).join(', ') || 'Unassigned'}</td>}
                   {showActions && (
                     <td className="px-4 py-2 border border-gray-200">
                       <div className="flex items-center gap-2">

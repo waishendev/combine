@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingProductCategory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use App\Services\StoreLocationAccessService;
 
 class BookingProductCategoryController extends Controller
 {
@@ -14,20 +15,39 @@ class BookingProductCategoryController extends Controller
      */
     public function index(Request $request)
     {
+        $access = app(StoreLocationAccessService::class);
+        $accessibleIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+        $branchId = $request->filled('store_location_id')
+            ? (int) $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false)->id
+            : null;
         $query = BookingProductCategory::query()
             ->select(['id', 'name', 'cn_name', 'sort_order', 'is_active', 'show_in_pos_filter'])
+            ->with(['products.linkedBookingService.storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code')])
+            ->when($branchId, fn ($query) => $query->whereHas('products.linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->orderBy('sort_order')
             ->orderBy('id');
 
         if ($request->boolean('all')) {
-            return $this->respond($query->get());
+            return $this->respond($this->withBranchMetadata($query->get()));
         }
 
         if ($request->filled('page') || $request->filled('per_page')) {
-            return $this->respond($query->paginate($request->integer('per_page', 50)));
+            $paginator = $query->paginate($request->integer('per_page', 50));
+            $paginator->setCollection($this->withBranchMetadata($paginator->getCollection()));
+            return $this->respond($paginator);
         }
 
-        return $this->respond($query->get());
+        return $this->respond($this->withBranchMetadata($query->get()));
+    }
+
+    private function withBranchMetadata($categories)
+    {
+        return $categories->map(function ($category) {
+            $category->setAttribute('store_locations', $category->products
+                ->flatMap(fn ($product) => $product->linkedBookingService?->storeLocations ?? collect())
+                ->unique('id')->values());
+            return $category;
+        });
     }
 
     public function store(Request $request)

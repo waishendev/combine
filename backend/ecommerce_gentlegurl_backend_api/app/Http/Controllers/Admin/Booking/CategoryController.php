@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use App\Services\StoreLocationAccessService;
 
 class CategoryController extends Controller
 {
@@ -19,22 +20,35 @@ class CategoryController extends Controller
 
     public function index(Request $request)
     {
+        $access = app(StoreLocationAccessService::class);
+        $accessibleIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+        $branchId = $request->filled('store_location_id')
+            ? (int) $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false)->id
+            : null;
         $query = BookingServiceCategory::query()
+            ->with(['services.storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code')])
+            ->when($branchId, fn ($query) => $query->whereHas('services.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->when($request->filled('name'), fn ($inner) => $inner->where('name', 'like', '%' . $request->string('name') . '%'))
             ->orderBy('sort_order')
             ->orderBy('name');
 
         if ($request->boolean('all')) {
             return $this->respond(
-                $query->get()->map(fn (BookingServiceCategory $category) => $this->formatCategory($category))->values()
+                $query->get()->map(fn (BookingServiceCategory $category) => $this->formatCategoryWithBranches($category))->values()
             );
         }
 
         $categories = $query->paginate($request->integer('per_page', 20));
 
-        $categories->getCollection()->transform(fn (BookingServiceCategory $category) => $this->formatCategory($category));
+        $categories->getCollection()->transform(fn (BookingServiceCategory $category) => $this->formatCategoryWithBranches($category));
 
         return $this->respond($categories);
+    }
+
+    private function formatCategoryWithBranches(BookingServiceCategory $category): array
+    {
+        return array_merge($this->formatCategory($category), ['store_locations' => $category->services
+            ->flatMap(fn ($service) => $service->storeLocations)->unique('id')->values()->all()]);
     }
 
     public function show(int $id)

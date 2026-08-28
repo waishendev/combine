@@ -8,15 +8,22 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use App\Services\StoreLocationAccessService;
 
 class BookingProductController extends Controller
 {
     public function index(Request $request)
     {
+        $access = app(StoreLocationAccessService::class);
+        $accessibleIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+        $branchId = $request->filled('store_location_id')
+            ? (int) $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false)->id
+            : null;
         $perPage = max(1, min(200, $request->integer('per_page', 20)));
 
         $query = BookingProduct::query()
-            ->with(['categories', 'questions.options'])
+            ->with(['categories', 'questions.options', 'linkedBookingService.storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code')])
+            ->when($branchId, fn ($query) => $query->whereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->orderByRaw("COALESCE(booking_products.name, '') asc")
             ->orderBy('booking_products.id');
 

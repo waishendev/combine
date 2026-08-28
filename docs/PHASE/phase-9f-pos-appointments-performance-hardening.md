@@ -28,6 +28,11 @@ keys, and reloads only Products plus the currently visible lazy tab. Late old-Br
 the controller/request-identity check and cannot win. Unopened tabs stay unloaded. The prior Product
 timer refresh was removed, so this correction adds no polling or eager catalogue requests.
 
+The empty BOOK SERVICE regression was response-shape, not missing assignment data: the authorized
+POS endpoint returns its list as `data.data`, while the lazy client only accepted a top-level array.
+The loader now unwraps both supported envelopes, still sends `store_location_id`, and still rejects
+late responses by AbortController identity. No service identity is copied or made Branch-owned.
+
 ## Audit and root causes
 
 Static request-flow tracing found three independent amplification paths:

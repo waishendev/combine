@@ -9883,14 +9883,6 @@ class PosController extends Controller
             throw ValidationException::withMessages(['store_location_id' => __('The selected Branch is not available for POS.')]);
         }
 
-        $openShift = PosCashShift::query()
-            ->where('event_type', PosCashShift::EVENT_OPEN)
-            ->whereDoesntHave('closeEvent')
-            ->latest('opened_at')->first();
-        if ($openShift && (int) $openShift->store_location_id !== (int) $branch->id) {
-            throw ValidationException::withMessages(['store_location_id' => __('The open cash shift belongs to another Branch. Close it before operating POS here.')]);
-        }
-
         $cart = PosCart::firstOrCreate(['staff_user_id' => $staffUserId], ['store_location_id' => $branch->id]);
         if ($cart->store_location_id === null) {
             $cart->update(['store_location_id' => $branch->id]);

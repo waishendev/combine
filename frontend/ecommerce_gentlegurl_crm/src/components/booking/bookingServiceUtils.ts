@@ -39,6 +39,7 @@ export type BookingServiceApiItem = {
   allowed_staff_count?: number | string | null
   allowed_staff_names?: string[] | null
   primary_slots?: Array<{ start_time?: string | null }> | null
+  store_locations?: Array<{ id?: number; name?: string; code?: string }> | null
 }
 
 export const extractBookingServiceApiErrorMessage = (
@@ -148,5 +149,6 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     allowedStaffCount: item.allowed_staff_count != null ? Number(item.allowed_staff_count) : undefined,
     allowedStaffNames: Array.isArray(item.allowed_staff_names) ? item.allowed_staff_names.filter((name): name is string => typeof name === 'string') : undefined,
     primarySlots: Array.isArray(item.primary_slots) ? item.primary_slots.map((slot) => String(slot?.start_time ?? "")).filter(Boolean) : undefined,
+    branchNames: Array.isArray(item.store_locations) ? item.store_locations.map((branch) => String(branch.name ?? branch.code ?? '')).filter(Boolean) : [],
   }
 }

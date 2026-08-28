@@ -96,27 +96,26 @@ class PosCashPoolService
 
     private function lockDefaultAccount(int $storeLocationId): PosCashPoolAccount
     {
+        // Missing is normal for a newly-created Branch. Creating its zero-balance
+        // account is initialization, not legacy attribution/backfill.
+        PosCashPoolAccount::query()->firstOrCreate([
+            'store_location_id' => $storeLocationId,
+            'code' => PosCashPoolAccount::DEFAULT_CODE,
+        ], ['total_initial_cash' => 0, 'total_withdraw' => 0]);
         $account = PosCashPoolAccount::query()
             ->where('code', PosCashPoolAccount::DEFAULT_CODE)
             ->where('store_location_id', $storeLocationId)
             ->lockForUpdate()
             ->first();
-        if (! $account) {
-            throw ValidationException::withMessages(['store_location_id' => [__('Cash Pool Branch attribution is unresolved. Run the reviewed POS Branch backfill before cash operations.')]]);
-        }
         return $account;
     }
 
     private function defaultAccount(int $storeLocationId): PosCashPoolAccount
     {
-        $account = PosCashPoolAccount::query()
-            ->where('code', PosCashPoolAccount::DEFAULT_CODE)
-            ->where('store_location_id', $storeLocationId)
-            ->first();
-        if (! $account) {
-            throw ValidationException::withMessages(['store_location_id' => [__('Cash Pool Branch attribution is unresolved. Run the reviewed POS Branch backfill before cash operations.')]]);
-        }
-        return $account;
+        return PosCashPoolAccount::query()->firstOrCreate([
+            'store_location_id' => $storeLocationId,
+            'code' => PosCashPoolAccount::DEFAULT_CODE,
+        ], ['total_initial_cash' => 0, 'total_withdraw' => 0]);
     }
 
     private function postEntry(
