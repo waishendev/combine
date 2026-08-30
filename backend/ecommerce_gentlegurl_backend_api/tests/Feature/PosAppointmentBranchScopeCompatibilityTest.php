@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingService;
+use App\Models\Ecommerce\PosCashShift;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Permission;
 use App\Models\Role;
@@ -90,11 +91,83 @@ class PosAppointmentBranchScopeCompatibilityTest extends TestCase
             ->assertOk()->assertJsonCount(0, 'data.data');
     }
 
+    public function test_lightweight_calendar_all_scope_returns_only_accessible_branches_with_metadata_and_explicit_legacy_null(): void
+    {
+        $actor = $this->actor();
+        [$a, $b, $inaccessible] = [$this->branch('ALL-A'), $this->branch('ALL-B'), $this->branch('ALL-X')];
+        $actor->storeLocations()->sync([$a->id, $b->id]);
+        [$service, $staff] = $this->eligibleServiceAndStaff([$a, $b, $inaccessible]);
+        $bookingA = $this->booking('ALL-A-BOOKING', $a->id, $service, $staff);
+        $bookingB = $this->booking('ALL-B-BOOKING', $b->id, $service, $staff);
+        $this->booking('ALL-HIDDEN-BOOKING', $inaccessible->id, $service, $staff);
+        $legacy = $this->booking('ALL-LEGACY-BOOKING', null, $service, $staff);
+
+        $rows = collect($this->actingAs($actor)->getJson('/api/pos/appointments/calendar?include_terminal_statuses=1&per_page=20')
+            ->assertOk()->json('data.data'));
+
+        $this->assertEqualsCanonicalizing([$bookingA->id, $bookingB->id, $legacy->id], $rows->pluck('id')->all());
+        $this->assertSame($a->id, $rows->firstWhere('id', $bookingA->id)['store_location_id']);
+        $this->assertSame('Branch ALL-A', $rows->firstWhere('id', $bookingA->id)['store_location']['name']);
+        $this->assertSame('ALL-A', $rows->firstWhere('id', $bookingA->id)['store_location']['code']);
+        $this->assertNull($rows->firstWhere('id', $legacy->id)['store_location']);
+    }
+
+    public function test_mark_completed_uses_the_persisted_appointment_branch_shift_in_specific_and_all_scope(): void
+    {
+        $actor = $this->actor();
+        [$png, $branchB] = [$this->branch('PNG'), $this->branch('B')];
+        $actor->storeLocations()->sync([$png->id, $branchB->id]);
+        [$service, $staff] = $this->eligibleServiceAndStaff([$png, $branchB]);
+
+        $allWithoutShift = $this->booking('ALL-NO-SHIFT', $png->id, $service, $staff);
+        $specificWithoutShift = $this->booking('PNG-NO-SHIFT', $png->id, $service, $staff);
+        $this->actingAs($actor)->postJson('/api/pos/appointments/'.$allWithoutShift->id.'/mark-completed')
+            ->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
+        $this->actingAs($actor)->postJson('/api/pos/appointments/'.$specificWithoutShift->id.'/mark-completed?store_location_id='.$png->id)
+            ->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
+
+        $guardedSettlement = $this->booking('ALL-GUARDED-SETTLEMENT', $png->id, $service, $staff);
+        $this->actingAs($actor)->postJson('/api/pos/appointments/'.$guardedSettlement->id.'/collect-payment', [
+            'payment_method' => 'cash',
+        ])->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
+        $this->actingAs($actor)->postJson('/api/pos/appointments/'.$guardedSettlement->id.'/finalize-zero-settlement', [
+            'payment_method' => 'qrpay',
+        ])->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
+        $this->actingAs($actor)->postJson('/api/pos/appointments/'.$guardedSettlement->id.'/apply-package')
+            ->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
+
+        // Detail historically has no shift gate and remains available in ALL.
+        $this->actingAs($actor)->getJson('/api/pos/appointments/'.$guardedSettlement->id)
+            ->assertOk()->assertJsonPath('data.store_location_id', $png->id);
+
+        $this->openShift($branchB, $actor, $staff);
+        $pngWithOnlyBranchBShift = $this->booking('PNG-WRONG-SHIFT', $png->id, $service, $staff);
+        $this->actingAs($actor)->postJson('/api/pos/appointments/'.$pngWithOnlyBranchBShift->id.'/mark-completed')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('store_location_id')
+            ->assertJsonPath('errors.store_location_id.0', 'No open cash shift for PNG. Open a PNG cash shift before checkout.');
+
+        $this->openShift($png, $actor, $staff);
+        $allWithShift = $this->booking('ALL-WITH-SHIFT', $png->id, $service, $staff);
+        $specificWithShift = $this->booking('PNG-WITH-SHIFT', $png->id, $service, $staff);
+        $this->actingAs($actor)->postJson('/api/pos/appointments/'.$allWithShift->id.'/mark-completed')
+            ->assertOk()->assertJsonPath('data.appointment.status', 'COMPLETED');
+        $this->actingAs($actor)->postJson('/api/pos/appointments/'.$specificWithShift->id.'/mark-completed?store_location_id='.$png->id)
+            ->assertOk()->assertJsonPath('data.appointment.status', 'COMPLETED');
+
+        $legacy = $this->booking('LEGACY-NO-BRANCH', null, $service, $staff);
+        $this->actingAs($actor)->postJson('/api/pos/appointments/'.$legacy->id.'/mark-completed')
+            ->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
+    }
+
     private function actor(): User
     {
         $role = Role::create(['name' => 'appointment-branch-'.uniqid(), 'is_active' => true, 'is_system' => false]);
-        $permission = Permission::firstOrCreate(['slug' => 'pos.appointments.manage'], ['name' => 'POS appointments manage']);
-        $role->permissions()->attach($permission);
+        $permissions = collect([
+            Permission::firstOrCreate(['slug' => 'pos.appointments.manage'], ['name' => 'POS appointments manage']),
+            Permission::firstOrCreate(['slug' => 'pos.appointments.checkout'], ['name' => 'POS appointments checkout']),
+        ]);
+        $role->permissions()->attach($permissions->pluck('id'));
         $user = User::factory()->create();
         $user->roles()->attach($role);
         return $user;
@@ -119,5 +192,18 @@ class PosAppointmentBranchScopeCompatibilityTest extends TestCase
     private function booking(string $code, ?int $branchId, BookingService $service, Staff $staff): Booking
     {
         return Booking::create(['booking_code' => $code, 'source' => 'STAFF', 'store_location_id' => $branchId, 'staff_id' => $staff->id, 'service_id' => $service->id, 'start_at' => now()->addDay(), 'end_at' => now()->addDay()->addMinutes(30), 'status' => 'CONFIRMED', 'deposit_amount' => 0, 'payment_status' => 'UNPAID']);
+    }
+
+    private function openShift(StoreLocation $branch, User $actor, Staff $staff): PosCashShift
+    {
+        return PosCashShift::create([
+            'store_location_id' => $branch->id,
+            'event_type' => PosCashShift::EVENT_OPEN,
+            'opening_amount' => 0,
+            'opened_by' => $actor->id,
+            'opened_staff_id' => $staff->id,
+            'opened_at' => now(),
+            'status' => PosCashShift::STATUS_OPEN,
+        ]);
     }
 }

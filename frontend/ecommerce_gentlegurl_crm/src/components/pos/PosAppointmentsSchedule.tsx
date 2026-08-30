@@ -39,6 +39,7 @@ type Props = {
   scheduleStaff?: PosScheduleStaff[]
   /** Staff IDs on approved leave for the selected day (DAY view). */
   staffOffTodayIds?: number[]
+  showBranchContext?: boolean
   filterSlot: ReactNode
 }
 
@@ -57,6 +58,7 @@ export default function PosAppointmentsSchedule({
   onOpenAppointment,
   scheduleStaff = [],
   staffOffTodayIds = [],
+  showBranchContext = false,
   filterSlot,
 }: Props) {
   const calendarCells = useMemo(() => {
@@ -104,7 +106,7 @@ export default function PosAppointmentsSchedule({
       const t = formatPosScheduleTimeLabel(row.appointment_start_at)
       const who = truncate(row.customer_name.trim() || '—', 10)
       return {
-        text: `${t} · ${who}`,
+        text: `${t} · ${who}${showBranchContext ? ` · ${row.store_location?.code || row.store_location?.name || 'Unassigned'}` : ''}`,
         tone: posAppointmentVisualToneFromRow(row),
       }
     })
@@ -397,6 +399,7 @@ export default function PosAppointmentsSchedule({
             onBlockClick={onOpenAppointment}
             scheduleStaff={scheduleStaff}
             staffOffTodayIds={staffOffTodayIds}
+            showBranchContext={showBranchContext}
           />
         </div>
       ) : (

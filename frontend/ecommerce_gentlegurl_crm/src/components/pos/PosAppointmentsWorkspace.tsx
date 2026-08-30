@@ -445,6 +445,11 @@ export default function PosAppointmentsWorkspace({
     if (branchId) url.searchParams.set('store_location_id', String(branchId))
     return `${url.pathname}${url.search}`
   }, [])
+  const appointmentBranchScopedUrl = useCallback((raw: string, branchId?: number | null) => {
+    const url = new URL(raw, window.location.origin)
+    if (branchId) url.searchParams.set('store_location_id', String(branchId))
+    return `${url.pathname}${url.search}`
+  }, [])
   const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const canManageBalance = useMemo(() => permissions.includes('customer_wallet.adjust'), [permissions])
   const canPosCheckout = useMemo(() => permissions.includes('pos.checkout'), [permissions])
@@ -504,6 +509,7 @@ export default function PosAppointmentsWorkspace({
   const requiresOpenCashShift = canPosCheckout || canManagePosAppointments || canAppointmentCheckoutAndPackage
   const cashShiftActionDisabled = requiresOpenCashShift && (cashShiftLoading || !hasOpenShift)
   const cashShiftActionTitle = cashShiftActionDisabled ? requireOpenShiftMessage : undefined
+  const [appointmentCashShiftState, setAppointmentCashShiftState] = useState<'idle' | 'loading' | 'open' | 'closed' | 'unresolved'>('idle')
 
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
   const [posApptViewMode, setPosApptViewMode] = useState<'month' | 'day'>('month')
@@ -1438,12 +1444,7 @@ export default function PosAppointmentsWorkspace({
       }
 
     const branchId = selectedBranchIdRef.current
-    if (!branchId) {
-      setAppointments([])
-      setAppointmentsLoading(false)
-      return
-    }
-    const requestKey = `${branchId}:${params.toString()}`
+    const requestKey = `${branchId ?? 'all'}:${params.toString()}`
     // React StrictMode, the refresh clock, and filter effects can meet in the same
     // render. One logical query is allowed to own only one network request.
     if (appointmentsInFlightKey.current === requestKey) return
@@ -2377,6 +2378,47 @@ export default function PosAppointmentsWorkspace({
     [appointmentQrProofPreviewUrl, showMsg],
   )
 
+  useEffect(() => {
+    const branchId = appointmentDetail?.store_location_id ?? null
+    if (!appointmentDetail) {
+      setAppointmentCashShiftState('idle')
+      return
+    }
+    if (!branchId) {
+      setAppointmentCashShiftState('unresolved')
+      return
+    }
+    if (selectedBranchId === branchId && !cashShiftLoading) {
+      setAppointmentCashShiftState(hasOpenShift ? 'open' : 'closed')
+      return
+    }
+    const controller = new AbortController()
+    setAppointmentCashShiftState('loading')
+    void fetch(`/api/proxy/pos/cash-shifts/current?store_location_id=${branchId}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    }).then(async (res) => {
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.message ?? 'Unable to check the appointment Branch cash shift.')
+      setAppointmentCashShiftState(json?.data?.shift ? 'open' : 'closed')
+    }).catch((error) => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) setAppointmentCashShiftState('closed')
+    })
+    return () => controller.abort()
+  }, [appointmentDetail, cashShiftLoading, hasOpenShift, selectedBranchId])
+
+  const appointmentBranchLabel = appointmentDetail?.store_location
+    ? (appointmentDetail.store_location.code || appointmentDetail.store_location.name)
+    : 'Unassigned'
+  const appointmentCashActionDisabled = requiresOpenCashShift && appointmentCashShiftState !== 'open'
+  const appointmentCashActionTitle = appointmentCashShiftState === 'unresolved'
+    ? 'This legacy appointment has no resolved Branch, so checkout cannot select a cash shift safely.'
+    : appointmentCashShiftState === 'loading'
+      ? `Checking the cash shift for ${appointmentBranchLabel}…`
+      : appointmentCashActionDisabled
+        ? `No open cash shift for ${appointmentBranchLabel}. Open a ${appointmentBranchLabel} cash shift before checkout.`
+        : undefined
+
   const refreshOpenedAppointmentDetail = useCallback(async () => {
     if (!appointmentDetail?.id) return
     const res = await appointmentFetch(`/api/proxy/pos/appointments/${appointmentDetail.id}`, { cache: 'no-store' })
@@ -3027,7 +3069,7 @@ export default function PosAppointmentsWorkspace({
     try {
       const [addonRes, servicesRes] = await Promise.all([
         fetch(`/api/proxy/pos/services/${appointmentDetail.service.id}/addon-options`),
-        fetch(branchScopedUrl('/api/proxy/booking/services'), { cache: 'no-store' }),
+        fetch(appointmentBranchScopedUrl('/api/proxy/booking/services', appointmentDetail.store_location_id), { cache: 'no-store' }),
       ])
       const addonJson = await addonRes.json().catch(() => null)
       setEditAddonQuestions((addonJson?.data?.questions ?? []) as ServiceAddonQuestion[])
@@ -4130,7 +4172,7 @@ export default function PosAppointmentsWorkspace({
           extra_duration_min: String(extraDurationMin),
           ignore_booking_id: String(appointmentDetail.id),
         })
-        const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
+        const res = await fetch(appointmentBranchScopedUrl(`/api/proxy/pos/availability/pooled?${params.toString()}`, appointmentDetail.store_location_id), { cache: 'no-store' })
         const json = await res.json().catch(() => null)
         if (json?.data?.verify_mode != null) {
           setPosAvailabilityVerifyMode(parsePosAvailabilityVerifyMode(json.data.verify_mode))
@@ -4842,7 +4884,7 @@ export default function PosAppointmentsWorkspace({
     !appointmentActionLoading &&
     !appointmentIsTerminalCancelled &&
     appointmentStatusUpper !== 'COMPLETED' &&
-    !cashShiftActionDisabled
+    !appointmentCashActionDisabled
 
   /** Reserved package, amount to collect is RM 0 — finalise in place (receipt) without sending the user to Main POS. */
   const checkoutZeroBalanceSettlement = appointmentNeedsZeroBalanceCheckout(appointmentDetail)
@@ -5234,6 +5276,7 @@ export default function PosAppointmentsWorkspace({
               onOpenAppointment={(id) => void openAppointmentDetail(id)}
               scheduleStaff={scheduleStaffForDayGrid}
               staffOffTodayIds={staffOffTodayIds}
+              showBranchContext={selectedBranchId == null}
               filterSlot={(
                 <div className="shrink-0">
                   <button
@@ -5919,7 +5962,7 @@ export default function PosAppointmentsWorkspace({
                           <button
                             type="button"
                             disabled={
-                              cashShiftActionDisabled ||
+                              appointmentCashActionDisabled ||
                               appointmentActionLoading ||
                               appointmentHasUnsettledRangePricing ||
                               (appointmentDueAmountNow <= 0.0001 && !checkoutZeroBalanceSettlement)
@@ -5944,8 +5987,8 @@ export default function PosAppointmentsWorkspace({
                             }}
                             className="min-h-[44px] rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
                             title={
-                              cashShiftActionDisabled
-                                ? requireOpenShiftMessage
+                              appointmentCashActionDisabled
+                                ? appointmentCashActionTitle
                                 : appointmentHasUnsettledRangePricing
                                 ? UNSETTLED_RANGE_CHECKOUT_MESSAGE
                                 : checkoutZeroBalanceSettlement
@@ -5958,8 +6001,8 @@ export default function PosAppointmentsWorkspace({
                           {appointmentShowApplyPackageButton ? (
                             <button
                               type="button"
-                              disabled={cashShiftActionDisabled || appointmentActionLoading}
-                              title={cashShiftActionTitle ?? undefined}
+                              disabled={appointmentCashActionDisabled || appointmentActionLoading}
+                              title={appointmentCashActionTitle}
                               onClick={() => setApplyPackageModalOpen(true)}
                               className="min-h-[44px] rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:pointer-events-none disabled:opacity-50"
                             >
@@ -5968,8 +6011,8 @@ export default function PosAppointmentsWorkspace({
                           ) : packageReservedPendingRegister ? (
                             <button
                               type="button"
-                              disabled={cashShiftActionDisabled || appointmentActionLoading}
-                              title={cashShiftActionTitle}
+                              disabled={appointmentCashActionDisabled || appointmentActionLoading}
+                              title={appointmentCashActionTitle}
                               onClick={() => setApplyPackageModalOpen(true)}
                               className="min-h-[44px] rounded-lg border-2 border-amber-600 bg-white py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:bg-amber-50 disabled:pointer-events-none disabled:opacity-50"
                             >
@@ -5997,7 +6040,7 @@ export default function PosAppointmentsWorkspace({
                         <button
                           type="button"
                           disabled={!canMarkAppointmentCompleted || appointmentActionLoading}
-                          title={cashShiftActionDisabled && requiresOpenCashShift ? requireOpenShiftMessage : 'Mark appointment as completed'}
+                          title={appointmentCashActionDisabled && requiresOpenCashShift ? appointmentCashActionTitle : 'Mark appointment as completed'}
                           onClick={() => void markAppointmentCompleted()}
                           className="flex min-h-[48px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
                         >
@@ -6025,8 +6068,8 @@ export default function PosAppointmentsWorkspace({
                         </button>
                         <button
                           type="button"
-                          disabled={cashShiftActionDisabled || appointmentActionLoading}
-                          title={cashShiftActionTitle}
+                          disabled={appointmentCashActionDisabled || appointmentActionLoading}
+                          title={appointmentCashActionTitle}
                           onClick={() => requestAppointmentStatusUpdate('CANCELLED')}
                           className="min-h-[48px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-white disabled:opacity-50"
                         >
@@ -6034,8 +6077,8 @@ export default function PosAppointmentsWorkspace({
                         </button>
                         <button
                           type="button"
-                          disabled={cashShiftActionDisabled || appointmentActionLoading}
-                          title={cashShiftActionDisabled && requiresOpenCashShift ? requireOpenShiftMessage : 'Customer did not attend the scheduled appointment (DNA / no-show).'}
+                          disabled={appointmentCashActionDisabled || appointmentActionLoading}
+                          title={appointmentCashActionDisabled && requiresOpenCashShift ? appointmentCashActionTitle : 'Customer did not attend the scheduled appointment (DNA / no-show).'}
                           onClick={() => requestAppointmentStatusUpdate('NO_SHOW')}
                           className="min-h-[48px] rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-900 shadow-sm transition hover:bg-rose-50 disabled:opacity-50"
                         >
@@ -6043,8 +6086,8 @@ export default function PosAppointmentsWorkspace({
                         </button>
                         <button
                           type="button"
-                          disabled={cashShiftActionDisabled || appointmentActionLoading}
-                          title={cashShiftActionTitle}
+                          disabled={appointmentCashActionDisabled || appointmentActionLoading}
+                          title={appointmentCashActionTitle}
                           onClick={() => requestAppointmentStatusUpdate('LATE_CANCELLATION')}
                           className="min-h-[48px] rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm font-semibold text-orange-900 shadow-sm transition hover:bg-orange-50 disabled:opacity-50"
                         >
@@ -6080,7 +6123,7 @@ export default function PosAppointmentsWorkspace({
                         bookingId={appointmentDetail.id}
                         bookingCode={appointmentDetail.booking_code}
                         initialPhotos={appointmentDetail.service_photos ?? []}
-                        canManage={(canManagePosAppointments || canPosCheckout) && !cashShiftActionDisabled}
+                        canManage={(canManagePosAppointments || canPosCheckout) && !appointmentCashActionDisabled}
                         layout="tile"
                         onChanged={(photos) => setAppointmentDetail((prev) => (prev ? { ...prev, service_photos: photos } : prev))}
                       />
@@ -9183,13 +9226,13 @@ export default function PosAppointmentsWorkspace({
                 <button
                   type="button"
                   disabled={
-                    cashShiftActionDisabled ||
+                    appointmentCashActionDisabled ||
                     appointmentActionLoading ||
                     (checkoutZeroBalanceSettlement && appointmentRefundNeededAmount > 0.0001 && !appointmentDetail?.refund_handled) ||
                     (!checkoutZeroBalanceSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementPaymentValid))
                   }
                   onClick={() => void settleAppointmentPayment()}
-                  title={cashShiftActionTitle}
+                  title={appointmentCashActionTitle}
                   className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   Confirm Checkout

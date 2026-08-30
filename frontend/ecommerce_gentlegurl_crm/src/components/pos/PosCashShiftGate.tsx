@@ -460,7 +460,7 @@ export default function PosCashShiftGate({
           </div>
         ) : !selectedBranchId || !selectedBranch ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 shadow-sm">
-            Select a specific Branch to view or operate its current Cash Shift.
+            All Branches is an appointment overview and never owns a Cash Shift. Cash actions check the selected appointment&apos;s Branch.
           </div>
         ) : visibleShift ? (
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm shadow-sm">
