@@ -16,8 +16,10 @@ return new class extends Migration
             return;
         }
 
-        if (Schema::hasTable('orders')) {
+        if (Schema::hasTable('orders') && Schema::hasColumns('orders', ['store_location_id', 'created_at', 'created_by_user_id'])) {
             DB::statement('CREATE INDEX IF NOT EXISTS orders_shop_store_created_at_idx ON orders (store_location_id, created_at DESC) WHERE created_by_user_id IS NULL');
+        }
+        if (Schema::hasTable('orders') && Schema::hasColumns('orders', ['status', 'created_at', 'created_by_user_id'])) {
             DB::statement('CREATE INDEX IF NOT EXISTS orders_shop_status_created_at_idx ON orders (status, created_at DESC) WHERE created_by_user_id IS NULL');
             DB::statement('CREATE INDEX IF NOT EXISTS orders_created_by_user_id_idx ON orders (created_by_user_id) WHERE created_by_user_id IS NOT NULL');
         }

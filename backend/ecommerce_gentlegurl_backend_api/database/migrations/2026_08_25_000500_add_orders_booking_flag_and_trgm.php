@@ -42,9 +42,11 @@ WHERE is_booking_checkout = false
     )
   )
 SQL);
-                DB::statement('CREATE INDEX IF NOT EXISTS orders_shop_booking_checkout_created_at_idx ON orders (is_booking_checkout, created_at DESC) WHERE created_by_user_id IS NULL');
                 DB::statement('CREATE EXTENSION IF NOT EXISTS pg_trgm');
-                DB::statement('CREATE INDEX IF NOT EXISTS orders_shop_order_number_trgm_idx ON orders USING gin (order_number gin_trgm_ops) WHERE created_by_user_id IS NULL');
+                if (Schema::hasColumn('orders', 'created_by_user_id')) {
+                    DB::statement('CREATE INDEX IF NOT EXISTS orders_shop_booking_checkout_created_at_idx ON orders (is_booking_checkout, created_at DESC) WHERE created_by_user_id IS NULL');
+                    DB::statement('CREATE INDEX IF NOT EXISTS orders_shop_order_number_trgm_idx ON orders USING gin (order_number gin_trgm_ops) WHERE created_by_user_id IS NULL');
+                }
             } else {
                 DB::table('orders')
                     ->where('is_booking_checkout', false)

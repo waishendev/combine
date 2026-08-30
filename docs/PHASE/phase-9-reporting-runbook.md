@@ -1,5 +1,16 @@
 # Phase 9 — branch-aware dashboard and reporting runbook
 
+## Production-upgrade migration ordering (2026-08-30)
+
+A pre-Multi-Branch production dump reaches the August 2026 dashboard index migration before the
+January 2027 schema migration that adds `orders.store_location_id` and Product/Branch inventory
+tables. The early migration therefore treats missing tables **and missing columns** as deferred
+prerequisites instead of executing invalid PostgreSQL DDL. The post-foundation
+`2027_01_06_000100_add_deferred_branch_query_indexes` migration creates the deferred indexes with
+`IF NOT EXISTS` after all required schema exists. Do not manually add the column, edit the production
+`migrations` table, or run a data backfill to work around this ordering issue; normal `php artisan
+migrate` is the supported upgrade path.
+
 ## Audited report matrix
 
 | Surface | Endpoint / source | Attribution | Specific Branch | All Branches / NULL | Export and authorization |
