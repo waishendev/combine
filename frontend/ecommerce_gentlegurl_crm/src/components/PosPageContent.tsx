@@ -4195,6 +4195,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setBookingSubmitting(true)
     if (bookingSelectedSlot?.end_at) {
         const params = new URLSearchParams({ staff_id: String(bookingAssignedStaffId), start_at: bookingSlotValue, end_at: bookingSelectedSlot.end_at })
+        if (selectedBranchId) params.set('store_location_id', String(selectedBranchId))
         const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
         const availabilityJson = await availabilityRes.json().catch(() => null)
         const reason = String(availabilityJson?.data?.reason_code ?? '')
@@ -4238,6 +4239,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       bookingAddonLineTotalOverrides,
     )
     const payload: Record<string, unknown> = {
+      store_location_id: selectedBranchId,
       booking_service_id: bookingServiceDraft.id,
       assigned_staff_id: bookingAssignedStaffId,
       selected_option_ids: bookingMainAddonIds,
@@ -4351,6 +4353,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     bookingServiceDraft,
     bookingSlotValue,
     bookingSelectedServiceIds,
+    selectedBranchId,
     selectedMember?.id,
     showMsg,
   ])

@@ -2069,6 +2069,7 @@ export default function PosAppointmentsWorkspace({
     try {
       if (createAppointmentSelectedSlot?.end_at) {
         const params = new URLSearchParams({ staff_id: String(createAppointmentAssignedStaffId), start_at: createAppointmentSlotValue, end_at: createAppointmentSelectedSlot.end_at })
+        if (selectedBranchId) params.set('store_location_id', String(selectedBranchId))
         const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
         const availabilityJson = await availabilityRes.json().catch(() => null)
         const reason = String(availabilityJson?.data?.reason_code ?? '')

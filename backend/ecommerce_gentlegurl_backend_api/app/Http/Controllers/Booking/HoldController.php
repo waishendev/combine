@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
+use App\Models\Ecommerce\StoreLocation;
+use App\Models\Staff;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Ecommerce\OrderReserveService;
 use Carbon\Carbon;
@@ -21,6 +23,7 @@ class HoldController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'store_location_id' => ['required', 'integer', 'exists:store_locations,id'],
             'service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'start_at' => ['required', 'date'],
@@ -35,6 +38,16 @@ class HoldController extends Controller
         }
 
         $service = BookingService::query()->with('allowedStaffs:id')->findOrFail($validated['service_id']);
+        $branch = StoreLocation::query()->whereKey((int) $validated['store_location_id'])
+            ->where('is_active', true)->where('is_booking_available', true)->firstOrFail();
+        $staff = Staff::query()->findOrFail((int) $validated['staff_id']);
+
+        if (! $service->isAvailableAt((int) $branch->id)) {
+            return $this->respondError('Selected service is not available at this Branch.', 422);
+        }
+        if (! $staff->worksAt((int) $branch->id)) {
+            return $this->respondError('Selected staff does not work at this Branch.', 422);
+        }
 
         if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
             return $this->respondError('Selected staff is not allowed for this service.', 422);
@@ -44,8 +57,8 @@ class HoldController extends Controller
 
         $holdMinutes = app(OrderReserveService::class)->getBookingCartHoldMinutes();
 
-        $booking = DB::transaction(function () use ($validated, $customer, $service, $startAt, $endAt, $holdMinutes) {
-            if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt)
+        $booking = DB::transaction(function () use ($validated, $customer, $service, $branch, $startAt, $endAt, $holdMinutes) {
+            if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt, (int) $branch->id)
                 || $this->availabilityService->hasConflict((int) $validated['staff_id'], $startAt, $endAt, (int) $service->buffer_min)) {
                 abort(response()->json([
                     'success' => false,
@@ -55,6 +68,7 @@ class HoldController extends Controller
             }
 
             $booking = Booking::create([
+                'store_location_id' => (int) $branch->id,
                 'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                 'source' => $customer ? 'CUSTOMER' : 'GUEST',
                 'customer_id' => $customer?->id,

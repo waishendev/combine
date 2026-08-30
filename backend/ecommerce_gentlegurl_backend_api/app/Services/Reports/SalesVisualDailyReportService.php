@@ -40,6 +40,11 @@ class SalesVisualDailyReportService
      */
     private function applyOrderScope(Builder $q, string $alias = 'o'): Builder
     {
+        // The Order is the immutable earning/sale Branch.  Keep this at the common
+        // boundary so item-type and Staff queries cannot accidentally apply only
+        // status/date constraints while payment queries are Branch scoped.
+        ReportBranchScope::applyCurrent($q, "{$alias}.store_location_id");
+
         $q->where(function (Builder $w) use ($alias) {
                 $w->where("{$alias}.status", 'completed')
                     ->orWhere("{$alias}.payment_status", 'paid');
@@ -454,6 +459,7 @@ class SalesVisualDailyReportService
 
         $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
+        [$staffSales, $staffService] = $this->attachStaffBranchBreakdowns($staffSales, $staffService, $start, $end);
         $packageRedemption = $this->packageRedemptionValue($start, $end);
 
         return [
@@ -484,6 +490,7 @@ class SalesVisualDailyReportService
                 'message' => 'N/A for ecommerce catalog. Use Booking workspace for booking settlement totals.',
             ],
             'staff' => [
+                'branch_context' => ReportBranchScope::current()->selectedStoreLocationId === null,
                 'sales_activity' => $staffSales,
                 'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
@@ -523,6 +530,7 @@ class SalesVisualDailyReportService
 
         $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
+        [$staffSales, $staffService] = $this->attachStaffBranchBreakdowns($staffSales, $staffService, $start, $end);
         $packageRedemption = $this->packageRedemptionValue($start, $end);
 
         $serviceConsumedQuery = $this->applyOrderScope(
@@ -561,6 +569,7 @@ class SalesVisualDailyReportService
                 'message' => 'Final settlement lines for booking orders in this period.',
             ],
             'staff' => [
+                'branch_context' => ReportBranchScope::current()->selectedStoreLocationId === null,
                 'sales_activity' => $staffSales,
                 'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
@@ -647,6 +656,7 @@ class SalesVisualDailyReportService
 
         $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
+        [$staffSales, $staffService] = $this->attachStaffBranchBreakdowns($staffSales, $staffService, $start, $end);
         $packageRedemption = $this->packageRedemptionValue($start, $end);
 
         $serviceConsumedAmount = round((float) $this->applyOrderScope(
@@ -684,6 +694,7 @@ class SalesVisualDailyReportService
                 'message' => 'Final settlement lines for booking orders in this period.',
             ],
             'staff' => [
+                'branch_context' => ReportBranchScope::current()->selectedStoreLocationId === null,
                 'sales_activity' => $staffSales,
                 'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
@@ -691,6 +702,55 @@ class SalesVisualDailyReportService
                 'service_activity_amount_total' => round(array_sum(array_column($staffService, 'service_amount')), 2),
             ],
         ];
+    }
+
+    /**
+     * Add earning-Branch context for All Branches with two grouped queries (never
+     * one query per Staff/Branch). Specific-Branch responses remain compact.
+     */
+    private function attachStaffBranchBreakdowns(array $sales, array $services, Carbon $start, Carbon $end): array
+    {
+        if (ReportBranchScope::current()->selectedStoreLocationId !== null) {
+            return [$sales, $services];
+        }
+
+        $productSplit = StaffSplitNormalizer::splitSalesSql('splits', $this->lineNetAmountSql('oi'));
+        $productRows = $this->applyOrderScope(DB::table('order_item_staff_splits as splits')
+            ->join('order_items as oi', 'oi.id', '=', 'splits.order_item_id')
+            ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->leftJoin('store_locations as branch', 'branch.id', '=', 'o.store_location_id')
+            ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
+            ->where('oi.line_type', 'product'))
+            ->groupBy('splits.staff_id', 'o.store_location_id', 'branch.name', 'branch.code')
+            ->selectRaw('splits.staff_id, o.store_location_id, branch.name as branch_name, branch.code as branch_code')
+            ->selectRaw("COALESCE(SUM({$productSplit}), 0) as amount")
+            ->get();
+
+        $serviceSplit = StaffSplitNormalizer::splitSalesSql('order_item_staff_splits', $this->effectiveBookingLineTotalExpr());
+        $serviceRows = $this->applyOrderScope(DB::table('order_item_staff_splits')
+            ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->leftJoin('store_locations as branch', 'branch.id', '=', 'orders.store_location_id')
+            ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end])
+            ->whereIn('order_items.line_type', self::BOOKING_LINE_TYPES), 'orders')
+            ->groupBy('order_item_staff_splits.staff_id', 'orders.store_location_id', 'branch.name', 'branch.code')
+            ->selectRaw('order_item_staff_splits.staff_id, orders.store_location_id, branch.name as branch_name, branch.code as branch_code')
+            ->selectRaw("COALESCE(SUM({$serviceSplit}), 0) as amount")
+            ->get();
+
+        $format = fn ($rows) => $rows->groupBy('staff_id')->map(fn ($staffRows) => $staffRows->map(fn ($row) => [
+            'store_location_id' => $row->store_location_id === null ? null : (int) $row->store_location_id,
+            'branch_name' => $row->store_location_id === null ? 'Unassigned' : (string) $row->branch_name,
+            'branch_code' => $row->store_location_id === null ? null : (string) $row->branch_code,
+            'amount' => round((float) $row->amount, 2),
+        ])->values()->all());
+        $productByStaff = $format($productRows);
+        $serviceByStaff = $format($serviceRows);
+
+        $sales = array_map(fn ($row) => [...$row, 'branch_breakdown' => $productByStaff->get($row['staff_id'], [])], $sales);
+        $services = array_map(fn ($row) => [...$row, 'branch_breakdown' => $serviceByStaff->get($row['staff_id'], [])], $services);
+
+        return [$sales, $services];
     }
 
     /**

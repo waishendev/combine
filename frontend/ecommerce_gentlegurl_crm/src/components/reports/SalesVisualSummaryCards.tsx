@@ -29,9 +29,10 @@ export type SalesVisualSummaryData = {
       name: string
       product_sales?: number
       total?: number
+      branch_breakdown?: Array<{ store_location_id: number | null; branch_name: string; branch_code?: string | null; amount: number }>
     }>
     sales_activity_total?: number
-    service_activity?: Array<{ staff_id: number; name: string; service_count: number; service_amount?: number; total?: number }>
+    service_activity?: Array<{ staff_id: number; name: string; service_count: number; service_amount?: number; total?: number; branch_breakdown?: Array<{ store_location_id: number | null; branch_name: string; branch_code?: string | null; amount: number }> }>
     service_activity_total?: number
     service_activity_amount_total?: number
   }
@@ -47,6 +48,7 @@ type SalesVisualSummaryCardsProps = {
   data: SalesVisualSummaryData | null
   periodScope?: 'day' | 'month' | 'year'
   canViewStaffReport?: boolean
+  showBranchContext?: boolean
 }
 
 export default function SalesVisualSummaryCards({
@@ -56,6 +58,7 @@ export default function SalesVisualSummaryCards({
   data,
   periodScope = 'day',
   canViewStaffReport = false,
+  showBranchContext = false,
 }: SalesVisualSummaryCardsProps) {
   const payments: SalesVisualPaymentMethodRow[] = Array.isArray(data?.payment_methods)
     ? data!.payment_methods
@@ -247,6 +250,11 @@ export default function SalesVisualSummaryCards({
                     <li key={s.staff_id}>
                       <div className="text-slate-800">{s.name}</div>
                       <div className="font-semibold text-slate-900">{fmtRm(s.total ?? s.product_sales ?? 0)}</div>
+                      {showBranchContext ? s.branch_breakdown?.map((branch) => (
+                        <div key={branch.store_location_id ?? 'unassigned'} className="text-xs text-slate-500">
+                          {branch.branch_code || branch.branch_name}: {fmtRm(branch.amount)}
+                        </div>
+                      )) : null}
                     </li>
                   ))}
                 </ul>
@@ -266,6 +274,11 @@ export default function SalesVisualSummaryCards({
                       <div className="text-slate-800">{s.name}</div>
                       <div className="font-semibold text-slate-900">{fmtRm(s.service_amount ?? s.total ?? 0)}</div>
                       <div className="text-xs text-slate-500">{s.service_count}×</div>
+                      {showBranchContext ? s.branch_breakdown?.map((branch) => (
+                        <div key={branch.store_location_id ?? 'unassigned'} className="text-xs text-slate-500">
+                          {branch.branch_code || branch.branch_name}: {fmtRm(branch.amount)}
+                        </div>
+                      )) : null}
                     </li>
                   ))}
                 </ul>

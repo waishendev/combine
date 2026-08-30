@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCart;
 use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\StoreLocation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -56,6 +57,27 @@ class TransactionBranchPhase4Test extends TestCase
         $this->artisan('branch-transactions:backfill --store-code=NOPE --force')->assertFailed();
         $this->artisan('branch-transactions:backfill --store-code=OFF --force')->assertFailed();
         $this->assertNull($booking->fresh()->store_location_id);
+    }
+
+    public function test_backfill_prefers_unique_linked_order_branch_for_a_null_booking(): void
+    {
+        $default = $this->branch('DEFAULT-EVIDENCE');
+        $actual = $this->branch('BRANCH-B');
+        $booking = Booking::create(['booking_code' => 'POS-BROKEN-B', 'source' => 'STAFF']);
+        $order = Order::create(['order_number' => 'POS-B-EVIDENCE', 'store_location_id' => $actual->id]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'booking_id' => $booking->id,
+            'line_type' => 'booking_settlement',
+            'product_name_snapshot' => 'Service',
+            'quantity' => 1,
+            'price_snapshot' => 10,
+            'line_total' => 10,
+        ]);
+
+        $this->artisan('branch-transactions:backfill --store-code=DEFAULT-EVIDENCE --force')->assertSuccessful();
+        $this->assertSame($actual->id, $booking->fresh()->store_location_id);
+        $this->assertNotSame($default->id, $booking->fresh()->store_location_id);
     }
 
     private function branch(string $code, bool $active = true): StoreLocation

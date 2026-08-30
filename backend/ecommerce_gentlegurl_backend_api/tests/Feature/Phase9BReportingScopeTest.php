@@ -112,6 +112,18 @@ class Phase9BReportingScopeTest extends TestCase
         $this->assertStringNotContainsString("'stock' => \$variant->stock", $serializer);
     }
 
+    public function test_sales_workspace_contract_uses_order_branch_and_exposes_all_branch_context(): void
+    {
+        $visual = file_get_contents(app_path('Services/Reports/SalesVisualDailyReportService.php'));
+        $transactions = file_get_contents(app_path('Services/Reports/SalesChannelReportService.php'));
+        $controller = file_get_contents(app_path('Http/Controllers/Ecommerce/Reports/SalesChannelReportController.php'));
+
+        $this->assertStringContainsString('ReportBranchScope::applyCurrent($q, "{$alias}.store_location_id")', $visual);
+        $this->assertStringContainsString("'branch_breakdown'", $visual);
+        $this->assertStringContainsString("'branch' => \$this->branchMeta(\$row)", $transactions);
+        $this->assertStringContainsString("\$includeBranch ? ['Branch'] : []", $controller);
+    }
+
     private function actorAndBranches(bool $includeInaccessible = false): array
     {
         $user = User::factory()->create();

@@ -160,6 +160,42 @@ class PosAppointmentBranchScopeCompatibilityTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
     }
 
+    public function test_direct_pos_appointment_creation_requires_and_persists_an_eligible_concrete_branch(): void
+    {
+        $actor = $this->actor();
+        [$a, $b] = [$this->branch('CREATE-A'), $this->branch('CREATE-B')];
+        $actor->storeLocations()->sync([$a->id, $b->id]);
+        [$service, $staff] = $this->eligibleServiceAndStaff([$a]);
+        $payload = [
+            'booking_service_id' => $service->id,
+            'assigned_staff_id' => $staff->id,
+            'guest_name' => 'Branch Guest',
+            'start_at' => now()->addDays(2)->startOfHour()->toIso8601String(),
+            'staff_splits' => [['staff_id' => $staff->id, 'share_percent' => 100]],
+        ];
+
+        $this->actingAs($actor)->postJson('/api/pos/appointments', $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('store_location_id');
+
+        $created = $this->actingAs($actor)->postJson('/api/pos/appointments', $payload + ['store_location_id' => $a->id])
+            ->assertOk();
+        $bookingId = (int) $created->json('data.booking_id');
+        $this->assertDatabaseHas('bookings', ['id' => $bookingId, 'store_location_id' => $a->id]);
+
+        $this->actingAs($actor)->postJson('/api/pos/appointments', $payload + ['store_location_id' => $b->id])
+            ->assertUnprocessable()->assertJsonValidationErrors('booking_service_id');
+    }
+
+    public function test_pos_booking_write_contract_propagates_cart_or_booking_branch_to_every_parent(): void
+    {
+        $source = file_get_contents(app_path('Http/Controllers/Ecommerce/PosController.php'));
+
+        $this->assertStringContainsString("'store_location_id' => (int) \$cart->store_location_id,\n                    'booking_code'", $source);
+        $this->assertGreaterThanOrEqual(3, substr_count($source, "'store_location_id' => (int) \$booking->store_location_id"));
+        $this->assertStringContainsString('Appointment settlement must use the persisted Booking Branch.', $source);
+        $this->assertStringContainsString('getStaffAvailabilityDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt, (int) $cart->store_location_id)', $source);
+    }
+
     private function actor(): User
     {
         $role = Role::create(['name' => 'appointment-branch-'.uniqid(), 'is_active' => true, 'is_system' => false]);
