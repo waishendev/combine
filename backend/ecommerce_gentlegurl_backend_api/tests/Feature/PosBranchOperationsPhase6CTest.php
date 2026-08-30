@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Ecommerce\BranchInventoryCutoverState;
 use App\Models\Ecommerce\PosCashPoolAccount;
+use App\Models\Ecommerce\PosCart;
 use App\Models\Ecommerce\PosCashShift;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Permission;
@@ -16,6 +17,39 @@ use Tests\TestCase;
 class PosBranchOperationsPhase6CTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_operator_has_an_independent_active_cart_per_authorized_branch(): void
+    {
+        $actor = $this->actor();
+        [$a, $b] = [$this->branch('A'), $this->branch('B')];
+        $actor->storeLocations()->sync([$a->id, $b->id]);
+
+        $this->actingAs($actor)->getJson('/api/pos/cart?store_location_id='.$a->id)
+            ->assertOk()->assertJsonPath('data.cart.store_location_id', $a->id);
+        $this->actingAs($actor)->getJson('/api/pos/cart?store_location_id='.$b->id)
+            ->assertOk()->assertJsonPath('data.cart.store_location_id', $b->id);
+
+        $this->assertDatabaseHas('pos_carts', ['staff_user_id' => $actor->id, 'store_location_id' => $a->id]);
+        $this->assertDatabaseHas('pos_carts', ['staff_user_id' => $actor->id, 'store_location_id' => $b->id]);
+        $this->assertSame(2, PosCart::query()->where('staff_user_id', $actor->id)->count());
+    }
+
+    public function test_specific_branch_request_neither_adopts_legacy_null_cart_nor_allows_inaccessible_branch(): void
+    {
+        $actor = $this->actor();
+        $allowed = $this->branch('A');
+        $denied = $this->branch('B');
+        $actor->storeLocations()->attach($allowed);
+        $legacy = PosCart::create(['staff_user_id' => $actor->id, 'store_location_id' => null]);
+
+        $this->actingAs($actor)->getJson('/api/pos/cart?store_location_id='.$allowed->id)
+            ->assertOk()->assertJsonPath('data.cart.store_location_id', $allowed->id);
+        $this->assertNull($legacy->fresh()->store_location_id);
+        $this->assertDatabaseCount('pos_carts', 2);
+
+        $this->actingAs($actor)->getJson('/api/pos/cart?store_location_id='.$denied->id)
+            ->assertForbidden();
+    }
 
     public function test_current_shift_is_scoped_to_the_requested_branch(): void
     {

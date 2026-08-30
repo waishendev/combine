@@ -7521,11 +7521,12 @@ class PosController extends Controller
 
         [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds, $checkedOutBookings] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
             $checkoutShift = PosCashShift::query()
+                ->where('store_location_id', (int) $cart->store_location_id)
                 ->where('event_type', PosCashShift::EVENT_OPEN)
                 ->whereDoesntHave('closeEvent')
                 ->lockForUpdate()->latest('opened_at')->first();
-            if ($checkoutShift && (int) $checkoutShift->store_location_id !== (int) $cart->store_location_id) {
-                throw ValidationException::withMessages(['store_location_id' => __('POS cart, Order, and open Cash Shift must belong to the same Branch.')]);
+            if (! $checkoutShift) {
+                throw ValidationException::withMessages(['store_location_id' => __('No open Cash Shift exists for the POS cart Branch.')]);
             }
             $confirmedBookingIds = [];
             $packageCustomerIds = $cart->packageItems
@@ -9888,17 +9889,13 @@ class PosController extends Controller
             throw ValidationException::withMessages(['store_location_id' => __('The selected Branch is not available for POS.')]);
         }
 
-        $cart = PosCart::firstOrCreate(['staff_user_id' => $staffUserId], ['store_location_id' => $branch->id]);
-        if ($cart->store_location_id === null) {
-            $cart->update(['store_location_id' => $branch->id]);
-        } elseif ((int) $cart->store_location_id !== (int) $branch->id) {
-            if ($cart->hasMeaningfulState()) {
-                throw ValidationException::withMessages(['store_location_id' => __('Clear or close the existing POS cart before switching Branch.')]);
-            }
-            $cart->update(['store_location_id' => $branch->id]);
-        }
-
-        return $cart;
+        // A cart is operational state owned by one operator *and* one Branch.
+        // Deliberately exclude legacy NULL carts: their Branch must be reconciled
+        // through pos-branch:backfill, never guessed from the current Header.
+        return PosCart::firstOrCreate([
+            'staff_user_id' => $staffUserId,
+            'store_location_id' => (int) $branch->id,
+        ]);
     }
 
     protected function serializeCart(PosCart $cart): array
@@ -10374,6 +10371,7 @@ class PosController extends Controller
 
         return [
             'id' => $cart->id,
+            'store_location_id' => (int) $cart->store_location_id,
             'items' => $items,
             'service_items' => $serviceItems,
             'package_items' => $packageItems,
