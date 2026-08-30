@@ -1,5 +1,14 @@
 # Phase 6A Product, Inventory and POS Branch Runbook
 
+## POS cart Branch ownership correction (2026-08-30)
+
+- One active POS cart is permitted per operator **per Branch**, enforced by the `pos_carts(staff_user_id, store_location_id)` unique identity. A cart in one Branch never blocks or replaces a cart in another.
+- All cart reads and mutations require an explicit `store_location_id` authorized by `StoreLocationAccessService`. Clearing/removing lines is therefore isolated to the selected Branch cart.
+- Branch switching only changes visible client state: it aborts the previous cart request, clears the displayed cart, and restores the newly selected Branch cart. Persisted carts in other Branches remain untouched.
+- Checkout resolves the open Cash Shift by the cart Branch and persists that exact Branch on the Order. Cart, Order, and shift equality remains mandatory; a shift in another Branch cannot satisfy checkout.
+- Product availability and canonical inventory deduction use the persisted Cart/Order Branch. No cached Header value or Product/Staff inference is used.
+- Active legacy carts with a NULL Branch are never adopted by a specific Branch request. Reconcile them only with the reviewed `pos-branch:backfill` workflow; the lifecycle migration performs no data assignment or cart duplication.
+
 ## Release boundary
 
 Phase 6A adds sellability configuration and attribution only. `store_location_product_inventories` is deliberately empty on deployment and is not read or written by checkout, adjustment, refund, revoke, low-stock, or reporting code. **Inventory cutover has not occurred.**

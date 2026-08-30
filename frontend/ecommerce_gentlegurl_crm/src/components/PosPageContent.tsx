@@ -1752,9 +1752,18 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const productRequestInFlightKeyRef = useRef<string | null>(null)
   const lazyRequestAbortRef = useRef<Record<string, AbortController>>({})
   const lazyLoadedKeyRef = useRef<Record<string, string>>({})
+  const cartRequestAbortRef = useRef<AbortController | null>(null)
   const previousCategoryIdRef = useRef<number | null>(null)
 
   const [cart, setCart] = useState<Cart | null>(null)
+
+  const posFetch = useCallback((input: string, init?: RequestInit) => {
+    if (!selectedBranchId) {
+      return Promise.reject(new Error('A specific POS Branch is required.'))
+    }
+    const separator = input.includes('?') ? '&' : '?'
+    return fetch(`${input}${separator}store_location_id=${encodeURIComponent(String(selectedBranchId))}`, init)
+  }, [selectedBranchId])
 
   const [productQuery, setProductQuery] = useState('')
   const [debouncedSkuQuery, setDebouncedSkuQuery] = useState('')
@@ -2822,7 +2831,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [])
 
   const removeVoucher = useCallback(async (silent = false) => {
-    const res = await fetch('/api/proxy/pos/cart/voucher', { method: 'DELETE' })
+    const res = await posFetch('/api/proxy/pos/cart/voucher', { method: 'DELETE' })
     const json = await res.json()
     if (res.ok && json?.data?.cart) {
       setCart(json.data.cart)
@@ -2868,7 +2877,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
 
     setVoucherApplying(true)
-    const res = await fetch('/api/proxy/pos/cart/voucher/apply', {
+    const res = await posFetch('/api/proxy/pos/cart/voucher/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -2887,10 +2896,19 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [availableVouchers, selectedMember?.id, selectedVoucherKey, showMsg])
 
   async function loadCart() {
-    const res = await fetch('/api/proxy/pos/cart', { cache: 'no-store' })
-    const json = await res.json()
-    if (res.ok && json?.data?.cart) {
-      setCart(json.data.cart)
+    if (!selectedBranchId) return
+    cartRequestAbortRef.current?.abort()
+    const controller = new AbortController()
+    cartRequestAbortRef.current = controller
+    const requestedBranchId = selectedBranchId
+    try {
+      const res = await posFetch('/api/proxy/pos/cart', { cache: 'no-store', signal: controller.signal })
+      const json = await res.json()
+      if (!controller.signal.aborted && requestedBranchId === selectedBranchId && res.ok && json?.data?.cart) {
+        setCart(json.data.cart)
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) throw error
     }
   }
 
@@ -2899,7 +2917,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     if (!trimmed) return false
 
     try {
-      const res = await fetch('/api/proxy/pos/cart/add-by-barcode', {
+      const res = await posFetch('/api/proxy/pos/cart/add-by-barcode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ barcode: trimmed, qty }),
@@ -2941,7 +2959,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       body.product_id = productId
     }
 
-    const res = await fetch('/api/proxy/pos/cart/add-by-variant', {
+    const res = await posFetch('/api/proxy/pos/cart/add-by-variant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -3697,7 +3715,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [selectedBranchId])
 
   const addBookingProductToCart = useCallback(async (row: BookingProductOption, selectedOptionIds: number[] = [], actualSellingPrice?: number) => {
-    const res = await fetch('/api/proxy/pos/cart/add-booking-product', {
+    const res = await posFetch('/api/proxy/pos/cart/add-booking-product', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ booking_product_id: row.id, qty: 1, item_type: 'BOOKING_PRODUCT', selected_option_ids: selectedOptionIds, ...(actualSellingPrice != null ? { actual_selling_price: actualSellingPrice } : {}) }),
@@ -4280,7 +4298,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       payload.guest_phone = guestPhone || null
       payload.guest_email = guestEmail || null
     }
-    const res = await fetch('/api/proxy/pos/cart/add-service', {
+    const res = await posFetch('/api/proxy/pos/cart/add-service', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -4443,7 +4461,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
 
     setPackageSubmitting(true)
-    const res = await fetch('/api/proxy/pos/cart/add-package', {
+    const res = await posFetch('/api/proxy/pos/cart/add-package', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4497,7 +4515,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [packageMemberPickerOpen, packageMemberQuery])
 
   const removePackageCartItem = useCallback(async (itemId: number) => {
-    const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, { method: 'DELETE' })
+    const res = await posFetch(`/api/proxy/pos/cart/package-items/${itemId}`, { method: 'DELETE' })
     const json = await res.json().catch(() => null)
     if (!res.ok) {
       showMsg(json?.message ?? 'Unable to remove package.', 'error')
@@ -4510,7 +4528,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const updatePackageCartQty = useCallback(
     async (itemId: number, qty: number) => {
       const next = Math.max(1, Math.min(10, Math.floor(qty)))
-      const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, {
+      const res = await posFetch(`/api/proxy/pos/cart/package-items/${itemId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qty: next }),
@@ -4569,7 +4587,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       }
       setServiceUnclaimingIds((prev) => ({ ...prev, [serviceItem.id]: true }))
       try {
-        const res = await fetch(`/api/proxy/pos/cart/service-items/${serviceItem.id}/release-package-claim`, {
+        const res = await posFetch(`/api/proxy/pos/cart/service-items/${serviceItem.id}/release-package-claim`, {
           method: 'POST',
         })
         const json = await res.json().catch(() => null)
@@ -4594,7 +4612,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
   const updateQty = async (itemId: number, qty: number) => {
     if (qty < 1) return
-    const res = await fetch(`/api/proxy/pos/cart/items/${itemId}`, {
+    const res = await posFetch(`/api/proxy/pos/cart/items/${itemId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ qty }),
@@ -4740,7 +4758,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     if (!endpoint) return
     setPriceEditSaving(true)
     try {
-      const res = await fetch(endpoint, {
+      const res = await posFetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ unit_price: roundedNext, ...(priceEditMode === 'line' ? { line_total: nextInput } : {}), reason: priceEditReasonDraft.trim() || null, ...('lineKey' in priceEditTarget ? { line_key: priceEditTarget.lineKey } : {}) }),
@@ -4830,7 +4848,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
     setDiscountSaving(true)
     try {
-      const res = await fetch(endpoint, {
+      const res = await posFetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -4850,7 +4868,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }
 
   const removeItem = async (itemId: number) => {
-    const res = await fetch(`/api/proxy/pos/cart/items/${itemId}`, { method: 'DELETE' })
+    const res = await posFetch(`/api/proxy/pos/cart/items/${itemId}`, { method: 'DELETE' })
     const json = await res.json()
     if (res.ok) {
       setCart(json.data.cart)
@@ -4859,7 +4877,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
 
   const removeServiceItem = async (itemId: number) => {
-    const res = await fetch(`/api/proxy/pos/cart/service-items/${itemId}`, { method: 'DELETE' })
+    const res = await posFetch(`/api/proxy/pos/cart/service-items/${itemId}`, { method: 'DELETE' })
     const json = await res.json().catch(() => null)
     if (res.ok) {
       setCart((json?.data?.cart ?? null) as Cart | null)
@@ -4867,7 +4885,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }
 
   const removeAppointmentSettlementItem = async (itemId: number) => {
-    const res = await fetch(`/api/proxy/pos/cart/appointment-settlements/${itemId}`, { method: 'DELETE' })
+    const res = await posFetch(`/api/proxy/pos/cart/appointment-settlements/${itemId}`, { method: 'DELETE' })
     const json = await res.json().catch(() => null)
     if (res.ok) {
       setCart((json?.data?.cart ?? null) as Cart | null)
@@ -4892,7 +4910,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   )
 
   const addAppointmentSettlementToCart = async (bookingId: number) => {
-    const res = await fetch('/api/proxy/pos/cart/add-appointment-settlement', {
+    const res = await posFetch('/api/proxy/pos/cart/add-appointment-settlement', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ booking_id: bookingId }),
@@ -5854,6 +5872,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }
 
   useEffect(() => {
+    cartRequestAbortRef.current?.abort()
+    setCart(null)
     productRequestAbortControllerRef.current?.abort()
     latestProductRequestRef.current += 1
     productRequestInFlightKeyRef.current = null
@@ -6730,7 +6750,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const updateItemVariant = async (item: CartItem, variantId: number) => {
     if (!Number.isFinite(variantId) || variantId <= 0 || item.variant_id === variantId) return
 
-    const res = await fetch(`/api/proxy/pos/cart/items/${item.id}`, {
+    const res = await posFetch(`/api/proxy/pos/cart/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variant_id: variantId, qty: item.qty }),
@@ -7123,7 +7143,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       checkoutBody.append('qr_payment_proof', qrProofFile as File)
     }
 
-    const res = await fetch('/api/proxy/pos/checkout', checkoutBody
+    const res = await posFetch('/api/proxy/pos/checkout', checkoutBody
       ? { method: 'POST', body: checkoutBody }
       : {
           method: 'POST',
@@ -7565,7 +7585,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 guest_phone: checkoutGuestIsUnknown ? null : normalizeInternationalPhone(guestContactCache.phone) || null,
                 guest_email: checkoutGuestIsUnknown ? null : guestContactCache.email.trim() || null,
               }
-        const res = await fetch('/api/proxy/pos/cart/sync-customer-context', {
+        const res = await posFetch('/api/proxy/pos/cart/sync-customer-context', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),

@@ -3,6 +3,10 @@
 **Classification:** Phase 9 enhancement/hardening (not Phase 10)  
 **Scope:** CRM POS checkout and POS Appointments; existing multi-Branch authorization is unchanged.
 
+## Branch-owned cart request lifecycle (2026-08-30)
+
+The cart request identity includes the selected Branch (`cart:{store_location_id}`). On a Header Branch change, POS aborts the prior cart request and immediately clears visible cart state before requesting the next Branch. Every cart mutation and checkout URL carries the same explicit Branch. An aborted or stale response cannot repopulate the newly selected Branch with the prior Branch's cart. This is limited to the cart lifecycle and preserves Phase 9F lazy tab loading; it does not reload inactive tabs or add polling.
+
 ## POS catalogue Branch-context correction (2026-08-28)
 
 POS now has one mandatory operational context: the specific Header Branch. The Product grid calls
