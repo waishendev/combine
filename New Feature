@@ -37,12 +37,21 @@ php artisan role-branch:reconcile --store-code=PNG --force
 
 php artisan commission-branch:reconcile --store-code=PNG --force
 
+
+php artisan role-branch:replicate --store-codes=PNG --dry-run
+php artisan role-branch:replicate --store-codes=PNG --force
+
+
+
+
+
 php artisan role-branch:replicate --store-codes=PNG,asdsadas --dry-run
 php artisan role-branch:replicate --store-codes=PNG,asdsadas --force
 
 
-
-
+TESTING SEED
+php artisan multibranch:test-seed --store-code=asdsadas --dry-run
+php artisan multibranch:test-seed --store-code=asdsadas --force
 
 php artisan db:seed --class=SuperAdminBranchAccessPermissionSeeder 
 

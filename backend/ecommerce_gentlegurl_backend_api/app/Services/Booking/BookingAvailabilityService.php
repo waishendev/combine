@@ -264,6 +264,9 @@ class BookingAvailabilityService
             })
             ->whereIn('status', self::BLOCKING_BOOKING_STATUSES)
             ->where('start_at', '<', $queryBlockEndAt->toDateTimeString())
+            // Bound history without missing overlaps: PHP still applies per-row buffer_min.
+            // end_at more than 1 day before queryStart cannot overlap even with large buffers.
+            ->where('end_at', '>', $queryStartAt->copy()->subDay()->toDateTimeString())
             ->get(['id', 'booking_code', 'start_at', 'end_at', 'buffer_min', 'status', 'payment_status'])
             ->filter(function (Booking $candidate) use ($queryStartAt) {
                 $candidateBufferedEnd = $candidate->end_at
@@ -360,8 +363,9 @@ class BookingAvailabilityService
             ->where(function ($query) use ($requestDates) {
                 foreach ($requestDates as $date) {
                     $query->orWhere(function ($nested) use ($date) {
-                        $nested->whereDate('start_date', '<=', $date)
-                            ->whereDate('end_date', '>=', $date);
+                        // Sargable half-open day bounds (same calendar-day semantics as whereDate).
+                        $nested->where('start_date', '<=', $date)
+                            ->where('end_date', '>=', $date);
                     });
                 }
             })
@@ -668,6 +672,7 @@ class BookingAvailabilityService
             ->whereIn('staff_id', $staffIds)
             ->whereIn('status', self::BLOCKING_BOOKING_STATUSES)
             ->where('start_at', '<', $queryEnd->toDateTimeString())
+            ->where('end_at', '>', $queryStart->copy()->subDay()->toDateTimeString())
             ->get(['id', 'staff_id', 'booking_code', 'start_at', 'end_at', 'buffer_min', 'status', 'payment_status']);
 
         $bookingsByStaff = [];
@@ -756,8 +761,8 @@ class BookingAvailabilityService
             ->where(function ($query) use ($requestDates) {
                 foreach ($requestDates as $requestDate) {
                     $query->orWhere(function ($nested) use ($requestDate) {
-                        $nested->whereDate('start_date', '<=', $requestDate)
-                            ->whereDate('end_date', '>=', $requestDate);
+                        $nested->where('start_date', '<=', $requestDate)
+                            ->where('end_date', '>=', $requestDate);
                     });
                 }
             })

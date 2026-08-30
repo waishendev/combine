@@ -1057,8 +1057,8 @@ export default function PosAppointmentsWorkspace({
 
   const fetchStaffOptions = useCallback(
     async (search: string) => {
-      const params = new URLSearchParams({ page: '1', per_page: '20', is_active: '1' })
-      if (selectedBranchIdRef.current) params.set('store_location_id', String(selectedBranchIdRef.current))
+      const params = new URLSearchParams({ page: '1', per_page: '50', is_active: '1' })
+      if (selectedBranchIdRef.current) params.set('branch_store_location_id', String(selectedBranchIdRef.current))
       if (search.trim()) params.set('search', search.trim())
       const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) return [] as StaffOption[]
@@ -1352,12 +1352,15 @@ export default function PosAppointmentsWorkspace({
   }, [appointmentLineSplitDraftRows, appointmentLineSplitLineTotal, appointmentLineSplitMode, appointmentLineSplitOverwrite, appointmentLineSplitTarget])
 
   const fetchActiveStaffs = useCallback(async () => {
-    const params = new URLSearchParams({ page: '1', per_page: '200', is_active: '1' })
-    if (selectedBranchIdRef.current) params.set('store_location_id', String(selectedBranchIdRef.current))
+    const params = new URLSearchParams({ page: '1', per_page: '50', is_active: '1' })
+    if (selectedBranchIdRef.current) params.set('branch_store_location_id', String(selectedBranchIdRef.current))
     const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
     if (!res.ok) return
     const json = await res.json().catch(() => null)
-    setActiveStaffs(mapStaffOptions(json))
+    const mapped = mapStaffOptions(json)
+    setActiveStaffs(mapped)
+    // Seed the staff filter dropdown from the same payload (avoids a duplicate /staffs call).
+    setAppointmentStaffOptions(mapped)
   }, [mapStaffOptions])
 
   const fetchAppointmentCustomers = useCallback(async (search: string) => {
@@ -1420,18 +1423,10 @@ export default function PosAppointmentsWorkspace({
         params.set('from_date', ymdFromDate(start))
         params.set('to_date', ymdFromDate(end))
         params.set('per_page', '500')
-      } else {
-        const parts = appointmentDateFilter.split('-').map(Number)
-        if (parts.length === 3 && parts[0] && parts[1]) {
-          const start = new Date(parts[0], parts[1] - 1, 1)
-          const end = new Date(parts[0], parts[1], 0)
-          params.set('from_date', ymdFromDate(start))
-          params.set('to_date', ymdFromDate(end))
-          params.set('per_page', '500')
-        } else if (appointmentDateFilter) {
-          params.set('date', appointmentDateFilter)
-          params.set('per_page', '100')
-        }
+      } else if (appointmentDateFilter) {
+        // Day view only needs that calendar day; month mode keeps the full-month range.
+        params.set('date', appointmentDateFilter)
+        params.set('per_page', '100')
       }
       if (debouncedAppointmentQuery.trim()) params.set('q', debouncedAppointmentQuery.trim())
       if (appointmentCustomerFilter.trim()) params.set('customer_id', appointmentCustomerFilter.trim())
@@ -4330,10 +4325,9 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentServices([])
     if (selectedBranchId) {
       void fetchActiveStaffs()
-      void fetchAppointmentStaffs('')
       void fetchCreateAppointmentServices()
     }
-  }, [fetchActiveStaffs, fetchAppointmentStaffs, fetchCreateAppointmentServices, selectedBranchId])
+  }, [fetchActiveStaffs, fetchCreateAppointmentServices, selectedBranchId])
 
   useEffect(() => {
     void fetchAppointments()

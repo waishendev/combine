@@ -592,6 +592,7 @@ export default function PosRequestCenter({
   const [bookingRows, setBookingRows] = useState<BookingRequestRow[]>([])
   const [ecommerceRows, setEcommerceRows] = useState<EcommerceRequestRow[]>([])
   const [balanceRows, setBalanceRows] = useState<BalanceTopupRow[]>([])
+  const [summaryTotal, setSummaryTotal] = useState<number | null>(null)
   const [viewingBalanceTopup, setViewingBalanceTopup] = useState<BalanceTopupRow | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -605,11 +606,31 @@ export default function PosRequestCenter({
   const [viewingOrderId, setViewingOrderId] = useState<number | null>(null)
   const [viewingReturnId, setViewingReturnId] = useState<number | null>(null)
   const loadGenerationRef = useRef(0)
+  const hasLoadedRef = useRef(false)
 
   const canVerifyTopups = permissions.includes('customer_wallet.verify_topup') || permissions.includes('customer_wallet.adjust')
-  const totalCount = bookingRows.length + ecommerceRows.length + balanceRows.length
+  const loadedTotal = bookingRows.length + ecommerceRows.length + balanceRows.length
+  // Prefer summary for the closed-panel badge so ecommerce counts are included before fan-out loads.
+  const totalCount = summaryTotal ?? loadedTotal
 
-  const load = useCallback(async () => {
+  const refreshSummary = useCallback(async () => {
+    try {
+      const res = await fetch('/api/proxy/pos/requests/summary', { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) return
+      const total = Number(json?.data?.total ?? json?.total ?? NaN)
+      if (Number.isFinite(total)) setSummaryTotal(total)
+    } catch {
+      // Badge stays on previously loaded list totals.
+    }
+  }, [])
+
+  const load = useCallback(async (options?: { force?: boolean }) => {
+    const force = options?.force ?? false
+    if (!force && hasLoadedRef.current && !open) {
+      // Keep page mount cheap: badge can refresh when the panel is opened.
+      return
+    }
     const generation = ++loadGenerationRef.current
     setLoading(true)
     setError(null)
@@ -625,42 +646,64 @@ export default function PosRequestCenter({
           return payload
         })
 
+      // Booking-tab essentials always. Ecommerce/returns are the heavy fan-out — load them
+      // only when the panel is open (or forced refresh) so opening POS Appointments stays light.
+      const loadEcommerceFanOut = open || force
+
       const [cancellationRes, ...remainingResponses] = await Promise.all([
         fetch('/api/proxy/pos/cancellation-requests?status=pending&per_page=50', { cache: 'no-store' }),
-        ...BOOKING_HOLD_FILTERS.map((status) => {
-          const qs = new URLSearchParams({ status, per_page: '50' })
-          return fetch(`/api/proxy/pos/appointments?${qs.toString()}`, { cache: 'no-store' })
-        }),
+        ...BOOKING_HOLD_FILTERS.length > 0
+          ? [
+              fetch(
+                `/api/proxy/pos/appointments?${new URLSearchParams({
+                  statuses: BOOKING_HOLD_FILTERS.join(','),
+                  // Previously 3× per_page=50; keep the same max hold capacity in one round-trip.
+                  per_page: '150',
+                  // Skip full financial DTO — Request Center only needs hold_deposit_order + identity.
+                  lite: '1',
+                }).toString()}`,
+                { cache: 'no-store' },
+              ),
+            ]
+          : [],
         ...BOOKING_PACKAGE_ORDER_FILTERS.map((filter) => {
           const qs = new URLSearchParams({ per_page: '25', order_type: 'booking' })
           if (filter.status) qs.set('status', filter.status)
           if (filter.payment_status) qs.set('payment_status', filter.payment_status)
           return fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, { cache: 'no-store' })
         }),
-        ...ECOMMERCE_REQUEST_FILTERS.map((filter) => {
-          const qs = new URLSearchParams({ per_page: '25', order_type: 'ecommerce' })
-          if (filter.status) qs.set('status', filter.status)
-          if (filter.payment_status) qs.set('payment_status', filter.payment_status)
-          return fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, { cache: 'no-store' })
-        }),
-        ...RETURN_REQUEST_ACTIVE_STATUSES.map((status) => {
-          const qs = new URLSearchParams({ per_page: '25', status })
-          return fetch(`/api/proxy/ecommerce/returns?${qs.toString()}`, { cache: 'no-store' })
-        }),
+        ...(loadEcommerceFanOut
+          ? ECOMMERCE_REQUEST_FILTERS.map((filter) => {
+              const qs = new URLSearchParams({ per_page: '25', order_type: 'ecommerce' })
+              if (filter.status) qs.set('status', filter.status)
+              if (filter.payment_status) qs.set('payment_status', filter.payment_status)
+              return fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, { cache: 'no-store' })
+            })
+          : []),
+        ...(loadEcommerceFanOut
+          ? RETURN_REQUEST_ACTIVE_STATUSES.map((status) => {
+              const qs = new URLSearchParams({ per_page: '25', status })
+              return fetch(`/api/proxy/ecommerce/returns?${qs.toString()}`, { cache: 'no-store' })
+            })
+          : []),
       ])
 
-      const holdResponses = remainingResponses.slice(0, BOOKING_HOLD_FILTERS.length)
+      const holdResponseCount = BOOKING_HOLD_FILTERS.length > 0 ? 1 : 0
+      const holdResponses = remainingResponses.slice(0, holdResponseCount)
       const bookingOrderResponses = remainingResponses.slice(
-        BOOKING_HOLD_FILTERS.length,
-        BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length,
+        holdResponseCount,
+        holdResponseCount + BOOKING_PACKAGE_ORDER_FILTERS.length,
       )
-      const orderResponses = remainingResponses.slice(
-        BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length,
-        BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length + ECOMMERCE_REQUEST_FILTERS.length,
-      )
-      const returnResponses = remainingResponses.slice(
-        BOOKING_HOLD_FILTERS.length + BOOKING_PACKAGE_ORDER_FILTERS.length + ECOMMERCE_REQUEST_FILTERS.length,
-      )
+      const ecommerceFanOutStart = holdResponseCount + BOOKING_PACKAGE_ORDER_FILTERS.length
+      const orderResponses = loadEcommerceFanOut
+        ? remainingResponses.slice(
+            ecommerceFanOutStart,
+            ecommerceFanOutStart + ECOMMERCE_REQUEST_FILTERS.length,
+          )
+        : []
+      const returnResponses = loadEcommerceFanOut
+        ? remainingResponses.slice(ecommerceFanOutStart + ECOMMERCE_REQUEST_FILTERS.length)
+        : []
 
       const cancellationPayload = await cancellationRes.json().catch(() => null)
       if (!cancellationRes.ok) {
@@ -704,47 +747,52 @@ export default function PosRequestCenter({
         ),
       )
 
-      const orderPayloads = await Promise.all(orderResponses.map((res) => res.json().catch(() => null)))
-      const orders = orderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
-      const uniqueOrders = Array.from(new Map(orders.map((order) => [Number(order.id), order])).values())
-      const ecommerceOrderRows: EcommerceRequestRow[] = uniqueOrders
-        .filter(shouldShowEcommerceOrder)
-        .map((order) => {
-          const orderType = order.order_type ?? detectOrderType(order)
-          const orderId = Number(order.id)
-          return {
-            key: `order-${orderId}`,
-            kind: 'order' as const,
-            id: orderId,
-            orderId,
-            orderNo: order.order_no ?? order.order_number ?? `#${orderId}`,
-            customerName: order.customer?.name || '-',
-            contact: order.customer?.phone || order.customer?.email || '-',
-            createdAt: order.created_at ?? '',
-            statusLabel: calculateOrderStatus(order.status, order.payment_status, orderType),
-            status: order.status ?? '',
-            paymentStatus: order.payment_status ?? '',
-            shippingMethod: order.shipping_method ?? null,
-          }
+      // Don't read ecommerceRows into this callback — that re-creates load every render.
+      if (loadEcommerceFanOut) {
+        const orderPayloads = await Promise.all(orderResponses.map((res) => res.json().catch(() => null)))
+        const orders = orderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
+        const uniqueOrders = Array.from(new Map(orders.map((order) => [Number(order.id), order])).values())
+        const ecommerceOrderRows: EcommerceRequestRow[] = uniqueOrders
+          .filter(shouldShowEcommerceOrder)
+          .map((order) => {
+            const orderType = order.order_type ?? detectOrderType(order)
+            const orderId = Number(order.id)
+            return {
+              key: `order-${orderId}`,
+              kind: 'order' as const,
+              id: orderId,
+              orderId,
+              orderNo: order.order_no ?? order.order_number ?? `#${orderId}`,
+              customerName: order.customer?.name || '-',
+              contact: order.customer?.phone || order.customer?.email || '-',
+              createdAt: order.created_at ?? '',
+              statusLabel: calculateOrderStatus(order.status, order.payment_status, orderType),
+              status: order.status ?? '',
+              paymentStatus: order.payment_status ?? '',
+              shippingMethod: order.shipping_method ?? null,
+            }
+          })
+
+        const returnPayloads = await Promise.all(returnResponses.map((res) => res.json().catch(() => null)))
+        const returnItems = returnPayloads.flatMap((payload) => extractRows<ReturnRequestApiRow>(payload))
+        const uniqueReturns = Array.from(new Map(returnItems.map((row) => [Number(row.id), row])).values())
+        const returnRows = uniqueReturns
+          .filter((row) => isActiveReturnStatus(row.status))
+          .map(buildReturnRequestRow)
+
+        const nextEcommerceRows = [...ecommerceOrderRows, ...returnRows].sort((a, b) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
+          return bTime - aTime
         })
-
-      const returnPayloads = await Promise.all(returnResponses.map((res) => res.json().catch(() => null)))
-      const returnItems = returnPayloads.flatMap((payload) => extractRows<ReturnRequestApiRow>(payload))
-      const uniqueReturns = Array.from(new Map(returnItems.map((row) => [Number(row.id), row])).values())
-      const returnRows = uniqueReturns
-        .filter((row) => isActiveReturnStatus(row.status))
-        .map(buildReturnRequestRow)
-
-      const nextEcommerceRows = [...ecommerceOrderRows, ...returnRows].sort((a, b) => {
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
-        return bTime - aTime
-      })
+        if (generation === loadGenerationRef.current) {
+          setEcommerceRows(nextEcommerceRows)
+        }
+      }
 
       if (generation !== loadGenerationRef.current) return
 
       setBookingRows(nextBookingRows)
-      setEcommerceRows(nextEcommerceRows)
       const balancePayload = await balanceTopupPromise
       const balanceEnvelope = balancePayload?.data?.topups ?? balancePayload?.data ?? balancePayload
       const topups = Array.isArray(balanceEnvelope)
@@ -756,6 +804,8 @@ export default function PosRequestCenter({
             : []
       console.debug('[RequestCenter] Balance top-ups loaded', { endpoint: '/api/proxy/admin/customer-wallet/topups/pending?per_page=50', count: topups.length })
       setBalanceRows(topups)
+      hasLoadedRef.current = true
+      void refreshSummary()
     } catch (err) {
       if (generation !== loadGenerationRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to load requests.')
@@ -764,12 +814,16 @@ export default function PosRequestCenter({
         setLoading(false)
       }
     }
-  }, [])
+  }, [open, refreshSummary])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    // Fast badge without hydrating Request Center lists.
+    void refreshSummary()
+  }, [refreshSummary])
+
   useEffect(() => {
     if (!open) return
-    void load()
+    void load({ force: true })
   }, [open, load])
 
 

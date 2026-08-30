@@ -4,6 +4,10 @@ namespace App\Support;
 
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCancellationRequest;
+use App\Models\Booking\BookingPaymentLink;
+use App\Models\Ecommerce\CustomerWalletTransaction;
+use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\ReturnRequest;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
@@ -14,6 +18,59 @@ class RequestCenterPendingTasksQuery
 {
     /** @var array<int, string> */
     public const BOOKING_HOLD_STATUSES = ['HOLD', 'PENDING', 'PENDING_CONFIRMATION'];
+
+    /** @var array<int, string> */
+    public const RETURN_ACTIVE_STATUSES = ['requested', 'approved', 'in_transit', 'received'];
+
+    /**
+     * Lightweight badge counts for POS Request Center (no row hydration).
+     *
+     * @return array{
+     *   cancellations:int,
+     *   holds:int,
+     *   deposit_proofs:int,
+     *   package_purchases:int,
+     *   booking:int,
+     *   ecommerce_orders:int,
+     *   returns:int,
+     *   ecommerce:int,
+     *   balance_topups:int,
+     *   total:int
+     * }
+     */
+    public static function summaryCounts(): array
+    {
+        $cancellations = (int) BookingCancellationRequest::query()->where('status', 'pending')->count();
+        $holds = (int) Booking::query()->whereIn('status', static::BOOKING_HOLD_STATUSES)->count();
+        $depositProofs = (int) BookingPaymentLink::query()
+            ->where('status', 'PENDING')
+            ->where('manual_review_status', 'slip_uploaded_pending_review')
+            ->count();
+        $packagePurchases = (int) Order::query()
+            ->whereIn('status', ['pending', 'processing'])
+            ->where('payment_status', 'unpaid')
+            ->whereHas('items', fn ($items) => $items->where('line_type', 'service_package'))
+            ->count();
+        $ecommerceOrders = (int) PendingEcommerceOrderQuery::pendingRequestOrders()->count();
+        $returns = (int) ReturnRequest::query()->whereIn('status', static::RETURN_ACTIVE_STATUSES)->count();
+        $balanceTopups = (int) CustomerWalletTransaction::query()->pendingReview()->count();
+
+        $booking = $cancellations + $holds + $depositProofs + $packagePurchases;
+        $ecommerce = $ecommerceOrders + $returns;
+
+        return [
+            'cancellations' => $cancellations,
+            'holds' => $holds,
+            'deposit_proofs' => $depositProofs,
+            'package_purchases' => $packagePurchases,
+            'booking' => $booking,
+            'ecommerce_orders' => $ecommerceOrders,
+            'returns' => $returns,
+            'ecommerce' => $ecommerce,
+            'balance_topups' => $balanceTopups,
+            'total' => $booking + $ecommerce + $balanceTopups,
+        ];
+    }
 
     /**
      * @return EloquentCollection<int, BookingCancellationRequest>

@@ -67,6 +67,7 @@ use App\Support\BookingNotes;
 use App\Support\OrderReceiptEmailLabels;
 use App\Support\PosAppointmentStartAtFilter;
 use App\Support\Pricing\ProductPricing;
+use App\Support\RequestCenterPendingTasksQuery;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -97,6 +98,23 @@ class PosController extends Controller
      * @var \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, \App\Models\Ecommerce\OrderItem>>|null
      */
     private $appointmentSearchActiveOrderItemsByBookingId = null;
+
+    /**
+     * @var \Illuminate\Support\Collection<int, \App\Models\Booking\BookingService>|null
+     */
+    private $appointmentSearchBookingServicesById = null;
+
+    /**
+     * @var \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, \App\Models\Booking\BookingRefund>>|null
+     */
+    private $appointmentSearchRefundsByBookingId = null;
+
+    /**
+     * Available package qty keyed by "{customerId}:{bookingServiceId}".
+     *
+     * @var array<string, int>|null
+     */
+    private ?array $appointmentSearchPackageBalanceByCustomerService = null;
 
     private const APPOINTMENT_SEARCH_ACTIVE_ORDER_LINE_TYPES = [
         'booking_addon',
@@ -135,6 +153,9 @@ class PosController extends Controller
         $this->appointmentSearchMemoEnabled = false;
         $this->appointmentSearchMemo = [];
         $this->appointmentSearchActiveOrderItemsByBookingId = null;
+        $this->appointmentSearchBookingServicesById = null;
+        $this->appointmentSearchRefundsByBookingId = null;
+        $this->appointmentSearchPackageBalanceByCustomerService = null;
     }
 
     /**
@@ -473,6 +494,14 @@ class PosController extends Controller
     }
 
     /**
+     * Lightweight Request Center badge counts (no list hydration).
+     */
+    public function posRequestsSummary(Request $request)
+    {
+        return $this->respond(RequestCenterPendingTasksQuery::summaryCounts());
+    }
+
+    /**
      * Lightweight schedule feed. The calendar genuinely needs every row in its
      * visible month, but it does not need the heavyweight settlement DTO used by
      * appointmentDetail. Keep filtering/counting in SQL and enrich only with the
@@ -676,7 +705,7 @@ class PosController extends Controller
         $perPageCap = $hasRange ? 500 : 100;
         $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
-        $builder = Booking::query()->with(['customer:id,name,phone,email', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'staff:id,name', 'storeLocation:id,name,code']);
+        $builder = Booking::query()->with(['customer:id,name,phone,email', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,deposit_amount,duration_min', 'staff:id,name', 'storeLocation:id,name,code']);
         $this->applyPosAppointmentBranchScope($builder, $request);
 
         if ($query !== '') {
@@ -714,44 +743,92 @@ class PosController extends Controller
             $builder->where('staff_id', (int) $request->query('staff_id'));
         }
         $activeScheduleStatuses = ['HOLD', 'CONFIRMED', 'PENDING', 'COMPLETED'];
+        $holdLikeStatuses = ['HOLD', 'PENDING', 'PENDING_CONFIRMATION'];
         $terminalScheduleStatuses = ['CANCELLED', 'NOTIFIED_CANCELLATION', 'LATE_CANCELLATION', 'NO_SHOW', 'EXPIRED', 'VOIDED'];
         $allScheduleStatuses = array_merge($activeScheduleStatuses, $terminalScheduleStatuses);
+        $explicitStatusStatuses = array_values(array_unique(array_merge($allScheduleStatuses, $holdLikeStatuses)));
         $includeTerminalStatuses = $request->boolean('include_terminal_statuses');
-        $statusFilterNeedsActiveCheck = false;
+        // unpaid_only still needs financial hydration before filtering. Every other
+        // schedule status filter already matches appointmentRowBlocksActiveSchedule
+        // for rows returned by the SQL whereIn/where, so paginate in SQL first.
+        $hydrateBeforeFilter = $unpaidOnly;
+        $requestedHoldLiteStatuses = [];
         if ($unpaidOnly) {
             $builder->where('status', 'COMPLETED');
-            $statusFilterNeedsActiveCheck = true;
-        } elseif ($request->filled('status')) {
-            $status = strtoupper(trim((string) $request->query('status')));
-            if (in_array($status, $allScheduleStatuses, true)) {
-                $builder->where('status', $status);
-                $statusFilterNeedsActiveCheck = ! $includeTerminalStatuses || $status === 'COMPLETED';
+        } elseif ($request->filled('statuses')) {
+            $statuses = collect(explode(',', (string) $request->query('statuses', '')))
+                ->map(fn ($status) => strtoupper(trim((string) $status)))
+                ->filter(fn ($status) => $status !== '' && in_array($status, $explicitStatusStatuses, true))
+                ->unique()
+                ->values()
+                ->all();
+            if ($statuses !== []) {
+                $builder->whereIn('status', $statuses);
+                $requestedHoldLiteStatuses = $statuses;
             } else {
                 $builder->whereIn('status', $includeTerminalStatuses ? $allScheduleStatuses : $activeScheduleStatuses);
-                $statusFilterNeedsActiveCheck = ! $includeTerminalStatuses;
+            }
+        } elseif ($request->filled('status')) {
+            $status = strtoupper(trim((string) $request->query('status')));
+            if (in_array($status, $explicitStatusStatuses, true)) {
+                $builder->where('status', $status);
+                $requestedHoldLiteStatuses = [$status];
+            } else {
+                $builder->whereIn('status', $includeTerminalStatuses ? $allScheduleStatuses : $activeScheduleStatuses);
             }
         } else {
             // Active POS schedule keeps terminal statuses hidden; All view opts into the full history set.
-            // Completed paid/unpaid is decided from financial fields after resolving the appointment summary.
             $builder->whereIn('status', $includeTerminalStatuses ? $allScheduleStatuses : $activeScheduleStatuses);
-            $statusFilterNeedsActiveCheck = ! $includeTerminalStatuses;
         }
 
-        $allRows = $builder->orderBy('start_at')->get();
-        $this->preloadAppointmentSearchActiveOrderItems(
-            $allRows->pluck('id')->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all()
+        // Request Center only needs identity + hold_deposit_order / linked bookings.
+        // Skip full financial + visit hydration when explicitly asked (lite=1) and the
+        // status set is hold-like only — response keys stay present with safe zeros.
+        $holdLite = $request->boolean('lite')
+            && $requestedHoldLiteStatuses !== []
+            && collect($requestedHoldLiteStatuses)->every(fn (string $status) => in_array($status, $holdLikeStatuses, true));
+
+        $builder->orderBy('start_at')->orderBy('id');
+
+        if ($hydrateBeforeFilter) {
+            $pageBookings = $builder->get();
+            $totalRows = $pageBookings->count();
+        } else {
+            $totalRows = (clone $builder)->toBase()->getCountForPagination();
+            $pageBookings = $builder
+                ->forPage($page, $perPage)
+                ->get();
+        }
+
+        $pageBookingIds = $pageBookings->pluck('id')->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        if (! $holdLite) {
+            $this->preloadAppointmentSearchActiveOrderItems($pageBookingIds);
+            $this->preloadAppointmentSearchBookingServices($pageBookings);
+            $this->preloadAppointmentSearchRefunds($pageBookingIds);
+            $this->preloadAppointmentSearchPackageBalances($pageBookings);
+            $this->preloadAppointmentSearchStaffSplits($pageBookings);
+            $this->preloadAppointmentSearchPosCartIds($pageBookingIds);
+            // After pos_cart_ids memo is seeded — claims OR branches depend on it.
+            $this->preloadAppointmentSearchPackageUsages($pageBookings);
+        }
+        $holdMetaByBookingId = $this->preloadHoldDepositOrderMetaForBookings(
+            $pageBookings
+                ->filter(fn (Booking $booking) => in_array((string) $booking->status, $holdLikeStatuses, true))
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all()
         );
 
-        $allRows = $allRows->map(function (Booking $booking) {
-            $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $mappedRows = $pageBookings->map(function (Booking $booking) use ($holdLite, $holdMetaByBookingId) {
             $guestName = trim((string) ($booking->guest_name ?? ''));
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
             $guestEmail = trim((string) ($booking->guest_email ?? ''));
-            $holdDepositMeta = in_array((string) $booking->status, ['HOLD', 'PENDING', 'PENDING_CONFIRMATION'], true)
-                ? $this->resolveHoldDepositOrderMeta($booking)
-                : null;
+            $holdDepositMeta = $holdMetaByBookingId[(int) $booking->id] ?? [
+                'order' => null,
+                'linked_bookings' => [],
+            ];
 
-            return [
+            $identity = [
                 'id' => (int) $booking->id,
                 'store_location_id' => $booking->store_location_id ? (int) $booking->store_location_id : null,
                 'store_location' => $booking->storeLocation ? [
@@ -776,6 +853,54 @@ class PosController extends Controller
                 'staff_id' => $booking->staff_id ? (int) $booking->staff_id : null,
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
                 'status' => (string) $booking->status,
+                'hold_deposit_order' => $holdDepositMeta['order'] ?? null,
+                'hold_linked_bookings' => $holdDepositMeta['linked_bookings'] ?? [],
+            ];
+
+            if ($holdLite) {
+                return [
+                    ...$identity,
+                    'payment_status' => (string) ($booking->payment_status ?: 'UNPAID'),
+                    'deposit_contribution' => 0.0,
+                    'deposit_paid' => 0.0,
+                    'linked_booking_deposit' => 0.0,
+                    'linked_booking_deposit_total' => 0.0,
+                    'deposit_previously_collected' => false,
+                    'deposit_previously_collected_amount' => 0.0,
+                    'package_offset' => 0.0,
+                    'total_covered' => 0.0,
+                    'overpaid_amount' => 0.0,
+                    'refund_needed' => 0.0,
+                    'refund_handled_amount' => 0.0,
+                    'refund_pending_amount' => 0.0,
+                    'refund_handled' => false,
+                    'refund_pending' => false,
+                    'balance_due' => 0.0,
+                    'amount_due_now' => 0.0,
+                    'settlement_paid' => 0.0,
+                    'service_total' => 0.0,
+                    'settled_service_amount' => $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null,
+                    'is_range_priced' => false,
+                    'requires_settled_amount' => false,
+                    'has_unfinalized_range_pricing' => false,
+                    'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
+                    'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
+                    'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
+                    'addon_total_price' => 0.0,
+                    'add_ons' => [],
+                    'package_status' => null,
+                    'can_apply_package' => false,
+                    'package_disabled_reason' => null,
+                    'eligible_package_count' => 0,
+                    'visit_register_order_id' => null,
+                    'visit_checkout_finalized' => false,
+                ];
+            }
+
+            $summary = $this->resolveAppointmentFinancialSummary($booking);
+
+            return [
+                ...$identity,
                 'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
                 'deposit_contribution' => (float) $summary['deposit_contribution'],
                 'deposit_paid' => (float) $summary['deposit_contribution'],
@@ -808,16 +933,19 @@ class PosController extends Controller
                 'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
                 'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
                 'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
-                'hold_deposit_order' => $holdDepositMeta['order'] ?? null,
-                'hold_linked_bookings' => $holdDepositMeta['linked_bookings'] ?? [],
                 ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
             ];
-        })->when($statusFilterNeedsActiveCheck, function ($rows) use ($unpaidOnly) {
-            return $rows->filter(fn (array $row) => $this->appointmentRowBlocksActiveSchedule($row, $unpaidOnly));
         })->values();
 
-        $totalRows = $allRows->count();
-        $rows = $allRows->forPage($page, $perPage)->values();
+        if ($hydrateBeforeFilter) {
+            $mappedRows = $mappedRows
+                ->filter(fn (array $row) => $this->appointmentRowBlocksActiveSchedule($row, $unpaidOnly))
+                ->values();
+            $totalRows = $mappedRows->count();
+            $rows = $mappedRows->forPage($page, $perPage)->values();
+        } else {
+            $rows = $mappedRows;
+        }
         $lastPage = max(1, (int) ceil($totalRows / $perPage));
 
         $pendingCancellationRequestsCount = BookingCancellationRequest::query()
@@ -867,6 +995,7 @@ class PosController extends Controller
                 'customer:id,name,phone,email',
                 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min',
                 'staff:id,name',
+                'storeLocation:id,name,code',
                 'itemPhotos:id,booking_id,file_path,created_at',
                 'servicePhotos:id,booking_id,image_path,caption,sort_order,created_at',
                 'payments',
@@ -4064,7 +4193,7 @@ class PosController extends Controller
         }
 
         if ($status !== 'COMPLETED') {
-            return in_array($status, ['HOLD', 'CONFIRMED', 'PENDING'], true);
+            return in_array($status, ['HOLD', 'CONFIRMED', 'PENDING', 'PENDING_CONFIRMATION'], true);
         }
 
         if ($unpaidOnly) {
@@ -4153,7 +4282,12 @@ class PosController extends Controller
         }
 
         return (bool) $this->rememberAppointmentSearch("visit_finalized:{$bookingId}", function () use ($bookingId) {
-            if (OrderItem::query()
+            if ($this->appointmentSearchActiveOrderItemsByBookingId !== null) {
+                $preloaded = $this->appointmentSearchActiveOrderItemsByBookingId->get($bookingId, collect());
+                if ($preloaded->contains(fn (OrderItem $item) => (string) $item->line_type === 'booking_settlement')) {
+                    return true;
+                }
+            } elseif (OrderItem::query()
                 ->where('booking_id', $bookingId)
                 ->where('line_type', 'booking_settlement')
                 ->exists()) {
@@ -4178,18 +4312,32 @@ class PosController extends Controller
      */
     protected function resolveAppointmentVisitCheckoutMeta(int $bookingId): array
     {
-        $visitRegisterOrderId = OrderServiceItem::query()
-            ->where('booking_id', $bookingId)
-            ->whereHas('order', function ($orderQuery) use ($bookingId) {
-                $orderQuery->whereDoesntHave('items', function ($itemQuery) use ($bookingId) {
-                    $itemQuery->where('booking_id', $bookingId)
-                        ->where('line_type', 'booking_deposit');
-                });
-            })
-            ->orderByDesc('id')
-            ->value('order_id');
+        $visitRegisterOrderId = null;
+        if ($this->appointmentSearchActiveOrderItemsByBookingId !== null) {
+            $settlement = $this->appointmentSearchActiveOrderItemsByBookingId
+                ->get($bookingId, collect())
+                ->filter(fn (OrderItem $item) => (string) $item->line_type === 'booking_settlement')
+                ->sortByDesc(fn (OrderItem $item) => (int) $item->id)
+                ->first();
+            if ($settlement) {
+                $visitRegisterOrderId = (int) $settlement->order_id;
+            }
+        }
 
         if ($visitRegisterOrderId === null) {
+            $visitRegisterOrderId = OrderServiceItem::query()
+                ->where('booking_id', $bookingId)
+                ->whereHas('order', function ($orderQuery) use ($bookingId) {
+                    $orderQuery->whereDoesntHave('items', function ($itemQuery) use ($bookingId) {
+                        $itemQuery->where('booking_id', $bookingId)
+                            ->where('line_type', 'booking_deposit');
+                    });
+                })
+                ->orderByDesc('id')
+                ->value('order_id');
+        }
+
+        if ($visitRegisterOrderId === null && $this->appointmentSearchActiveOrderItemsByBookingId === null) {
             $visitRegisterOrderId = OrderItem::query()
                 ->where('booking_id', $bookingId)
                 ->where('line_type', 'booking_settlement')
@@ -9312,6 +9460,468 @@ class PosController extends Controller
     }
 
     /**
+     * @param  \Illuminate\Support\Collection<int, Booking>  $bookings
+     */
+    protected function preloadAppointmentSearchBookingServices($bookings): void
+    {
+        $serviceIds = collect();
+        foreach ($bookings as $booking) {
+            if (! $booking instanceof Booking) {
+                continue;
+            }
+            $serviceIds = $serviceIds
+                ->merge($this->resolveAppointmentPackageServiceIds($booking))
+                ->push((int) ($booking->service_id ?? 0));
+            foreach ((array) ($booking->addon_items_json ?? []) as $item) {
+                $serviceIds->push((int) ($item['linked_booking_service_id'] ?? 0));
+                foreach ((array) ($item['addon_items'] ?? []) as $addon) {
+                    $serviceIds->push((int) (is_array($addon) ? ($addon['linked_booking_service_id'] ?? 0) : 0));
+                }
+            }
+        }
+
+        $ids = $serviceIds->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        $this->appointmentSearchBookingServicesById = $ids === []
+            ? collect()
+            : BookingService::query()
+                ->whereIn('id', $ids)
+                ->get(['id', 'price_mode', 'price_range_min', 'price_range_max', 'service_type', 'deposit_amount'])
+                ->keyBy(fn (BookingService $service) => (int) $service->id);
+    }
+
+    /**
+     * @param  list<int>  $bookingIds
+     */
+    protected function preloadAppointmentSearchRefunds(array $bookingIds): void
+    {
+        $bookingIds = collect($bookingIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($bookingIds === []) {
+            $this->appointmentSearchRefundsByBookingId = collect();
+
+            return;
+        }
+
+        $this->appointmentSearchRefundsByBookingId = BookingRefund::query()
+            ->whereIn('booking_id', $bookingIds)
+            ->whereIn('status', ['completed', 'pending'])
+            ->whereRaw("COALESCE(reason, '') <> ?", [VoidRefundService::REASON])
+            ->get()
+            ->groupBy(fn (BookingRefund $refund) => (int) $refund->booking_id)
+            ->map(fn ($rows) => $rows->values());
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Booking>  $bookings
+     */
+    protected function preloadAppointmentSearchPackageBalances($bookings): void
+    {
+        $pairs = [];
+        $customerIds = [];
+        $serviceIds = [];
+        foreach ($bookings as $booking) {
+            if (! $booking instanceof Booking) {
+                continue;
+            }
+            $customerId = (int) ($booking->customer_id ?? 0);
+            if ($customerId <= 0) {
+                continue;
+            }
+            foreach ($this->resolveAppointmentPackageServiceIds($booking) as $serviceId) {
+                $serviceId = (int) $serviceId;
+                if ($serviceId <= 0) {
+                    continue;
+                }
+                $pairs["{$customerId}:{$serviceId}"] = [$customerId, $serviceId];
+                $customerIds[$customerId] = $customerId;
+                $serviceIds[$serviceId] = $serviceId;
+            }
+        }
+
+        $this->appointmentSearchPackageBalanceByCustomerService = array_fill_keys(array_keys($pairs), 0);
+        if ($pairs === []) {
+            return;
+        }
+
+        $balances = CustomerServicePackageBalance::query()
+            ->select([
+                'customer_service_package_balances.id',
+                'customer_service_package_balances.customer_service_package_id',
+                'customer_service_package_balances.booking_service_id',
+                'customer_service_package_balances.remaining_qty',
+                'customer_service_packages.customer_id',
+            ])
+            ->join('customer_service_packages', 'customer_service_packages.id', '=', 'customer_service_package_balances.customer_service_package_id')
+            ->whereIn('customer_service_packages.customer_id', array_values($customerIds))
+            ->whereIn('customer_service_package_balances.booking_service_id', array_values($serviceIds))
+            ->where('customer_service_packages.status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('customer_service_packages.expires_at')
+                    ->orWhere('customer_service_packages.expires_at', '>=', now());
+            })
+            ->get();
+
+        if ($balances->isEmpty()) {
+            return;
+        }
+
+        $packageIds = $balances
+            ->pluck('customer_service_package_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $reservedRows = $packageIds === []
+            ? collect()
+            : CustomerServicePackageUsage::query()
+                ->selectRaw('customer_service_package_id, booking_service_id, COALESCE(SUM(used_qty), 0) as reserved_qty')
+                ->whereIn('customer_service_package_id', $packageIds)
+                ->whereIn('booking_service_id', array_values($serviceIds))
+                ->where('status', 'reserved')
+                ->groupBy('customer_service_package_id', 'booking_service_id')
+                ->get();
+
+        $reservedMap = [];
+        foreach ($reservedRows as $row) {
+            $key = ((int) $row->customer_service_package_id).':'.((int) $row->booking_service_id);
+            $reservedMap[$key] = (int) $row->reserved_qty;
+        }
+
+        $available = [];
+        foreach ($balances as $balance) {
+            $customerId = (int) $balance->customer_id;
+            $serviceId = (int) $balance->booking_service_id;
+            $pairKey = "{$customerId}:{$serviceId}";
+            if (! array_key_exists($pairKey, $pairs)) {
+                continue;
+            }
+            $reservedQty = (int) ($reservedMap[((int) $balance->customer_service_package_id).':'.$serviceId] ?? 0);
+            $available[$pairKey] = (int) ($available[$pairKey] ?? 0)
+                + max(0, (int) $balance->remaining_qty - $reservedQty);
+        }
+
+        foreach ($pairs as $pairKey => $_pair) {
+            $this->appointmentSearchPackageBalanceByCustomerService[$pairKey] = (int) ($available[$pairKey] ?? 0);
+        }
+    }
+
+    /**
+     * Seed staff_splits memo for the search page (one splits query + fallback staffs).
+     *
+     * @param  \Illuminate\Support\Collection<int, Booking>  $bookings
+     */
+    protected function preloadAppointmentSearchStaffSplits($bookings): void
+    {
+        if (! $this->appointmentSearchMemoEnabled) {
+            return;
+        }
+
+        $bookingIds = [];
+        $fallbackByBooking = [];
+        $fallbackStaffIds = [];
+        foreach ($bookings as $booking) {
+            if (! $booking instanceof Booking) {
+                continue;
+            }
+            $bookingId = (int) $booking->id;
+            if ($bookingId <= 0) {
+                continue;
+            }
+            $bookingIds[] = $bookingId;
+            $fallback = (int) ($booking->staff_id ?? 0);
+            $fallbackByBooking[$bookingId] = $fallback;
+            if ($fallback > 0) {
+                $fallbackStaffIds[$fallback] = $fallback;
+            }
+        }
+
+        $bookingIds = array_values(array_unique($bookingIds));
+        if ($bookingIds === []) {
+            return;
+        }
+
+        $splitRows = DB::table('booking_service_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->whereIn('splits.booking_id', $bookingIds)
+            ->orderBy('splits.id')
+            ->get([
+                'splits.booking_id',
+                'splits.staff_id',
+                'staffs.name as staff_name',
+                'splits.split_percent',
+                'splits.share_amount',
+                'splits.split_mode',
+                'splits.service_commission_rate_snapshot',
+            ]);
+
+        $grouped = [];
+        foreach ($splitRows as $row) {
+            $bookingId = (int) ($row->booking_id ?? 0);
+            $staffId = (int) ($row->staff_id ?? 0);
+            $sharePercent = (int) ($row->split_percent ?? 0);
+            $shareAmount = $row->share_amount !== null ? round((float) $row->share_amount, 2) : null;
+            if ($bookingId <= 0 || $staffId <= 0 || ($sharePercent <= 0 && ($shareAmount ?? 0) <= 0)) {
+                continue;
+            }
+            $grouped[$bookingId][] = [
+                'staff_id' => $staffId,
+                'staff_name' => (string) ($row->staff_name ?? '-'),
+                'share_percent' => $sharePercent,
+                'share_amount' => $shareAmount,
+                'split_mode' => $row->split_mode ? (string) $row->split_mode : null,
+                'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ];
+        }
+
+        if ($fallbackStaffIds !== []) {
+            $fallbackStaffs = Staff::query()
+                ->whereIn('id', array_values($fallbackStaffIds))
+                ->get(['id', 'name', 'service_commission_rate'])
+                ->keyBy(fn (Staff $staff) => (int) $staff->id);
+
+            foreach ($fallbackStaffs as $staffId => $staff) {
+                $this->appointmentSearchMemo["staff_fallback:{$staffId}"] = [
+                    'staff_id' => (int) $staff->id,
+                    'staff_name' => (string) ($staff->name ?? '-'),
+                    'share_percent' => 100,
+                    'service_commission_rate_snapshot' => (float) ($staff->service_commission_rate ?? 0),
+                ];
+            }
+        }
+
+        foreach ($bookingIds as $bookingId) {
+            $fallback = (int) ($fallbackByBooking[$bookingId] ?? 0);
+            $memoKey = "staff_splits:{$bookingId}:fallback:{$fallback}";
+            $rows = $grouped[$bookingId] ?? [];
+            if ($rows === [] && $fallback > 0) {
+                $fallbackRow = $this->resolveStaffSplitFallbackStaff($fallback);
+                $rows = $fallbackRow !== null ? [$fallbackRow] : [];
+            }
+            $this->appointmentSearchMemo[$memoKey] = $rows;
+        }
+    }
+
+    /**
+     * Seed pos_cart_ids memo for the search page (one join instead of N whereHas).
+     *
+     * @param  list<int>  $bookingIds
+     */
+    protected function preloadAppointmentSearchPosCartIds(array $bookingIds): void
+    {
+        if (! $this->appointmentSearchMemoEnabled) {
+            return;
+        }
+
+        $bookingIds = collect($bookingIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        foreach ($bookingIds as $bookingId) {
+            $this->appointmentSearchMemo["pos_cart_ids:{$bookingId}"] = [];
+        }
+
+        if ($bookingIds === []) {
+            return;
+        }
+
+        $rows = DB::table('order_item_staff_splits as splits')
+            ->join('order_items as oi', 'oi.id', '=', 'splits.order_item_id')
+            ->whereIn('oi.booking_id', $bookingIds)
+            ->orderBy('splits.id')
+            ->get(['oi.booking_id', 'splits.snapshot']);
+
+        $byBooking = [];
+        foreach ($rows as $row) {
+            $bookingId = (int) ($row->booking_id ?? 0);
+            if ($bookingId <= 0) {
+                continue;
+            }
+            $snapshot = $row->snapshot;
+            $data = is_array($snapshot) ? $snapshot : json_decode((string) $snapshot, true);
+            $cartId = (int) (is_array($data) ? ($data['cart_service_item_id'] ?? 0) : 0);
+            if ($cartId <= 0) {
+                continue;
+            }
+            $byBooking[$bookingId][] = $cartId;
+        }
+
+        foreach ($bookingIds as $bookingId) {
+            $this->appointmentSearchMemo["pos_cart_ids:{$bookingId}"] = array_values(array_unique($byBooking[$bookingId] ?? []));
+        }
+    }
+
+    /**
+     * Seed pkg_claims + pkg_usage_early memo for the search page (one usages query + optional fallback).
+     *
+     * @param  \Illuminate\Support\Collection<int, Booking>  $bookings
+     */
+    protected function preloadAppointmentSearchPackageUsages($bookings): void
+    {
+        if (! $this->appointmentSearchMemoEnabled) {
+            return;
+        }
+
+        $bookingList = collect($bookings)->filter(fn ($booking) => $booking instanceof Booking)->values();
+        if ($bookingList->isEmpty()) {
+            return;
+        }
+
+        $bookingIds = $bookingList
+            ->map(fn (Booking $booking) => (int) $booking->id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $cartByBooking = [];
+        $allCartIds = [];
+        foreach ($bookingIds as $bookingId) {
+            /** @var list<int> $cartIds */
+            $cartIds = $this->appointmentSearchMemo["pos_cart_ids:{$bookingId}"] ?? [];
+            $cartByBooking[$bookingId] = $cartIds;
+            foreach ($cartIds as $cartId) {
+                $cartId = (int) $cartId;
+                if ($cartId > 0) {
+                    $allCartIds[$cartId] = $cartId;
+                }
+            }
+        }
+        $allCartIds = array_values($allCartIds);
+
+        $claimUsages = CustomerServicePackageUsage::query()
+            ->with(['customerServicePackage.servicePackage'])
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->where(function ($q) use ($bookingIds, $allCartIds) {
+                $q->whereIn('booking_id', $bookingIds)
+                    ->orWhere(function ($q2) use ($bookingIds) {
+                        $q2->where('used_from', 'POS')
+                            ->whereIn('used_ref_id', $bookingIds)
+                            ->whereNull('booking_id');
+                    });
+
+                if ($allCartIds !== []) {
+                    $q->orWhere(function ($q3) use ($allCartIds) {
+                        $q3->where('used_from', 'POS')
+                            ->whereIn('used_ref_id', $allCartIds);
+                    })->orWhereIn('booking_id', $allCartIds);
+                }
+            })
+            ->get();
+
+        $fallbackPairs = [];
+        foreach ($bookingList as $booking) {
+            $bookingId = (int) $booking->id;
+            $cartIds = $cartByBooking[$bookingId] ?? [];
+            $matching = $claimUsages->filter(function (CustomerServicePackageUsage $usage) use ($bookingId, $cartIds) {
+                $usageBookingId = (int) ($usage->booking_id ?? 0);
+                if ($usageBookingId === $bookingId) {
+                    return true;
+                }
+                if (
+                    $usageBookingId === 0
+                    && strtoupper((string) ($usage->used_from ?? '')) === 'POS'
+                    && (int) ($usage->used_ref_id ?? 0) === $bookingId
+                ) {
+                    return true;
+                }
+                if ($cartIds === []) {
+                    return false;
+                }
+                if (
+                    strtoupper((string) ($usage->used_from ?? '')) === 'POS'
+                    && in_array((int) ($usage->used_ref_id ?? 0), $cartIds, true)
+                ) {
+                    return true;
+                }
+
+                return in_array($usageBookingId, $cartIds, true);
+            });
+
+            $activeServiceIds = $this->resolveAppointmentPackageServiceIds($booking);
+            $claims = $matching
+                ->filter(function (CustomerServicePackageUsage $usage) use ($activeServiceIds) {
+                    $bookingServiceId = (int) ($usage->booking_service_id ?? 0);
+
+                    return $bookingServiceId > 0 && $activeServiceIds->contains($bookingServiceId);
+                })
+                ->map(fn (CustomerServicePackageUsage $usage) => $this->mapPackageUsageClaimRow($usage))
+                ->values()
+                ->all();
+
+            $serviceId = (int) ($booking->service_id ?? 0);
+            $addonFingerprint = md5(json_encode($booking->addon_items_json ?? []));
+            $claimsKey = "pkg_claims:{$bookingId}:svc:{$serviceId}:addons:{$addonFingerprint}";
+            $this->appointmentSearchMemo[$claimsKey] = $claims;
+
+            $early = $claimUsages
+                ->filter(fn (CustomerServicePackageUsage $usage) => (int) ($usage->booking_id ?? 0) === $bookingId)
+                ->sortByDesc(fn (CustomerServicePackageUsage $usage) => (int) $usage->id)
+                ->first();
+
+            if ($early === null && $booking->customer_id && $booking->service_id) {
+                $fallbackPairs[$bookingId] = [
+                    'customer_id' => (int) $booking->customer_id,
+                    'service_id' => (int) $booking->service_id,
+                    'cart_ids' => $cartIds,
+                ];
+            } else {
+                $this->appointmentSearchMemo["pkg_usage_early:{$bookingId}"] = $early;
+            }
+        }
+
+        if ($fallbackPairs === []) {
+            return;
+        }
+
+        $fallbackCustomerIds = array_values(array_unique(array_column($fallbackPairs, 'customer_id')));
+        $fallbackServiceIds = array_values(array_unique(array_column($fallbackPairs, 'service_id')));
+        $fallbackUsages = CustomerServicePackageUsage::query()
+            ->with(['customerServicePackage.servicePackage'])
+            ->whereIn('customer_id', $fallbackCustomerIds)
+            ->whereIn('booking_service_id', $fallbackServiceIds)
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($fallbackPairs as $bookingId => $pair) {
+            $customerId = (int) $pair['customer_id'];
+            $serviceId = (int) $pair['service_id'];
+            /** @var list<int> $cartIds */
+            $cartIds = $pair['cart_ids'];
+            $early = $fallbackUsages
+                ->filter(function (CustomerServicePackageUsage $usage) use ($customerId, $serviceId, $cartIds) {
+                    if ((int) ($usage->customer_id ?? 0) !== $customerId) {
+                        return false;
+                    }
+                    if ((int) ($usage->booking_service_id ?? 0) !== $serviceId) {
+                        return false;
+                    }
+                    // Match resolveAppointmentFinancialSummary early fallback: when cart ids exist,
+                    // restrict to those booking_id values; when empty, any matching usage is eligible.
+                    if ($cartIds !== []) {
+                        return in_array((int) ($usage->booking_id ?? 0), $cartIds, true);
+                    }
+
+                    return true;
+                })
+                ->sortByDesc(fn (CustomerServicePackageUsage $usage) => (int) $usage->id)
+                ->first();
+
+            $this->appointmentSearchMemo["pkg_usage_early:{$bookingId}"] = $early;
+        }
+    }
+
+    /**
      * Active order items for a booking, optionally filtered by line_type / variant snapshot.
      * Uses P1-B preload during appointmentSearch; otherwise falls back to activeBookingOrderItemQuery.
      *
@@ -10520,6 +11130,35 @@ class PosController extends Controller
 
         if ($linkedIds->isEmpty()) {
             return collect();
+        }
+
+        if ($this->appointmentSearchBookingServicesById !== null) {
+            $result = collect();
+            $missing = [];
+            foreach ($linkedIds as $id) {
+                $id = (int) $id;
+                $service = $this->appointmentSearchBookingServicesById->get($id)
+                    ?? $this->appointmentSearchBookingServicesById->get((string) $id)
+                    ?? $this->appointmentSearchBookingServicesById->firstWhere('id', $id);
+                if ($service) {
+                    $result->put($id, $service);
+                } else {
+                    $missing[] = $id;
+                }
+            }
+
+            if ($missing !== []) {
+                $fetched = BookingService::query()
+                    ->whereIn('id', array_values(array_unique($missing)))
+                    ->get(['id', 'service_type', 'deposit_amount', 'price_mode', 'price_range_min', 'price_range_max']);
+                foreach ($fetched as $service) {
+                    $serviceId = (int) $service->id;
+                    $this->appointmentSearchBookingServicesById->put($serviceId, $service);
+                    $result->put($serviceId, $service);
+                }
+            }
+
+            return $result;
         }
 
         return BookingService::query()
@@ -11758,6 +12397,37 @@ class PosController extends Controller
         return $claims;
     }
 
+    protected function resolveAppointmentPackageUsageEarly(Booking $booking): ?CustomerServicePackageUsage
+    {
+        $bookingId = (int) $booking->id;
+        if ($bookingId <= 0) {
+            return null;
+        }
+
+        /** @var CustomerServicePackageUsage|null $usage */
+        $usage = $this->rememberAppointmentSearch("pkg_usage_early:{$bookingId}", function () use ($booking, $bookingId) {
+            $packageUsageEarly = CustomerServicePackageUsage::query()
+                ->where('booking_id', $bookingId)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->latest('id')
+                ->first();
+            if (! $packageUsageEarly && $booking->customer_id && $booking->service_id) {
+                $posCartItemIdsForBooking = $this->resolvePosCartServiceItemIdsForBookingCached($bookingId);
+                $packageUsageEarly = CustomerServicePackageUsage::query()
+                    ->where('customer_id', (int) $booking->customer_id)
+                    ->where('booking_service_id', (int) $booking->service_id)
+                    ->when($posCartItemIdsForBooking !== [], fn ($query) => $query->whereIn('booking_id', $posCartItemIdsForBooking))
+                    ->whereIn('status', ['reserved', 'consumed'])
+                    ->latest('id')
+                    ->first();
+            }
+
+            return $packageUsageEarly;
+        });
+
+        return $usage;
+    }
+
     /**
      * @return list<array<string, mixed>>
      */
@@ -11904,6 +12574,11 @@ class PosController extends Controller
      */
     protected function resolveHoldDepositOrderMeta(Booking $booking): array
     {
+        $preloaded = $this->rememberAppointmentSearch('hold_meta_map', fn () => null);
+        if (is_array($preloaded) && array_key_exists((int) $booking->id, $preloaded)) {
+            return $preloaded[(int) $booking->id];
+        }
+
         $holdOrder = $this->resolveHoldDepositOrderForReview($booking);
         if (! $holdOrder) {
             return [
@@ -11945,6 +12620,132 @@ class PosController extends Controller
             'order_model' => $holdOrder,
             'linked_bookings' => $linkedBookings,
         ];
+    }
+
+    /**
+     * Batch hold deposit order + linked bookings for a page of hold-like appointments.
+     *
+     * @param  list<int>  $bookingIds
+     * @return array<int, array{order: ?array<string, mixed>, order_model: ?Order, linked_bookings: list<array{id:int,booking_code:string,service_name:string}>}>
+     */
+    protected function preloadHoldDepositOrderMetaForBookings(array $bookingIds): array
+    {
+        $bookingIds = collect($bookingIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $empty = [
+            'order' => null,
+            'order_model' => null,
+            'linked_bookings' => [],
+        ];
+        if ($bookingIds === []) {
+            return [];
+        }
+
+        $depositItems = OrderItem::query()
+            ->whereIn('booking_id', $bookingIds)
+            ->whereIn('line_type', ['booking_deposit', 'booking_addon'])
+            ->get(['id', 'order_id', 'booking_id']);
+
+        $orderIdsByBooking = [];
+        foreach ($depositItems as $item) {
+            $bookingId = (int) $item->booking_id;
+            $orderId = (int) $item->order_id;
+            if ($bookingId <= 0 || $orderId <= 0) {
+                continue;
+            }
+            $orderIdsByBooking[$bookingId][] = $orderId;
+        }
+
+        $allOrderIds = collect($orderIdsByBooking)->flatten()->unique()->values()->all();
+        $ordersById = $allOrderIds === []
+            ? collect()
+            : Order::query()
+                ->whereIn('id', $allOrderIds)
+                ->where('payment_status', '!=', 'paid')
+                ->whereIn('status', ['pending', 'processing', 'reject_payment_proof'])
+                ->get()
+                ->keyBy(fn (Order $order) => (int) $order->id);
+
+        $chosenOrderByBooking = [];
+        foreach ($orderIdsByBooking as $bookingId => $orderIds) {
+            $candidate = collect($orderIds)
+                ->map(fn ($id) => $ordersById->get((int) $id))
+                ->filter()
+                ->sortByDesc(fn (Order $order) => (int) $order->id)
+                ->first();
+            if ($candidate) {
+                $chosenOrderByBooking[$bookingId] = $candidate;
+            }
+        }
+
+        $chosenOrderIds = collect($chosenOrderByBooking)->map(fn (Order $order) => (int) $order->id)->unique()->values()->all();
+        $siblingItems = $chosenOrderIds === []
+            ? collect()
+            : OrderItem::query()
+                ->whereIn('order_id', $chosenOrderIds)
+                ->whereNotNull('booking_id')
+                ->get(['order_id', 'booking_id']);
+
+        $linkedBookingIds = $siblingItems->pluck('booking_id')->map(fn ($id) => (int) $id)->unique()->filter()->values()->all();
+        $linkedBookingsById = $linkedBookingIds === []
+            ? collect()
+            : Booking::query()
+                ->with('service:id,name')
+                ->whereIn('id', $linkedBookingIds)
+                ->orderBy('id')
+                ->get()
+                ->keyBy(fn (Booking $booking) => (int) $booking->id);
+
+        $linkedByOrderId = [];
+        foreach ($siblingItems as $item) {
+            $orderId = (int) $item->order_id;
+            $linked = $linkedBookingsById->get((int) $item->booking_id);
+            if (! $linked) {
+                continue;
+            }
+            $linkedByOrderId[$orderId][] = [
+                'id' => (int) $linked->id,
+                'booking_code' => (string) ($linked->booking_code ?: ('BOOKING-' . $linked->id)),
+                'service_name' => (string) ($linked->service?->name ?? 'Service'),
+            ];
+        }
+
+        $result = [];
+        foreach ($bookingIds as $bookingId) {
+            $order = $chosenOrderByBooking[$bookingId] ?? null;
+            if (! $order) {
+                $result[$bookingId] = $empty;
+                continue;
+            }
+            $linked = collect($linkedByOrderId[(int) $order->id] ?? [])
+                ->unique('id')
+                ->sortBy('id')
+                ->values()
+                ->all();
+            $result[$bookingId] = [
+                'order' => [
+                    'id' => (int) $order->id,
+                    'order_number' => (string) $order->order_number,
+                    'status' => (string) $order->status,
+                    'payment_status' => (string) $order->payment_status,
+                    'payment_method' => (string) ($order->payment_method ?? ''),
+                    'grand_total' => (float) ($order->grand_total ?? 0),
+                ],
+                'order_model' => $order,
+                'linked_bookings' => $linked,
+            ];
+        }
+
+        if ($this->appointmentSearchMemoEnabled) {
+            $this->appointmentSearchMemo['hold_meta_map'] = $result;
+        }
+
+        return $result;
     }
 
     protected function resolveHoldDepositOrder(Booking $booking): ?Order
@@ -12347,10 +13148,14 @@ class PosController extends Controller
             ->unique()
             ->values();
         $linkedServicesForPriceMeta = $linkedServiceIdsForPriceMeta->isNotEmpty()
-            ? BookingService::query()
-                ->whereIn('id', $linkedServiceIdsForPriceMeta->all())
-                ->get(['id', 'price_mode', 'price_range_min', 'price_range_max'])
-                ->keyBy('id')
+            ? (
+                $this->appointmentSearchBookingServicesById !== null
+                    ? $this->appointmentSearchBookingServicesById->only($linkedServiceIdsForPriceMeta->all())
+                    : BookingService::query()
+                        ->whereIn('id', $linkedServiceIdsForPriceMeta->all())
+                        ->get(['id', 'price_mode', 'price_range_min', 'price_range_max'])
+                        ->keyBy('id')
+            )
             : collect();
         $priceMetaForServiceId = function ($serviceId) use ($linkedServicesForPriceMeta): array {
             $service = $linkedServicesForPriceMeta->get((int) $serviceId);
@@ -12524,21 +13329,7 @@ class PosController extends Controller
                 'balance_due' => round($balanceDue, 2),
             ];
         })->values();
-        $packageUsageEarly = CustomerServicePackageUsage::query()
-            ->where('booking_id', (int) $booking->id)
-            ->whereIn('status', ['reserved', 'consumed'])
-            ->latest('id')
-            ->first();
-        if (! $packageUsageEarly && $booking->customer_id && $booking->service_id) {
-            $posCartItemIdsForBooking = $this->resolvePosCartServiceItemIdsForBookingCached((int) $booking->id);
-            $packageUsageEarly = CustomerServicePackageUsage::query()
-                ->where('customer_id', (int) $booking->customer_id)
-                ->where('booking_service_id', (int) $booking->service_id)
-                ->when($posCartItemIdsForBooking !== [], fn ($query) => $query->whereIn('booking_id', $posCartItemIdsForBooking))
-                ->whereIn('status', ['reserved', 'consumed'])
-                ->latest('id')
-                ->first();
-        }
+        $packageUsageEarly = $this->resolveAppointmentPackageUsageEarly($booking);
         $packageCoversMain = $packageUsageEarly !== null;
         $depositBreakdown = $this->resolveBookingDepositBreakdown($booking, $packageCoversMain);
         $expectedDepositByAddonId = collect($depositBreakdown['addon_deposit_items'] ?? [])
@@ -12607,36 +13398,25 @@ class PosController extends Controller
             ->filter(fn (OrderItem $row) => strcasecmp((string) ($row->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0)
             ->sum(fn (OrderItem $row) => $this->resolveOrderItemSettlementGrossAmount($row));
 
-        $packageUsages = collect($this->resolvePerLinePackageClaims($booking, []));
-        $packageUsage = null;
-        if ($packageUsages->isNotEmpty()) {
-            $reservedUsage = $packageUsages->first(fn (array $claim) => ($claim['status'] ?? '') === 'reserved');
-            $usageId = (int) (($reservedUsage ?? $packageUsages->last())['usage_id'] ?? 0);
-            $packageUsage = $usageId > 0
-                ? CustomerServicePackageUsage::query()->find($usageId)
-                : null;
-        }
+        $packageClaims = $this->resolvePerLinePackageClaims($booking, []);
+        $packageUsages = collect($packageClaims);
+        // Prefer the early usage row already loaded above — avoids a redundant find by usage_id.
+        $packageUsage = $packageUsageEarly;
 
         $posCartItemIds = $this->resolvePosCartServiceItemIdsForBookingCached((int) $booking->id);
 
-        if (! $packageUsage && $booking->customer_id && $booking->service_id) {
+        if (! $packageUsage && $booking->customer_id && $booking->service_id && $posCartItemIds !== []) {
             $packageUsage = CustomerServicePackageUsage::query()
                 ->where('customer_id', (int) $booking->customer_id)
                 ->where('booking_service_id', (int) $booking->service_id)
-                ->where(function ($q) use ($booking, $posCartItemIds) {
-                    if ($posCartItemIds !== []) {
-                        $q->whereIn('booking_id', $posCartItemIds);
-                    } else {
-                        $q->whereRaw('1 = 0');
-                    }
-                })
+                ->whereIn('booking_id', $posCartItemIds)
                 ->whereIn('status', ['reserved', 'consumed'])
                 ->latest('id')
                 ->first();
         }
 
         $coveredByPackage = $packageUsage !== null && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true);
-        $claimedServiceIds = collect($this->resolvePerLinePackageClaims($booking, []))
+        $claimedServiceIds = $packageUsages
             ->pluck('booking_service_id')
             ->map(fn ($id) => (int) $id)
             ->filter(fn ($id) => $id > 0)
@@ -12665,7 +13445,7 @@ class PosController extends Controller
         } else {
             $packageOffset = $coveredByPackage ? max(0.0, $originalServiceAmount) : 0.0;
         }
-        $packageEligibility = $this->resolveAppointmentPackageEligibility($booking, $packageUsage);
+        $packageEligibility = $this->resolveAppointmentPackageEligibility($booking, $packageUsage, $claimedServiceIds);
 
         $serviceOutstandingRows = $mainSettlementItems->map(function (array $item, int $idx) use ($depositPaid, $claimedServiceIds, $coveredByPackage, $originalServiceAmount) {
             $lineAmount = max(0, (float) ($item['extra_price'] ?? 0));
@@ -12766,11 +13546,13 @@ class PosController extends Controller
             $overpaidAmount = max(0.0, round($paidTotal - $payableTotal, 2));
         }
         $balanceDue = max(0.0, round($payableTotal - $paidTotal, 2));
-        $refundRows = BookingRefund::query()
-            ->where('booking_id', (int) $booking->id)
-            ->whereIn('status', ['completed', 'pending'])
-            ->whereRaw("COALESCE(reason, '') <> ?", [VoidRefundService::REASON])
-            ->get();
+        $refundRows = $this->appointmentSearchRefundsByBookingId !== null
+            ? $this->appointmentSearchRefundsByBookingId->get((int) $booking->id, collect())
+            : BookingRefund::query()
+                ->where('booking_id', (int) $booking->id)
+                ->whereIn('status', ['completed', 'pending'])
+                ->whereRaw("COALESCE(reason, '') <> ?", [VoidRefundService::REASON])
+                ->get();
         $refundHandledAmount = round((float) $refundRows->where('status', 'completed')->sum('amount'), 2);
         $refundPendingAmount = round((float) $refundRows->where('status', 'pending')->sum('amount'), 2);
 
@@ -12824,8 +13606,11 @@ class PosController extends Controller
         ];
     }
 
-    protected function resolveAppointmentPackageEligibility(Booking $booking, ?CustomerServicePackageUsage $packageUsage = null): array
-    {
+    protected function resolveAppointmentPackageEligibility(
+        Booking $booking,
+        ?CustomerServicePackageUsage $packageUsage = null,
+        ?\Illuminate\Support\Collection $claimedServiceIds = null,
+    ): array {
         if (! $booking->customer_id) {
             return [
                 'can_apply_package' => false,
@@ -12844,11 +13629,13 @@ class PosController extends Controller
 
         $serviceIds = $this->resolveAppointmentPackageServiceIds($booking);
 
-        $claimedServiceIds = collect($this->resolvePerLinePackageClaims($booking, []))
-            ->pluck('booking_service_id')
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn (int $id) => $id > 0)
-            ->unique();
+        $claimedServiceIds = $claimedServiceIds !== null
+            ? $claimedServiceIds->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()
+            : collect($this->resolvePerLinePackageClaims($booking, []))
+                ->pluck('booking_service_id')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn (int $id) => $id > 0)
+                ->unique();
 
         $eligibleCount = 0;
         foreach ($serviceIds as $serviceId) {
@@ -12910,6 +13697,16 @@ class PosController extends Controller
 
     protected function countAvailablePackageBalance(int $customerId, int $bookingServiceId): int
     {
+        $customerId = (int) $customerId;
+        $bookingServiceId = (int) $bookingServiceId;
+        if ($customerId <= 0 || $bookingServiceId <= 0) {
+            return 0;
+        }
+
+        if ($this->appointmentSearchPackageBalanceByCustomerService !== null) {
+            return (int) ($this->appointmentSearchPackageBalanceByCustomerService["{$customerId}:{$bookingServiceId}"] ?? 0);
+        }
+
         $balances = CustomerServicePackageBalance::query()
             ->select('customer_service_package_balances.*')
             ->join('customer_service_packages', 'customer_service_packages.id', '=', 'customer_service_package_balances.customer_service_package_id')
@@ -12922,12 +13719,30 @@ class PosController extends Controller
             })
             ->get();
 
-        return (int) $balances->sum(function (CustomerServicePackageBalance $balance) use ($bookingServiceId) {
-            $reservedQty = (int) CustomerServicePackageUsage::query()
-                ->where('customer_service_package_id', (int) $balance->customer_service_package_id)
+        if ($balances->isEmpty()) {
+            return 0;
+        }
+
+        $packageIds = $balances
+            ->pluck('customer_service_package_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $reservedByPackageId = $packageIds === []
+            ? collect()
+            : CustomerServicePackageUsage::query()
+                ->selectRaw('customer_service_package_id, COALESCE(SUM(used_qty), 0) as reserved_qty')
+                ->whereIn('customer_service_package_id', $packageIds)
                 ->where('booking_service_id', $bookingServiceId)
                 ->where('status', 'reserved')
-                ->sum('used_qty');
+                ->groupBy('customer_service_package_id')
+                ->pluck('reserved_qty', 'customer_service_package_id');
+
+        return (int) $balances->sum(function (CustomerServicePackageBalance $balance) use ($reservedByPackageId) {
+            $reservedQty = (int) ($reservedByPackageId[(int) $balance->customer_service_package_id] ?? 0);
 
             return max(0, (int) $balance->remaining_qty - $reservedQty);
         });
