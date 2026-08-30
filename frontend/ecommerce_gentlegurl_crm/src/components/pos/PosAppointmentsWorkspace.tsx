@@ -4883,7 +4883,8 @@ export default function PosAppointmentsWorkspace({
     canRunAppointmentLifecycleActions &&
     !appointmentActionLoading &&
     !appointmentIsTerminalCancelled &&
-    appointmentStatusUpper !== 'COMPLETED'
+    appointmentStatusUpper !== 'COMPLETED' &&
+    !appointmentCashActionDisabled
 
   /** Reserved package, amount to collect is RM 0 — finalise in place (receipt) without sending the user to Main POS. */
   const checkoutZeroBalanceSettlement = appointmentNeedsZeroBalanceCheckout(appointmentDetail)
@@ -6039,7 +6040,7 @@ export default function PosAppointmentsWorkspace({
                         <button
                           type="button"
                           disabled={!canMarkAppointmentCompleted || appointmentActionLoading}
-                          title="Mark appointment as completed"
+                          title={appointmentCashActionDisabled && requiresOpenCashShift ? appointmentCashActionTitle : 'Mark appointment as completed'}
                           onClick={() => void markAppointmentCompleted()}
                           className="flex min-h-[48px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
                         >
@@ -6067,7 +6068,8 @@ export default function PosAppointmentsWorkspace({
                         </button>
                         <button
                           type="button"
-                          disabled={appointmentActionLoading}
+                          disabled={appointmentCashActionDisabled || appointmentActionLoading}
+                          title={appointmentCashActionTitle}
                           onClick={() => requestAppointmentStatusUpdate('CANCELLED')}
                           className="min-h-[48px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-white disabled:opacity-50"
                         >
@@ -6075,8 +6077,8 @@ export default function PosAppointmentsWorkspace({
                         </button>
                         <button
                           type="button"
-                          disabled={appointmentActionLoading}
-                          title="Customer did not attend the scheduled appointment (DNA / no-show)."
+                          disabled={appointmentCashActionDisabled || appointmentActionLoading}
+                          title={appointmentCashActionDisabled && requiresOpenCashShift ? appointmentCashActionTitle : 'Customer did not attend the scheduled appointment (DNA / no-show).'}
                           onClick={() => requestAppointmentStatusUpdate('NO_SHOW')}
                           className="min-h-[48px] rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-900 shadow-sm transition hover:bg-rose-50 disabled:opacity-50"
                         >
@@ -6084,7 +6086,8 @@ export default function PosAppointmentsWorkspace({
                         </button>
                         <button
                           type="button"
-                          disabled={appointmentActionLoading}
+                          disabled={appointmentCashActionDisabled || appointmentActionLoading}
+                          title={appointmentCashActionTitle}
                           onClick={() => requestAppointmentStatusUpdate('LATE_CANCELLATION')}
                           className="min-h-[48px] rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm font-semibold text-orange-900 shadow-sm transition hover:bg-orange-50 disabled:opacity-50"
                         >
@@ -6120,7 +6123,7 @@ export default function PosAppointmentsWorkspace({
                         bookingId={appointmentDetail.id}
                         bookingCode={appointmentDetail.booking_code}
                         initialPhotos={appointmentDetail.service_photos ?? []}
-                        canManage={canManagePosAppointments || canPosCheckout}
+                        canManage={(canManagePosAppointments || canPosCheckout) && !appointmentCashActionDisabled}
                         layout="tile"
                         onChanged={(photos) => setAppointmentDetail((prev) => (prev ? { ...prev, service_photos: photos } : prev))}
                       />
@@ -7112,7 +7115,8 @@ export default function PosAppointmentsWorkspace({
                           <div className="flex shrink-0 flex-wrap gap-2 self-start">
                             <button
                               type="button"
-                              disabled={cancellationReviewSubmitting}
+                              disabled={cashShiftActionDisabled || cancellationReviewSubmitting}
+                              title={cashShiftActionTitle}
                               onClick={() => {
                                 setCancellationConfirmRow(row)
                                 setCancellationConfirmAction('approve')
@@ -7125,7 +7129,8 @@ export default function PosAppointmentsWorkspace({
                             </button>
                             <button
                               type="button"
-                              disabled={cancellationReviewSubmitting}
+                              disabled={cashShiftActionDisabled || cancellationReviewSubmitting}
+                              title={cashShiftActionTitle}
                               onClick={() => {
                                 setCancellationConfirmRow(row)
                                 setCancellationConfirmAction('reject')

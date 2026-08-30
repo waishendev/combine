@@ -3249,6 +3249,7 @@ class PosController extends Controller
     {
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
         $this->authorizePosAppointmentBranch($booking, $request);
+        $this->requireAppointmentBranchCashShift($booking);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
         $balanceDue = (float) ($summary['balance_due'] ?? 0);
         $hasOutstandingBalance = $balanceDue > 0.0001;
