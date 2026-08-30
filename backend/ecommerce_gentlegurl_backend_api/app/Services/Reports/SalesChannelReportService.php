@@ -872,6 +872,7 @@ class SalesChannelReportService
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
                 'order_datetime' => (string) $row->order_datetime,
+                'branch' => $this->branchMeta($row),
                 'customer' => $this->formatCustomerDisplayName(
                     $row->customer_name ?? null,
                     $row->shipping_name ?? null,
@@ -945,6 +946,7 @@ class SalesChannelReportService
                     'order_id' => (int) $row->order_id,
                     'order_no' => (string) $row->order_no,
                     'date_time' => (string) $row->order_datetime,
+                    'branch' => $this->branchMeta($row),
                     'customer' => $this->formatCustomerDisplayName(
                     $row->customer_name ?? null,
                     $row->shipping_name ?? null,
@@ -1017,6 +1019,7 @@ class SalesChannelReportService
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
                 'order_datetime' => (string) $row->order_datetime,
+                'branch' => $this->branchMeta($row),
                 'customer' => $this->formatCustomerDisplayName(
                     $row->customer_name ?? null,
                     $row->shipping_name ?? null,
@@ -1114,6 +1117,7 @@ class SalesChannelReportService
                     'order_id' => (int) $row->order_id,
                     'order_no' => (string) $row->order_no,
                     'date_time' => (string) $row->order_datetime,
+                    'branch' => $this->branchMeta($row),
                     'customer' => $this->formatCustomerDisplayName(
                     $row->customer_name ?? null,
                     $row->shipping_name ?? null,
@@ -1155,7 +1159,8 @@ class SalesChannelReportService
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'product')
-            ->groupBy('o.id', 'o.order_number', 'c.name', 'o.shipping_name', 'o.billing_name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total', DB::raw($this->orderBillAtSql()))
+            ->leftJoin('store_locations as branch', 'branch.id', '=', 'o.store_location_id')
+            ->groupBy('o.id', 'o.order_number', 'c.name', 'o.shipping_name', 'o.billing_name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total', 'o.store_location_id', 'branch.name', 'branch.code', DB::raw($this->orderBillAtSql()))
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
             ->selectRaw($this->orderBillAtSql() . ' as order_datetime')
@@ -1166,6 +1171,7 @@ class SalesChannelReportService
             ->selectRaw('o.payment_method')
             ->selectRaw('o.grand_total as order_total')
             ->selectRaw('o.status')
+            ->selectRaw('o.store_location_id, branch.name as branch_name, branch.code as branch_code')
             ->selectRaw('COALESCE(SUM(oi.quantity), 0) as item_count')
             ->selectRaw('COALESCE(SUM(oi.line_total), 0) as product_amount')
             ->selectRaw('COALESCE(SUM(oi.discount_amount), 0) as discount')
@@ -1204,6 +1210,7 @@ class SalesChannelReportService
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
                 ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
                 ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
+                ->leftJoin('store_locations as branch', 'branch.id', '=', 'o.store_location_id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
@@ -1218,6 +1225,7 @@ class SalesChannelReportService
             ->selectRaw('o.payment_method')
             ->selectRaw('o.grand_total as order_total')
             ->selectRaw('o.status')
+            ->selectRaw('o.store_location_id, branch.name as branch_name, branch.code as branch_code')
             ->selectRaw('oi.id AS order_item_id')
             ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' WHEN 'booking_product' THEN 'booking_product' ELSE 'package_purchase' END as type")
             ->selectRaw('oi.booking_id as booking_id')
@@ -1263,8 +1271,9 @@ class SalesChannelReportService
         ?string $paymentMethod,
         ?int $customerId = null,
     ) {
-        $query = DB::table('booking_refunds as br')
+        $query = ReportBranchScope::applyCurrent(DB::table('booking_refunds as br'), 'b.store_location_id')
             ->join('bookings as b', 'b.id', '=', 'br.booking_id')
+            ->leftJoin('store_locations as branch', 'branch.id', '=', 'b.store_location_id')
             ->leftJoin('customers as c', 'c.id', '=', 'b.customer_id')
             ->whereNull('br.return_request_id')
             ->where('br.status', 'completed')
@@ -1303,6 +1312,9 @@ class SalesChannelReportService
                 'b.booking_code',
                 'b.guest_name',
                 'c.name as customer_name',
+                'b.store_location_id',
+                'branch.name as branch_name',
+                'branch.code as branch_code',
             ])
             ->map(function ($row) use ($methodLabels) {
                 $amount = round((float) ($row->amount ?? 0), 2);
@@ -1319,6 +1331,7 @@ class SalesChannelReportService
                         null,
                         $row->guest_name ?? null,
                     ),
+                    'branch' => $this->branchMeta($row),
                     'channel' => (string) (($row->channel ?? 'offline') === 'online' ? 'online' : 'offline'),
                     'payment_method' => $method,
                     'payments' => [],
@@ -1348,10 +1361,11 @@ class SalesChannelReportService
         ?string $paymentMethod,
         ?int $customerId = null,
     ) {
-        $query = DB::table('booking_refunds as br')
+        $query = ReportBranchScope::applyCurrent(DB::table('booking_refunds as br'), 'o.store_location_id')
             ->join('return_requests as rr', 'rr.id', '=', 'br.return_request_id')
             ->join('orders as o', 'o.id', '=', 'br.order_id')
             ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
+            ->leftJoin('store_locations as branch', 'branch.id', '=', 'o.store_location_id')
             ->whereNotNull('br.return_request_id')
             ->where('br.status', 'completed')
             ->whereBetween(DB::raw('COALESCE(br.processed_at, br.created_at)'), [$start, $end]);
@@ -1388,6 +1402,9 @@ class SalesChannelReportService
                 'o.shipping_name',
                 'o.billing_name',
                 'c.name as customer_name',
+                'o.store_location_id',
+                'branch.name as branch_name',
+                'branch.code as branch_code',
             ])
             ->map(function ($row) use ($methodLabels) {
                 $amount = round((float) ($row->amount ?? 0), 2);
@@ -1404,6 +1421,7 @@ class SalesChannelReportService
                         $row->billing_name ?? null,
                         null,
                     ),
+                    'branch' => $this->branchMeta($row),
                     'channel' => (string) (($row->channel ?? 'online') === 'online' ? 'online' : 'offline'),
                     'payment_method' => $method,
                     'payments' => [],
@@ -1504,6 +1522,15 @@ class SalesChannelReportService
         if ($s === '' || strtolower($s) === 'all') return null;
         $i = (int) $s;
         return $i > 0 ? $i : null;
+    }
+
+    private function branchMeta(object $row): array
+    {
+        return [
+            'store_location_id' => $row->store_location_id === null ? null : (int) $row->store_location_id,
+            'name' => $row->store_location_id === null ? 'Unassigned' : (string) $row->branch_name,
+            'code' => $row->store_location_id === null ? null : (string) $row->branch_code,
+        ];
     }
 
     private function normalizeChannel(string $channel): string

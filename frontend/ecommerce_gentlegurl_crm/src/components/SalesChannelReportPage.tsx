@@ -29,6 +29,7 @@ type Pagination = {
 }
 
 type PaymentBreakdownRow = { method?: string | null; payment_method?: string | null; amount?: number | string | null; reference_no?: string | null }
+type BranchMeta = { store_location_id: number | null; name: string; code?: string | null }
 
 type EcommerceRow = {
   order_id: number
@@ -36,6 +37,7 @@ type EcommerceRow = {
   transaction_no?: string | null
   order_datetime: string
   customer: string
+  branch?: BranchMeta
   channel: string
   payment_method: string
   payments?: PaymentBreakdownRow[]
@@ -58,6 +60,7 @@ type BookingRow = {
   transaction_no?: string | null
   order_datetime: string
   customer: string
+  branch?: BranchMeta
   channel: string
   payment_method: string
   payments?: PaymentBreakdownRow[]
@@ -788,8 +791,10 @@ export default function SalesChannelReportPage({
     })
   }, [bookingRows])
 
-  const ecColSpan = 11
-  const bkColSpan = 13
+  const showBranch = selectedBranchId === null
+  const ecColSpan = showBranch ? 12 : 11
+  const bkColSpan = showBranch ? 14 : 13
+  const branchLabel = (branch?: BranchMeta) => branch?.code || branch?.name || 'Unassigned'
 
   return (
     <div className="space-y-6">
@@ -942,13 +947,13 @@ export default function SalesChannelReportPage({
           <thead className="bg-slate-300/70">
             <tr>
               {mode === 'ecommerce' ? (
-                ['Order No', 'Bill Date', 'Customer', 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
+                ['Order No', 'Bill Date', 'Customer', ...(showBranch ? ['Branch'] : []), 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
                     {reportTableColumnHeader(h)}
                   </th>
                 ))
               ) : (
-                ['Order No', 'Bill Date', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
+                ['Order No', 'Bill Date', 'Customer', ...(showBranch ? ['Branch'] : []), 'Channel', 'Payment Method', 'Type', 'Booking No', 'Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
                     {reportTableColumnHeader(h)}
                   </th>
@@ -979,6 +984,7 @@ export default function SalesChannelReportPage({
                     </td>
                     <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
                     <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
+                    {showBranch ? <td className="px-4 py-2 border border-gray-200">{branchLabel(row.branch)}</td> : null}
                     <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
                     <td className="px-4 py-2 border border-gray-200"><PaymentMethodCell method={row.payment_method} payments={row.payments} /></td>
                     <td className="px-4 py-2 border border-gray-200">{row.is_refund ? '—' : row.item_count}</td>
@@ -1036,6 +1042,7 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200">{row.order_no}</td>
                   <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
                   <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
+                  {showBranch ? <td className="px-4 py-2 border border-gray-200">{branchLabel(row.branch)}</td> : null}
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
                   <td className="px-4 py-2 border border-gray-200"><PaymentMethodCell method={row.payment_method} payments={row.payments} /></td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.type)}</td>
@@ -1097,6 +1104,7 @@ export default function SalesChannelReportPage({
                   <td className="border border-gray-300 px-4 py-2 text-left">Page Totals</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
+                  {showBranch ? <td className="border border-gray-300 px-4 py-2">—</td> : null}
                   <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">{(totalsPage.orders_count ?? 0).toLocaleString()}</td>
@@ -1110,6 +1118,7 @@ export default function SalesChannelReportPage({
                   <td className="border border-gray-300 px-4 py-2 text-left">Grand Totals</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
+                  {showBranch ? <td className="border border-gray-300 px-4 py-2">—</td> : null}
                   <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">{(grandTotals.orders_count ?? 0).toLocaleString()}</td>
@@ -1123,7 +1132,7 @@ export default function SalesChannelReportPage({
             ) : (
               <>
                 <tr className="bg-gray-100 font-semibold">
-                  <td colSpan={8} className="border border-gray-300 px-4 py-2 text-left">
+                  <td colSpan={showBranch ? 9 : 8} className="border border-gray-300 px-4 py-2 text-left">
                     Page Totals
                   </td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.gross_amount ?? 0)}</td>
@@ -1133,7 +1142,7 @@ export default function SalesChannelReportPage({
                   <td className="border border-gray-300 px-4 py-2">—</td>
                 </tr>
                 <tr className="bg-gray-100 font-bold">
-                  <td colSpan={8} className="border border-gray-300 px-4 py-2 text-left">
+                  <td colSpan={showBranch ? 9 : 8} className="border border-gray-300 px-4 py-2 text-left">
                     Grand Totals
                   </td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.gross_amount ?? 0)}</td>

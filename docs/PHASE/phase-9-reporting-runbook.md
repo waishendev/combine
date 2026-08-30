@@ -72,6 +72,15 @@ Frontend Branch is request identity: dashboard data/detail are cleared, paginati
 
 Legacy NULL cannot be allocated. Commission/refund/benefit events without a Branch-bearing parent remain Unassigned/Global. A future UI may add per-Branch comparison without changing authority. Stock transfer, Return/Restock, split/nearest Shipping, warehouses, per-Branch pricing, Voucher Branch eligibility, reward Branch UX, organizations, tenants and `tenant_id` remain out of scope. Readiness is conditional on production-like regression; this phase performs no destructive production action or activation.
 
+## Sales workspace completion (2026-08-30)
+
+- The visual Sales common Order boundary now applies `ReportBranchScope` before every status/date aggregate. Item Type Product, Service and Package use the persisted `orders.store_location_id`; booking settlement/add-on and Package Redemption follow their persisted Order transaction rather than current Staff assignment. This closes the gap where Payment Method was scoped but Item Type and Staff helper queries were not.
+- A specific Header Branch is authorized by `StoreLocationAccessService`, includes only that persisted Branch, and excludes legacy NULL. All derives accessible IDs server-side and may include NULL only as explicit **Unassigned**; inaccessible Branches and their names are excluded.
+- Staff remains one global identity. Specific-Branch earnings use only that Branch's Order transactions. All adds an earning-Branch breakdown beneath each Staff total, produced by grouped Staff × persisted Order Branch queries (not assignment pivots and not N+1 queries).
+- Ecommerce and Booking transaction APIs join StoreLocation in their existing set queries and return compact Branch metadata. Both transaction tables and their loading/empty/totals column counts show Branch only for All; a specific Branch hides the redundant column.
+- Ecommerce and Booking CSVs mirror the UI: All includes a Branch column; specific Branch omits it. The same authorized report scope and persisted metadata feeds UI and export.
+- Payment Method calculation and display were intentionally preserved. Legitimate reconciliation differences remain for refund timing and the booking settlement/package-redemption definitions described in the cards.
+
 ## Phase 9B executable completion ledger (2026-08-15)
 
 The labels below describe executable state, not intended behavior.

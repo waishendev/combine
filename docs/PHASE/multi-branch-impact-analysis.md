@@ -1,5 +1,7 @@
 # Gentlegurls multi-branch impact analysis
 
+> **Sales Report workspace completion (2026-08-30):** Item Type and Staff aggregation now share the Payment Method report's authorized persisted-Order Branch boundary. Specific Branch excludes NULL and every other Branch; All means accessible Branches plus explicit Unassigned history, never unrestricted company data. Staff remains global but All displays grouped earning-Branch context. Ecommerce and Booking transaction tables/CSV expose Branch only in All, with StoreLocation metadata joined in-set to avoid N+1. Payment Method behavior is unchanged. See `phase-9-reporting-runbook.md`; this does not begin Phase 10.
+
 > **Phase 9E architecture correction (Roles and Commission Tiers):** operational Roles and commission tier configuration are now Branch-owned, while Permission and Permission Group definitions remain global. Admin Role assignment and monthly commission snapshots have an explicit Branch dimension; unresolved historical rows remain Global/Unassigned. See `phase-9e-role-and-commission-branch-enhancement.md`.
 
 > **Phase 9E completion:** order, Booking, and POS package commission paths now aggregate by persisted earning Branch; snapshots/logs/reports retain that dimension. Operators reconcile approved PNG history only through `role-branch:reconcile` and `commission-branch:reconcile`, each requiring an explicit `--dry-run` or `--force`. NULL is never an implicit PNG alias.

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Services\Reports\SalesChannelReportService;
+use App\Services\Reports\ReportBranchScope;
 use App\Services\Reports\SalesVisualDailyReportService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -202,16 +203,18 @@ class SalesChannelReportController extends Controller
             'customer_id' => $request->query('customer_id'),
         ]);
 
-        return response()->streamDownload(function () use ($rows) {
+        $includeBranch = ReportBranchScope::current()->selectedStoreLocationId === null;
+        return response()->streamDownload(function () use ($rows, $includeBranch) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status']);
+            fputcsv($out, ['Order No', 'Date/Time', 'Customer', ...($includeBranch ? ['Branch'] : []), 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status']);
 
             foreach ($rows as $row) {
                 fputcsv($out, [
                     $row['order_no'] ?? '',
                     $row['date_time'] ?? '',
                     $row['customer'] ?? '',
+                    ...($includeBranch ? [($row['branch']['code'] ?? $row['branch']['name'] ?? 'Unassigned')] : []),
                     $row['channel'] ?? '',
                     $row['payment_method'] ?? '',
                     $row['item_count'] ?? 0,
@@ -237,16 +240,18 @@ class SalesChannelReportController extends Controller
             'customer_id' => $request->query('customer_id'),
         ]);
 
-        return response()->streamDownload(function () use ($rows) {
+        $includeBranch = ReportBranchScope::current()->selectedStoreLocationId === null;
+        return response()->streamDownload(function () use ($rows, $includeBranch) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Package Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status']);
+            fputcsv($out, ['Order No', 'Date/Time', 'Customer', ...($includeBranch ? ['Branch'] : []), 'Channel', 'Payment Method', 'Type', 'Booking No', 'Package Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status']);
 
             foreach ($rows as $row) {
                 fputcsv($out, [
                     $row['order_no'] ?? '',
                     $row['date_time'] ?? '',
                     $row['customer'] ?? '',
+                    ...($includeBranch ? [($row['branch']['code'] ?? $row['branch']['name'] ?? 'Unassigned')] : []),
                     $row['channel'] ?? '',
                     $row['payment_method'] ?? '',
                     $row['type'] ?? '',

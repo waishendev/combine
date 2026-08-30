@@ -165,6 +165,7 @@ export default function SalesVisualPeriodDashboard({
         data={data}
         periodScope={periodScope}
         canViewStaffReport={canViewStaffReport}
+        showBranchContext={selectedBranchId === null}
       />
     </section>
   )
