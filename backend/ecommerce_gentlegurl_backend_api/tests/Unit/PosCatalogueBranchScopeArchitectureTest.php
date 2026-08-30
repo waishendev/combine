@@ -43,5 +43,12 @@ class PosCatalogueBranchScopeArchitectureTest extends TestCase
             $this->assertStringContainsString('authorizeStoreLocation', $source);
             $this->assertStringContainsString('store_location_id', $source);
         }
+
+        foreach (['BookingServicesTable.tsx', 'BookingProductsTable.tsx', 'BookingServiceCategoriesTable.tsx', 'BookingProductCategoriesTable.tsx'] as $component) {
+            $frontend = file_get_contents(__DIR__.'/../../../../frontend/ecommerce_gentlegurl_crm/src/components/booking/'.$component);
+            $this->assertStringContainsString("qs.set('branch_scope', 'all')", $frontend);
+            $this->assertStringContainsString("qs.set('branch_store_location_id', String(selectedBranchId))", $frontend);
+            $this->assertStringContainsString('isAllBranches && <th', $frontend);
+        }
     }
 }

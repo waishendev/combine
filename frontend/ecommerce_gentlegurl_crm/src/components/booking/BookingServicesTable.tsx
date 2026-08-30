@@ -181,7 +181,8 @@ export default function BookingServicesTable({
         qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
       }
       if (filters.categoryId) qs.set('category_id', filters.categoryId)
-      if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
 
       const res = await fetch(`/api/proxy/admin/booking/services?${qs.toString()}`, {
         cache: 'no-store',

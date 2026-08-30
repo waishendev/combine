@@ -17,12 +17,14 @@ class BookingProductCategoryController extends Controller
     {
         $access = app(StoreLocationAccessService::class);
         $accessibleIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
-        $branchId = $request->filled('store_location_id')
-            ? (int) $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false)->id
+        $requestedBranchId = $request->integer('branch_store_location_id') ?: $request->integer('store_location_id');
+        $branchId = $requestedBranchId > 0
+            ? (int) $access->authorizeStoreLocation($request->user(), $requestedBranchId, false)->id
             : null;
         $query = BookingProductCategory::query()
             ->select(['id', 'name', 'cn_name', 'sort_order', 'is_active', 'show_in_pos_filter'])
             ->with(['products.linkedBookingService.storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code')])
+            ->whereHas('products.linkedBookingService.storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
             ->when($branchId, fn ($query) => $query->whereHas('products.linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->orderBy('sort_order')
             ->orderBy('id');

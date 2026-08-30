@@ -16,13 +16,15 @@ class BookingProductController extends Controller
     {
         $access = app(StoreLocationAccessService::class);
         $accessibleIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
-        $branchId = $request->filled('store_location_id')
-            ? (int) $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false)->id
+        $requestedBranchId = $request->integer('branch_store_location_id') ?: $request->integer('store_location_id');
+        $branchId = $requestedBranchId > 0
+            ? (int) $access->authorizeStoreLocation($request->user(), $requestedBranchId, false)->id
             : null;
         $perPage = max(1, min(200, $request->integer('per_page', 20)));
 
         $query = BookingProduct::query()
             ->with(['categories', 'questions.options', 'linkedBookingService.storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code')])
+            ->whereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
             ->when($branchId, fn ($query) => $query->whereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->orderByRaw("COALESCE(booking_products.name, '') asc")
             ->orderBy('booking_products.id');

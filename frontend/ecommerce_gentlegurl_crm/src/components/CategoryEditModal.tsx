@@ -378,6 +378,7 @@ export default function CategoryEditModal({
             menuIds: form.menuIds,
             menuNames: menus.filter(m => form.menuIds.includes(m.id)).map(m => m.name).join(', ') || '-',
             productCount: loadedCategory?.productCount ?? 0,
+            availableBranches: loadedCategory?.availableBranches ?? [],
             createdAt: loadedCategory?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
           }

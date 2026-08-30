@@ -22,11 +22,13 @@ class CategoryController extends Controller
     {
         $access = app(StoreLocationAccessService::class);
         $accessibleIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
-        $branchId = $request->filled('store_location_id')
-            ? (int) $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false)->id
+        $requestedBranchId = $request->integer('branch_store_location_id') ?: $request->integer('store_location_id');
+        $branchId = $requestedBranchId > 0
+            ? (int) $access->authorizeStoreLocation($request->user(), $requestedBranchId, false)->id
             : null;
         $query = BookingServiceCategory::query()
             ->with(['services.storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code')])
+            ->whereHas('services.storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
             ->when($branchId, fn ($query) => $query->whereHas('services.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->when($request->filled('name'), fn ($inner) => $inner->where('name', 'like', '%' . $request->string('name') . '%'))
             ->orderBy('sort_order')

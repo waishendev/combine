@@ -104,13 +104,13 @@ export default function BookingServiceCategoryRow({
           label={category.showInPosFilter ? 'Yes' : 'No'}
         />
       </td>
-      {showBranches && <td className="px-4 py-2 border border-gray-200">{category.branchNames?.join(', ') || 'Unassigned'}</td>}
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={category.isActive ? 'active' : 'inactive'}
           label={category.isActive ? t('common.active') : t('common.inactive')}
         />
       </td>
+      {showBranches && <td className="px-4 py-2 border border-gray-200">{category.branchNames?.join(', ') || 'Unassigned'}</td>}
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

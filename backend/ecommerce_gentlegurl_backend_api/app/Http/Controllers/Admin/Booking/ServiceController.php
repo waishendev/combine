@@ -33,14 +33,16 @@ class ServiceController extends Controller
     public function index(Request $request)
     {
         $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
-        $branchId = $request->filled('store_location_id')
-            ? (int) $this->storeLocationAccess->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false)->id
+        $requestedBranchId = $request->integer('branch_store_location_id') ?: $request->integer('store_location_id');
+        $branchId = $requestedBranchId > 0
+            ? (int) $this->storeLocationAccess->authorizeStoreLocation($request->user(), $requestedBranchId, false)->id
             : null;
         $perPage = $request->integer('per_page', 20);
         $perPage = max(1, min(200, $perPage));
 
         $services = BookingService::query()
             ->with(['allowedStaffs:id,name', 'storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code'), 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->whereHas('storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
             ->when($branchId, fn ($query) => $query->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->when($request->filled('name'), function ($query) use ($request) {
                 $term = '%' . trim((string) $request->get('name')) . '%';

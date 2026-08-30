@@ -128,7 +128,8 @@ export default function BookingProductCategoriesTable({ permissions }: BookingPr
         const qs = new URLSearchParams()
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
-        if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
+        if (selectedBranchId === null) qs.set('branch_scope', 'all')
+        else qs.set('branch_store_location_id', String(selectedBranchId))
 
         const res = await fetch(`/api/proxy/admin/booking/product-categories?${qs.toString()}`, {
           cache: 'no-store',
@@ -295,7 +296,7 @@ export default function BookingProductCategoriesTable({ permissions }: BookingPr
     setCurrentPage(1)
   }
 
-  const colCount = (showActions ? 3 : 2) + (isAllBranches ? 1 : 0) + (showSelection ? 1 : 0)
+  const colCount = 3 + (isAllBranches ? 1 : 0) + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
   const totalPages = meta.last_page || 1
 
   const handleCategoryCreated = (category: BookingProductCategoryRowData) => {
@@ -533,7 +534,6 @@ export default function BookingProductCategoriesTable({ permissions }: BookingPr
                   Row {item.row}: {item.reason}
                 </div>
               ))}
-              {isAllBranches && <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">Available At</th>}
             </div>
           )}
         </div>
@@ -574,6 +574,7 @@ export default function BookingProductCategoriesTable({ permissions }: BookingPr
                   </button>
                 </th>
               ))}
+              {isAllBranches && <th className="px-4 py-2 text-left font-semibold uppercase tracking-wider text-gray-600">Available At</th>}
               {showActions && (
                 <th className="px-4 py-2 text-left font-semibold tracking-wider text-gray-600">
                   {t('common.actions')}

@@ -103,7 +103,8 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
       if (filters.search.trim()) qs.set('search', filters.search.trim())
       if (filters.status) qs.set('is_active', filters.status === 'active' ? 'true' : 'false')
       if (filters.category_id) qs.set('category_id', filters.category_id)
-      if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
 
       const r = await fetch(`/api/proxy/admin/booking/products?${qs.toString()}`, { cache: 'no-store', signal })
       if (!r.ok) {
