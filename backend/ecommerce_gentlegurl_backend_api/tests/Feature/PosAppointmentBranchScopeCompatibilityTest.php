@@ -90,6 +90,27 @@ class PosAppointmentBranchScopeCompatibilityTest extends TestCase
             ->assertOk()->assertJsonCount(0, 'data.data');
     }
 
+    public function test_lightweight_calendar_all_scope_returns_only_accessible_branches_with_metadata_and_explicit_legacy_null(): void
+    {
+        $actor = $this->actor();
+        [$a, $b, $inaccessible] = [$this->branch('ALL-A'), $this->branch('ALL-B'), $this->branch('ALL-X')];
+        $actor->storeLocations()->sync([$a->id, $b->id]);
+        [$service, $staff] = $this->eligibleServiceAndStaff([$a, $b, $inaccessible]);
+        $bookingA = $this->booking('ALL-A-BOOKING', $a->id, $service, $staff);
+        $bookingB = $this->booking('ALL-B-BOOKING', $b->id, $service, $staff);
+        $this->booking('ALL-HIDDEN-BOOKING', $inaccessible->id, $service, $staff);
+        $legacy = $this->booking('ALL-LEGACY-BOOKING', null, $service, $staff);
+
+        $rows = collect($this->actingAs($actor)->getJson('/api/pos/appointments/calendar?include_terminal_statuses=1&per_page=20')
+            ->assertOk()->json('data.data'));
+
+        $this->assertEqualsCanonicalizing([$bookingA->id, $bookingB->id, $legacy->id], $rows->pluck('id')->all());
+        $this->assertSame($a->id, $rows->firstWhere('id', $bookingA->id)['store_location_id']);
+        $this->assertSame('Branch ALL-A', $rows->firstWhere('id', $bookingA->id)['store_location']['name']);
+        $this->assertSame('ALL-A', $rows->firstWhere('id', $bookingA->id)['store_location']['code']);
+        $this->assertNull($rows->firstWhere('id', $legacy->id)['store_location']);
+    }
+
     private function actor(): User
     {
         $role = Role::create(['name' => 'appointment-branch-'.uniqid(), 'is_active' => true, 'is_system' => false]);

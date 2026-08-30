@@ -17,6 +17,7 @@ use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\OrderUpload;
 use App\Models\Ecommerce\PosCart;
 use App\Models\Ecommerce\PosCashShift;
+use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\PosCartAppointmentSettlementItem;
 use App\Models\Ecommerce\PosCartItem;
 use App\Models\Ecommerce\Product;
@@ -1050,6 +1051,7 @@ class PosController extends Controller
     {
         $booking = Booking::query()->with('service')->findOrFail($id);
         $this->authorizePosAppointmentBranch($booking, $request);
+        $this->requireAppointmentBranchCashShift($booking);
         if (! $booking->customer_id || ! $booking->service_id) {
             return $this->respondError(__('Appointment must have customer and service to apply package.'), 422);
         }
@@ -1693,6 +1695,7 @@ class PosController extends Controller
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
 
         $this->authorizePosAppointmentBranch($booking, $request);
+        $this->requireAppointmentBranchCashShift($booking);
         if (! $this->bookingEligibleForPosSettlement($booking)) {
             return $this->respondError(__('This appointment needs a linked member or guest, and a service, before settlement.'), 422);
         }
@@ -2076,6 +2079,7 @@ class PosController extends Controller
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
 
         $this->authorizePosAppointmentBranch($booking, $request);
+        $this->requireAppointmentBranchCashShift($booking);
         if (! $this->bookingEligibleForPosSettlement($booking)) {
             return $this->respondError(__('This appointment needs a linked member or guest, and a service, before settlement.'), 422);
         }
@@ -13508,6 +13512,32 @@ class PosController extends Controller
         if ($requestedBranchId !== null && $requestedBranchId !== (int) $booking->store_location_id) {
             abort(404);
         }
+    }
+
+    private function requireAppointmentBranchCashShift(Booking $booking): PosCashShift
+    {
+        if ($booking->store_location_id === null) {
+            throw ValidationException::withMessages([
+                'store_location_id' => [__('This legacy appointment has no resolved Branch, so a Cash Shift cannot be selected safely.')],
+            ]);
+        }
+
+        $shift = PosCashShift::query()
+            ->where('store_location_id', (int) $booking->store_location_id)
+            ->where('event_type', PosCashShift::EVENT_OPEN)
+            ->whereDoesntHave('closeEvent')
+            ->latest('opened_at')
+            ->first();
+        if ($shift) {
+            return $shift;
+        }
+
+        $branchLabel = (string) (StoreLocation::query()
+            ->whereKey((int) $booking->store_location_id)
+            ->value('code') ?: StoreLocation::query()->whereKey((int) $booking->store_location_id)->value('name') ?: __('this Branch'));
+        throw ValidationException::withMessages([
+            'store_location_id' => [__('No open cash shift for :branch. Open a :branch cash shift before checkout.', ['branch' => $branchLabel])],
+        ]);
     }
 
     /**

@@ -156,3 +156,17 @@ Example staging request (use an authenticated browser session and an authorized 
 4. Repeat for specific PNG, another authorized Branch, accessible All scope, Staff/customer/search/status filters, a month with 300+ rows, and pages 1/2 at a smaller page size.
 
 No local before/after wall-clock or PostgreSQL plan is claimed: this container has no installed Composer dependencies or reachable representative database. The measured-in-test target is the constant query budget and page hydration count; real response time, SQL time and buffers remain a staging release gate. A normal representative month should be sub-second to a few seconds, not tens of seconds.
+
+## All Branches appointment overview (2026-08-30)
+
+POS Appointments now supports the virtual **All Branches** Header scope for calendar visibility. The previous frontend guard required a real Header Branch because it reused the Header-scoped Cash Shift gate for both booking management and checkout. That coupled a read-only cross-Branch schedule to a single operational drawer even though All Branches is not a persisted or cash-operational Branch.
+
+The workspace continues to issue one bounded `GET /api/pos/appointments/calendar` request. In All scope it omits `store_location_id`; Laravel derives the authenticated user's accessible locations with `StoreLocationAccessService` and applies one `WHERE store_location_id IN (...)` query. It does not fan out per Branch or return to the heavyweight detail DTO. The existing explicit compatibility policy remains: attributed inaccessible rows are excluded, while legacy NULL bookings appear only in All and serialize as Unassigned; a specific Branch excludes NULL.
+
+Calendar rows serialize persisted `store_location_id` plus authorized Branch name/code. Month previews and day appointment blocks display a compact Branch marker only in All scope. Staff remains one identity/column, so a Staff assigned to multiple Branches is not duplicated; the appointment badge supplies the persisted booking context.
+
+Direct detail and non-cash actions (Edit Settlement, reschedule, lifecycle status, email, and payment-link history/actions) remain available without changing the Header. Controllers authorize the persisted `bookings.store_location_id`; a client Header cannot replace ownership. Edit Settlement service discovery and reschedule availability explicitly use that persisted Branch. Reschedule remains inside the booking Branch and this change introduces no cross-Branch movement.
+
+All Branches never owns a Cash Shift. Checkout/finalize and package consumption resolve the appointment's persisted Branch and require an open shift at that exact Branch. A shift at another Branch cannot satisfy the action. Missing shifts return a Branch-specific error, and legacy NULL bookings fail safely because no deterministic drawer exists. The UI performs the same per-appointment Branch lookup without switching the Header or opening a shift. Mark Completed and ordinary cancel/no-show/late-cancel remain booking-state actions and are not Cash Shift gated. Payment-link behavior remains independent of Cash Shift ownership.
+
+Cash shifts remain operational per Branch: the existing controller can hold an open shift for each Branch, while each lookup and appointment cash action selects the exact Branch. No global/All shift, Staff inference, automatic Header switch, or automatic shift creation was added.

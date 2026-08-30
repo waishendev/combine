@@ -102,6 +102,7 @@ type Props = {
   onBlockClick: (id: number) => void
   scheduleStaff: PosScheduleStaff[]
   staffOffTodayIds: number[]
+  showBranchContext?: boolean
 }
 
 export default function PosAppointmentsDayGrid({
@@ -111,6 +112,7 @@ export default function PosAppointmentsDayGrid({
   onBlockClick,
   scheduleStaff,
   staffOffTodayIds,
+  showBranchContext = false,
 }: Props) {
   const dayRows = useMemo(() => {
     return appointments.filter(
@@ -334,7 +336,8 @@ export default function PosAppointmentsDayGrid({
                     const leftPct = lane * widthPct
                     const svc = (row.service_names ?? [])[0] ?? ''
                     const startLabel = formatPosScheduleTimeLabel(getPosAppointmentStartAt(row))
-                    const title = `${startLabel} · ${row.customer_name} · ${svc}`
+                    const branchLabel = row.store_location?.code || row.store_location?.name || 'Unassigned'
+                    const title = `${startLabel} · ${row.customer_name} · ${svc}${showBranchContext ? ` · ${branchLabel}` : ''}`
                     const tone = posAppointmentVisualToneFromRow(row)
 
                     return (
@@ -355,6 +358,11 @@ export default function PosAppointmentsDayGrid({
                         <span className={posAppointmentDayBlockSubtextClass(tone)}>
                           {truncate(row.customer_name, 14)} · {truncate(svc, 18)}
                         </span>
+                        {showBranchContext ? (
+                          <span className="mt-0.5 inline-flex max-w-full self-start truncate rounded bg-white/85 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-800 ring-1 ring-slate-900/15">
+                            {branchLabel}
+                          </span>
+                        ) : null}
                       </button>
                     )
                   })}
