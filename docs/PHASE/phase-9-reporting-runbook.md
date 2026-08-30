@@ -80,6 +80,7 @@ Legacy NULL cannot be allocated. Commission/refund/benefit events without a Bran
 - Ecommerce and Booking transaction APIs join StoreLocation in their existing set queries and return compact Branch metadata. Both transaction tables and their loading/empty/totals column counts show Branch only for All; a specific Branch hides the redundant column.
 - Ecommerce and Booking CSVs mirror the UI: All includes a Branch column; specific Branch omits it. The same authorized report scope and persisted metadata feeds UI and export.
 - Payment Method calculation and display were intentionally preserved. Legitimate reconciliation differences remain for refund timing and the booking settlement/package-redemption definitions described in the cards.
+- POS Booking source-write correction ensures new direct appointments and POS Book Service checkout persist a concrete Booking Branch and all deposit/settlement Orders inherit it. Sales Visual continues to read persisted Order transaction Branch; it does not convert historical NULL to the current Header. Newly corrected transactions therefore display their real Branch while legacy unresolved rows remain Unassigned.
 
 ## Phase 9B executable completion ledger (2026-08-15)
 

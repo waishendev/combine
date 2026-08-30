@@ -167,6 +167,13 @@ POS Appointments now supports the virtual **All Branches** Header scope for cale
 
 The workspace continues to issue one bounded `GET /api/pos/appointments/calendar` request. In All scope it omits `store_location_id`; Laravel derives the authenticated user's accessible locations with `StoreLocationAccessService` and applies one `WHERE store_location_id IN (...)` query. It does not fan out per Branch or return to the heavyweight detail DTO. The existing explicit compatibility policy remains: attributed inaccessible rows are excluded, while legacy NULL bookings appear only in All and serialize as Unassigned; a specific Branch excludes NULL.
 
+New POS appointment creation is different from that All-scope read: it always requires one concrete
+authorized operational Branch. The direct Appointments modal sends `store_location_id`; POS Book
+Service binds the line to a Branch-owned cart and checkout persists that cart Branch on the Booking.
+Backend write validation requires every selected Service through `booking_service_store_location`,
+every selected Staff through `staff_store_location`, and Branch-specific schedule availability.
+Settlement carts must match the Booking Branch, and only that Branch's Cash Shift can settle it.
+
 Calendar rows serialize persisted `store_location_id` plus authorized Branch name/code. Month previews and day appointment blocks display a compact Branch marker only in All scope. Staff remains one identity/column, so a Staff assigned to multiple Branches is not duplicated; the appointment badge supplies the persisted booking context.
 
 Direct detail and appointment actions remain usable without changing the Header, subject to the same action-specific shift policy as specific-Branch mode. Controllers authorize the persisted `bookings.store_location_id`; a client Header cannot replace ownership. Edit Settlement service discovery and reschedule availability explicitly use that persisted Branch. Reschedule remains inside the booking Branch and this change introduces no cross-Branch movement.

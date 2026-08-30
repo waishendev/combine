@@ -40,6 +40,22 @@ Reconcile samples from every category. In particular, review delivery, public bo
 
 The production command is `php artisan branch-transactions:backfill --store-code=PNG --force`. **Do not run it until the dry-run is approved.** It defaults NULL bookings to the operator-selected Branch, assigns orders from linked attributed bookings first, assigns explicit self-pickup orders from their pickup Branch, never defaults ambiguous orders, and never overwrites attribution.
 
+### POS Booking write/recovery correction (2026-08-30)
+
+New POS Book Service checkout previously created its Order from the Branch-owned cart but omitted
+`bookings.store_location_id`; direct appointment settlement/deposit Orders also omitted the Booking
+Branch. New operational Bookings now require a concrete authorized Branch, validate Service and
+Staff assignment/schedule there, and persist it at creation. POS checkout Bookings inherit
+`pos_carts.store_location_id`; settlement/deposit/zero-settlement Orders inherit the immutable
+`bookings.store_location_id`. All Branches remains view-only for creation, and rescheduling does not
+move or clear Branch attribution.
+
+For recovery, `branch-transactions:backfill` now derives a NULL Booking from linked attributed Orders
+first when exactly one distinct Order Branch exists. Conflicting Order evidence remains unresolved.
+Only rows with no Order evidence retain the established, operator-approved `--store-code` default,
+so always inspect the dry-run and SQL evidence before `--force`; never select PNG for a Branch 2
+record merely because it is the legacy default.
+
 ## Verification and rollback
 
 After an approved write, repeat the dry-run; changed categories should be zero while unresolved ambiguous orders remain NULL. Verify counts by Branch, direct access with Branch A/B users, order and booking history, public checkout, booking shop, POS, and that pickup IDs did not change.

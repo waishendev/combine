@@ -1876,6 +1876,7 @@ class PosController extends Controller
 
             $order = Order::query()->create([
                 'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                'store_location_id' => (int) $booking->store_location_id,
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
                 'created_by_user_id' => $request->user()->id,
                 'status' => 'completed',
@@ -2125,6 +2126,7 @@ class PosController extends Controller
             [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $validated, $orderPaymentService) {
                 $order = Order::query()->create([
                     'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                    'store_location_id' => (int) $booking->store_location_id,
                     'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
                     'created_by_user_id' => $request->user()->id,
                     'status' => 'completed',
@@ -2803,6 +2805,7 @@ class PosController extends Controller
         DB::transaction(function () use ($booking, $amount, $paymentRows, $remark, $userId, $serviceName) {
             $order = Order::query()->create([
                 'order_number' => $this->generateOrderNumber(),
+                'store_location_id' => (int) $booking->store_location_id,
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
                 'created_by_user_id' => $userId,
                 'status' => 'completed',
@@ -4436,6 +4439,12 @@ class PosController extends Controller
             'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ], $this->posStaffSplitAmountValidationRules()));
 
+        // The cart is already bound to one authorized operational Branch. Resolve
+        // it before validating service/staff eligibility and carry that same
+        // Branch through checkout into Booking and Order parents.
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $transactionBranch = StoreLocation::query()->findOrFail((int) $cart->store_location_id);
+
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
             'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
             'selected_option_ids' => collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
@@ -4569,7 +4578,7 @@ class PosController extends Controller
                 return $leaveBlock;
             }
         } else {
-            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt, (int) $transactionBranch->id);
             $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
             if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
                 && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
@@ -4642,8 +4651,6 @@ class PosController extends Controller
 
         $primaryStaffId = (int) ($normalizedSplits[0]['staff_id'] ?? $staff->id);
         $primaryCommissionRate = (float) ($staffCommissionRates[$primaryStaffId] ?? $staff->service_commission_rate ?? 0);
-
-        $cart = $this->resolveCart((int) $request->user()->id);
 
         $item = PosCartServiceItem::query()->create([
             'pos_cart_id' => $cart->id,
@@ -4759,6 +4766,7 @@ class PosController extends Controller
     public function bookService(Request $request, BookingAvailabilityService $availabilityService)
     {
         $validated = $request->validate([
+            'store_location_id' => ['required', 'integer', 'exists:store_locations,id'],
             'customer_id' => ['required', 'integer', 'exists:customers,id'],
             'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
@@ -4766,9 +4774,22 @@ class PosController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
+        $transactionBranch = app(StoreLocationAccessService::class)
+            ->authorizeStoreLocation($request->user(), (int) $validated['store_location_id'], false);
+        if (! $transactionBranch->is_booking_available || ! $transactionBranch->is_pos_available) {
+            throw ValidationException::withMessages(['store_location_id' => __('The selected Branch is not available for booking and POS operations.')]);
+        }
+
         $service = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
         $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+
+        if (! $service->isAvailableAt((int) $transactionBranch->id)) {
+            throw ValidationException::withMessages(['booking_service_id' => __('Selected service is not available at this Branch.')]);
+        }
+        if (! $staff->worksAt((int) $transactionBranch->id)) {
+            throw ValidationException::withMessages(['assigned_staff_id' => __('Selected staff does not work at this Branch.')]);
+        }
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
@@ -4777,7 +4798,7 @@ class PosController extends Controller
         $startAt = Carbon::parse((string) $validated['start_at']);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
 
-        if (! $availabilityService->isWithinStaffAvailability((int) $staff->id, $startAt, $endAt)
+        if (! $availabilityService->isWithinStaffAvailability((int) $staff->id, $startAt, $endAt, (int) $transactionBranch->id)
             || $availabilityService->hasConflict(
                 (int) $staff->id,
                 $startAt,
@@ -4791,6 +4812,7 @@ class PosController extends Controller
         }
 
         $booking = Booking::query()->create([
+            'store_location_id' => (int) $transactionBranch->id,
             'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
             'source' => 'STAFF',
             'customer_id' => $customer->id,
@@ -4894,6 +4916,9 @@ class PosController extends Controller
 
         $serviceIds = $mainServicePayload->pluck('booking_service_id')->unique()->values();
         $servicesById = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->whereIn('id', $serviceIds->all())->get()->keyBy('id');
+        if ($servicesById->contains(fn (BookingService $candidate) => ! $candidate->isAvailableAt((int) $transactionBranch->id))) {
+            throw ValidationException::withMessages(['booking_service_id' => __('One or more selected services are not available at this Branch.')]);
+        }
         $service = $servicesById->get((int) $mainServicePayload[0]['booking_service_id']);
         if (! $service) {
             return $this->respondError(__('Main service is unavailable.'), 422);
@@ -4926,6 +4951,9 @@ class PosController extends Controller
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
         if (! (bool) ($staff->is_active ?? true)) {
             return $this->respondError(__('Selected staff is inactive.'), 422, ['reason_code' => 'staff_inactive']);
+        }
+        if (! $staff->worksAt((int) $transactionBranch->id)) {
+            throw ValidationException::withMessages(['assigned_staff_id' => __('Selected staff does not work at this Branch.')]);
         }
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
@@ -4996,7 +5024,7 @@ class PosController extends Controller
             }
             $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, ['failure_reason' => null], $request->user()?->id);
         } else {
-            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt, (int) $transactionBranch->id);
             $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
             if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
                 && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
@@ -5031,6 +5059,9 @@ class PosController extends Controller
 
         $staffIds = collect($normalizedResult['splits'])->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
         foreach ($staffIds as $splitStaffId) {
+            if (! Staff::query()->findOrFail((int) $splitStaffId)->worksAt((int) $transactionBranch->id)) {
+                throw ValidationException::withMessages(['staff_splits' => __('Selected staff split contains staff outside this Branch.')]);
+            }
             if (! $service->isStaffAllowed((int) $splitStaffId)) {
                 return $this->respondError(__('Selected staff split contains staff not allowed for this service.'), 422);
             }
@@ -5325,7 +5356,6 @@ class PosController extends Controller
             'appointmentSettlementItems.booking:id,customer_id,guest_email',
             'packageItems:id,customer_id',
         ]);
-
         // If settlement exists in cart, all lines must belong to the same member.
         if ($cart->appointmentSettlementItems->isNotEmpty()) {
             $guestSettlementExists = $cart->appointmentSettlementItems->contains(function (PosCartAppointmentSettlementItem $row) {
@@ -5446,6 +5476,11 @@ class PosController extends Controller
             'packageItems:id,customer_id',
             'appointmentSettlementItems.booking:id,customer_id,guest_email',
         ]);
+        if ($booking->store_location_id === null || (int) $booking->store_location_id !== (int) $cart->store_location_id) {
+            throw ValidationException::withMessages([
+                'store_location_id' => __('Appointment settlement must use the persisted Booking Branch.'),
+            ]);
+        }
 
         $existingMemberServiceCustomerIds = $cart->serviceItems
             ->map(fn (PosCartServiceItem $row) => (int) ($row->customer_id ?? 0))
@@ -8073,6 +8108,9 @@ class PosController extends Controller
                 if (! $serviceItem->bookingService || ! $serviceItem->bookingService->is_active) {
                     abort(422, __('Service is not available for checkout.'));
                 }
+                if (! $serviceItem->bookingService->isAvailableAt((int) $cart->store_location_id)) {
+                    abort(422, __('Service is not available at the POS cart Branch.'));
+                }
 
                 $guestName = trim((string) ($serviceItem->guest_name ?? ''));
                 $guestPhone = trim((string) ($serviceItem->guest_phone ?? ''));
@@ -8098,6 +8136,9 @@ class PosController extends Controller
                 if ($serviceItem->assigned_staff_id && ! (bool) ($serviceItem->assignedStaff?->is_active ?? true)) {
                     abort(422, __('Assigned staff is inactive.'));
                 }
+                if ($serviceItem->assigned_staff_id && ! $serviceItem->assignedStaff->worksAt((int) $cart->store_location_id)) {
+                    abort(422, __('Assigned staff does not work at the POS cart Branch.'));
+                }
 
                 if ($this->posAvailabilityVerifyHolidayOnly()) {
                     if ($serviceItem->assigned_staff_id) {
@@ -8118,7 +8159,7 @@ class PosController extends Controller
                     }
                     $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, ['failure_reason' => null], $request->user()?->id);
                 } else {
-                    $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt);
+                    $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt, (int) $cart->store_location_id);
                     $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
                     if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
                         && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
@@ -8146,6 +8187,7 @@ class PosController extends Controller
                 }
 
                 $booking = Booking::query()->create([
+                    'store_location_id' => (int) $cart->store_location_id,
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => 'STAFF',
                     'customer_id' => $serviceItem->customer_id ? (int) $serviceItem->customer_id : null,
