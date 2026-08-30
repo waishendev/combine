@@ -11,6 +11,7 @@ interface BookingProductCategoryRowProps {
   category: BookingProductCategoryRowData
   showActions?: boolean
   showSelection?: boolean
+  showBranches?: boolean
   selected?: boolean
   canUpdate?: boolean
   canDelete?: boolean
@@ -23,6 +24,7 @@ export default function BookingProductCategoryRow({
   category,
   showActions = false,
   showSelection = false,
+  showBranches = false,
   selected = false,
   canUpdate = false,
   canDelete = false,
@@ -60,6 +62,7 @@ export default function BookingProductCategoryRow({
           label={category.isActive ? t('common.active') : t('common.inactive')}
         />
       </td>
+      {showBranches && <td className="border border-gray-200 px-4 py-2">{category.branchNames?.join(', ') || 'Unassigned'}</td>}
       {showActions && (
         <td className="border border-gray-200 px-4 py-2">
           <div className="flex items-center gap-2">

@@ -379,9 +379,14 @@ class PosController extends Controller
 
     public function serviceSearch(Request $request)
     {
+        $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation(
+            $request->user(), $request->integer('store_location_id'), false
+        );
         $query = trim((string) $request->query('q', ''));
 
-        $builder = BookingService::query()->where('is_active', true)->orderBy('name');
+        $builder = BookingService::query()->where('is_active', true)
+            ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branch->id))
+            ->orderBy('name');
 
         if ($query !== '') {
             $builder->where(function ($q) use ($query) {
@@ -392,7 +397,7 @@ class PosController extends Controller
         }
 
         return $this->respond([
-            'data' => $builder->with(['allowedStaffs:id,name'])->get(['id', 'name', 'cn_name', 'service_type', 'service_price', 'price', 'duration_min', 'buffer_min'])->map(function (BookingService $service) {
+            'data' => $builder->with(['allowedStaffs:id,name', 'categories:id,name,cn_name'])->get(['id', 'name', 'cn_name', 'service_type', 'service_price', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'duration_min', 'buffer_min'])->map(function (BookingService $service) {
                 return [
                     'id' => (int) $service->id,
                     'name' => $service->name,
@@ -400,11 +405,20 @@ class PosController extends Controller
                     'service_type' => $service->service_type,
                     'service_price' => (float) $service->service_price,
                     'price' => (float) ($service->price ?? $service->service_price),
+                    'price_mode' => $service->price_mode,
+                    'price_range_min' => $service->price_range_min,
+                    'price_range_max' => $service->price_range_max,
                     'duration_min' => (int) $service->duration_min,
                     'buffer_min' => (int) $service->buffer_min,
                     'allowed_staffs' => $service->allowedStaffs->map(fn (Staff $staff) => [
                         'id' => (int) $staff->id,
                         'name' => $staff->name,
+                    ])->values()->all(),
+                    'category_ids' => $service->categories->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
+                    'categories' => $service->categories->map(fn ($category) => [
+                        'id' => (int) $category->id,
+                        'name' => $category->name,
+                        'cn_name' => $category->cn_name,
                     ])->values()->all(),
                 ];
             })->values(),
@@ -424,6 +438,26 @@ class PosController extends Controller
         return $this->respond([
             'data' => $builder->get(['id', 'name', 'description', 'selling_price', 'valid_days']),
         ]);
+    }
+
+    public function bookingProductSearch(Request $request)
+    {
+        $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation(
+            $request->user(), $request->integer('store_location_id'), false
+        );
+        $perPage = max(1, min(200, $request->integer('per_page', 200)));
+        $builder = BookingProduct::query()
+            ->with(['categories', 'questions.options'])
+            // Booking Products inherit operational availability from their existing
+            // linked Booking Service; the definition itself remains global.
+            ->whereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branch->id))
+            ->where('is_active', true)
+            ->when($request->integer('category_id') > 0, fn ($query) => $query->whereHas(
+                'categories', fn ($categories) => $categories->whereKey($request->integer('category_id'))
+            ))
+            ->orderBy('name')->orderBy('id');
+
+        return $this->respond($builder->paginate($perPage));
     }
 
     public function appointmentSearch(Request $request)
@@ -5697,7 +5731,9 @@ class PosController extends Controller
 
     public function productSearch(Request $request)
     {
-        $cart = $this->resolveCart((int) $request->user()->id);
+        $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation(
+            $request->user(), $request->integer('store_location_id'), false
+        );
         $barcodeQuery = trim((string) $request->query('barcode', ''));
         $query = $barcodeQuery !== '' ? $barcodeQuery : trim((string) $request->query('q', ''));
         $isBarcodeSearch = $barcodeQuery !== '' || $request->boolean('barcode_search');
@@ -5721,7 +5757,7 @@ class PosController extends Controller
             ->with(['product', 'product.images', 'bundleItems.componentVariant'])
             ->where('is_active', true)
             ->whereHas('product', fn ($builder) => $builder->where('is_active', true)->where('is_reward_only', false)
-                ->whereHas('storeLocations', fn ($locations) => $locations->where('store_locations.id', $cart->store_location_id)
+                ->whereHas('storeLocations', fn ($locations) => $locations->where('store_locations.id', $branch->id)
                     ->where('store_location_product.is_available', true)))
             ->when($categoryId > 0, function ($builder) use ($categoryId) {
                 $builder->whereHas('product.categories', fn ($categoryQuery) => $categoryQuery->where('categories.id', $categoryId));
@@ -5758,10 +5794,11 @@ class PosController extends Controller
             ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND LOWER(p.sku) = ?) THEN 0 ELSE 1 END', [$exact])
             ->orderBy('sort_order')
             ->orderBy('id')
+            ->with(['product.branchInventories' => fn ($inventory) => $inventory->where('store_location_id', $branch->id)])
             ->paginate($perPage, ['*'], 'page', $page);
 
         return $this->respond([
-            'data' => collect($variants->items())->map(function (ProductVariant $variant) {
+            'data' => collect($variants->items())->map(function (ProductVariant $variant) use ($branch) {
                 $product = $variant->product;
                 $pricing = ProductPricing::build($product, $variant);
 
@@ -5790,7 +5827,7 @@ class PosController extends Controller
                         'is_active' => (bool) $variant->is_active,
                         'is_bundle' => (bool) $variant->is_bundle,
                         'track_stock' => (bool) $variant->track_stock,
-                        'stock' => $this->resolveVariantAvailableQty($variant),
+                        'stock' => (int) ($product?->branchInventories->firstWhere('product_variant_id', $variant->id)?->quantity ?? 0),
                         'derived_available_qty' => $variant->is_bundle ? $variant->derivedAvailableQty() : null,
                     ]],
                 ];
@@ -5800,6 +5837,37 @@ class PosController extends Controller
             'per_page' => $variants->perPage(),
             'total' => $variants->total(),
         ]);
+    }
+
+    public function productCatalog(Request $request)
+    {
+        $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation(
+            $request->user(), $request->integer('store_location_id'), false
+        );
+        $page = max(1, $request->integer('page', 1));
+        $perPage = max(1, min(100, $request->integer('per_page', 100)));
+        $categoryId = $request->integer('category_id');
+        $products = Product::query()->where('is_active', true)->where('is_reward_only', false)
+            ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branch->id)
+                ->where('store_location_product.is_available', true))
+            ->when($categoryId > 0, fn ($query) => $query->whereHas('categories', fn ($categories) => $categories->whereKey($categoryId)))
+            ->with([
+                'images',
+                'variants' => fn ($variants) => $variants->where('is_active', true),
+                'branchInventories' => fn ($inventory) => $inventory->where('store_location_id', $branch->id),
+            ])->orderBy('name')->orderBy('id')->paginate($perPage, ['*'], 'page', $page);
+
+        $products->getCollection()->transform(function (Product $product) {
+            $inventory = $product->branchInventories->keyBy(fn ($row) => $row->product_variant_id === null ? 'product' : 'variant:'.$row->product_variant_id);
+            $product->stock = (int) ($inventory->get('product')?->quantity ?? 0);
+            $product->stock_quantity = $product->stock;
+            $product->variants->each(function (ProductVariant $variant) use ($inventory) {
+                $variant->stock = (int) ($inventory->get('variant:'.$variant->id)?->quantity ?? 0);
+            });
+            return $product;
+        });
+
+        return $this->respond($products);
     }
 
     public function staffConsumableProducts(Request $request)
@@ -9813,14 +9881,6 @@ class PosController extends Controller
             ->authorizeStoreLocation($request->user(), $branchId, false);
         if (! $branch->is_pos_available) {
             throw ValidationException::withMessages(['store_location_id' => __('The selected Branch is not available for POS.')]);
-        }
-
-        $openShift = PosCashShift::query()
-            ->where('event_type', PosCashShift::EVENT_OPEN)
-            ->whereDoesntHave('closeEvent')
-            ->latest('opened_at')->first();
-        if ($openShift && (int) $openShift->store_location_id !== (int) $branch->id) {
-            throw ValidationException::withMessages(['store_location_id' => __('The open cash shift belongs to another Branch. Close it before operating POS here.')]);
         }
 
         $cart = PosCart::firstOrCreate(['staff_user_id' => $staffUserId], ['store_location_id' => $branch->id]);

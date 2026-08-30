@@ -1750,6 +1750,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const latestProductRequestRef = useRef(0)
   const productRequestAbortControllerRef = useRef<AbortController | null>(null)
   const productRequestInFlightKeyRef = useRef<string | null>(null)
+  const lazyRequestAbortRef = useRef<Record<string, AbortController>>({})
+  const lazyLoadedKeyRef = useRef<Record<string, string>>({})
   const previousCategoryIdRef = useRef<number | null>(null)
 
   const [cart, setCart] = useState<Cart | null>(null)
@@ -3287,7 +3289,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     append: boolean,
     options?: FetchProductOptions & { categoryId?: number | null },
   ) => {
-    const requestKey = `${page}:${keyword.trim()}:${options?.categoryId ?? ''}:${append ? 'append' : 'replace'}`
+    if (!selectedBranchId) return
+    const requestKey = `${selectedBranchId}:${page}:${keyword.trim()}:${options?.categoryId ?? ''}:${append ? 'append' : 'replace'}`
     if (productRequestInFlightKeyRef.current === requestKey) return
     productRequestAbortControllerRef.current?.abort()
     const controller = new AbortController()
@@ -3318,6 +3321,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           per_page: '100',
           is_reward_only: 'false',
         })
+        searchParams.set('store_location_id', String(selectedBranchId))
         if (productSearchMode === 'barcode') {
           searchParams.set('barcode', trimmedKeyword)
           searchParams.set('barcode_search', 'true')
@@ -3359,11 +3363,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         params.set('per_page', '100')
         params.set('is_active', 'true')
         params.set('is_reward_only', 'false')
+        params.set('store_location_id', String(selectedBranchId))
         if (hasCategoryFilter) {
           params.set('category_id', String(normalizedCategoryId))
         }
 
-        const res = await fetch(`/api/proxy/ecommerce/products?${params.toString()}`, { cache: 'no-store', signal: controller.signal })
+        const res = await fetch(`/api/proxy/pos/products/catalog?${params.toString()}`, { cache: 'no-store', signal: controller.signal })
         const json = await res.json()
         const paged = extractPaged<ProductApiItem>(json)
 
@@ -3404,7 +3409,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         setProductLoading(false)
       }
     }
-  }, [productSearchMode])
+  }, [productSearchMode, selectedBranchId])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     const trimmedKeyword = keyword.trim()
@@ -3540,9 +3545,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [])
 
   const fetchServices = useCallback(async () => {
+    if (!selectedBranchId) return
+    const key = `booking-services:${selectedBranchId}`
+    if (lazyLoadedKeyRef.current.services === key) return
+    lazyRequestAbortRef.current.services?.abort()
+    const controller = new AbortController()
+    lazyRequestAbortRef.current.services = controller
     setServicesLoading(true)
     try {
-      const res = await fetch('/api/proxy/booking/services', { cache: 'no-store' })
+      const params = new URLSearchParams({ store_location_id: String(selectedBranchId) })
+      const res = await fetch(`/api/proxy/pos/services/search?${params}`, { cache: 'no-store', signal: controller.signal })
       if (!res.ok) {
         setServices([])
         return
@@ -3553,7 +3565,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         ? (json as { data?: unknown }).data
         : json
 
-      const list = Array.isArray(payload) ? payload : []
+      const list = Array.isArray(payload)
+        ? payload
+        : payload && typeof payload === 'object' && 'data' in payload && Array.isArray((payload as { data?: unknown }).data)
+          ? (payload as { data: unknown[] }).data
+          : []
       const mapped = list
         .map((item): BookingServiceOption | null => {
           if (!item || typeof item !== 'object') return null
@@ -3586,13 +3602,15 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         })
         .filter((item): item is BookingServiceOption => Boolean(item && item.name))
 
+      if (lazyRequestAbortRef.current.services !== controller) return
       setServices(mapped)
+      lazyLoadedKeyRef.current.services = key
     } catch {
-      setServices([])
+      if (lazyRequestAbortRef.current.services === controller) setServices([])
     } finally {
-      setServicesLoading(false)
+      if (lazyRequestAbortRef.current.services === controller) setServicesLoading(false)
     }
-  }, [])
+  }, [selectedBranchId])
 
   const fetchBookingServiceCategories = useCallback(async () => {
     try {
@@ -3614,7 +3632,32 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
   }, [])
 
+  const fetchBookingProductCategories = useCallback(async () => {
+    if (lazyLoadedKeyRef.current.bookingProductCategories === 'global') return
+    try {
+      const res = await fetch('/api/proxy/admin/booking/product-categories', { cache: 'no-store' })
+      if (!res.ok) return setBookingProductCategories([])
+      const json = await res.json().catch(() => null)
+      const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
+      const rows = Array.isArray(payload) ? payload : []
+      setBookingProductCategories(rows.map((row: any) => ({
+        id: Number(row?.id), name: String(row?.name ?? '').trim(),
+        cn_name: typeof row?.cn_name === 'string' ? row.cn_name.trim() || null : null,
+        sort_order: Number(row?.sort_order ?? 0), is_active: Boolean(row?.is_active ?? true),
+        show_in_pos_filter: row?.show_in_pos_filter !== false,
+      })).filter((row) => row.id > 0 && row.name && row.is_active)
+        .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)))
+      lazyLoadedKeyRef.current.bookingProductCategories = 'global'
+    } catch { setBookingProductCategories([]) }
+  }, [])
+
   const fetchBookingProducts = useCallback(async (categoryId: number | null = null) => {
+    if (!selectedBranchId) return
+    const key = `booking-products:${selectedBranchId}:${categoryId ?? ''}`
+    if (lazyLoadedKeyRef.current.bookingProducts === key) return
+    lazyRequestAbortRef.current.bookingProducts?.abort()
+    const controller = new AbortController()
+    lazyRequestAbortRef.current.bookingProducts = controller
     setBookingProductsLoading(true)
     try {
       const params = new URLSearchParams({
@@ -3622,11 +3665,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         per_page: '200',
       })
       if (categoryId != null) params.set('category_id', String(categoryId))
-      const res = await fetch(`/api/proxy/admin/booking/products?${params.toString()}`, { cache: 'no-store' })
+      params.set('store_location_id', String(selectedBranchId))
+      const res = await fetch(`/api/proxy/pos/booking-products/search?${params.toString()}`, { cache: 'no-store', signal: controller.signal })
       if (!res.ok) return setBookingProducts([])
       const json = await res.json().catch(() => null)
       const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
       const rows = Array.isArray(payload) ? payload : Array.isArray((payload as any)?.data) ? (payload as any).data : []
+      if (lazyRequestAbortRef.current.bookingProducts !== controller) return
       setBookingProducts(
         rows
           .map((row: any) => ({
@@ -3645,10 +3690,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           }))
           .filter((row: { id: number; is_active: boolean }) => row.id > 0 && row.is_active),
       )
+      lazyLoadedKeyRef.current.bookingProducts = key
     } finally {
-      setBookingProductsLoading(false)
+      if (lazyRequestAbortRef.current.bookingProducts === controller) setBookingProductsLoading(false)
     }
-  }, [])
+  }, [selectedBranchId])
 
   const addBookingProductToCart = useCallback(async (row: BookingProductOption, selectedOptionIds: number[] = [], actualSellingPrice?: number) => {
     const res = await fetch('/api/proxy/pos/cart/add-booking-product', {
@@ -3666,6 +3712,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [])
 
   const fetchServicePackages = useCallback(async () => {
+    if (lazyLoadedKeyRef.current.packages === 'global') return
     setServicePackagesLoading(true)
     try {
       const res = await fetch('/api/proxy/service-packages?per_page=100', { cache: 'no-store' })
@@ -3740,6 +3787,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         .filter((item): item is ServicePackageOption => Boolean(item && item.name && item.is_active !== false))
 
       setServicePackages(mapped)
+      lazyLoadedKeyRef.current.packages = 'global'
     } catch {
       setServicePackages([])
     } finally {
@@ -3748,24 +3796,33 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [])
 
   const fetchUnpaidCompletedAppointments = useCallback(async (keyword: string) => {
+    if (!selectedBranchId) return
+    const key = `settlement:${selectedBranchId}:${keyword.trim()}`
+    if (lazyLoadedKeyRef.current.settlement === key) return
+    lazyRequestAbortRef.current.settlement?.abort()
+    const controller = new AbortController()
+    lazyRequestAbortRef.current.settlement = controller
     setSettlementLoading(true)
     try {
       const params = new URLSearchParams()
       params.set('per_page', '50')
       params.set('unpaid_only', '1')
+      params.set('store_location_id', String(selectedBranchId))
       if (keyword.trim()) params.set('q', keyword.trim())
 
-      const res = await fetch(`/api/proxy/pos/appointments?${params.toString()}`, { cache: 'no-store' })
+      const res = await fetch(`/api/proxy/pos/appointments?${params.toString()}`, { cache: 'no-store', signal: controller.signal })
       const json = await res.json().catch(() => null)
       const paged = extractPaged<any>(json)
       const rows = Array.isArray(paged.data) ? paged.data : []
+      if (lazyRequestAbortRef.current.settlement !== controller) return
       setSettlementAppointments(rows)
+      lazyLoadedKeyRef.current.settlement = key
     } catch {
-      setSettlementAppointments([])
+      if (lazyRequestAbortRef.current.settlement === controller) setSettlementAppointments([])
     } finally {
-      setSettlementLoading(false)
+      if (lazyRequestAbortRef.current.settlement === controller) setSettlementLoading(false)
     }
-  }, [])
+  }, [selectedBranchId])
 
   const openBookingModal = useCallback(async (service: BookingServiceOption) => {
     setBookingServiceDraft(service)
@@ -5797,6 +5854,18 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }
 
   useEffect(() => {
+    productRequestAbortControllerRef.current?.abort()
+    latestProductRequestRef.current += 1
+    productRequestInFlightKeyRef.current = null
+    Object.values(lazyRequestAbortRef.current).forEach((controller) => controller.abort())
+    lazyRequestAbortRef.current = {}
+    lazyLoadedKeyRef.current = {}
+    setProducts([])
+    setBookingProducts([])
+    setServices([])
+    setSettlementAppointments([])
+    setProductPage(1)
+    setProductLastPage(1)
     focusScanner()
     void loadCart()
     const categoryRequest = new AbortController()
@@ -5841,42 +5910,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
     void loadCategories()
     void fetchActiveStaffs()
-    void fetchServices()
-      void fetchBookingServiceCategories()
-    const loadBookingProductCategories = async () => {
-      try {
-        const res = await fetch('/api/proxy/admin/booking/product-categories', { cache: 'no-store' })
-        if (!res.ok) {
-          setBookingProductCategories([])
-          return
-        }
-        const json = await res.json().catch(() => null)
-        const payload = (json && typeof json === 'object' && 'data' in json)
-          ? (json as { data?: unknown }).data
-          : json
-        const rows = Array.isArray(payload) ? payload : []
-        const mapped = rows
-          .map((row: any) => ({
-            id: Number(row?.id),
-            name: String(row?.name ?? '').trim(),
-            cn_name: typeof row?.cn_name === 'string' ? row.cn_name.trim() || null : null,
-            sort_order: Number(row?.sort_order ?? 0),
-            is_active: Boolean(row?.is_active ?? true),
-            show_in_pos_filter: row?.show_in_pos_filter !== false,
-          }))
-          .filter((row) => row.id > 0 && row.name && row.is_active)
-          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
-        setBookingProductCategories(mapped)
-      } catch {
-        setBookingProductCategories([])
-      }
-    }
-
-    void loadBookingProductCategories()
-    void fetchServicePackages()
-    void fetchUnpaidCompletedAppointments('')
     return () => categoryRequest.abort()
-  }, [fetchActiveStaffs, fetchBookingProducts, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments, selectedBranchId])
+  }, [fetchActiveStaffs, selectedBranchId])
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -5886,8 +5921,22 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [bookingProductQuery])
 
   useEffect(() => {
-    void fetchBookingProducts(selectedBookingProductCategoryId)
-  }, [fetchBookingProducts, selectedBookingProductCategoryId])
+    if (catalogTab === 'booking-products') {
+      void fetchBookingProducts(selectedBookingProductCategoryId)
+      void fetchBookingProductCategories()
+    }
+  }, [catalogTab, fetchBookingProductCategories, fetchBookingProducts, selectedBookingProductCategoryId])
+
+  useEffect(() => {
+    if (catalogTab === 'book-service') {
+      void fetchServices()
+      void fetchBookingServiceCategories()
+    } else if (catalogTab === 'service-packages') {
+      void fetchServicePackages()
+    } else if (catalogTab === 'settlement') {
+      void fetchUnpaidCompletedAppointments(settlementQuery)
+    }
+  }, [catalogTab, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments, settlementQuery])
 
   const filteredBookingProducts = useMemo(() => {
     const keyword = debouncedBookingProductQuery.trim().toLowerCase()
@@ -6268,36 +6317,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
     previousCategoryIdRef.current = selectedCategoryId
   }, [selectedCategoryId])
-
-  useEffect(() => {
-    let timeoutId: number | null = null
-    let cancelled = false
-
-    const tick = async () => {
-      if (cancelled) return
-
-      if (!productSelectModalOpen && typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        await fetchProductPage(1, effectiveServerProductQuery, false, {
-          silent: true,
-          resetHighlight: false,
-          categoryId: selectedCategoryId,
-        })
-      }
-
-      if (!cancelled) {
-        timeoutId = window.setTimeout(tick, 60_000)
-      }
-    }
-
-    timeoutId = window.setTimeout(tick, 60_000)
-
-    return () => {
-      cancelled = true
-      if (timeoutId) {
-        window.clearTimeout(timeoutId)
-      }
-    }
-  }, [effectiveServerProductQuery, fetchProductPage, productSelectModalOpen, selectedCategoryId])
 
   useEffect(() => {
     if (!memberOpen) return

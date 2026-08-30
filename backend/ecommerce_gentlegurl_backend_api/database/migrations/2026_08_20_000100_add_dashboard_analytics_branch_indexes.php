@@ -52,6 +52,14 @@ return new class extends Migration
                 continue;
             }
 
+            // A real pre-Multi-Branch database reaches this 2026 migration before
+            // the 2027 migrations that create these tables/columns. Defer instead
+            // of issuing invalid SQL; the post-foundation migration installs them.
+            $requiredColumns = $index['non_pgsql_columns'] ?? $index['columns'];
+            if (! Schema::hasColumns($index['table'], $requiredColumns)) {
+                continue;
+            }
+
             if ($this->indexExists($index['table'], $index['name'])) {
                 continue;
             }

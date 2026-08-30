@@ -5,6 +5,7 @@ export interface BookingProductCategoryRowData {
   sortOrder: number | null
   isActive: boolean
   showInPosFilter: boolean
+  branchNames?: string[]
 }
 
 export type BookingProductCategoryApiItem = {
@@ -14,6 +15,7 @@ export type BookingProductCategoryApiItem = {
   sort_order?: number | null
   is_active?: boolean | number | string | null
   show_in_pos_filter?: boolean | number | string | null
+  store_locations?: Array<{ name?: string; code?: string }> | null
 }
 
 export function mapBookingProductCategoryApiItemToRow(
@@ -37,5 +39,6 @@ export function mapBookingProductCategoryApiItemToRow(
       item.show_in_pos_filter === 1 ||
       item.show_in_pos_filter === '1' ||
       item.show_in_pos_filter === 'true',
+    branchNames: item.store_locations?.map((branch) => String(branch.name ?? branch.code ?? '')).filter(Boolean) ?? [],
   }
 }

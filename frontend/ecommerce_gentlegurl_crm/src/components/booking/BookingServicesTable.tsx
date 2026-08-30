@@ -25,6 +25,7 @@ import {
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 import { getApiErrorMessage } from '@/lib/api-errors'
+import { useBranch } from '@/contexts/BranchContext'
 
 interface BookingServicesTableProps {
   permissions: string[]
@@ -71,6 +72,7 @@ export default function BookingServicesTable({
   permissions,
 }: BookingServicesTableProps) {
   const { t } = useI18n()
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createCopyFromServiceId, setCreateCopyFromServiceId] = useState<number | null>(null)
@@ -179,6 +181,8 @@ export default function BookingServicesTable({
         qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
       }
       if (filters.categoryId) qs.set('category_id', filters.categoryId)
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
 
       const res = await fetch(`/api/proxy/admin/booking/services?${qs.toString()}`, {
         cache: 'no-store',
@@ -249,7 +253,9 @@ export default function BookingServicesTable({
     } finally {
       setLoading(false)
     }
-  }, [currentPage, filters, pageSize])
+  }, [currentPage, filters, pageSize, selectedBranchId])
+
+  useEffect(() => { setRows([]); setCurrentPage(1) }, [selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -352,7 +358,7 @@ export default function BookingServicesTable({
     setCurrentPage(1)
   }
 
-  const colCount = 11 + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
+  const colCount = 11 + (isAllBranches ? 1 : 0) + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
 
   const totalPages = meta.last_page || 1
 
@@ -867,6 +873,7 @@ export default function BookingServicesTable({
                   </button>
                 </th>
               ))}
+              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Available At</th>}
               {showActions && (
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
                   {t('common.actions')}
@@ -888,6 +895,7 @@ export default function BookingServicesTable({
                   canDuplicate={canCreate}
                   canViewAllowedStaff={canViewAllowedStaff}
                   showSelection={showSelection}
+                  showBranches={isAllBranches}
                   isSelected={selectedIds.has(service.id)}
                   onToggleSelect={handleToggleSelect}
                   onDuplicate={() => {

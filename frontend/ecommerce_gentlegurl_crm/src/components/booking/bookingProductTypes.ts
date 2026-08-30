@@ -22,6 +22,7 @@ export type BookingProductRowData = {
   image_path?: string | null
   image_url?: string | null
   questions?: BookingProductQuestion[]
+  linked_booking_service?: { store_locations?: Array<{ id: number; name?: string; code?: string }> } | null
 }
 
 

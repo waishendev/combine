@@ -146,6 +146,15 @@ Opening, closing, or querying the current shift requires an explicit existing, a
 
 The CRM cash-shift gate is keyed to the Header Branch selection. A Branch change immediately clears the previous shift, cash pools, errors, and open/close modal state before loading the newly selected Branch. Stale asynchronous responses are ignored, and an explicitly attributed request cannot be overwritten by the POS fetch interceptor. The UI exposes only a shift whose `store_location_id` equals the current selection, displays the Branch in the open-shift dialog, and refuses to close a legacy NULL-attributed or different-Branch shift.
 
+New-Branch initialization is distinct from historical reconciliation. StoreLocation creation normally
+creates that Branch's zero-balance default Cash Pool; current/open-shift access also idempotently
+`firstOrCreate`s the same `(store_location_id, default)` prerequisite to cover Branches created through
+older/import paths. It never selects, renames, or reattributes a NULL/PNG account. Therefore no new
+initialization command is required: `pos-branch:backfill` remains exclusively the reviewed legacy-data
+attribution tool. Open shifts remain one per Branch, so an open PNG shift does not block Branch B.
+The existing single operator cart remains safely Branch-fixed while meaningful; an empty cart may be
+reattributed, while a non-empty cross-Branch switch is rejected rather than silently reused.
+
 Historical shift reports remain readable for accessible Branches even after POS is disabled. Legacy NULL shift/account history stays explicitly unresolved until backfill; it is never treated as Branch 1, current Header Branch, or All Branches. Cash report All Branches means an overview of accessible attributed Branches, not mutation permission.
 
 Printer configuration can be read and administratively edited for an accessible historical Branch. Auto-print preference changes and test-print operations require an active, POS-enabled Branch. CRM All Branches cannot save printer settings; a specific global Branch Context selection is required.

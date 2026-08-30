@@ -30,6 +30,7 @@ export interface BookingServiceRowData {
   allowedStaffCount?: number
   allowedStaffNames?: string[]
   primarySlots?: string[]
+  branchNames?: string[]
 }
 
 interface BookingServiceRowProps {
@@ -41,6 +42,7 @@ interface BookingServiceRowProps {
   canDuplicate?: boolean
   canViewAllowedStaff?: boolean
   showSelection?: boolean
+  showBranches?: boolean
   isSelected?: boolean
   onToggleSelect?: (service: BookingServiceRowData, selected: boolean) => void
   onEdit?: (service: BookingServiceRowData) => void
@@ -57,6 +59,7 @@ export default function BookingServiceRow({
   canDuplicate = false,
   canViewAllowedStaff = false,
   showSelection = false,
+  showBranches = false,
   isSelected = false,
   onToggleSelect,
   onEdit,
@@ -165,6 +168,7 @@ export default function BookingServiceRow({
           label={service.isActive ? t('common.active') : t('common.inactive')}
         />
       </td>
+      {showBranches && <td className="px-4 py-2 border border-gray-200">{service.branchNames?.join(', ') || 'Unassigned'}</td>}
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">

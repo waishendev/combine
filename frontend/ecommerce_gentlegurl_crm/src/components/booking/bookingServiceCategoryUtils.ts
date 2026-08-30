@@ -8,6 +8,7 @@ export interface BookingServiceCategoryRowData {
   showInPosFilter: boolean
   imagePath?: string
   imageUrl?: string
+  branchNames?: string[]
 }
 
 export type BookingServiceCategoryApiItem = {
@@ -20,6 +21,7 @@ export type BookingServiceCategoryApiItem = {
   show_in_pos_filter?: boolean | number | string | null
   image_path?: string | null
   image_url?: string | null
+  store_locations?: Array<{ name?: string; code?: string }> | null
 }
 
 export function mapBookingServiceCategoryApiItemToRow(
@@ -46,6 +48,7 @@ export function mapBookingServiceCategoryApiItemToRow(
       item.show_in_pos_filter === 'true',
     imagePath: typeof item.image_path === 'string' && item.image_path ? item.image_path : undefined,
     imageUrl: typeof item.image_url === 'string' && item.image_url ? item.image_url : undefined,
+    branchNames: item.store_locations?.map((branch) => String(branch.name ?? branch.code ?? '')).filter(Boolean) ?? [],
   }
 }
 

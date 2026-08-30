@@ -240,6 +240,7 @@ export default function CategoryCreateModal({
             menuIds: form.menuIds,
             menuNames: menus.filter(m => form.menuIds.includes(m.id)).map(m => m.name).join(', ') || '-',
             productCount: 0,
+            availableBranches: [],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           }
