@@ -14,6 +14,8 @@ Points and the receipt continue to use the checkout Order Member. This does not 
 
 Settlement validation collects distinct, non-null booking `customer_id` values. Zero or one distinct Member is allowed, so any number of Guest bookings may be combined with Member A bookings. Two or more distinct Members are rejected with: `Bookings belonging to different Members cannot be settled together.` Guest name, phone, and email snapshots are contact data, not Member identities.
 
+The same backend policy is applied at all three stages: Settlement search/list eligibility, the Add-to-Cart endpoint, and checkout revalidation. The list API returns its compatibility decision and reason to the POS UI; React does not maintain a separate Guest-vs-Member or guest-contact rule.
+
 For Guest + Member A, Member A becomes the checkout context by default while every Guest booking remains unchanged. For guest-only settlements, a Member may be selected for Order-level receipt/points attribution without changing booking ownership.
 
 ## Safety boundaries retained

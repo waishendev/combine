@@ -66,6 +66,7 @@ use App\Services\Voucher\VoucherService;
 use App\Support\BookingNotes;
 use App\Support\OrderReceiptEmailLabels;
 use App\Support\PosAppointmentStartAtFilter;
+use App\Support\PosSettlementCustomerIdentity;
 use App\Support\Pricing\ProductPricing;
 use App\Support\RequestCenterPendingTasksQuery;
 use Carbon\Carbon;
@@ -819,7 +820,19 @@ class PosController extends Controller
                 ->all()
         );
 
-        $mappedRows = $pageBookings->map(function (Booking $booking) use ($holdLite, $holdMetaByBookingId) {
+        $settlementCartMemberIds = [];
+        if ($unpaidOnly) {
+            $settlementCart = $this->resolveCart((int) $request->user()->id)->load([
+                'serviceItems:id,pos_cart_id,customer_id',
+                'appointmentSettlementItems.booking:id,customer_id',
+            ]);
+            $settlementCartMemberIds = PosSettlementCustomerIdentity::distinctMemberIds(
+                $settlementCart->serviceItems->pluck('customer_id')
+                    ->concat($settlementCart->appointmentSettlementItems->pluck('booking.customer_id')),
+            );
+        }
+
+        $mappedRows = $pageBookings->map(function (Booking $booking) use ($holdLite, $holdMetaByBookingId, $settlementCartMemberIds, $unpaidOnly) {
             $guestName = trim((string) ($booking->guest_name ?? ''));
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
             $guestEmail = trim((string) ($booking->guest_email ?? ''));
@@ -856,6 +869,17 @@ class PosController extends Controller
                 'hold_deposit_order' => $holdDepositMeta['order'] ?? null,
                 'hold_linked_bookings' => $holdDepositMeta['linked_bookings'] ?? [],
             ];
+
+            if ($unpaidOnly) {
+                $hasSettlementMemberConflict = PosSettlementCustomerIdentity::hasConflict([
+                    ...$settlementCartMemberIds,
+                    $booking->customer_id,
+                ]);
+                $identity['can_add_to_settlement_cart'] = ! $hasSettlementMemberConflict;
+                $identity['settlement_disabled_reason'] = $hasSettlementMemberConflict
+                    ? __(PosSettlementCustomerIdentity::CONFLICT_MESSAGE)
+                    : null;
+            }
 
             if ($holdLite) {
                 return [
@@ -5620,8 +5644,8 @@ class PosController extends Controller
         $prospectiveMemberIds = $existingMemberServiceCustomerIds
             ->concat($cart->appointmentSettlementItems->map(fn (PosCartAppointmentSettlementItem $row) => $row->booking?->customer_id))
             ->push($booking->customer_id);
-        if (\App\Support\PosSettlementCustomerIdentity::hasConflict($prospectiveMemberIds)) {
-            return $this->respondError(__(\App\Support\PosSettlementCustomerIdentity::CONFLICT_MESSAGE), 422);
+        if (PosSettlementCustomerIdentity::hasConflict($prospectiveMemberIds)) {
+            return $this->respondError(__(PosSettlementCustomerIdentity::CONFLICT_MESSAGE), 422);
         }
 
         $existingPackageCustomerIds = $cart->packageItems
@@ -7734,7 +7758,7 @@ class PosController extends Controller
                     ->values();
 
                 if ($settlementCustomerIds->count() > 1) {
-                    abort(422, __(\App\Support\PosSettlementCustomerIdentity::CONFLICT_MESSAGE));
+                    abort(422, __(PosSettlementCustomerIdentity::CONFLICT_MESSAGE));
                 }
 
                 if ($settlementCustomerIds->count() === 1) {

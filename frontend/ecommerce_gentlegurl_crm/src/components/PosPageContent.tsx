@@ -117,7 +117,7 @@ import {
   type StaffSplitMode,
   type StaffSplitPayload,
 } from '@/components/pos/staffSplitCore'
-import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
+import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import { getThermalPrinterAvailability } from '@/lib/thermalPrinterSettings'
@@ -2283,14 +2283,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
     return ids
   }, [cartServiceItems])
-  const cartGuestServiceIdentityKeys = useMemo(() => {
-    const keys = new Set<string>()
-    for (const row of cartServiceItems) {
-      const key = resolvePosGuestIdentityKey(row)
-      if (key) keys.add(key)
+  const settlementCartMemberIdentitySignature = useMemo(() => {
+    const ids = new Set<number>(cartMemberServiceCustomerIds)
+    for (const row of cartAppointmentSettlementItems) {
+      const id = Number(row.customer_id ?? 0)
+      if (Number.isFinite(id) && id > 0) ids.add(id)
     }
-    return keys
-  }, [cartServiceItems])
+    return Array.from(ids).sort((a, b) => a - b).join(',')
+  }, [cartAppointmentSettlementItems, cartMemberServiceCustomerIds])
   const hasCartBookServices = cartServiceItems.length > 0
   const hasCartPackages = cartPackageItems.length > 0
   const hasCartAppointmentSettlements = cartAppointmentSettlementItems.length > 0
@@ -3773,7 +3773,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
   const fetchUnpaidCompletedAppointments = useCallback(async (keyword: string) => {
     if (!selectedBranchId) return
-    const key = `settlement:${selectedBranchId}:${keyword.trim()}`
+    const key = `settlement:${selectedBranchId}:${settlementCartMemberIdentitySignature}:${keyword.trim()}`
     if (lazyLoadedKeyRef.current.settlement === key) return
     lazyRequestAbortRef.current.settlement?.abort()
     const controller = new AbortController()
@@ -3798,7 +3798,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     } finally {
       if (lazyRequestAbortRef.current.settlement === controller) setSettlementLoading(false)
     }
-  }, [selectedBranchId])
+  }, [selectedBranchId, settlementCartMemberIdentitySignature])
 
   const openBookingModal = useCallback(async (service: BookingServiceOption) => {
     setBookingServiceDraft(service)
@@ -9307,40 +9307,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         ? appt.service_cn_names.join(', ')
                         : ''
                       const addonList = Array.isArray(appt.add_ons) ? appt.add_ons : []
-                      const apptCustomerId = Number(appt.customer_id ?? 0)
-                      const lockedId = settlementLockedCustomerId ?? null
-                      const isLockedMismatchById = Boolean(lockedId && apptCustomerId && lockedId !== apptCustomerId)
-                      const lockedName = (cartAppointmentSettlementItems[0]?.customer_name ?? '').trim()
-                      const apptName = String(appt.customer_name ?? '').trim()
-                      const isLockedMismatchByName = Boolean(lockedId && lockedName && apptName && lockedName !== apptName)
-                      const isMemberSettlementMismatch = isLockedMismatchById || isLockedMismatchByName
-                        || (cartMemberServiceCustomerIds.size > 0 && !apptCustomerId)
-                        || (cartMemberServiceCustomerIds.size > 0 && apptCustomerId > 0 && !cartMemberServiceCustomerIds.has(apptCustomerId))
-                      const cartGuestServiceKey = cartGuestServiceIdentityKeys.size === 1
-                        ? Array.from(cartGuestServiceIdentityKeys)[0]
-                        : null
-                      const apptGuestKey = resolvePosGuestIdentityKey(appt)
-                      const isGuestSettlementMismatch = Boolean(
-                        cartMemberServiceCustomerIds.size > 0 && apptCustomerId > 0,
-                      ) || Boolean(
-                        cartGuestServiceIdentityKeys.size > 0 && apptCustomerId > 0,
-                      ) || Boolean(
-                        cartGuestServiceIdentityKeys.size > 1,
-                      ) || Boolean(
-                        cartGuestServiceKey && apptGuestKey && !posGuestIdentityKeysCompatible(cartGuestServiceKey, apptGuestKey),
-                      )
-                      const disableSettlementAdd = isMemberSettlementMismatch || isGuestSettlementMismatch
-                      const disableReason = isMemberSettlementMismatch
-                        ? (isLockedMismatchById || isLockedMismatchByName
-                          ? 'Different member. Remove current settlement to change.'
-                          : 'Member booking services in cart — guest settlement cannot be added.')
-                        : isGuestSettlementMismatch
-                          ? (cartGuestServiceIdentityKeys.size > 1
-                            ? 'Cart has multiple guest booking services. Use one guest per cart.'
-                            : apptCustomerId > 0
-                              ? 'Guest booking services in cart — member settlement cannot be added.'
-                              : 'Different guest than booking services in cart.')
-                          : ''
+                      const disableSettlementAdd = appt.can_add_to_settlement_cart === false
+                      const disableReason = disableSettlementAdd
+                        ? String(appt.settlement_disabled_reason ?? 'Bookings belonging to different Members cannot be settled together.')
+                        : ''
                       const guestContactLines = getGuestContactLines(appt)
                       const isInCart = catalogSettlementBookingIdsInCart.has(appt.id)
                       const cartQty = isInCart ? 1 : 0

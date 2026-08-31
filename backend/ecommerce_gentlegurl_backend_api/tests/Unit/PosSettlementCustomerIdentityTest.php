@@ -12,6 +12,7 @@ class PosSettlementCustomerIdentityTest extends TestCase
     {
         return [
             'guest + guest' => [[null, null], false],
+            'guests with unrelated contact snapshots remain null identities' => [[null, null, null], false],
             'guest + member A' => [[null, 10], false],
             'member A + guest' => [[10, null], false],
             'member A + member A' => [[10, 10], false],

@@ -19,4 +19,18 @@ class PosCheckoutIdentityArchitectureTest extends TestCase
         $this->assertStringNotContainsString("'customer_id' => \$memberId", $syncMethod);
         $this->assertStringNotContainsString("'customer_id' => null", $syncMethod);
     }
+
+    public function test_settlement_list_add_and_checkout_share_backend_policy(): void
+    {
+        $source = file_get_contents(__DIR__.'/../../app/Http/Controllers/Ecommerce/PosController.php');
+        $frontend = file_get_contents(__DIR__.'/../../../../frontend/ecommerce_gentlegurl_crm/src/components/PosPageContent.tsx');
+
+        $this->assertStringContainsString("'can_add_to_settlement_cart'", $source);
+        $this->assertStringContainsString('PosSettlementCustomerIdentity::hasConflict($prospectiveMemberIds)', $source);
+        $this->assertStringContainsString('if ($settlementCustomerIds->count() > 1)', $source);
+        $this->assertStringContainsString('appt.can_add_to_settlement_cart === false', $frontend);
+        $this->assertStringNotContainsString('Member booking services in cart'.' — guest settlement cannot be added.', $frontend);
+        $this->assertStringNotContainsString('Guest booking services in cart'.' — member settlement cannot be added.', $frontend);
+        $this->assertStringNotContainsString('posGuestIdentityKeysCompatible(cartGuestServiceKey, apptGuestKey)', $frontend);
+    }
 }
