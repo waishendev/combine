@@ -108,6 +108,13 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
               href: '/pos/appointments',
               requiredPermission: 'pos.appointments.manage',
             },
+            {
+              key: 'pos-payment-methods',
+              label: 'POS Payment Methods',
+              icon: 'fa-solid fa-credit-card',
+              href: '/pos/settings/payment-methods',
+              requiredPermission: 'pos.payment-method-settings.view',
+            },
           ] as MenuItem[])
         : []),
       {

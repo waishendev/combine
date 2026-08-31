@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useBranch } from '@/contexts/BranchContext'
+import { usePosPaymentConfiguration } from '@/hooks/usePosPaymentConfiguration'
+import { applyAutoSplitEdit } from '@/lib/posSplitPayment'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
@@ -616,12 +618,18 @@ export default function PosAppointmentsWorkspace({
     [permissions],
   )
   const [appointmentDetail, setAppointmentDetail] = useState<PosAppointmentDetail | null>(null)
+  // The persisted appointment Branch wins over Header ALL/specific Branch for settlement.
+  const { configuration: appointmentPaymentConfiguration } = usePosPaymentConfiguration(appointmentDetail?.store_location_id)
+  const appointmentPaymentMethods = useMemo(() => SPLIT_PAYMENT_METHODS
+    .filter(method => appointmentPaymentConfiguration?.methods.find(row => row.key === method.method)?.is_enabled ?? method.method === 'cash')
+    .sort((a, b) => (appointmentPaymentConfiguration?.methods.find(row => row.key === a.method)?.sort_order ?? 0) - (appointmentPaymentConfiguration?.methods.find(row => row.key === b.method)?.sort_order ?? 0)), [appointmentPaymentConfiguration])
   const appointmentDetailRequest = useRef(0)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [settlementSheetOpen, setSettlementSheetOpen] = useState(false)
   const [settlementBarPulse, setSettlementBarPulse] = useState(false)
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay' | 'credit_card' | 'customer_balance' | 'split'>('cash')
   const [appointmentSettlementPaymentAmounts, setAppointmentSettlementPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
+  const [appointmentAutoCalculateSplit, setAppointmentAutoCalculateSplit] = useState(true)
   const [appointmentMemberWalletBalance, setAppointmentMemberWalletBalance] = useState<number | null>(null)
   useEffect(() => {
     setAppointmentMemberWalletBalance(null)
@@ -2352,6 +2360,7 @@ export default function PosAppointmentsWorkspace({
       setAppointmentCheckoutConfirmationOpen(false)
       setAppointmentPaymentMethod('cash')
       setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
+      setAppointmentAutoCalculateSplit(true)
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
@@ -5972,6 +5981,7 @@ export default function PosAppointmentsWorkspace({
                                 setAppointmentSettlementPaymentAmounts({ cash: due > 0 ? due.toFixed(2) : '', qrpay: '', credit_card: '', customer_balance: '' })
                               }
                               setAppointmentDiscountTypeDraft('fixed')
+                              setAppointmentAutoCalculateSplit(true)
                               setAppointmentDiscountValueDraft('')
                               setAppointmentDiscountRemarkDraft('')
                               reportAppointmentCheckoutError(null)
@@ -9071,7 +9081,7 @@ export default function PosAppointmentsWorkspace({
                   <p className="mb-3 text-sm font-bold text-gray-900">Payment Method (for receipt)</p>
                   <p className="mb-3 text-xs text-slate-600">RM 0 to collect — choose how this settlement is recorded on the receipt.</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                    {appointmentPaymentMethods.map(({ method, label }) => {
                       const customerBalanceLocked = method === 'customer_balance' && !appointmentDetail?.customer?.id
                       return (
                       <button
@@ -9099,12 +9109,15 @@ export default function PosAppointmentsWorkspace({
                 </div>
               ) : (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <p className="text-sm font-bold text-gray-900">Split Payment</p>
-                    <span className="text-xs font-semibold text-gray-500">Enter paid amount per method</span>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+                      <input type="checkbox" checked={appointmentAutoCalculateSplit} onChange={(event) => setAppointmentAutoCalculateSplit(event.target.checked)} className="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500" />
+                      Auto Calculate Split
+                    </label>
                   </div>
                   <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
-                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                    {appointmentPaymentMethods.map(({ method, label }) => {
                       const customerBalanceLocked = method === 'customer_balance' && !appointmentDetail?.customer?.id
                       return (
                       <div
@@ -9145,7 +9158,9 @@ export default function PosAppointmentsWorkspace({
                             if (customerBalanceLocked) return
                             setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
                             const value = method === 'customer_balance' ? String(Math.min(Number(e.target.value || 0), appointmentMemberWalletBalance ?? 0, appointmentDueAfterDiscount)) : e.target.value
-                            setAppointmentSettlementPaymentAmounts((prev) => ({ ...prev, [method]: value }))
+                            setAppointmentSettlementPaymentAmounts((prev) => appointmentAutoCalculateSplit
+                              ? applyAutoSplitEdit(prev, method, value, appointmentDueAfterDiscountCents, appointmentPaymentMethods.map((item) => item.method))
+                              : { ...prev, [method]: value })
                           }}
                           className={`h-10 w-full rounded-lg border px-3 text-sm font-semibold focus:outline-none ${
                             customerBalanceLocked

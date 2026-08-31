@@ -11,13 +11,14 @@ return [
     ),
 
     /*
-     * `migrate:fresh --seed` profile. Use "branch_one" when a delivery only
-     * needs one Branch; "both" creates two isolated Branch admins and prepares
-     * both Branches for QA. These values are fixture configuration, not runtime
-     * Branch constants used by the application.
+     * Explicit QA fixture profile. Commercial `migrate:fresh --seed` always
+     * creates only the configured default Branch; QA commands/seeders may use
+     * "both" to create isolated fixtures. These are not runtime Branch constants.
      */
-    'fresh_seed_profile' => env('MULTI_BRANCH_SEED_PROFILE', 'both'),
-    'fresh_seed_qa_data' => env('MULTI_BRANCH_SEED_QA_DATA', true),
+    // Commercial fresh installs are single-Branch and contain no QA fixtures.
+    // Extra Branch/test profiles are available only through explicit QA commands.
+    'fresh_seed_profile' => env('MULTI_BRANCH_SEED_PROFILE', 'branch_one'),
+    'fresh_seed_qa_data' => env('MULTI_BRANCH_SEED_QA_DATA', false),
     'fresh_seed_admin_password' => env('MULTI_BRANCH_SEED_ADMIN_PASSWORD', 'password'),
     'fresh_seed_shared_admin' => [
         'email' => env('MULTI_BRANCH_SEED_SHARED_ADMIN_EMAIL', 'branches.admin@example.com'),

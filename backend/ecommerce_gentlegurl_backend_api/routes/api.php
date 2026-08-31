@@ -49,6 +49,7 @@ use App\Http\Controllers\Ecommerce\PublicStoreLocationController;
 use App\Http\Controllers\Ecommerce\PromotionController;
 use App\Http\Controllers\Ecommerce\PosAppointmentPaymentLinkController;
 use App\Http\Controllers\Ecommerce\PosController;
+use App\Http\Controllers\Ecommerce\PosPaymentMethodController;
 use App\Http\Controllers\Ecommerce\PosCashShiftController;
 use App\Http\Controllers\Ecommerce\PublicReceiptController;
 use App\Http\Controllers\Ecommerce\PublicRefundReceiptController;
@@ -655,6 +656,7 @@ $protectedRoutes = function () {
     });
 
     Route::prefix('pos')->middleware('permission:pos.checkout|pos.appointments.manage')->group(function () {
+        Route::get('/payment-methods', [PosPaymentMethodController::class, 'show']);
         Route::get('/cash-shifts/current', [PosCashShiftController::class, 'current'])
             ->middleware('permission:pos.checkout|pos.appointments.manage');
         Route::post('/cash-shifts/open', [PosCashShiftController::class, 'open'])
@@ -760,6 +762,13 @@ $protectedRoutes = function () {
             Route::post('/cart/service-items/{itemId}/batch-release-packages', [PosController::class, 'batchReleasePackagesForServiceCartItem']);
             Route::post('/checkout', [PosController::class, 'checkout']);
         });
+    });
+
+    Route::prefix('pos/settings')->group(function () {
+        Route::get('/payment-methods', [PosPaymentMethodController::class, 'show'])
+            ->middleware('permission:pos.payment-method-settings.view');
+        Route::put('/payment-methods', [PosPaymentMethodController::class, 'update'])
+            ->middleware('permission:pos.payment-method-settings.update');
     });
 
     Route::post('/orders/{orderId}/send-receipt-email', [PosController::class, 'sendReceiptEmail'])

@@ -1876,6 +1876,7 @@ class PosController extends Controller
             return $this->respondError(__('Payment amount must be greater than 0.'), 422);
         }
         $paymentRows = $this->resolveOrderPaymentRows($validated, $amount);
+        app(\App\Services\PosPaymentMethodService::class)->assertAllowed((int) $booking->store_location_id, $paymentRows);
         $lineSplitPayloads = collect($validated['settlement_line_staff_splits'] ?? []);
         $payloadStaffIds = $lineSplitPayloads
             ->flatMap(fn (array $line) => collect($line['staff_splits'] ?? [])->pluck('staff_id'))
@@ -7904,6 +7905,7 @@ class PosController extends Controller
 
             $grandTotal = max(0, $subtotal - $discountTotal);
             $paymentRows = $this->resolveOrderPaymentRows($validated, $grandTotal);
+            app(\App\Services\PosPaymentMethodService::class)->assertAllowed((int) $cart->store_location_id, $paymentRows);
 
             $guestName = trim((string) ($validated['guest_name'] ?? ''));
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
