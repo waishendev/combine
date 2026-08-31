@@ -643,6 +643,10 @@ $protectedRoutes = function () {
         ->middleware('permission:pos.staff_consumables.access');
     Route::get('/admin/staff-consumables/logs', [PosController::class, 'adminStaffConsumableLogs'])
         ->middleware('permission:pos.staff_consumables.view_logs');
+    Route::get('/admin/staff-consumables/catalog', [PosController::class, 'staffConsumableProducts'])
+        ->middleware('permission:pos.staff_consumables.access');
+    Route::post('/admin/staff-consumables/checkout', [PosController::class, 'staffConsumableCheckout'])
+        ->middleware('permission:pos.staff_consumables.checkout');
     Route::get('/admin/staffs/{staff}/consumable-claims', [PosController::class, 'staffConsumableClaims'])
         ->middleware('permission:pos.staff_consumables.view_logs');
 

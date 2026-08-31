@@ -19,6 +19,10 @@ test('one active accessible branch is automatically selected', () => {
   assert.equal(resolveBranchSelection([branch(7)], ALL_BRANCHES), 7)
 })
 
+test('zero active accessible branches has no operational selection', () => {
+  assert.equal(resolveBranchSelection([], 7), null)
+})
+
 test('multiple branches default to All Branches', () => {
   assert.equal(resolveBranchSelection([branch(1), branch(2)], null), null)
 })

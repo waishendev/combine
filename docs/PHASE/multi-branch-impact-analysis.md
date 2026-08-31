@@ -529,3 +529,9 @@ UX review removed Branch-level split preferences. Branch POS configuration now c
 ### Phase 9G Appointment Auto Calculate parity (2026-08-31)
 
 Appointment Settlement Checkout Confirmation now exposes the same checked-by-default, transaction-local Auto Calculate Split control and shared remainder algorithm as normal POS Checkout. Header ALL still resolves enabled methods/order from the persisted Appointment Branch. The toggle is neither a Branch setting nor persisted; payment reconciliation, Customer Balance and Cash Shift enforcement remain unchanged.
+# Staff Consumables focused enhancement (2026-08-31)
+
+The zero/one/multiple active-branch Header rules, permission-only Consumables authorization,
+dedicated API decision, branch catalogue/inventory contract, actor attribution, accessible **All
+Branches** history, and POS non-regression boundary are recorded in
+[`staff-consumables-multi-branch-authorization.md`](staff-consumables-multi-branch-authorization.md).

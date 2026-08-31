@@ -6061,6 +6061,9 @@ class PosController extends Controller
 
     public function staffConsumableProducts(Request $request)
     {
+        $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation(
+            $request->user(), $request->integer('store_location_id'), false
+        );
         $query = trim((string) $request->query('q', ''));
         $page = max(1, (int) $request->query('page', 1));
         $perPage = max(1, min(100, (int) $request->query('per_page', 60)));
@@ -6073,6 +6076,9 @@ class PosController extends Controller
             ->where('is_active', true)
             ->where('is_reward_only', false)
             ->where('is_staff_free', true)
+            ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branch->id)
+                ->where('store_location_product.is_available', true))
+            ->with(['branchInventories' => fn ($inventory) => $inventory->where('store_location_id', $branch->id)])
             ->when($categoryId > 0, function ($builder) use ($categoryId) {
                 $builder->whereHas('categories', fn ($categoryQuery) => $categoryQuery->where('categories.id', $categoryId));
             })
@@ -6156,6 +6162,13 @@ class PosController extends Controller
             $dateFrom !== '' ? $dateFrom : null,
             $dateTo !== '' ? $dateTo : null,
         );
+        $access = app(StoreLocationAccessService::class);
+        $accessibleIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+        $query->whereHas('order', fn ($orders) => $orders->whereIn('store_location_id', $accessibleIds));
+        if ($request->integer('store_location_id') > 0) {
+            $branch = $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false);
+            $query->whereHas('order', fn ($orders) => $orders->where('store_location_id', $branch->id));
+        }
         $this->applyStaffConsumableLogFilters($query, $request);
 
         $summary = [
@@ -6207,6 +6220,7 @@ class PosController extends Controller
         return OrderItem::query()
             ->with([
                 'order.creator.staff:id,name',
+                'order.storeLocation:id,name,code',
                 'staff:id,name',
                 'product:id,name,cn_name,sku',
                 'productVariant:id,title,cn_name,sku',
@@ -6294,6 +6308,9 @@ class PosController extends Controller
             'staff' => $staff?->name ?? $creator?->name ?? $creator?->email ?? 'Staff',
             'claimed_by' => $staff?->name ?? $creator?->name ?? $creator?->email ?? 'Staff',
             'created_by' => $creator?->name ?? $creator?->email ?? 'System',
+            'created_by_user_id' => $creator?->id ? (int) $creator->id : null,
+            'store_location_id' => $order?->store_location_id ? (int) $order->store_location_id : null,
+            'branch' => $order?->storeLocation?->name,
             'order_number' => (string) ($order?->order_number ?? '-'),
             'reference_no' => (string) ($order?->order_number ?? '-'),
             'product' => (string) ($item->product_name_snapshot ?: $item->product?->name ?: 'Product'),
@@ -6311,29 +6328,31 @@ class PosController extends Controller
 
     public function staffConsumableCheckout(Request $request)
     {
-        if (empty($request->user()?->staff_id)) {
-            return $this->respondError(__('Only staff accounts can claim consumables.'), 403);
+        if ($request->integer('store_location_id') <= 0) {
+            throw ValidationException::withMessages([
+                'store_location_id' => __('Select a Branch before purchasing consumables.'),
+            ]);
         }
 
         $validated = $request->validate([
+            'store_location_id' => ['required', 'integer'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'items.*.variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
         ]);
 
-        $operatingCart = $this->resolveCart((int) $request->user()->id);
-        if (! $operatingCart->store_location_id) {
-            throw ValidationException::withMessages(['store_location_id' => __('A specific POS Branch is required.')]);
-        }
+        $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation(
+            $request->user(), (int) $validated['store_location_id'], false
+        );
 
-        $order = DB::transaction(function () use ($validated, $request, $operatingCart) {
+        $order = DB::transaction(function () use ($validated, $request, $branch) {
             $payloadItems = collect($validated['items']);
             $order = Order::create([
                 'order_number' => $this->generateOrderNumber(),
                 'customer_id' => null,
                 'created_by_user_id' => $request->user()->id,
-                'store_location_id' => (int) $operatingCart->store_location_id,
+                'store_location_id' => (int) $branch->id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
                 'payment_method' => 'staff_free',
@@ -6346,10 +6365,10 @@ class PosController extends Controller
                 'placed_at' => now(),
                 'paid_at' => now(),
                 'completed_at' => now(),
-                'notes' => 'staff_free_consumable_claim by staff #' . $request->user()->staff_id . ' user #' . $request->user()->id,
+                'notes' => 'staff_free_consumable_claim by user #' . $request->user()->id,
                 'payment_meta' => [
                     'source' => 'staff_free_consumable_claim',
-                    'staff_id' => (int) $request->user()->staff_id,
+                    'staff_id' => $request->user()->staff_id ? (int) $request->user()->staff_id : null,
                     'user_id' => (int) $request->user()->id,
                 ],
             ]);
@@ -6364,6 +6383,8 @@ class PosController extends Controller
                     ->where('is_active', true)
                     ->where('is_reward_only', false)
                     ->where('is_staff_free', true)
+                    ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branch->id)
+                        ->where('store_location_product.is_available', true))
                     ->lockForUpdate()
                     ->first();
 
@@ -6384,11 +6405,6 @@ class PosController extends Controller
                     if (! $variant) {
                         abort(422, __('Selected variant is not available.'));
                     }
-                }
-
-                $availableQty = $variant ? $this->resolveVariantAvailableQty($variant) : ($product->track_stock ? (int) $product->stock : null);
-                if ($availableQty !== null && $qty > $availableQty) {
-                    abort(422, __('Insufficient stock for :sku', ['sku' => $variant?->sku ?? $product->sku ?? $product->id]));
                 }
 
                 $pricing = ProductPricing::build($product, $variant);
@@ -6422,7 +6438,7 @@ class PosController extends Controller
                     'is_staff_free_applied' => true,
                     'discount_amount' => round($unitPriceSnapshot * $qty, 2),
                     'line_total_after_discount' => 0,
-                    'staff_id' => (int) $request->user()->staff_id,
+                    'staff_id' => $request->user()->staff_id ? (int) $request->user()->staff_id : null,
                     'locked' => true,
                 ]);
 
@@ -6453,6 +6469,7 @@ class PosController extends Controller
     protected function serializeStaffConsumableProduct(Product $product): array
     {
         $pricing = ProductPricing::build($product, null);
+        $inventory = $product->branchInventories->keyBy(fn ($row) => $row->product_variant_id === null ? 'product' : 'variant:'.$row->product_variant_id);
 
         return [
             'id' => (int) $product->id,
@@ -6468,8 +6485,8 @@ class PosController extends Controller
             'category' => $product->categories->first()?->name,
             'categories' => $product->categories->map(fn ($category) => ['id' => (int) $category->id, 'name' => (string) $category->name])->values(),
             'track_stock' => (bool) $product->track_stock,
-            'stock' => $product->track_stock ? (int) $product->stock : null,
-            'variants' => $product->variants->map(function (ProductVariant $variant) use ($product) {
+            'stock' => $product->track_stock ? (int) ($inventory->get('product')?->quantity ?? 0) : null,
+            'variants' => $product->variants->map(function (ProductVariant $variant) use ($product, $inventory) {
                 $variantPricing = ProductPricing::build($product, $variant);
                 return [
                     'id' => (int) $variant->id,
@@ -6483,7 +6500,7 @@ class PosController extends Controller
                     'is_active' => (bool) $variant->is_active,
                     'is_bundle' => (bool) $variant->is_bundle,
                     'track_stock' => (bool) $variant->track_stock,
-                    'stock' => $this->resolveVariantAvailableQty($variant),
+                    'stock' => $variant->track_stock ? (int) ($inventory->get('variant:'.$variant->id)?->quantity ?? 0) : null,
                 ];
             })->values(),
         ];

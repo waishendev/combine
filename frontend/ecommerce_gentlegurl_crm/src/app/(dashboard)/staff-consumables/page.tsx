@@ -12,7 +12,7 @@ export default async function StaffConsumablesPage() {
     redirect('/login')
   }
 
-  const canUseConsumables = Boolean(user.staff_id) && user.permissions.includes('pos.staff_consumables.access')
+  const canUseConsumables = user.permissions.includes('pos.staff_consumables.access')
   if (!canUseConsumables) {
     redirect('/dashboard')
   }

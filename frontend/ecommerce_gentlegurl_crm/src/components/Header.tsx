@@ -16,7 +16,7 @@ type HeaderProps = {
   staffId?: number | null
 }
 
-export default function Header({ onLogout, onToggleSidebar, userEmail, permissions = [], staffId = null }: HeaderProps) {
+export default function Header({ onLogout, onToggleSidebar, userEmail, permissions = [] }: HeaderProps) {
   const { t } = useI18n()
   const [accountOpen, setAccountOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -30,7 +30,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
   const accountRef = useRef<HTMLDivElement | null>(null)
   const accountTriggerRef = useRef<HTMLButtonElement | null>(null)
   const [accountMenuStyle, setAccountMenuStyle] = useState<{ top: number; left: number; width: number } | null>(null)
-  const showStaffConsumablesLink = Boolean(staffId) && permissions.includes('pos.staff_consumables.access')
+  const showStaffConsumablesLink = permissions.includes('pos.staff_consumables.access')
 
   const updateAccountMenuPosition = useCallback(() => {
     const trigger = accountTriggerRef.current
