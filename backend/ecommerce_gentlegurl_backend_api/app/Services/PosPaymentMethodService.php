@@ -18,7 +18,6 @@ class PosPaymentMethodService
         DB::transaction(function () use ($storeLocationId, $overwrite): void {
             if ($overwrite) {
                 DB::table('store_location_pos_payment_methods')->where('store_location_id', $storeLocationId)->delete();
-                DB::table('store_location_pos_payment_settings')->where('store_location_id', $storeLocationId)->delete();
             }
             foreach (PosPaymentMethod::query()->orderBy('default_sort_order')->get() as $method) {
                 DB::table('store_location_pos_payment_methods')->insertOrIgnore([
@@ -30,13 +29,6 @@ class PosPaymentMethodService
                     'updated_at' => now(),
                 ]);
             }
-            DB::table('store_location_pos_payment_settings')->insertOrIgnore([
-                'store_location_id' => $storeLocationId,
-                'allow_split_payment' => true,
-                'auto_calculate_split' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
         });
 
         return true;
@@ -52,7 +44,6 @@ class PosPaymentMethodService
             ->orderByRaw('COALESCE(branch.sort_order, pos_payment_methods.default_sort_order)')
             ->get(['pos_payment_methods.id', 'pos_payment_methods.key', 'pos_payment_methods.name', 'pos_payment_methods.default_sort_order', 'branch.is_enabled', 'branch.sort_order']);
         $configured = $rows->contains(fn ($row) => $row->is_enabled !== null);
-        $settings = DB::table('store_location_pos_payment_settings')->where('store_location_id', $storeLocationId)->first();
 
         return [
             'store_location_id' => $storeLocationId,
@@ -64,8 +55,6 @@ class PosPaymentMethodService
                 'is_enabled' => $row->is_enabled === null ? $row->key === 'cash' : (bool) $row->is_enabled,
                 'sort_order' => (int) ($row->sort_order ?? $row->default_sort_order),
             ])->values()->all(),
-            'allow_split_payment' => (bool) ($settings->allow_split_payment ?? true),
-            'auto_calculate_split' => (bool) ($settings->auto_calculate_split ?? true),
         ];
     }
 
@@ -77,9 +66,6 @@ class PosPaymentMethodService
     public function assertAllowed(int $storeLocationId, array $paymentRows): void
     {
         $configuration = $this->configuration($storeLocationId);
-        if (! $configuration['allow_split_payment'] && count($paymentRows) > 1) {
-            throw ValidationException::withMessages(['payments' => __('Split payment is disabled for this Branch.')]);
-        }
         $enabled = collect($configuration['methods'])->where('is_enabled', true)->pluck('key');
         foreach ($paymentRows as $row) {
             if (! $enabled->contains($this->normalize((string) ($row['method'] ?? '')))) {

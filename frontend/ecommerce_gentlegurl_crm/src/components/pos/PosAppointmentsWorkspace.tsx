@@ -619,7 +619,9 @@ export default function PosAppointmentsWorkspace({
   const [appointmentDetail, setAppointmentDetail] = useState<PosAppointmentDetail | null>(null)
   // The persisted appointment Branch wins over Header ALL/specific Branch for settlement.
   const { configuration: appointmentPaymentConfiguration } = usePosPaymentConfiguration(appointmentDetail?.store_location_id)
-  const appointmentPaymentMethods = useMemo(() => SPLIT_PAYMENT_METHODS.filter(method => appointmentPaymentConfiguration?.methods.find(row => row.key === method.method)?.is_enabled ?? method.method === 'cash'), [appointmentPaymentConfiguration])
+  const appointmentPaymentMethods = useMemo(() => SPLIT_PAYMENT_METHODS
+    .filter(method => appointmentPaymentConfiguration?.methods.find(row => row.key === method.method)?.is_enabled ?? method.method === 'cash')
+    .sort((a, b) => (appointmentPaymentConfiguration?.methods.find(row => row.key === a.method)?.sort_order ?? 0) - (appointmentPaymentConfiguration?.methods.find(row => row.key === b.method)?.sort_order ?? 0)), [appointmentPaymentConfiguration])
   const appointmentDetailRequest = useRef(0)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [settlementSheetOpen, setSettlementSheetOpen] = useState(false)

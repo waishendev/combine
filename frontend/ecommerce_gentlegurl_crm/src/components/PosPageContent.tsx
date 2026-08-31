@@ -1718,7 +1718,9 @@ type PosPageContentProps = {
 export default function PosPageContent({ currentUser, permissions = [] }: PosPageContentProps) {
   const { selectedBranchId } = useBranch()
   const { configuration: posPaymentConfiguration } = usePosPaymentConfiguration(selectedBranchId)
-  const visiblePosPaymentMethods = useMemo(() => SPLIT_PAYMENT_METHODS.filter(method => posPaymentConfiguration?.methods.find(row => row.key === method.method)?.is_enabled ?? method.method === 'cash'), [posPaymentConfiguration])
+  const visiblePosPaymentMethods = useMemo(() => SPLIT_PAYMENT_METHODS
+    .filter(method => posPaymentConfiguration?.methods.find(row => row.key === method.method)?.is_enabled ?? method.method === 'cash')
+    .sort((a, b) => (posPaymentConfiguration?.methods.find(row => row.key === a.method)?.sort_order ?? 0) - (posPaymentConfiguration?.methods.find(row => row.key === b.method)?.sort_order ?? 0)), [posPaymentConfiguration])
   const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const canManageBalance = useMemo(() => permissions.includes('customer_wallet.adjust'), [permissions])
   const { hasOpenShift, cashShiftLoading } = usePosCashShift()
@@ -12491,7 +12493,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         : 'Defaults to QRPay. Edit price/discount updates amounts unless Cash and QRPay are both filled.'}
                     </p>
                   </div>
-                  {!cartCheckoutIsZeroTotal && (posPaymentConfiguration?.allow_split_payment ?? true) ? (
+                  {!cartCheckoutIsZeroTotal ? (
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
                     <input
                       type="checkbox"

@@ -30,8 +30,6 @@ class PosPaymentMethodController extends Controller
             'methods.*.key' => ['required', 'distinct', Rule::in($keys)],
             'methods.*.is_enabled' => ['required', 'boolean'],
             'methods.*.sort_order' => ['required', 'integer', 'min:0', 'max:999'],
-            'allow_split_payment' => ['required', 'boolean'],
-            'auto_calculate_split' => ['required', 'boolean'],
         ]);
         $branch = $this->access->authorizeStoreLocation($request->user(), (int) $validated['store_location_id']);
         DB::transaction(function () use ($validated, $branch) {
@@ -42,10 +40,6 @@ class PosPaymentMethodController extends Controller
                     ['is_enabled' => $row['is_enabled'], 'sort_order' => $row['sort_order'], 'updated_at' => now(), 'created_at' => now()]
                 );
             }
-            DB::table('store_location_pos_payment_settings')->updateOrInsert(
-                ['store_location_id' => $branch->id],
-                ['allow_split_payment' => $validated['allow_split_payment'], 'auto_calculate_split' => $validated['auto_calculate_split'], 'updated_at' => now(), 'created_at' => now()]
-            );
         });
         return response()->json(['data' => $this->methods->configuration((int) $branch->id)]);
     }

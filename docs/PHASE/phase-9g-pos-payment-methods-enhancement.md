@@ -6,13 +6,13 @@ This enhancement remains inside Phase 9. It introduces neither Phase 10, tenancy
 
 `payment_gateways`, Bank Accounts, and Billplz Payment Options remain global online Ecommerce/Booking configuration. POS Credit Card records an externally operated physical terminal payment; it is not Billplz Card. No online controller or shop is changed.
 
-POS identity is global in `pos_payment_methods` (`cash`, `qrpay`, `credit_card`, `customer_balance`). `store_location_pos_payment_methods` stores only Branch availability/order against existing `store_locations`; `store_location_pos_payment_settings` stores `allow_split_payment` and the UI `auto_calculate_split` default. Disabling affects new transactions only and never rewrites historical `orders.payment_method`.
+POS identity is global in `pos_payment_methods` (`cash`, `qrpay`, `credit_card`, `customer_balance`). `store_location_pos_payment_methods` stores only Branch availability and display order against existing `store_locations`. Split payment and Auto Calculate Split are transaction-local POS UI behavior, not Branch configuration. Disabling a method affects new transactions only and never rewrites historical `orders.payment_method`.
 
 ## Runtime and security
 
 A specific Header Branch loads its POS configuration once for checkout. ALL is rejected as a settings/operational context. Appointment Settlement loads from `booking.store_location_id`, including under Header ALL, never from Staff or ALL.
 
-Backend enforcement runs after persisted Cart/Booking resolution and canonical payment-row resolution. Crafted disabled-method and forbidden split requests are rejected. Settings reads/writes use `StoreLocationAccessService` and `pos.payment-method-settings.view/update`; the additive seeder grants both to `infra_core_x1`.
+Backend enforcement runs after persisted Cart/Booking resolution and canonical payment-row resolution. Crafted disabled-method requests are rejected; valid split rows remain governed by the original reconciliation, amount, Cash Shift, and Customer Balance rules. Settings reads/writes use `StoreLocationAccessService` and `pos.payment-method-settings.view/update`; the additive seeder grants both to `infra_core_x1`.
 
 Availability does not replace existing eligibility: enabled Cash still requires the exact Branch open Cash Shift; Customer Balance still requires the existing member, wallet ownership and sufficient balance. Settlement math and reports are unchanged.
 
@@ -38,7 +38,7 @@ Production rollout: back up, migrate, seed permission, dry-run/initialize PNG, a
 php artisan migrate:fresh --seed
 ```
 
-This is now a commercial minimum bootstrap. It deterministically creates the configured default Branch using `multi_branch.fresh_install_store_code` (PNG unless configured), the base roles/permissions and `infra_core_x1`, global system settings, four POS method identities, the POS settings permissions, four enabled explicit rows for that Branch, and split/auto-calculate settings enabled. No POS initializer is needed for that default Branch. Re-running `db:seed` is missing-only for POS configuration and preserves operator customization.
+This is now a commercial minimum bootstrap. It deterministically creates the configured default Branch using `multi_branch.fresh_install_store_code` (PNG unless configured), the base roles/permissions and `infra_core_x1`, global system settings, four POS method identities, the POS settings permissions, four enabled explicit rows for that Branch, and no Branch split-preference record. No POS initializer is needed for that default Branch. Re-running `db:seed` is missing-only for POS configuration and preserves operator customization.
 
 ### Existing production upgrade
 
@@ -75,3 +75,7 @@ The previous automatic chain was not commercially safe: its default profile crea
 **LEGACY / SHOULD NOT AUTO-RUN:** production backfill/reconciliation commands and commented testing/demo seeders remain explicit and are not invoked.
 
 **REQUIRES MULTI-BRANCH UPDATE before any future automatic use:** any legacy catalogue, Staff, Booking, Order, Expense, assignment, or transaction fixture that assumes a first Branch or creates synthetic operational ownership. No such fixture is in the commercial automatic chain.
+
+## UX simplification: transaction-local split behavior
+
+After UX review, Phase 9G Branch configuration was intentionally reduced to enabled methods and sort order. The obsolete one-to-one Branch split-settings table is removed by corrective migration `2027_03_04_000002`, which is safe for databases that already ran the original Phase 9G migration. POS Checkout retains its original per-transaction Auto Calculate Split checkbox, defaulting checked, and split amounts. Appointment Settlement retains its original per-transaction multi-method amount entry; it did not have a Phase-9G-independent Auto Calculate preference. Both surfaces filter and order methods by the persisted Cart/Booking Branch. The backend no longer applies a Branch split policy, while all original reconciliation, Cash Shift, Customer Balance, Branch ownership, and enabled-method enforcement remains.

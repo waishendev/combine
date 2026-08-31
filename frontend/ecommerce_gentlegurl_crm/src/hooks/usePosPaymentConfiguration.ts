@@ -6,8 +6,6 @@ export type PosPaymentConfiguration = {
   store_location_id: number
   is_configured: boolean
   methods: Array<{ key: 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'; name: string; is_enabled: boolean; sort_order: number }>
-  allow_split_payment: boolean
-  auto_calculate_split: boolean
 }
 
 export function usePosPaymentConfiguration(storeLocationId: number | null | undefined) {

@@ -21,7 +21,7 @@ class InitializePosPaymentMethodsCommandTest extends TestCase
         $this->assertDatabaseCount('store_location_pos_payment_methods', 0);
         $this->artisan('pos-payment-methods:initialize', ['--store-code' => 'CMD', '--force' => true])->assertSuccessful();
         $this->assertSame(4, DB::table('store_location_pos_payment_methods')->where('store_location_id', $branch->id)->count());
-        $this->assertDatabaseHas('store_location_pos_payment_settings', ['store_location_id' => $branch->id, 'allow_split_payment' => true]);
+        $this->assertFalse(DB::getSchemaBuilder()->hasTable('store_location_pos_payment_settings'));
     }
 
     public function test_rerun_without_force_is_idempotent_and_preserves_customization(): void
