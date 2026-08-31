@@ -535,3 +535,7 @@ The zero/one/multiple active-branch Header rules, permission-only Consumables au
 dedicated API decision, branch catalogue/inventory contract, actor attribution, accessible **All
 Branches** history, and POS non-regression boundary are recorded in
 [`staff-consumables-multi-branch-authorization.md`](staff-consumables-multi-branch-authorization.md).
+
+## Staff Sales Report roster visibility (2027-03-05)
+
+Staff report visibility is a global `staffs.show_in_sales_report` preference, separate from active status. The three Sales Report Staff summaries use configured-visible assigned Staff union selected-period activity Staff. Specific-Branch zero rows require current Branch assignment, while persisted Order Branch attribution can force historical rows even after assignment changes. ALL remains limited to authenticated accessible Branches. The flag never filters raw transactions, details, receipts, or raw exports. See [staff-sales-report-visibility.md](staff-sales-report-visibility.md).

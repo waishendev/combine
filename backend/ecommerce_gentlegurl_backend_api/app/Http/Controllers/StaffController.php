@@ -80,7 +80,7 @@ class StaffController extends Controller
 
         $headers = [
             'id', 'code', 'name', 'phone', 'email', 'username', 'position', 'description',
-            'commission_rate', 'service_commission_rate', 'is_active',
+            'commission_rate', 'service_commission_rate', 'is_active', 'show_in_sales_report',
         ];
         fputcsv($stream, $headers);
 
@@ -98,6 +98,7 @@ class StaffController extends Controller
                     $staff->commission_rate,
                     $staff->service_commission_rate,
                     $staff->is_active ? 'true' : 'false',
+                    $staff->show_in_sales_report ? 'true' : 'false',
                 ]);
             }
         });
@@ -167,7 +168,7 @@ class StaffController extends Controller
         $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
         $allowedHeaders = [
             'id', 'code', 'name', 'phone', 'email', 'username', 'position', 'description',
-            'commission_rate', 'service_commission_rate', 'is_active', 'password',
+            'commission_rate', 'service_commission_rate', 'is_active', 'show_in_sales_report', 'password',
         ];
         $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
         if (! empty($unknownHeaders)) {
@@ -210,6 +211,7 @@ class StaffController extends Controller
                 'commission_rate' => ($raw['commission_rate'] ?? '') !== '' ? $raw['commission_rate'] : 0,
                 'service_commission_rate' => ($raw['service_commission_rate'] ?? '') !== '' ? $raw['service_commission_rate'] : 0,
                 'is_active' => ($raw['is_active'] ?? '') !== '' ? filter_var($raw['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : true,
+                'show_in_sales_report' => ($raw['show_in_sales_report'] ?? '') !== '' ? filter_var($raw['show_in_sales_report'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : true,
                 'password' => ($raw['password'] ?? '') !== '' ? $raw['password'] : null,
             ];
 
@@ -242,6 +244,7 @@ class StaffController extends Controller
                 'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
                 'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
                 'is_active' => ['required', 'boolean'],
+                'show_in_sales_report' => ['required', 'boolean'],
                 'password' => ['nullable', 'string', 'min:6'],
             ]);
             if ($validator->fails()) {
@@ -264,6 +267,7 @@ class StaffController extends Controller
                             'commission_rate' => $validated['commission_rate'] ?? 0,
                             'service_commission_rate' => $validated['service_commission_rate'] ?? 0,
                             'is_active' => $validated['is_active'],
+                            'show_in_sales_report' => $validated['show_in_sales_report'],
                         ]);
 
                         $user = User::query()->create([
@@ -290,6 +294,7 @@ class StaffController extends Controller
                         ((float) $staff->commission_rate === (float) ($validated['commission_rate'] ?? 0)) &&
                         ((float) $staff->service_commission_rate === (float) ($validated['service_commission_rate'] ?? 0)) &&
                         ((bool) $staff->is_active === (bool) $validated['is_active']) &&
+                        ((bool) $staff->show_in_sales_report === (bool) $validated['show_in_sales_report']) &&
                         ((optional($admin)->email ?? null) === $validated['email']) &&
                         ((optional($admin)->username ?? null) === ($validated['username'] ?? null)) &&
                         ((bool) (optional($admin)->is_active ?? false) === (bool) $validated['is_active']) &&
@@ -310,6 +315,7 @@ class StaffController extends Controller
                         'commission_rate' => $validated['commission_rate'] ?? 0,
                         'service_commission_rate' => $validated['service_commission_rate'] ?? 0,
                         'is_active' => $validated['is_active'],
+                        'show_in_sales_report' => $validated['show_in_sales_report'],
                     ]);
 
                     if ($admin) {
@@ -364,6 +370,7 @@ class StaffController extends Controller
             'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'is_active' => ['sometimes', 'boolean'],
+            'show_in_sales_report' => ['sometimes', 'boolean'],
             'store_location_ids' => ['required', 'array', 'min:1'],
             'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
         ]);
@@ -396,6 +403,7 @@ class StaffController extends Controller
                 'commission_rate' => $validated['commission_rate'] ?? 0,
                 'service_commission_rate' => $validated['service_commission_rate'] ?? 0,
                 'is_active' => $validated['is_active'] ?? true,
+                'show_in_sales_report' => $validated['show_in_sales_report'] ?? true,
             ]);
 
             $user = User::create([
@@ -444,6 +452,7 @@ class StaffController extends Controller
             'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
             'is_active' => ['sometimes', 'boolean'],
+            'show_in_sales_report' => ['sometimes', 'boolean'],
             'store_location_ids' => ['sometimes', 'array', 'min:1'],
             'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
         ]);
