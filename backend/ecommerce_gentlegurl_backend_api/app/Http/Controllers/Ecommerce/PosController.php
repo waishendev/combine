@@ -6157,6 +6157,13 @@ class PosController extends Controller
         );
         $this->applyStaffConsumableLogFilters($query, $request);
 
+        $summary = [
+            'total_qty' => (int) (clone $query)->sum('order_items.quantity'),
+            'total_price' => (float) (clone $query)->sum(DB::raw(
+                'COALESCE(NULLIF(order_items.line_total_snapshot, 0), COALESCE(order_items.unit_price_snapshot, order_items.price_snapshot, 0) * order_items.quantity)'
+            )),
+        ];
+
         $logs = $query
             ->latest('order_items.id')
             ->paginate($perPage);
@@ -6167,6 +6174,11 @@ class PosController extends Controller
             'last_page' => $logs->lastPage(),
             'per_page' => $logs->perPage(),
             'total' => $logs->total(),
+            'summary' => [
+                'total_logs' => (int) $logs->total(),
+                'total_qty' => $summary['total_qty'],
+                'total_price' => $summary['total_price'],
+            ],
         ]);
     }
 
@@ -6256,6 +6268,18 @@ class PosController extends Controller
         }
     }
 
+    protected function staffConsumableClaimTotalPrice(OrderItem $item): float
+    {
+        $snapshot = (float) ($item->line_total_snapshot ?? 0);
+        if ($snapshot > 0) {
+            return $snapshot;
+        }
+
+        $unitPrice = (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0);
+
+        return round($unitPrice * (int) $item->quantity, 2);
+    }
+
     protected function serializeStaffConsumableClaim(OrderItem $item): array
     {
         $order = $item->order;
@@ -6279,6 +6303,7 @@ class PosController extends Controller
             'qty' => (int) $item->quantity,
             'original_price' => (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
             'line_total_snapshot' => (float) ($item->line_total_snapshot ?? 0),
+            'total_price' => $this->staffConsumableClaimTotalPrice($item),
             'final_amount' => (float) ($item->effective_line_total ?? $item->line_total ?? 0),
         ];
     }

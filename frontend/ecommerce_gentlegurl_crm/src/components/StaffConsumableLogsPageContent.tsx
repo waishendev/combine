@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { NameStack, VariantNameStack } from '@/components/NameStack'
+import PaginationControls from '@/components/PaginationControls'
 
 type LogRow = {
   id: number
@@ -14,10 +15,15 @@ type LogRow = {
   variant_cn_name?: string | null
   sku?: string | null
   qty: number
-  original_price: number
-  final_amount: number
-  order_number?: string | null
-  reference_no?: string | null
+  original_price?: number
+  line_total_snapshot?: number
+  total_price?: number
+}
+
+type LogSummary = {
+  total_logs: number
+  total_qty: number
+  total_price: number
 }
 
 type StaffOption = {
@@ -39,9 +45,24 @@ type Meta = {
   total: number
 }
 
+const EMPTY_SUMMARY: LogSummary = { total_logs: 0, total_qty: 0, total_price: 0 }
+
 const formatCurrency = (value: number | string | null | undefined) => {
   const numeric = Number(value ?? 0)
   return `RM${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)}`
+}
+
+const formatCount = (value: number | string | null | undefined) => {
+  const numeric = Number(value ?? 0)
+  return new Intl.NumberFormat('en-MY').format(Number.isFinite(numeric) ? numeric : 0)
+}
+
+const rowTotalPrice = (row: LogRow) => {
+  const total = Number(row.total_price)
+  if (Number.isFinite(total) && total > 0) return total
+  const snapshot = Number(row.line_total_snapshot)
+  if (Number.isFinite(snapshot) && snapshot > 0) return snapshot
+  return Number(row.original_price ?? 0) * Number(row.qty ?? 0)
 }
 
 const extractRows = <T,>(json: unknown): T[] => {
@@ -67,6 +88,17 @@ const extractMeta = (json: unknown): Meta => {
   }
 }
 
+const extractSummary = (json: unknown, totalLogs: number): LogSummary => {
+  if (!json || typeof json !== 'object') return { ...EMPTY_SUMMARY, total_logs: totalLogs }
+  const data = (json as { data?: unknown }).data
+  const source = data && typeof data === 'object' ? (data as { summary?: Partial<LogSummary> }).summary : undefined
+  return {
+    total_logs: Number(source?.total_logs ?? totalLogs) || 0,
+    total_qty: Number(source?.total_qty ?? 0) || 0,
+    total_price: Number(source?.total_price ?? 0) || 0,
+  }
+}
+
 export default function StaffConsumableLogsPageContent({ initialFilters = {} }: { initialFilters?: StaffConsumableLogInitialFilters }) {
   const [rows, setRows] = useState<LogRow[]>([])
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
@@ -83,6 +115,7 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [meta, setMeta] = useState<Meta>({ current_page: 1, last_page: 1, per_page: 50, total: 0 })
+  const [summary, setSummary] = useState<LogSummary>(EMPTY_SUMMARY)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -109,11 +142,14 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
       const res = await fetch(`/api/proxy/admin/staff-consumables/logs?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to load staff consumable logs.')
+      const nextMeta = extractMeta(json)
       setRows(extractRows<LogRow>(json))
-      setMeta(extractMeta(json))
+      setMeta(nextMeta)
+      setSummary(extractSummary(json, nextMeta.total))
     } catch (err) {
       setRows([])
       setMeta((current) => ({ ...current, total: 0, last_page: 1, current_page: 1 }))
+      setSummary(EMPTY_SUMMARY)
       setError(err instanceof Error ? err.message : 'Unable to load staff consumable logs.')
     } finally {
       setLoading(false)
@@ -200,6 +236,11 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
 
       {error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <SummaryCard label="Total qty" value={formatCount(summary.total_qty)} hint="Pieces claimed" accent="blue" />
+        <SummaryCard label="Total price" value={formatCurrency(summary.total_price)} hint="Retail value of free claims" accent="emerald" />
+      </div>
+
       <div className="mb-4 flex items-center justify-end gap-3">
         <label htmlFor="staff-consumable-page-size" className="text-sm text-gray-700">
           Show
@@ -227,17 +268,15 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
                 <th className="px-4 py-3">Date/time</th>
                 <th className="px-4 py-3">Staff</th>
                 <th className="px-4 py-3">Product</th>
-                <th className="px-4 py-3 text-left">Qty</th>
-                <th className="px-4 py-3 text-left">Original price</th>
-                <th className="px-4 py-3 text-left">Final amount</th>
-                <th className="px-4 py-3 text-left">Reference no</th>
+                <th className="px-4 py-3 text-right">Qty</th>
+                <th className="px-4 py-3 text-right">Total price</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Loading logs...</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Loading logs...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No staff consumable logs found.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">No staff consumable logs found.</td></tr>
               ) : rows.map((row) => (
                 <tr key={row.id} className="align-top">
                   <td className="px-4 py-3 text-slate-600">{row.claimed_at ?? '-'}</td>
@@ -264,24 +303,47 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
                     ) : null}
                     <span className="mt-0.5 block font-mono text-xs text-slate-500">{row.sku ?? '-'}</span>
                   </td>
-                  <td className="px-4 py-3 text-left text-slate-700">{row.qty}</td>
-                  <td className="px-4 py-3 text-left text-slate-700">{formatCurrency(row.original_price)}</td>
-                  <td className="px-4 py-3 text-left font-bold text-emerald-700">{formatCurrency(row.final_amount)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-600 text-left">{row.reference_no ?? row.order_number ?? '-'}</td>
+                  <td className="px-4 py-3 text-right text-slate-700">{row.qty}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(rowTotalPrice(row))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
-          <span>Total logs: {meta.total}</span>
-          <div className="flex items-center gap-2">
-            <button type="button" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))} className="rounded border border-slate-200 px-3 py-1 disabled:opacity-50">Previous</button>
-            <span>Page {meta.current_page} / {meta.last_page}</span>
-            <button type="button" disabled={page >= meta.last_page || loading} onClick={() => setPage((current) => current + 1)} className="rounded border border-slate-200 px-3 py-1 disabled:opacity-50">Next</button>
-          </div>
-        </div>
       </section>
+
+      <PaginationControls
+        currentPage={meta.current_page}
+        totalPages={meta.last_page}
+        pageSize={meta.per_page}
+        onPageChange={setPage}
+        disabled={loading}
+      />
+    </div>
+  )
+}
+
+function SummaryCard({
+  label,
+  value,
+  hint,
+  accent,
+}: {
+  label: string
+  value: string
+  hint: string
+  accent: 'blue' | 'emerald'
+}) {
+  const accentClass = {
+    blue: 'from-blue-50 to-blue-100/40 border-blue-200 text-blue-900',
+    emerald: 'from-emerald-50 to-emerald-100/40 border-emerald-200 text-emerald-900',
+  }[accent]
+
+  return (
+    <div className={`rounded-2xl border bg-gradient-to-br p-4 shadow-sm ${accentClass}`}>
+      <div className="text-xs font-semibold uppercase tracking-wide opacity-80">{label}</div>
+      <div className="mt-1 text-2xl font-semibold">{value}</div>
+      <div className="mt-1 text-xs opacity-70">{hint}</div>
     </div>
   )
 }
