@@ -38,8 +38,15 @@ php artisan role-branch:reconcile --store-code=PNG --force
 php artisan commission-branch:reconcile --store-code=PNG --force
 
 
+
+php artisan db:seed --class=PosPaymentMethodPermissionSeeder
+php artisan pos-payment-methods:initialize --store-code=PNG --dry-run
+php artisan pos-payment-methods:initialize --store-code=PNG --force
+
+
 php artisan role-branch:replicate --store-codes=PNG --dry-run
 php artisan role-branch:replicate --store-codes=PNG --force
+
 
 
 

@@ -1,5 +1,26 @@
 import type { AdminRowData } from './AdminRow'
+import type { AdminRoleOption } from './AdminFilters'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+
+export const isOperationalStaffRole = (
+  role: { name?: string | null } | null | undefined,
+): boolean => (role?.name ?? '').trim().toLowerCase() === 'staff'
+
+export const assignableAdminRoles = (
+  roles: AdminRoleOption[],
+  currentRole?: AdminRoleOption | null,
+): AdminRoleOption[] => {
+  const currentId = currentRole?.id != null ? String(currentRole.id) : null
+  const filtered = roles.filter(
+    (role) => !isOperationalStaffRole(role) || (currentId != null && String(role.id ?? '') === currentId),
+  )
+
+  if (currentRole && currentId && !filtered.some((role) => String(role.id ?? '') === currentId)) {
+    return [currentRole, ...filtered]
+  }
+
+  return filtered
+}
 
 export type AdminApiRole = {
   id?: number | string | null

@@ -28,7 +28,7 @@ interface FormState {
   avatarFile: File | null
   commissionPercent: string
   serviceCommissionPercent: string
-  showInSalesReport: boolean
+  showInSalesReport: 'true' | 'false'
 }
 
 const initialFormState: FormState = {
@@ -42,7 +42,7 @@ const initialFormState: FormState = {
   avatarFile: null,
   commissionPercent: '0',
   serviceCommissionPercent: '0',
-  showInSalesReport: true,
+  showInSalesReport: 'true',
 }
 
 export default function StaffCreateModal({
@@ -126,7 +126,7 @@ export default function StaffCreateModal({
         commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
         service_commission_rate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
         is_active: true,
-        show_in_sales_report: form.showInSalesReport,
+        show_in_sales_report: form.showInSalesReport === 'true',
         store_location_ids: storeLocationIds,
       }
 
@@ -206,7 +206,7 @@ export default function StaffCreateModal({
             commissionRate: Number.isFinite(commissionRate) ? commissionRate : 0,
             serviceCommissionRate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
             isActive: true,
-            showInSalesReport: form.showInSalesReport,
+            showInSalesReport: form.showInSalesReport === 'true',
             createdAt: new Date().toISOString(),
           }
 
@@ -483,16 +483,25 @@ export default function StaffCreateModal({
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={form.showInSalesReport}
-                  onChange={(event) => setForm((prev) => ({ ...prev, showInSalesReport: event.target.checked }))}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              <div>
+                <label
+                  htmlFor="showInSalesReport"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Show in Sales Report
+                </label>
+                <select
+                  id="showInSalesReport"
+                  name="showInSalesReport"
+                  value={form.showInSalesReport}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   disabled={submitting}
-                />
-                Show in Sales Report
-              </label>
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </div>
             </div>
           </div>
 

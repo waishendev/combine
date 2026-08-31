@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 
 import type { AdminRowData } from './AdminRow'
 import { AdminRoleOption } from './AdminFilters'
-import { mapAdminApiItemToRow, type AdminApiItem } from './adminUtils'
+import { assignableAdminRoles, isOperationalStaffRole, mapAdminApiItemToRow, type AdminApiItem } from './adminUtils'
 import CrmFormModalShell from './CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 import BranchAccessChecklist, { type BranchAccessOption } from './BranchAccessChecklist'
@@ -292,17 +292,11 @@ export default function AdminEditModal({
     !!currentRole &&
     (currentRole.isSystem === true || currentRole.isDefault === false)
 
-  const roleOptions = useMemo(() => {
-    if (!currentRole?.id) {
-      return roles
-    }
-
-    const hasCurrentRole = roles.some(
-      (role) => String(role.id ?? '') === String(currentRole.id ?? ''),
-    )
-
-    return hasCurrentRole ? roles : [currentRole, ...roles]
-  }, [currentRole, roles])
+  const roleOptions = useMemo(
+    () => assignableAdminRoles(roles, currentRole),
+    [currentRole, roles],
+  )
+  const currentRoleIsStaff = isOperationalStaffRole(currentRole)
 
   if (loading) {
     return null
@@ -402,6 +396,16 @@ export default function AdminEditModal({
                 {roleReadOnly && (
                   <p className="mt-1 text-xs text-amber-700">
                     This role is internal and can only be changed by users with admins.manage-system.
+                  </p>
+                )}
+                {!roleReadOnly && currentRoleIsStaff && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    This login uses the Staff role. Manage the staff profile on the Staffs page, or pick another role to promote this account.
+                  </p>
+                )}
+                {!roleReadOnly && !currentRoleIsStaff && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    The Staff role can only be assigned from the Staffs page.
                   </p>
                 )}
               </div>

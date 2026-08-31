@@ -1,10 +1,10 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useState } from 'react'
+import { ChangeEvent, FormEvent, useMemo, useState } from 'react'
 
 import type { AdminRowData } from './AdminRow'
 import { AdminRoleOption } from './AdminFilters'
-import { mapAdminApiItemToRow, type AdminApiItem } from './adminUtils'
+import { assignableAdminRoles, mapAdminApiItemToRow, type AdminApiItem } from './adminUtils'
 import CrmFormModalShell from './CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 import BranchAccessChecklist, { type BranchAccessOption } from './BranchAccessChecklist'
@@ -49,6 +49,7 @@ export default function AdminCreateModal({
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const assignableRoles = useMemo(() => assignableAdminRoles(roles), [roles])
 
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -229,12 +230,13 @@ export default function AdminCreateModal({
               disabled={submitting || rolesLoading}
             >
               <option value="">{t('common.selectRole')}</option>
-              {roles.map((role) => (
+              {assignableRoles.map((role) => (
                 <option key={String(role.id)} value={String(role.id ?? '')}>
                   {role.name ?? role.id}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-gray-500">Staff accounts are created on the Staffs page, not here.</p>
           </div>
 
           {canAssignBranches && (
