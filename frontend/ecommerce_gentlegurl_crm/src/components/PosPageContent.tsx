@@ -122,6 +122,7 @@ import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import { getThermalPrinterAvailability } from '@/lib/thermalPrinterSettings'
 import { useOptionalThermalPrinterSettings } from '@/hooks/useOptionalThermalPrinterSettings'
+import { applyAutoSplitEdit } from '@/lib/posSplitPayment'
 import { usePosPaymentConfiguration } from '@/hooks/usePosPaymentConfiguration'
 import OrderViewPanel from './OrderViewPanel'
 import CustomerAdjustBalanceModal, { type AdjustBalanceCustomer } from './CustomerAdjustBalanceModal'
@@ -147,8 +148,6 @@ const toPaymentCents = (value: number | string | null | undefined) => {
   return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
 }
 
-const formatSplitPaymentAmount = (cents: number) => (cents > 0 ? (cents / 100).toFixed(2) : '')
-
 const buildDefaultSplitForTotal = (total: number): Record<SplitPaymentMethod, string> => ({
   cash: '',
   qrpay: total > 0 ? total.toFixed(2) : '',
@@ -168,55 +167,6 @@ const mapPosZeroCheckoutPaymentMethod = (method: string) => {
   if (method === 'credit_card' || method === 'billplz_credit_card') return 'billplz_credit_card'
   if (method === 'split') return 'qrpay'
   return method
-}
-
-const applyAutoSplitEdit = (
-  prev: Record<SplitPaymentMethod, string>,
-  editedMethod: SplitPaymentMethod,
-  rawValue: string,
-  cartTotalCents: number,
-): Record<SplitPaymentMethod, string> => {
-  const next: Record<SplitPaymentMethod, string> = { ...prev, [editedMethod]: rawValue }
-  const editedCents = toPaymentCents(rawValue)
-  const remainingCents = Math.max(0, cartTotalCents - editedCents)
-  const otherMethods = SPLIT_PAYMENT_METHODS.map(({ method }) => method).filter((method) => method !== editedMethod)
-  const othersWithValues = otherMethods.filter((method) => toPaymentCents(prev[method]) > 0)
-
-  if (othersWithValues.length === 0) {
-    if (editedCents === 0 && remainingCents > 0) {
-      const restoreMethod: SplitPaymentMethod = otherMethods.includes('qrpay') ? 'qrpay' : otherMethods[0]
-      next[restoreMethod] = formatSplitPaymentAmount(remainingCents)
-    }
-    return next
-  }
-
-  if (othersWithValues.length === 1) {
-    const [otherMethod] = othersWithValues
-    next[otherMethod] = formatSplitPaymentAmount(remainingCents)
-    return next
-  }
-
-  const otherTotalCents = othersWithValues.reduce((sum, method) => sum + toPaymentCents(prev[method]), 0)
-  if (otherTotalCents <= 0) {
-    if (editedCents === 0 && remainingCents > 0) {
-      const restoreMethod: SplitPaymentMethod = otherMethods.includes('qrpay') ? 'qrpay' : otherMethods[0]
-      next[restoreMethod] = formatSplitPaymentAmount(remainingCents)
-    }
-    return next
-  }
-
-  let allocatedCents = 0
-  othersWithValues.forEach((method, index) => {
-    if (index === othersWithValues.length - 1) {
-      next[method] = formatSplitPaymentAmount(Math.max(0, remainingCents - allocatedCents))
-      return
-    }
-    const shareCents = Math.round((toPaymentCents(prev[method]) / otherTotalCents) * remainingCents)
-    next[method] = formatSplitPaymentAmount(shareCents)
-    allocatedCents += shareCents
-  })
-
-  return next
 }
 
 type CartItem = {
@@ -6848,9 +6798,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       if (!autoCalculateSplit) {
         return { ...prev, [method]: rawValue }
       }
-      return applyAutoSplitEdit(prev, method, rawValue, cartTotalCents)
+      return applyAutoSplitEdit(prev, method, rawValue, cartTotalCents, visiblePosPaymentMethods.map((item) => item.method))
     })
-  }, [autoCalculateSplit, cartTotalCents, reportCheckoutError])
+  }, [autoCalculateSplit, cartTotalCents, reportCheckoutError, visiblePosPaymentMethods])
 
   const handleSplitPaymentMethodShortcut = useCallback((method: SplitPaymentMethod) => {
     if (method === 'customer_balance' && !selectedMember?.id) return

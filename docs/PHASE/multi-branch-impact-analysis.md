@@ -525,3 +525,7 @@ Fresh install and production reconciliation are now distinct. `php artisan migra
 ### Phase 9G split-settings simplification (2026-08-31)
 
 UX review removed Branch-level split preferences. Branch POS configuration now contains only enabled methods and sort order. Checkout retains its original checked-by-default, user-toggleable Auto Calculate Split state; Appointment Settlement retains original transaction-local multi-method entry. Corrective migration `2027_03_04_000002` drops the now-purposeless settings table for upgrade safety. No online gateway, historical payment, Cash Shift, Customer Balance, or persisted transaction Branch behavior changed.
+
+### Phase 9G Appointment Auto Calculate parity (2026-08-31)
+
+Appointment Settlement Checkout Confirmation now exposes the same checked-by-default, transaction-local Auto Calculate Split control and shared remainder algorithm as normal POS Checkout. Header ALL still resolves enabled methods/order from the persisted Appointment Branch. The toggle is neither a Branch setting nor persisted; payment reconciliation, Customer Balance and Cash Shift enforcement remain unchanged.

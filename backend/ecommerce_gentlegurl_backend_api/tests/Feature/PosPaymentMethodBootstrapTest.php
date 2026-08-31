@@ -57,6 +57,9 @@ class PosPaymentMethodBootstrapTest extends TestCase
         $this->assertStringContainsString('useState(true)', $checkout);
         $this->assertStringContainsString('Auto Calculate Split', $checkout);
         $this->assertStringContainsString('appointmentDetail?.store_location_id', $appointments);
+        $this->assertStringContainsString('appointmentAutoCalculateSplit, setAppointmentAutoCalculateSplit] = useState(true)', $appointments);
+        $this->assertStringContainsString('checked={appointmentAutoCalculateSplit}', $appointments);
+        $this->assertStringContainsString('appointmentAutoCalculateSplit\n                              ? applyAutoSplitEdit', $appointments);
         $this->assertStringNotContainsString('allow_split_payment', $settings.$hook);
         $this->assertStringNotContainsString('auto_calculate_split', $settings.$hook);
     }
