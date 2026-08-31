@@ -8,6 +8,40 @@ use Illuminate\Validation\ValidationException;
 
 class PosPaymentMethodService
 {
+    public function initializeBranch(int $storeLocationId, bool $overwrite = false): bool
+    {
+        $hasMethods = DB::table('store_location_pos_payment_methods')->where('store_location_id', $storeLocationId)->exists();
+        if ($hasMethods && ! $overwrite) {
+            return false;
+        }
+
+        DB::transaction(function () use ($storeLocationId, $overwrite): void {
+            if ($overwrite) {
+                DB::table('store_location_pos_payment_methods')->where('store_location_id', $storeLocationId)->delete();
+                DB::table('store_location_pos_payment_settings')->where('store_location_id', $storeLocationId)->delete();
+            }
+            foreach (PosPaymentMethod::query()->orderBy('default_sort_order')->get() as $method) {
+                DB::table('store_location_pos_payment_methods')->insertOrIgnore([
+                    'store_location_id' => $storeLocationId,
+                    'pos_payment_method_id' => $method->id,
+                    'is_enabled' => true,
+                    'sort_order' => $method->default_sort_order,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+            DB::table('store_location_pos_payment_settings')->insertOrIgnore([
+                'store_location_id' => $storeLocationId,
+                'allow_split_payment' => true,
+                'auto_calculate_split' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        return true;
+    }
+
     public function configuration(int $storeLocationId): array
     {
         $rows = PosPaymentMethod::query()

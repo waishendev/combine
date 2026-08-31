@@ -3,14 +3,13 @@
 namespace App\Console\Commands;
 
 use App\Models\Ecommerce\StoreLocation;
-use App\Models\PosPaymentMethod;
+use App\Services\PosPaymentMethodService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 class InitializePosPaymentMethods extends Command
 {
     protected $signature = 'pos-payment-methods:initialize {--store-code=} {--dry-run} {--force}';
-    protected $description = 'Explicitly initialize legacy POS payment availability for one Branch';
+    protected $description = 'Explicitly initialize POS payment availability for one named Branch';
 
     public function handle(): int
     {
@@ -18,22 +17,14 @@ class InitializePosPaymentMethods extends Command
         if ($code === '') { $this->error('--store-code is required.'); return self::INVALID; }
         $store = StoreLocation::query()->whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
         if (! $store) { $this->error("Store code {$code} was not found."); return self::FAILURE; }
-        $methods = PosPaymentMethod::query()->orderBy('default_sort_order')->get();
-        $exists = DB::table('store_location_pos_payment_methods')->where('store_location_id', $store->id)->exists();
-        $this->table(['Branch', 'Methods', 'Action'], [[$store->code, $methods->pluck('key')->join(', '), $exists ? 'replace existing configuration' : 'initialize legacy configuration']]);
+        $configuration = app(PosPaymentMethodService::class)->configuration((int) $store->id);
+        $exists = (bool) $configuration['is_configured'];
+        $action = $exists ? ($this->option('force') ? 'replace explicit configuration' : 'no writes (already configured)') : 'initialize explicit configuration';
+        $this->table(['Branch', 'Methods', 'Action'], [[$store->code, collect($configuration['methods'])->pluck('key')->join(', '), $action]]);
         if ($this->option('dry-run')) return self::SUCCESS;
-        if ($exists && ! $this->option('force')) { $this->error('Configuration exists; pass --force to replace it.'); return self::FAILURE; }
-        DB::transaction(function () use ($store, $methods) {
-            DB::table('store_location_pos_payment_methods')->where('store_location_id', $store->id)->delete();
-            foreach ($methods as $method) DB::table('store_location_pos_payment_methods')->insert([
-                'store_location_id' => $store->id, 'pos_payment_method_id' => $method->id,
-                'is_enabled' => true, 'sort_order' => $method->default_sort_order, 'created_at' => now(), 'updated_at' => now(),
-            ]);
-            DB::table('store_location_pos_payment_settings')->updateOrInsert(['store_location_id' => $store->id], [
-                'allow_split_payment' => true, 'auto_calculate_split' => true, 'created_at' => now(), 'updated_at' => now(),
-            ]);
-        });
-        $this->info("Legacy POS behavior initialized for {$store->code}.");
+        $written = app(PosPaymentMethodService::class)->initializeBranch((int) $store->id, (bool) $this->option('force'));
+        if (! $written) { $this->info("POS payment configuration for {$store->code} is already initialized; no changes made."); return self::SUCCESS; }
+        $this->info("POS payment configuration initialized for {$store->code}.");
         return self::SUCCESS;
     }
 }
