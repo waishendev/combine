@@ -117,7 +117,7 @@ import {
   type StaffSplitMode,
   type StaffSplitPayload,
 } from '@/components/pos/staffSplitCore'
-import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
+import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import { getThermalPrinterAvailability } from '@/lib/thermalPrinterSettings'
@@ -2283,34 +2283,21 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
     return ids
   }, [cartServiceItems])
-  const cartGuestServiceIdentityKeys = useMemo(() => {
-    const keys = new Set<string>()
-    for (const row of cartServiceItems) {
-      const key = resolvePosGuestIdentityKey(row)
-      if (key) keys.add(key)
+  const settlementCartMemberIdentitySignature = useMemo(() => {
+    const ids = new Set<number>(cartMemberServiceCustomerIds)
+    for (const row of cartAppointmentSettlementItems) {
+      const id = Number(row.customer_id ?? 0)
+      if (Number.isFinite(id) && id > 0) ids.add(id)
     }
-    return keys
-  }, [cartServiceItems])
+    return Array.from(ids).sort((a, b) => a - b).join(',')
+  }, [cartAppointmentSettlementItems, cartMemberServiceCustomerIds])
   const hasCartBookServices = cartServiceItems.length > 0
   const hasCartPackages = cartPackageItems.length > 0
   const hasCartAppointmentSettlements = cartAppointmentSettlementItems.length > 0
   const hasCartGuestSettlement = useMemo(() => {
     return cartAppointmentSettlementItems.some((row) => !row.customer_id)
   }, [cartAppointmentSettlementItems])
-  const settlementLockedIdentityMode = useMemo<'member' | 'guest' | null>(() => {
-    if (!hasCartAppointmentSettlements) return null
-    return hasCartGuestSettlement ? 'guest' : 'member'
-  }, [hasCartAppointmentSettlements, hasCartGuestSettlement])
-  /** Member/guest validation before pay (product-only carts skip) */
-  const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages || hasCartAppointmentSettlements
-  /** Rules C,E,F,G: any package or member booking service ⇒ member only */
-  const checkoutRequiresMemberOnly = hasCartPackages || cartMemberServiceCustomerIds.size > 0 || (hasCartAppointmentSettlements && !hasCartGuestSettlement)
-  /** Rules B,D: book services without packages ⇒ member or guest */
-  const checkoutAllowsGuestToggle = hasCartBookServices && !hasCartPackages
-  /** Same Member / Guest UI as booking flow; product-only adds optional context + Clear */
-  const showMemberGuestToggleInCheckout = checkoutAllowsGuestToggle || !checkoutRequiresCustomerValidation
-
-  /** When settlement exists, customer context is locked (must remove settlement to change). */
+  /** A settlement locks checkout only when it owns one concrete Member. */
   const settlementLockedCustomerId = useMemo(() => {
     if (!hasCartAppointmentSettlements) return null
     const ids = new Set<number>()
@@ -2321,10 +2308,24 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     if (ids.size === 1) return Array.from(ids)[0] ?? null
     return null
   }, [cartAppointmentSettlementItems, hasCartAppointmentSettlements])
+  const settlementLockedIdentityMode = useMemo<'member' | 'guest' | null>(() => {
+    if (!hasCartAppointmentSettlements) return null
+    // A sole booking Member is authoritative. Guest-only settlements leave the
+    // Order recipient selectable without changing any Booking customer.
+    return settlementLockedCustomerId ? 'member' : null
+  }, [hasCartAppointmentSettlements, settlementLockedCustomerId])
+  /** Member/guest validation before pay (product-only carts skip). */
+  const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages || hasCartAppointmentSettlements
+  /** Package/member booking lines and a concrete settlement Member require member checkout. */
+  const checkoutRequiresMemberOnly = hasCartPackages || cartMemberServiceCustomerIds.size > 0 || settlementLockedCustomerId !== null
+  /** Guest booking lines and Guest-only settlements may choose checkout Member or Guest. */
+  const checkoutAllowsGuestToggle = (hasCartBookServices || (hasCartAppointmentSettlements && settlementLockedCustomerId === null)) && !hasCartPackages
+  /** Same Member / Guest UI as booking flow; product-only adds optional context + Clear. */
+  const showMemberGuestToggleInCheckout = checkoutAllowsGuestToggle || !checkoutRequiresCustomerValidation
 
   useEffect(() => {
     if (!hasCartAppointmentSettlements) return
-    if (hasCartGuestSettlement) {
+    if (hasCartGuestSettlement && !settlementLockedCustomerId) {
       setCheckoutIdentityMode('guest')
       setBookingIdentityMode('guest')
       const guestRow = cartAppointmentSettlementItems.find((row) => !row.customer_id && (row.guest_name || row.guest_phone || row.guest_email))
@@ -2347,11 +2348,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       }
       return
     }
-    // Settlement is member-only and should freeze identity switching.
+    // A mixed Guest + Member settlement uses its sole Member as checkout context;
+    // guest booking identity remains displayed and persisted independently.
     setCheckoutIdentityMode('member')
     setBookingIdentityMode('member')
     if (settlementLockedCustomerId && selectedMember?.id !== settlementLockedCustomerId) {
-      const raw = cartAppointmentSettlementItems[0]?.customer_name?.trim()
+      const raw = cartAppointmentSettlementItems
+        .find((row) => Number(row.customer_id ?? 0) === settlementLockedCustomerId)
+        ?.customer_name?.trim()
       const name = raw && raw.length > 0 ? raw : `Member (#${settlementLockedCustomerId})`
       setSelectedMember({ id: settlementLockedCustomerId, name, phone: null, email: null })
     }
@@ -3770,7 +3774,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
   const fetchUnpaidCompletedAppointments = useCallback(async (keyword: string) => {
     if (!selectedBranchId) return
-    const key = `settlement:${selectedBranchId}:${keyword.trim()}`
+    const key = `settlement:${selectedBranchId}:${settlementCartMemberIdentitySignature}:${keyword.trim()}`
     if (lazyLoadedKeyRef.current.settlement === key) return
     lazyRequestAbortRef.current.settlement?.abort()
     const controller = new AbortController()
@@ -3795,7 +3799,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     } finally {
       if (lazyRequestAbortRef.current.settlement === controller) setSettlementLoading(false)
     }
-  }, [selectedBranchId])
+  }, [selectedBranchId, settlementCartMemberIdentitySignature])
 
   const openBookingModal = useCallback(async (service: BookingServiceOption) => {
     setBookingServiceDraft(service)
@@ -7634,6 +7638,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [selectedMember, showMsg, topupTarget])
 
   const onAssignMember = async (member: Member) => {
+    if (settlementLockedCustomerId && member.id !== settlementLockedCustomerId) {
+      showMsg('Settlement includes a Member booking — checkout customer cannot be changed to a different Member.', 'error')
+      return
+    }
     const shouldRemoveCurrentVoucher = Boolean(appliedVoucher && !appliedVoucher.customer_voucher_id)
     if (shouldRemoveCurrentVoucher) {
       await removeVoucher(true)
@@ -9304,40 +9312,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         ? appt.service_cn_names.join(', ')
                         : ''
                       const addonList = Array.isArray(appt.add_ons) ? appt.add_ons : []
-                      const apptCustomerId = Number(appt.customer_id ?? 0)
-                      const lockedId = settlementLockedCustomerId ?? null
-                      const isLockedMismatchById = Boolean(lockedId && apptCustomerId && lockedId !== apptCustomerId)
-                      const lockedName = (cartAppointmentSettlementItems[0]?.customer_name ?? '').trim()
-                      const apptName = String(appt.customer_name ?? '').trim()
-                      const isLockedMismatchByName = Boolean(lockedId && lockedName && apptName && lockedName !== apptName)
-                      const isMemberSettlementMismatch = isLockedMismatchById || isLockedMismatchByName
-                        || (cartMemberServiceCustomerIds.size > 0 && !apptCustomerId)
-                        || (cartMemberServiceCustomerIds.size > 0 && apptCustomerId > 0 && !cartMemberServiceCustomerIds.has(apptCustomerId))
-                      const cartGuestServiceKey = cartGuestServiceIdentityKeys.size === 1
-                        ? Array.from(cartGuestServiceIdentityKeys)[0]
-                        : null
-                      const apptGuestKey = resolvePosGuestIdentityKey(appt)
-                      const isGuestSettlementMismatch = Boolean(
-                        cartMemberServiceCustomerIds.size > 0 && apptCustomerId > 0,
-                      ) || Boolean(
-                        cartGuestServiceIdentityKeys.size > 0 && apptCustomerId > 0,
-                      ) || Boolean(
-                        cartGuestServiceIdentityKeys.size > 1,
-                      ) || Boolean(
-                        cartGuestServiceKey && apptGuestKey && !posGuestIdentityKeysCompatible(cartGuestServiceKey, apptGuestKey),
-                      )
-                      const disableSettlementAdd = isMemberSettlementMismatch || isGuestSettlementMismatch
-                      const disableReason = isMemberSettlementMismatch
-                        ? (isLockedMismatchById || isLockedMismatchByName
-                          ? 'Different member. Remove current settlement to change.'
-                          : 'Member booking services in cart — guest settlement cannot be added.')
-                        : isGuestSettlementMismatch
-                          ? (cartGuestServiceIdentityKeys.size > 1
-                            ? 'Cart has multiple guest booking services. Use one guest per cart.'
-                            : apptCustomerId > 0
-                              ? 'Guest booking services in cart — member settlement cannot be added.'
-                              : 'Different guest than booking services in cart.')
-                          : ''
+                      const disableSettlementAdd = appt.can_add_to_settlement_cart === false
+                      const disableReason = disableSettlementAdd
+                        ? String(appt.settlement_disabled_reason ?? 'Bookings belonging to different Members cannot be settled together.')
+                        : ''
                       const guestContactLines = getGuestContactLines(appt)
                       const isInCart = catalogSettlementBookingIdsInCart.has(appt.id)
                       const cartQty = isInCart ? 1 : 0
@@ -12296,7 +12274,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     </p>
                   ) : (
                     <p className="mt-1 text-xs font-bold text-amber-800">
-                     IMPORTANT : This cart includes booking services — choose a member or guest details. You can switch here before paying; all booking lines will update to match.
+                     IMPORTANT : Choose the customer for this checkout and receipt. Existing Booking customer identities will remain unchanged.
                     </p>
                   )}
 
@@ -12328,9 +12306,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     </div>
                   ) : null}
 
-                  {hasCartAppointmentSettlements ? (
+                  {settlementLockedCustomerId ? (
                     <p className="mt-2 text-[11px] text-amber-700">
-                      Settlement is in the cart — customer is locked to <span className="font-semibold">{settlementLockedIdentityMode === 'guest' ? 'guest' : 'member'}</span>. Remove the settlement item to change customer.
+                      Settlement includes a Member booking — checkout customer is fixed to <span className="font-semibold">{selectedMember?.name ?? `Member #${settlementLockedCustomerId}`}</span>.
                     </p>
                   ) : null}
 
@@ -12341,9 +12319,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
-                            disabled={hasCartAppointmentSettlements}
+                            disabled={Boolean(settlementLockedCustomerId)}
                             onClick={() => openAssignMemberModal('checkout')}
-                            className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
+                            className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${settlementLockedCustomerId ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
                           >
                             {selectedMember ? 'change member' : 'assign member'}
                           </button>
@@ -13408,9 +13386,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       Guest details
                     </button>
                   </div>
-                  {hasCartAppointmentSettlements ? (
+                  {settlementLockedCustomerId ? (
                     <p className="mt-2 text-[11px] text-amber-700">
-                      Settlement is in the cart — customer is locked to <span className="font-semibold">{settlementLockedIdentityMode === 'guest' ? 'guest' : 'member'}</span>. Remove settlement to change customer mode.
+                      Settlement includes a Member booking — customer is fixed to <span className="font-semibold">{selectedMember?.name ?? `Member #${settlementLockedCustomerId}`}</span>.
                     </p>
                   ) : null}
                 </div>
