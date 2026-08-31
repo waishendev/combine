@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 import { RoleRowData } from './RoleRow'
 import { useI18n } from '@/lib/i18n'
+import { roleApiErrorMessage } from './roleUtils'
 
 interface RoleDeleteModalProps {
   role: RoleRowData
@@ -41,13 +42,7 @@ export default function RoleDeleteModal({
       }
 
       if (!res.ok) {
-        if (data && typeof data === 'object') {
-          if ('message' in data && typeof data.message === 'string') {
-            setError(data.message)
-            return
-          }
-        }
-        setError('Failed to delete role')
+        setError(roleApiErrorMessage(data, 'Failed to delete role'))
         return
       }
 

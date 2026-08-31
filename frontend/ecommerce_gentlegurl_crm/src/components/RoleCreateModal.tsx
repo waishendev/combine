@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useMemo, useState } from 'react'
 import { useI18n } from '@/lib/i18n'
 import type { RoleRowData } from './RoleRow'
 import CrmFormModalShell from './CrmFormModalShell'
+import { mapRoleApiItemToRow, roleApiErrorMessage, type RoleApiItem } from './roleUtils'
 
 export interface PermissionOption {
   id: number | string
@@ -116,65 +117,6 @@ interface RoleCreateModalProps {
   branchOptions: Array<{ id: number; name: string }>
 }
 
-type RoleApiPermission = {
-  id?: number | string | null
-  name?: string | null
-  slug?: string | null
-}
-
-type RoleApiItem = {
-  id?: number | string | null
-  name?: string | null
-  description?: string | null
-  is_active?: boolean | number | string | null
-  permissions?: RoleApiPermission[] | null
-  permissions_count?: number | string | null
-  created_at?: string | null
-  updated_at?: string | null
-}
-
-const mapApiRoleToRow = (item: RoleApiItem): RoleRowData => {
-  const permissions = Array.isArray(item.permissions)
-    ? item.permissions.map((permission) => ({
-        id: permission?.id ?? '',
-        name: permission?.name ?? '-',
-        slug: permission?.slug ?? '-',
-      }))
-    : []
-
-  const permissionCountFromApi = Number(item.permissions_count)
-  const permissionCount = Number.isFinite(permissionCountFromApi)
-    ? permissionCountFromApi
-    : permissions.length
-
-  const permissionNames =
-    permissions.length > 0
-      ? permissions.map((permission) => permission.name).join(', ')
-      : permissionCount > 0
-        ? `${permissionCount} permission${permissionCount === 1 ? '' : 's'}`
-        : ''
-
-  const isActiveValue = item.is_active
-  const isActive =
-    isActiveValue === true ||
-    isActiveValue === 'true' ||
-    isActiveValue === '1' ||
-    isActiveValue === 1
-
-  return {
-    id: item.id ?? '',
-    name: item.name ?? '-',
-    description: item.description ?? null,
-    isActive,
-    permissions,
-    permissionNames,
-    permissionCount,
-    createdAt: item.created_at ?? '',
-    updatedAt: item.updated_at ?? '',
-    branchName: 'Current Branch',
-  }
-}
-
 interface FormState {
   name: string
   description: string
@@ -280,28 +222,7 @@ export default function RoleCreateModal({
       }
 
       if (!res.ok) {
-        if (data && typeof data === 'object') {
-          if ('message' in data && typeof data.message === 'string') {
-            setError(data.message)
-            return
-          }
-          if ('errors' in data && typeof data.errors === 'object') {
-            const errors = data.errors as Record<string, unknown>
-            const firstKey = Object.keys(errors)[0]
-            if (firstKey) {
-              const firstValue = errors[firstKey]
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                setError(firstValue[0])
-                return
-              }
-              if (typeof firstValue === 'string') {
-                setError(firstValue)
-                return
-              }
-            }
-          }
-        }
-        setError(t('role.createError'))
+        setError(roleApiErrorMessage(data, t('role.createError')))
         return
       }
 
@@ -312,7 +233,7 @@ export default function RoleCreateModal({
       }
 
       setForm({ ...initialFormState })
-      onSuccess(mapApiRoleToRow(payload))
+      onSuccess(mapRoleApiItemToRow(payload))
     } catch (err) {
       console.error(err)
       setError(t('role.createError'))

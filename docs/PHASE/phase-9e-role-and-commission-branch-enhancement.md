@@ -22,6 +22,8 @@ Branch Role names are unique per Branch (case-insensitive on PostgreSQL), so the
 
 Role and tier list endpoints resolve `branch_store_location_id` through `StoreLocationAccessService`. A specific Branch excludes NULL legacy rows. All Branches derives accessible IDs server-side and may display Global/Unassigned rows for reconciliation. Create in a specific context supplies that Branch automatically; All requires an explicit accessible Branch. Direct show/edit/update/delete calls authorize the persisted owner, preventing IDOR even when an ID is guessed. Permission selection remains global and delegation checks are unchanged.
 
+The Role mutation response includes the persisted `store_location_id` and canonical `store_location` metadata. The CRM therefore appends a newly created Role using its saved Branch rather than the Header context: All Branches requires a concrete accessible Branch and displays that Branch in every operational row, while a specific-Branch table continues to hide the redundant Branch column. Platform-global allowlisted Roles retain the established Global/Unassigned label. Delete restrictions are unchanged, but rejections now return the applicable business reason (protected Role, assigned users, inaccessible Branch, or remaining database reference) for clean display in the delete modal.
+
 ## Commission model and attribution
 
 `staff_commission_tiers.store_location_id` owns configuration. Threshold uniqueness and lookup are `(store_location_id,type,min_sales)`, allowing identical thresholds across Branches. With minimum-threshold tiers there is no stored upper bound: ordering defines the effective ranges, and duplicate minimums in one Branch/type are rejected.
