@@ -104,6 +104,9 @@
   "common.reset": "Reset",
   "common.loadingDetails": "Loading details...",
   "common.allFieldsRequired": "All fields are required",
+  "common.loadError": "Failed to load",
+  "common.updateError": "Failed to update",
+  "common.deleting": "Deleting...",
 
   "admin.createTitle": "Create Admin",
   "admin.createAction": "Create Admin",

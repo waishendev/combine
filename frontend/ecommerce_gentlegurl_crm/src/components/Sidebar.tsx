@@ -28,7 +28,15 @@ type MenuChild = {
   label: string
   href?: string
   requiredPermission?: string
+  requiredAnyPermissions?: string[]
   children?: MenuChild[]
+}
+
+function canSeeMenuChild(child: MenuChild, permissions: string[]): boolean {
+  if (child.requiredAnyPermissions && child.requiredAnyPermissions.length > 0) {
+    return child.requiredAnyPermissions.some((perm) => permissions.includes(perm))
+  }
+  return !child.requiredPermission || permissions.includes(child.requiredPermission)
 }
 
 /** Nested groups (e.g. Rewards) may omit requiredPermission; only include them if a visible leaf remains. */
@@ -42,7 +50,7 @@ function filterVisibleMenuChildren(children: MenuChild[], permissions: string[])
         }
         return { ...child, children: nested }
       }
-      if (!child.requiredPermission || permissions.includes(child.requiredPermission)) {
+      if (canSeeMenuChild(child, permissions)) {
         return child
       }
       return null
@@ -850,6 +858,15 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             label: 'Bank (Manual Transfer)',
             href: '/bank-accounts',
             requiredPermission: 'booking.bank-accounts.view',
+          },
+          {
+            key: 'booking-billplz-payment-options',
+            label: 'Billplz Payment Options',
+            href: '/billplz-payment-options',
+            requiredAnyPermissions: [
+              'booking.billplz-payment-gateways.view',
+              'ecommerce.billplz-payment-gateways.view',
+            ],
           },
         ],
       },

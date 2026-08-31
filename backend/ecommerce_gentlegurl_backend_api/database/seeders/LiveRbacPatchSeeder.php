@@ -304,6 +304,10 @@ class LiveRbacPatchSeeder extends Seeder
             'booking.bank-accounts.create',
             'booking.bank-accounts.update',
             'booking.bank-accounts.delete',
+            'booking.billplz-payment-gateways.view',
+            'booking.billplz-payment-gateways.create',
+            'booking.billplz-payment-gateways.update',
+            'booking.billplz-payment-gateways.delete',
             'booking.settings.view',
             'booking.seo.view',
         ];

@@ -33,6 +33,10 @@ class CustomerSuperAdminSeeder extends Seeder
             'ecommerce.billplz-payment-gateways.create',
             'ecommerce.billplz-payment-gateways.update',
             'ecommerce.billplz-payment-gateways.delete',
+            'booking.billplz-payment-gateways.view',
+            'booking.billplz-payment-gateways.create',
+            'booking.billplz-payment-gateways.update',
+            'booking.billplz-payment-gateways.delete',
         ];
         $permissionIds = Permission::query()
             ->whereNotIn('slug', $excludedPermissionSlugs)

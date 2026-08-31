@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
+import { fetchEcommerceBranding } from '@/lib/brandingFetch'
 import { getWorkspace, type Workspace } from '@/lib/workspace'
 
 import { IMAGE_ACCEPT } from './mediaAccept'
@@ -106,7 +107,6 @@ export default function LogoUploadForm({
 
   useEffect(() => {
     let abort = false
-    const controller = new AbortController()
 
     const fetchBranding = async () => {
       try {
@@ -116,17 +116,9 @@ export default function LogoUploadForm({
             setLogoUrl(cachedLogo)
           }
         }
-        const response = await fetch(`/api/proxy/ecommerce/branding?type=${workspaceType}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-
-        if (!response.ok) {
-          throw new Error('Failed to load current logo.')
-        }
-
-        const payload: BrandingResponse = await response.json()
-        const logoValue = payload?.data?.[logoKey] ?? null
+        // Shared in-flight promise: logo + favicon forms on the same page share one GET.
+        const data = await fetchEcommerceBranding(workspaceType)
+        const logoValue = data?.[logoKey] ?? null
 
         if (!abort) {
           setLogoUrl(logoValue)
@@ -154,9 +146,8 @@ export default function LogoUploadForm({
 
     return () => {
       abort = true
-      controller.abort()
     }
-  }, [logoKey, workspaceType])
+  }, [logoKey, storageKey, workspaceType])
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]

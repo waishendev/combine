@@ -56,6 +56,7 @@ class PermissionSeeder extends Seeder
             'booking' => 'Booking',
             'booking.payment-gateways' => 'Booking Payment Gateways',
             'booking.bank-accounts' => 'Booking Manual Bank Accounts',
+            'booking.billplz-payment-gateways' => 'Booking Billplz Payment Gateways',
             'booking.landing-page' => 'Booking Landing Page',
             // Keep these permissions grouped under "Booking"
             'service-packages' => 'Booking',
@@ -164,6 +165,10 @@ class PermissionSeeder extends Seeder
                 'payment-gateways.create',
                 'payment-gateways.update',
                 'payment-gateways.delete',
+                'billplz-payment-gateways.view',
+                'billplz-payment-gateways.create',
+                'billplz-payment-gateways.update',
+                'billplz-payment-gateways.delete',
                 'landing-page.view',
                 'landing-page.update',
             ],

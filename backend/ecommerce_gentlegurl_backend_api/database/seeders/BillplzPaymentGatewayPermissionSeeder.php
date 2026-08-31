@@ -14,17 +14,26 @@ class BillplzPaymentGatewayPermissionSeeder extends Seeder
         'ecommerce.billplz-payment-gateways.create' => 'Ecommerce Billplz Payment Gateways Create',
         'ecommerce.billplz-payment-gateways.update' => 'Ecommerce Billplz Payment Gateways Update',
         'ecommerce.billplz-payment-gateways.delete' => 'Ecommerce Billplz Payment Gateways Delete',
+        'booking.billplz-payment-gateways.view' => 'Booking Billplz Payment Gateways View',
+        'booking.billplz-payment-gateways.create' => 'Booking Billplz Payment Gateways Create',
+        'booking.billplz-payment-gateways.update' => 'Booking Billplz Payment Gateways Update',
+        'booking.billplz-payment-gateways.delete' => 'Booking Billplz Payment Gateways Delete',
     ];
 
     public function run(): void
     {
-        $group = PermissionGroup::firstOrCreate(
+        $ecommerceGroup = PermissionGroup::firstOrCreate(
             ['name' => 'Ecommerce Billplz Payment Gateways'],
+            ['sort_order' => (int) PermissionGroup::max('sort_order') + 1]
+        );
+        $bookingGroup = PermissionGroup::firstOrCreate(
+            ['name' => 'Booking Billplz Payment Gateways'],
             ['sort_order' => (int) PermissionGroup::max('sort_order') + 1]
         );
 
         $ids = [];
         foreach (self::PERMISSIONS as $slug => $name) {
+            $group = str_starts_with($slug, 'booking.') ? $bookingGroup : $ecommerceGroup;
             $ids[] = Permission::updateOrCreate(
                 ['slug' => $slug],
                 [

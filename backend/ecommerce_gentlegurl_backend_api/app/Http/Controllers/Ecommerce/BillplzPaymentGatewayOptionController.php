@@ -8,6 +8,7 @@ use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -74,7 +75,7 @@ class BillplzPaymentGatewayOptionController extends Controller
         $type = WorkspaceType::fromRequest($request);
         $validated = $this->validatePayload($request, null, $type);
 
-        $payload = Arr::except($validated, ['logo']);
+        $payload = Arr::except($validated, ['logo', 'sort_order']);
         $payload['type'] = $type;
         $payload['is_active'] = $validated['is_active'] ?? true;
         $payload['is_default'] = $validated['is_default'] ?? false;
@@ -83,7 +84,7 @@ class BillplzPaymentGatewayOptionController extends Controller
             ->where('type', $type)
             ->where('gateway_group', $payload['gateway_group'])
             ->max('sort_order') ?? 0;
-        $payload['sort_order'] = $validated['sort_order'] ?? ($maxSortOrder + 1);
+        $payload['sort_order'] = $maxSortOrder + 1;
 
         if ($request->hasFile('logo')) {
             $payload['logo_url'] = $this->storeUploadedLogo($request->file('logo'), (string) $payload['code']);
@@ -105,7 +106,7 @@ class BillplzPaymentGatewayOptionController extends Controller
         $type = $this->ensureTypeMatch($request, $paymentGatewayOption);
         $validated = $this->validatePayload($request, $paymentGatewayOption, $type);
 
-        $fill = Arr::except($validated, ['logo']);
+        $fill = Arr::except($validated, ['logo', 'sort_order']);
         $paymentGatewayOption->fill($fill);
 
         if ($request->hasFile('logo')) {
@@ -127,6 +128,74 @@ class BillplzPaymentGatewayOptionController extends Controller
         $paymentGatewayOption->delete();
 
         return $this->respond(null, __('Billplz payment option deleted.'));
+    }
+
+    public function moveUp(Request $request, BillplzPaymentGatewayOption $paymentGatewayOption)
+    {
+        $type = $this->ensureTypeMatch($request, $paymentGatewayOption);
+
+        return DB::transaction(function () use ($paymentGatewayOption, $type) {
+            $oldPosition = $paymentGatewayOption->sort_order;
+
+            $previousItem = BillplzPaymentGatewayOption::query()
+                ->where('type', $type)
+                ->where('gateway_group', $paymentGatewayOption->gateway_group)
+                ->where('sort_order', '<', $paymentGatewayOption->sort_order)
+                ->orderBy('sort_order', 'desc')
+                ->first();
+
+            if (! $previousItem) {
+                return $this->respond(null, __('Billplz payment option is already at the top.'), false, 400);
+            }
+
+            $newPosition = $previousItem->sort_order;
+
+            $paymentGatewayOption->sort_order = $newPosition;
+            $paymentGatewayOption->save();
+
+            $previousItem->sort_order = $oldPosition;
+            $previousItem->save();
+
+            return $this->respond([
+                'id' => $paymentGatewayOption->id,
+                'old_position' => $oldPosition,
+                'new_position' => $newPosition,
+            ], __('Billplz payment option moved up successfully.'));
+        });
+    }
+
+    public function moveDown(Request $request, BillplzPaymentGatewayOption $paymentGatewayOption)
+    {
+        $type = $this->ensureTypeMatch($request, $paymentGatewayOption);
+
+        return DB::transaction(function () use ($paymentGatewayOption, $type) {
+            $oldPosition = $paymentGatewayOption->sort_order;
+
+            $nextItem = BillplzPaymentGatewayOption::query()
+                ->where('type', $type)
+                ->where('gateway_group', $paymentGatewayOption->gateway_group)
+                ->where('sort_order', '>', $paymentGatewayOption->sort_order)
+                ->orderBy('sort_order', 'asc')
+                ->first();
+
+            if (! $nextItem) {
+                return $this->respond(null, __('Billplz payment option is already at the bottom.'), false, 400);
+            }
+
+            $newPosition = $nextItem->sort_order;
+
+            $paymentGatewayOption->sort_order = $newPosition;
+            $paymentGatewayOption->save();
+
+            $nextItem->sort_order = $oldPosition;
+            $nextItem->save();
+
+            return $this->respond([
+                'id' => $paymentGatewayOption->id,
+                'old_position' => $oldPosition,
+                'new_position' => $newPosition,
+            ], __('Billplz payment option moved down successfully.'));
+        });
     }
 
     /**

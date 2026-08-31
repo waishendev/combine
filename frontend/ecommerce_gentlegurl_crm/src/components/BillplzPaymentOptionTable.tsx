@@ -1,455 +1,547 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-type WorkspaceType = 'ecommerce' | 'booking'
-type GatewayGroup = 'online_banking' | 'credit_card'
+import TableEmptyState from './TableEmptyState'
+import TableLoadingRow from './TableLoadingRow'
+import PaginationControls from './PaginationControls'
+import BillplzPaymentOptionRow, { BillplzPaymentOptionRowData } from './BillplzPaymentOptionRow'
+import BillplzPaymentOptionCreateModal from './BillplzPaymentOptionCreateModal'
+import BillplzPaymentOptionEditModal from './BillplzPaymentOptionEditModal'
+import BillplzPaymentOptionDeleteModal from './BillplzPaymentOptionDeleteModal'
+import {
+  type BillplzPaymentOptionApiItem,
+  type GatewayGroup,
+  mapBillplzPaymentOptionApiItemToRow,
+} from './billplzPaymentOptionUtils'
+import { useI18n } from '@/lib/i18n'
+import { getWorkspace } from '@/lib/workspace'
 
-type BillplzOption = {
-  id: number
-  type: WorkspaceType
-  gateway_group: GatewayGroup
-  code: string
-  name: string
-  logo_url?: string | null
-  description?: string | null
-  is_active: boolean
-  is_default: boolean
-  sort_order: number
+interface BillplzPaymentOptionTableProps {
+  permissions: string[]
 }
 
-type ApiResponse = {
-  data?: BillplzOption[] | { data?: BillplzOption[] }
-  message?: string
+type Meta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+type BillplzOptionApiResponse = {
+  data?: BillplzPaymentOptionApiItem[] | {
+    current_page?: number
+    data?: BillplzPaymentOptionApiItem[]
+    last_page?: number
+    per_page?: number
+    total?: number
+    [key: string]: unknown
+  }
+  meta?: Partial<Meta>
   success?: boolean
+  message?: string
 }
 
-const EMPTY_FORM = {
-  type: 'ecommerce' as WorkspaceType,
-  gateway_group: 'online_banking' as GatewayGroup,
-  code: '',
-  name: '',
-  logo_url: '',
-  description: '',
-  is_active: true,
-  is_default: false,
-  sort_order: 0,
-}
-
-export default function BillplzPaymentOptionTable({ permissions }: { permissions: string[] }) {
-  const canCreate = permissions.includes('ecommerce.billplz-payment-gateways.create')
-  const canUpdate = permissions.includes('ecommerce.billplz-payment-gateways.update')
-  const canDelete = permissions.includes('ecommerce.billplz-payment-gateways.delete')
-
-  const [typeFilter, setTypeFilter] = useState<WorkspaceType>('ecommerce')
+export default function BillplzPaymentOptionTable({
+  permissions,
+}: BillplzPaymentOptionTableProps) {
+  const { t } = useI18n()
+  const workspaceType = getWorkspace()
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [rows, setRows] = useState<BillplzPaymentOptionRowData[]>([])
+  const [pageSize, setPageSize] = useState(50)
+  const [currentPage, setCurrentPage] = useState(1)
   const [groupFilter, setGroupFilter] = useState<GatewayGroup>('online_banking')
-  const [loading, setLoading] = useState(true)
+  const [sortColumn, setSortColumn] = useState<keyof BillplzPaymentOptionRowData | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
+  const [editingOption, setEditingOption] = useState<BillplzPaymentOptionRowData | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<BillplzPaymentOptionRowData | null>(null)
+  const [movingOptionId, setMovingOptionId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [rows, setRows] = useState<BillplzOption[]>([])
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [logoFile, setLogoFile] = useState<File | null>(null)
-  const [logoRemoved, setLogoRemoved] = useState(false)
-  const logoInputRef = useRef<HTMLInputElement | null>(null)
 
-  const isEditing = editingId !== null
+  const permissionPrefix = workspaceType === 'booking' ? 'booking' : 'ecommerce'
+  const canCreate = permissions.includes(`${permissionPrefix}.billplz-payment-gateways.create`)
+  const canUpdate = permissions.includes(`${permissionPrefix}.billplz-payment-gateways.update`)
+  const canDelete = permissions.includes(`${permissionPrefix}.billplz-payment-gateways.delete`)
+  const canMove = canUpdate
+  const showActions = canUpdate || canDelete
 
-  const fileObjectUrl = useMemo(() => (logoFile ? URL.createObjectURL(logoFile) : null), [logoFile])
+  const [meta, setMeta] = useState<Meta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 50,
+    total: 0,
+  })
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    return () => {
-      if (fileObjectUrl) URL.revokeObjectURL(fileObjectUrl)
-    }
-  }, [fileObjectUrl])
+  function DualSortIcons({
+    active,
+    dir,
+    className = 'ml-1',
+  }: {
+    active: boolean
+    dir: 'asc' | 'desc' | null
+    className?: string
+  }) {
+    const activeColor = '#122350ff'
+    const inactiveColor = '#afb2b8ff'
+    const up = active && dir === 'asc' ? activeColor : inactiveColor
+    const down = active && dir === 'desc' ? activeColor : inactiveColor
 
-  const previewLogoSrc = useMemo(() => {
-    if (fileObjectUrl) return fileObjectUrl
-    if (logoRemoved) return null
-    return form.logo_url?.trim() ? form.logo_url : null
-  }, [fileObjectUrl, form.logo_url, logoRemoved])
+    return (
+      <svg
+        className={`${className} inline-block align-middle`}
+        width="15"
+        height="15"
+        viewBox="0 0 10 12"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M5 1 L9 5 H1 Z" fill={up} />
+        <path d="M5 11 L1 7 H9 Z" fill={down} />
+      </svg>
+    )
+  }
 
-  const fetchRows = useCallback(async () => {
+  const fetchOptions = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
-      const qs = new URLSearchParams({
-        type: typeFilter,
-        gateway_group: groupFilter,
-        per_page: '100',
+      const qs = new URLSearchParams()
+      qs.set('page', String(currentPage))
+      qs.set('per_page', String(pageSize))
+      qs.set('type', workspaceType)
+      qs.set('gateway_group', groupFilter)
+
+      const res = await fetch(`/api/proxy/ecommerce/billplz-payment-gateway-options?${qs.toString()}`, {
+        cache: 'no-store',
+        signal,
       })
-      const res = await fetch(`/api/proxy/ecommerce/billplz-payment-gateway-options?${qs.toString()}`, { cache: 'no-store' })
-      const payload: ApiResponse = await res.json().catch(() => ({}))
-      if (!res.ok || payload?.success === false) {
-        throw new Error(payload?.message || 'Failed to load Billplz payment options.')
+
+      const response: BillplzOptionApiResponse = await res.json().catch(() => ({} as BillplzOptionApiResponse))
+      if (response?.success === false && response?.message === 'Unauthorized') {
+        window.location.replace('/dashboard')
+        return
       }
 
-      const list = Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.data?.data)
-          ? payload.data.data
-          : []
+      if (!res.ok || response?.success === false) {
+        setRows([])
+        setMeta((prev) => ({ ...prev, total: 0 }))
+        setError(response?.message || 'Failed to load Billplz payment options.')
+        return
+      }
 
+      let items: BillplzPaymentOptionApiItem[] = []
+      let paginationData: Partial<Meta> = {}
+
+      if (response?.data) {
+        if (Array.isArray(response.data)) {
+          items = response.data
+        } else if (typeof response.data === 'object' && 'data' in response.data) {
+          const nestedData = response.data as {
+            data?: BillplzPaymentOptionApiItem[]
+            current_page?: number
+            last_page?: number
+            per_page?: number
+            total?: number
+          }
+          items = Array.isArray(nestedData.data) ? nestedData.data : []
+          paginationData = {
+            current_page: nestedData.current_page,
+            last_page: nestedData.last_page,
+            per_page: nestedData.per_page,
+            total: nestedData.total,
+          }
+        }
+      }
+
+      if (response?.meta) {
+        paginationData = { ...paginationData, ...response.meta }
+      }
+
+      const list = items.map((item) => mapBillplzPaymentOptionApiItemToRow(item))
       setRows(list)
-    } catch (err) {
-      setRows([])
-      setError(err instanceof Error ? err.message : 'Failed to load Billplz payment options.')
-    } finally {
-      setLoading(false)
-    }
-  }, [groupFilter, typeFilter])
-
-  useEffect(() => {
-    void fetchRows()
-  }, [fetchRows])
-
-  const resetForm = useCallback(() => {
-    setEditingId(null)
-    setForm({ ...EMPTY_FORM, type: typeFilter, gateway_group: groupFilter })
-    setLogoFile(null)
-    setLogoRemoved(false)
-    if (logoInputRef.current) {
-      logoInputRef.current.value = ''
-    }
-  }, [groupFilter, typeFilter])
-
-  useEffect(() => {
-    resetForm()
-  }, [resetForm])
-
-  const appendCommonFields = (fd: FormData, opts: { includeLogoUrl: boolean }) => {
-    fd.append('gateway_group', form.gateway_group)
-    fd.append('code', form.code.trim())
-    fd.append('name', form.name.trim())
-    if (form.description.trim()) {
-      fd.append('description', form.description.trim())
-    }
-    fd.append('sort_order', String(form.sort_order))
-    fd.append('is_active', form.is_active ? '1' : '0')
-    fd.append('is_default', form.is_default ? '1' : '0')
-    if (opts.includeLogoUrl && form.logo_url.trim()) {
-      fd.append('logo_url', form.logo_url.trim())
-    }
-  }
-
-  const submitForm = async () => {
-    setError(null)
-    try {
-      const typeQs = `type=${encodeURIComponent(form.type)}`
-
-      if (logoFile) {
-        const fd = new FormData()
-        appendCommonFields(fd, { includeLogoUrl: false })
-        fd.append('logo', logoFile)
-        const url = isEditing
-          ? `/api/proxy/ecommerce/billplz-payment-gateway-options/${editingId}?${typeQs}`
-          : `/api/proxy/ecommerce/billplz-payment-gateway-options?${typeQs}`
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { Accept: 'application/json' },
-          body: fd,
-        })
-        const result = await res.json().catch(() => ({}))
-        if (!res.ok || result?.success === false) {
-          throw new Error(result?.message || 'Failed to save Billplz payment option.')
-        }
-      } else {
-        const payload: Record<string, unknown> = {
-          ...form,
-          code: form.code.trim(),
-          name: form.name.trim(),
-          logo_url: logoRemoved ? null : form.logo_url.trim() || null,
-          description: form.description.trim() || null,
-        }
-        const url = isEditing
-          ? `/api/proxy/ecommerce/billplz-payment-gateway-options/${editingId}?${typeQs}`
-          : `/api/proxy/ecommerce/billplz-payment-gateway-options?${typeQs}`
-
-        const res = await fetch(url, {
-          method: isEditing ? 'PUT' : 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        const result = await res.json().catch(() => ({}))
-        if (!res.ok || result?.success === false) {
-          throw new Error(result?.message || 'Failed to save Billplz payment option.')
-        }
-      }
-
-      resetForm()
-      await fetchRows()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save Billplz payment option.')
-    }
-  }
-
-  const deleteRow = async (row: BillplzOption) => {
-    if (!window.confirm(`Delete ${row.name}?`)) return
-
-    setError(null)
-    try {
-      const res = await fetch(`/api/proxy/ecommerce/billplz-payment-gateway-options/${row.id}?type=${row.type}`, {
-        method: 'DELETE',
+      setMeta({
+        current_page: Number(paginationData.current_page ?? currentPage) || 1,
+        last_page: Number(paginationData.last_page ?? 1) || 1,
+        per_page: Number(paginationData.per_page ?? pageSize) || pageSize,
+        total: Number(paginationData.total ?? list.length) || list.length,
       })
-      const result = await res.json().catch(() => ({}))
-      if (!res.ok || result?.success === false) {
-        throw new Error(result?.message || 'Failed to delete Billplz payment option.')
-      }
-      await fetchRows()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete Billplz payment option.')
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        setRows([])
+        setMeta((prev) => ({ ...prev, total: 0 }))
+        setError('Failed to load Billplz payment options.')
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
     }
+  }, [currentPage, groupFilter, pageSize, workspaceType])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetchOptions(controller.signal)
+    return () => controller.abort()
+  }, [fetchOptions])
+
+  const handleSort = (column: keyof BillplzPaymentOptionRowData) => {
+    if (sortColumn === column) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc')
+      } else if (sortDirection === 'desc') {
+        setSortColumn(null)
+        setSortDirection(null)
+      } else {
+        setSortDirection('asc')
+      }
+      return
+    }
+
+    setSortColumn(column)
+    setSortDirection('asc')
   }
 
   const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
-  }, [rows])
+    if (!sortColumn || !sortDirection) return rows
 
-  const colSpanBase = 8
-  const colSpan = canUpdate || canDelete ? colSpanBase + 1 : colSpanBase
+    const compare = (a: BillplzPaymentOptionRowData, b: BillplzPaymentOptionRowData) => {
+      const valueA = a[sortColumn]
+      const valueB = b[sortColumn]
+
+      const normalize = (value: unknown) => {
+        if (value == null) return ''
+        if (typeof value === 'string') return value.toLowerCase()
+        if (typeof value === 'number') return value
+        if (typeof value === 'boolean') return value ? 1 : 0
+        return value
+      }
+
+      const normalizedA = normalize(valueA)
+      const normalizedB = normalize(valueB)
+
+      if (typeof normalizedA === 'number' && typeof normalizedB === 'number') {
+        return normalizedA - normalizedB
+      }
+
+      return String(normalizedA).localeCompare(String(normalizedB))
+    }
+
+    const sorted = [...rows].sort(compare)
+    return sortDirection === 'asc' ? sorted : sorted.reverse()
+  }, [rows, sortColumn, sortDirection])
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > (meta.last_page || 1)) return
+    setCurrentPage(page)
+  }
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size)
+    setCurrentPage(1)
+  }
+
+  const colCount = showActions ? 8 : 7
+  const totalPages = meta.last_page || 1
+
+  const handleOptionCreated = (option: BillplzPaymentOptionRowData) => {
+    if (option.type !== workspaceType || option.gateway_group !== groupFilter) {
+      return
+    }
+
+    setRows((prev) => {
+      if (currentPage !== 1) return prev
+      const filtered = prev.filter((item) => item.id !== option.id)
+      const next = [option, ...filtered]
+      return next.length > pageSize ? next.slice(0, pageSize) : next
+    })
+
+    setMeta((prevMeta) => {
+      const perPage = prevMeta.per_page || pageSize || 1
+      const total = (prevMeta.total || 0) + 1
+      const last_page = Math.max(prevMeta.last_page || 1, Math.ceil(total / perPage))
+      return { ...prevMeta, total, last_page }
+    })
+  }
+
+  const handleOptionUpdated = (option: BillplzPaymentOptionRowData) => {
+    if (option.type !== workspaceType || option.gateway_group !== groupFilter) {
+      setRows((prev) => prev.filter((item) => item.id !== option.id))
+      return
+    }
+
+    setRows((prev) => {
+      const index = prev.findIndex((item) => item.id === option.id)
+      if (index === -1) return prev
+      const next = [...prev]
+      next[index] = option
+      return next
+    })
+  }
+
+  const handleOptionDeleted = (optionId: number) => {
+    setRows((prev) => prev.filter((item) => item.id !== optionId))
+
+    setMeta((prevMeta) => {
+      const perPage = prevMeta.per_page || pageSize || 1
+      const total = Math.max((prevMeta.total || 0) - 1, 0)
+      const last_page = Math.max(1, Math.ceil(total / perPage))
+      const nextMeta: Meta = {
+        ...prevMeta,
+        total,
+        last_page,
+        current_page: Math.min(prevMeta.current_page || 1, last_page),
+      }
+
+      if ((prevMeta.current_page || 1) > last_page) {
+        setCurrentPage(last_page)
+      }
+
+      return nextMeta
+    })
+  }
+
+  const swapAdjacent = (
+    prev: BillplzPaymentOptionRowData[],
+    rowId: number,
+    direction: 'up' | 'down',
+  ): BillplzPaymentOptionRowData[] | null => {
+    const idx = prev.findIndex((r) => r.id === rowId)
+    if (idx === -1) return null
+    const next = [...prev]
+    if (direction === 'up') {
+      if (idx === 0) return null
+      const j = idx - 1
+      const a = next[idx]
+      const b = next[j]
+      next[j] = { ...a, sort_order: b.sort_order }
+      next[idx] = { ...b, sort_order: a.sort_order }
+      return next
+    }
+    if (idx >= next.length - 1) return null
+    const j = idx + 1
+    const a = next[idx]
+    const b = next[j]
+    next[idx] = { ...b, sort_order: a.sort_order }
+    next[j] = { ...a, sort_order: b.sort_order }
+    return next
+  }
+
+  const handleMove = async (option: BillplzPaymentOptionRowData, direction: 'up' | 'down') => {
+    if (movingOptionId === option.id) return
+    setMovingOptionId(option.id)
+    setError(null)
+
+    try {
+      const res = await fetch(
+        `/api/proxy/ecommerce/billplz-payment-gateway-options/${option.id}/move-${direction}?type=${option.type}`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-Language': 'en',
+          },
+        },
+      )
+
+      const data = await res.json().catch(() => null)
+      if (data && typeof data === 'object') {
+        if (data?.success === false && data?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+      }
+
+      if (!res.ok) {
+        setError(typeof data?.message === 'string' ? data.message : `Failed to move option ${direction}.`)
+        return
+      }
+
+      setRows((prev) => swapAdjacent(prev, option.id, direction) ?? prev)
+    } catch (err) {
+      console.error(err)
+      setError(`Failed to move option ${direction}.`)
+    } finally {
+      setMovingOptionId(null)
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-3">
-        <select
-          className="rounded border border-gray-300 bg-white px-3 py-2 text-sm"
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as WorkspaceType)}
-        >
-          <option value="ecommerce">Ecommerce</option>
-          <option value="booking">Booking</option>
-        </select>
-
-        <select
-          className="rounded border border-gray-300 bg-white px-3 py-2 text-sm"
-          value={groupFilter}
-          onChange={(e) => setGroupFilter(e.target.value as GatewayGroup)}
-        >
-          <option value="online_banking">Online Banking</option>
-          <option value="credit_card">Credit Card</option>
-        </select>
-      </div>
-
-      {(canCreate || (canUpdate && isEditing)) && (
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <h3 className="mb-3 text-lg font-semibold">{isEditing ? 'Edit Billplz Option' : 'Create Billplz Option'}</h3>
-          <div className="grid gap-3 md:grid-cols-2">
-            <input
-              className="rounded border border-gray-300 px-3 py-2 text-sm"
-              placeholder="Code"
-              value={form.code}
-              onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))}
-            />
-            <input
-              className="rounded border border-gray-300 px-3 py-2 text-sm"
-              placeholder="Name"
-              value={form.name}
-              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-            />
-            <input
-              className="rounded border border-gray-300 px-3 py-2 text-sm"
-              placeholder="Sort Order"
-              type="number"
-              value={form.sort_order}
-              onChange={(e) => setForm((prev) => ({ ...prev, sort_order: Number(e.target.value || 0) }))}
-            />
-            <select
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm"
-              value={form.type}
-              onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value as WorkspaceType }))}
-            >
-              <option value="ecommerce">Ecommerce</option>
-              <option value="booking">Booking</option>
-            </select>
-            <select
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm"
-              value={form.gateway_group}
-              onChange={(e) => setForm((prev) => ({ ...prev, gateway_group: e.target.value as GatewayGroup }))}
-            >
-              <option value="online_banking">Online Banking</option>
-              <option value="credit_card">Credit Card</option>
-            </select>
-          </div>
-
-          <div className="mt-4 rounded border border-dashed border-gray-300 bg-gray-50/80 p-4">
-            <p className="mb-2 text-sm font-medium text-gray-700">Image</p>
-            <p className="mb-3 text-xs text-gray-500">
-              Upload SVG/PNG/WebP, or leave empty to use default <span className="font-mono">/images/banks/&lt;code&gt;.svg</span> when the file exists on the API server.
-            </p>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded border border-gray-200 bg-white">
-                {previewLogoSrc ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={previewLogoSrc} alt="" className="max-h-14 max-w-14 object-contain" />
-                ) : (
-                  <span className="px-1 text-center text-[10px] text-gray-400">No image</span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept=".svg,.png,.jpg,.jpeg,.webp,image/svg+xml,image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    setLogoFile(f ?? null)
-                    setLogoRemoved(false)
-                  }}
-                />
-                <button
-                  type="button"
-                  className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm"
-                  onClick={() => logoInputRef.current?.click()}
-                >
-                  Choose file
-                </button>
-                {(logoFile || previewLogoSrc) && (
-                  <button
-                    type="button"
-                    className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-600"
-                    onClick={() => {
-                      setLogoFile(null)
-                      setLogoRemoved(true)
-                      setForm((prev) => ({ ...prev, logo_url: '' }))
-                      if (logoInputRef.current) logoInputRef.current.value = ''
-                    }}
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            </div>
-            <input
-              className="mt-3 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-              placeholder="Logo URL (optional, if not uploading a file)"
-              value={form.logo_url}
-              onChange={(e) => {
-                setForm((prev) => ({ ...prev, logo_url: e.target.value }))
-                setLogoRemoved(false)
-              }}
-            />
-          </div>
-
-          <textarea
-            className="mt-3 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            placeholder="Description (optional)"
-            value={form.description}
-            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-          />
-
-          <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
-            <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.checked }))} />
-              Active
-            </label>
-            <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={form.is_default} onChange={(e) => setForm((prev) => ({ ...prev, is_default: e.target.checked }))} />
-              Default
-            </label>
-          </div>
-
-          <div className="mt-4 flex gap-2">
-            <button className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white" onClick={() => void submitForm()}>
-              {isEditing ? 'Update' : 'Create'}
-            </button>
-            {isEditing && (
-              <button className="rounded border border-gray-300 px-4 py-2 text-sm" onClick={resetForm}>
-                Cancel
-              </button>
-            )}
-          </div>
-        </div>
+    <div>
+      {isCreateModalOpen && (
+        <BillplzPaymentOptionCreateModal
+          defaultGroup={groupFilter}
+          onClose={() => setIsCreateModalOpen(false)}
+          onSuccess={(option) => {
+            setIsCreateModalOpen(false)
+            handleOptionCreated(option)
+          }}
+        />
       )}
 
-      {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canCreate && (
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+              onClick={() => setIsCreateModalOpen(true)}
+              type="button"
+            >
+              <i className="fa-solid fa-plus" />
+              {t('common.create')}
+            </button>
+          )}
+          <select
+            className="border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+            value={groupFilter}
+            onChange={(event) => {
+              setGroupFilter(event.target.value as GatewayGroup)
+              setCurrentPage(1)
+            }}
+          >
+            <option value="online_banking">Online Banking</option>
+            <option value="credit_card">Credit Card</option>
+          </select>
+        </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+        <div className="flex items-center gap-3">
+          <label htmlFor="pageSize" className="text-sm text-gray-700">
+            {t('common.show')}
+          </label>
+          <select
+            id="pageSize"
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
+            disabled={loading}
+          >
+            {[50, 100, 150, 200].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      )}
+
+      <div className="bg-white shadow rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-slate-300/70">
             <tr>
-              <th className="px-4 py-3">Image</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Group</th>
-              <th className="px-4 py-3">Code</th>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Sort</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Default</th>
-              {(canUpdate || canDelete) && <th className="px-4 py-3">Actions</th>}
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Image
+              </th>
+              {(
+                [
+                  { key: 'gateway_group', label: 'Group' },
+                  { key: 'code', label: 'Code' },
+                  { key: 'name', label: 'Name' },
+                  { key: 'isActive', label: t('common.status') },
+                  { key: 'isDefault', label: 'Default' },
+                  { key: 'sort_order', label: 'Sort Order' },
+                ] as const
+              ).map(({ key, label }) => (
+                <th
+                  key={key}
+                  className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider"
+                >
+                  <button
+                    type="button"
+                    className="flex items-center gap-1"
+                    onClick={() => handleSort(key)}
+                  >
+                    <span>{label}</span>
+                    <DualSortIcons
+                      active={sortColumn === key && sortDirection !== null}
+                      dir={sortColumn === key ? sortDirection : null}
+                    />
+                  </button>
+                </th>
+              ))}
+              {showActions && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">
+                  {t('common.actions')}
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td className="px-4 py-6 text-center text-gray-500" colSpan={colSpan}>
-                  Loading...
-                </td>
-              </tr>
-            ) : sortedRows.length === 0 ? (
-              <tr>
-                <td className="px-4 py-6 text-center text-gray-500" colSpan={colSpan}>
-                  No options found.
-                </td>
-              </tr>
+              <TableLoadingRow colSpan={colCount} />
+            ) : rows.length > 0 ? (
+              (() => {
+                const sortOrders = sortedRows
+                  .map((r) => r.sort_order)
+                  .filter((so): so is number => so !== null)
+                const minSortOrder = sortOrders.length > 0 ? Math.min(...sortOrders) : null
+                const maxSortOrder = sortOrders.length > 0 ? Math.max(...sortOrders) : null
+
+                return sortedRows.map((option) => (
+                  <BillplzPaymentOptionRow
+                    key={option.id}
+                    option={option}
+                    showActions={showActions}
+                    canUpdate={canUpdate}
+                    canDelete={canDelete}
+                    canMove={canMove}
+                    isFirst={option.sort_order !== null && option.sort_order === minSortOrder}
+                    isLast={option.sort_order !== null && option.sort_order === maxSortOrder}
+                    onEdit={() => {
+                      if (canUpdate) setEditingOption(option)
+                    }}
+                    onDelete={() => {
+                      if (canDelete) setDeleteTarget(option)
+                    }}
+                    onMoveUp={() => {
+                      if (canMove) void handleMove(option, 'up')
+                    }}
+                    onMoveDown={() => {
+                      if (canMove) void handleMove(option, 'down')
+                    }}
+                  />
+                ))
+              })()
             ) : (
-              sortedRows.map((row) => (
-                <tr key={row.id} className="border-t border-gray-100">
-                  <td className="px-4 py-3">
-                    {row.logo_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={row.logo_url} alt="" className="h-9 w-9 object-contain" />
-                    ) : (
-                      <span className="text-xs text-gray-400">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">{row.type}</td>
-                  <td className="px-4 py-3">{row.gateway_group}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{row.code}</td>
-                  <td className="px-4 py-3">{row.name}</td>
-                  <td className="px-4 py-3">{row.sort_order}</td>
-                  <td className="px-4 py-3">{row.is_active ? 'Active' : 'Inactive'}</td>
-                  <td className="px-4 py-3">{row.is_default ? 'Yes' : 'No'}</td>
-                  {(canUpdate || canDelete) && (
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        {canUpdate && (
-                          <button
-                            className="rounded border border-gray-300 px-2 py-1 text-xs"
-                            onClick={() => {
-                              setEditingId(row.id)
-                              setLogoFile(null)
-                              setLogoRemoved(false)
-                              if (logoInputRef.current) logoInputRef.current.value = ''
-                              setForm({
-                                type: row.type,
-                                gateway_group: row.gateway_group,
-                                code: row.code,
-                                name: row.name,
-                                logo_url: row.logo_url || '',
-                                description: row.description || '',
-                                is_active: row.is_active,
-                                is_default: row.is_default,
-                                sort_order: row.sort_order,
-                              })
-                            }}
-                          >
-                            Edit
-                          </button>
-                        )}
-                        {canDelete && (
-                          <button className="rounded border border-red-300 px-2 py-1 text-xs text-red-600" onClick={() => void deleteRow(row)}>
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))
+              <TableEmptyState colSpan={colCount} />
             )}
           </tbody>
         </table>
       </div>
+
+      {editingOption !== null && (
+        <BillplzPaymentOptionEditModal
+          optionId={editingOption.id}
+          onClose={() => setEditingOption(null)}
+          onSuccess={(option) => {
+            setEditingOption(null)
+            handleOptionUpdated(option)
+          }}
+        />
+      )}
+
+      {deleteTarget && (
+        <BillplzPaymentOptionDeleteModal
+          option={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={(optionId) => {
+            setDeleteTarget(null)
+            handleOptionDeleted(optionId)
+          }}
+        />
+      )}
+
+      <PaginationControls
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+        disabled={loading}
+      />
     </div>
   )
 }

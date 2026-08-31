@@ -41,6 +41,26 @@ class StoreLocationAccessService
     public function authorizeStoreLocation(User $user, int|StoreLocation $location, bool $includeInactive = true): StoreLocation
     {
         $locationId = $location instanceof StoreLocation ? $location->getKey() : $location;
+
+        // Platform bypass: same eligibility rules (exclude "All Branches", optional active-only)
+        // without building the full ordered accessible list / whereHas(users).
+        if ($this->hasPlatformBypass($user)) {
+            $query = StoreLocation::query()
+                ->whereKey($locationId)
+                ->whereRaw('LOWER(name) <> ?', ['all branches']);
+
+            if (! $includeInactive) {
+                $query->where('is_active', true);
+            }
+
+            $storeLocation = $query->first();
+            if (! $storeLocation) {
+                abort(403, __('You are not allowed to access the selected branch.'));
+            }
+
+            return $storeLocation;
+        }
+
         $storeLocation = $this->accessibleStoreLocations($user, $includeInactive)
             ->whereKey($locationId)
             ->first();

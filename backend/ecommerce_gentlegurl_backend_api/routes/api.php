@@ -313,8 +313,13 @@ $protectedRoutes = function () {
         });
 
     // Activity Logs
+    // NEW ENHANCEMENT — activity-logs-landing-page-query-v1 (sargable dates, slim select, page-1 facets, indexes)
     Route::get('/activity-logs', [ActivityLogController::class, 'index'])
         ->middleware('permission:activity-logs.view');
+    Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show'])
+        ->middleware('permission:activity-logs.view')
+        ->whereNumber('id');
+    // END NEW ENHANCEMENT
     Route::get('/admin/appointment-activity-logs', [ActivityLogController::class, 'appointmentIndex'])
         ->middleware('permission:appointment_activity_logs.view');
 
@@ -665,8 +670,10 @@ $protectedRoutes = function () {
         Route::get('/services/search', [PosController::class, 'serviceSearch']);
         Route::get('/service-packages/search', [PosController::class, 'packageSearch']);
         Route::get('/appointments', [PosController::class, 'appointmentSearch']);
+        // NEW ENHANCEMENT — pos-appointments-query-v2 (calendar feed + Request Center summary counts)
         Route::get('/appointments/calendar', [PosController::class, 'appointmentCalendar']);
         Route::get('/requests/summary', [PosController::class, 'posRequestsSummary']);
+        // END NEW ENHANCEMENT
         Route::post('/appointments', [PosController::class, 'createAppointment']);
         Route::get('/availability/pooled', [PosController::class, 'availabilityPooled']);
         Route::get('/availability/check', [PosController::class, 'availabilityCheck']);
@@ -1031,17 +1038,21 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.payment-gateways.delete');
 
         Route::get('/billplz-payment-gateway-options', [BillplzPaymentGatewayOptionController::class, 'index'])
-            ->middleware('permission:ecommerce.billplz-payment-gateways.view');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.view|booking.billplz-payment-gateways.view');
         Route::post('/billplz-payment-gateway-options', [BillplzPaymentGatewayOptionController::class, 'store'])
-            ->middleware('permission:ecommerce.billplz-payment-gateways.create');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.create|booking.billplz-payment-gateways.create');
         Route::get('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'show'])
-            ->middleware('permission:ecommerce.billplz-payment-gateways.view');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.view|booking.billplz-payment-gateways.view');
         Route::put('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'update'])
-            ->middleware('permission:ecommerce.billplz-payment-gateways.update');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.update|booking.billplz-payment-gateways.update');
         Route::post('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'update'])
-            ->middleware('permission:ecommerce.billplz-payment-gateways.update');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.update|booking.billplz-payment-gateways.update');
+        Route::post('/billplz-payment-gateway-options/{paymentGatewayOption}/move-up', [BillplzPaymentGatewayOptionController::class, 'moveUp'])
+            ->middleware('permission:ecommerce.billplz-payment-gateways.update|booking.billplz-payment-gateways.update');
+        Route::post('/billplz-payment-gateway-options/{paymentGatewayOption}/move-down', [BillplzPaymentGatewayOptionController::class, 'moveDown'])
+            ->middleware('permission:ecommerce.billplz-payment-gateways.update|booking.billplz-payment-gateways.update');
         Route::delete('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'destroy'])
-            ->middleware('permission:ecommerce.billplz-payment-gateways.delete');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.delete|booking.billplz-payment-gateways.delete');
 
         Route::post('/cart/merge', [CartMergeController::class, 'merge'])
             ->middleware('permission:ecommerce.carts.merge');
@@ -1253,6 +1264,7 @@ $protectedRoutes = function () {
         Route::put('/shipping-fulfillment-priority', [ShippingFulfillmentSettingController::class, 'update'])
             ->middleware('permission:ecommerce.settings.update');
 
+        // NEW ENHANCEMENT — crm-logo-thermal-branch-limit-query-v1 (SettingService request memo; FE branding dedupe; bypass authorize shortcut)
         Route::get('/branch-limit', [BranchLimitSettingController::class, 'show']);
         Route::put('/branch-limit', [BranchLimitSettingController::class, 'update']);
 
@@ -1267,6 +1279,7 @@ $protectedRoutes = function () {
 
         Route::post('/thermal-printer-settings/test', [ThermalPrinterSettingController::class, 'test'])
             ->middleware('permission:ecommerce.thermal-printer-settings.update');
+        // END NEW ENHANCEMENT
 
         Route::get('/shop-settings', [ShopSettingController::class, 'index']);
 
@@ -1277,7 +1290,9 @@ $protectedRoutes = function () {
         Route::post('/shop-settings/{key}', [ShopSettingController::class, 'update']);
 
         // Branding (logos)
+        // NEW ENHANCEMENT — crm-logo-thermal-branch-limit-query-v1 (SettingService memo + FE brandingFetch dedupe)
         Route::get('/branding', [BrandingController::class, 'show']);
+        // END NEW ENHANCEMENT
 
         Route::post('/branding/shop-logo', [BrandingController::class, 'uploadShopLogo']);
 

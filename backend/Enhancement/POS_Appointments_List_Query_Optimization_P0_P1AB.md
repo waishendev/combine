@@ -219,6 +219,10 @@ After deploy: re-measure production latency / query volume; do not treat the loc
 | **P1-D** | Batch visit checkout meta | Medium |
 | **P1-E** | Batch package / cart resolution | Medium–higher |
 
+> **Update (2026-08-31):** Follow-on work shipped as **`pos-appointments-query-v2`** — see  
+> `POS_Checkout_Appointments_Query_Enhancement_2026_08_31.md`  
+> (calendar feed, SQL pagination, `lite=1`, Request Center summary, package/staff/cart/deposit batching). Several former P1-C/D/E items are covered there.
+
 Rule: ship one phase at a time; require payload SHA / business-field equality on a defined test request before merging.
 
 ---

@@ -14,7 +14,9 @@ export default async function BillplzPaymentOptionsPage() {
   }
 
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'ecommerce.billplz-payment-gateways.view',
+    (perm) =>
+      perm === 'ecommerce.billplz-payment-gateways.view' ||
+      perm === 'booking.billplz-payment-gateways.view',
   )
 
   if (!hasPermission) {
@@ -22,15 +24,15 @@ export default async function BillplzPaymentOptionsPage() {
   }
 
   return (
-    <div className="crm-page-shell px-10 py-6">
-      <div className="mb-4 text-xs">
+    <div className="crm-page-shell py-6 px-10">
+      <div className="text-xs mb-4">
         <span className="text-gray-500">Payment Gateway</span>
         <span className="mx-1">/</span>
         <Link href="/billplz-payment-options" className="text-blue-600 hover:underline">
           Billplz Payment Options
         </Link>
       </div>
-      <h2 className="mb-6 text-3xl font-semibold">Billplz Payment Options</h2>
+      <h2 className="text-3xl font-semibold mb-6">Billplz Payment Options</h2>
       <BillplzPaymentOptionTable permissions={user.permissions} />
     </div>
   )
