@@ -2297,10 +2297,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const hasCartGuestSettlement = useMemo(() => {
     return cartAppointmentSettlementItems.some((row) => !row.customer_id)
   }, [cartAppointmentSettlementItems])
-  const settlementLockedIdentityMode = useMemo<'member' | 'guest' | null>(() => {
-    if (!hasCartAppointmentSettlements) return null
-    return hasCartGuestSettlement ? 'guest' : 'member'
-  }, [hasCartAppointmentSettlements, hasCartGuestSettlement])
   /** Member/guest validation before pay (product-only carts skip) */
   const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages || hasCartAppointmentSettlements
   /** Rules C,E,F,G: any package or member booking service ⇒ member only */
@@ -2321,10 +2317,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     if (ids.size === 1) return Array.from(ids)[0] ?? null
     return null
   }, [cartAppointmentSettlementItems, hasCartAppointmentSettlements])
+  const settlementLockedIdentityMode = useMemo<'member' | 'guest' | null>(() => {
+    if (!hasCartAppointmentSettlements) return null
+    // A sole booking Member is authoritative. Guest-only settlements leave the
+    // Order recipient selectable without changing any Booking customer.
+    return settlementLockedCustomerId ? 'member' : null
+  }, [hasCartAppointmentSettlements, settlementLockedCustomerId])
 
   useEffect(() => {
     if (!hasCartAppointmentSettlements) return
-    if (hasCartGuestSettlement) {
+    if (hasCartGuestSettlement && !settlementLockedCustomerId) {
       setCheckoutIdentityMode('guest')
       setBookingIdentityMode('guest')
       const guestRow = cartAppointmentSettlementItems.find((row) => !row.customer_id && (row.guest_name || row.guest_phone || row.guest_email))
@@ -2347,7 +2349,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       }
       return
     }
-    // Settlement is member-only and should freeze identity switching.
+    // A mixed Guest + Member settlement uses its sole Member as checkout context;
+    // guest booking identity remains displayed and persisted independently.
     setCheckoutIdentityMode('member')
     setBookingIdentityMode('member')
     if (settlementLockedCustomerId && selectedMember?.id !== settlementLockedCustomerId) {

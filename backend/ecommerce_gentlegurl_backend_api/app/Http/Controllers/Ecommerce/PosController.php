@@ -4830,7 +4830,11 @@ class PosController extends Controller
     }
 
     /**
-     * Apply the same member or guest snapshot to every booking line (and package lines for member) in the POS cart.
+     * Validate checkout customer context without changing booking-line identity.
+     *
+     * The checkout member is persisted on the Order by checkout(). Booking
+     * service rows retain the member/guest identity chosen when each line was
+     * added; only an explicit booking customer edit may change that identity.
      */
     public function syncCustomerContext(Request $request)
     {
@@ -4874,17 +4878,6 @@ class PosController extends Controller
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
-            $guestEmail = $guestEmail !== '' ? Str::lower($guestEmail) : null;
-            $guestPhone = $guestPhone !== '' ? $guestPhone : null;
-
-            foreach ($cart->serviceItems as $row) {
-                $row->update([
-                    'customer_id' => null,
-                    'guest_name' => $guestName,
-                    'guest_phone' => $guestPhone,
-                    'guest_email' => $guestEmail,
-                ]);
-            }
         } else {
             $memberId = (int) ($validated['member_id'] ?? 0);
             if ($memberId <= 0) {
@@ -4893,23 +4886,11 @@ class PosController extends Controller
 
             Customer::query()->findOrFail($memberId);
 
-            foreach ($cart->serviceItems as $row) {
-                $row->update([
-                    'customer_id' => $memberId,
-                    'guest_name' => null,
-                    'guest_phone' => null,
-                    'guest_email' => null,
-                ]);
-            }
-
-            foreach ($cart->packageItems as $row) {
-                $row->update(['customer_id' => $memberId]);
-            }
         }
 
         return $this->respond([
             'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
-        ], __('Cart customer context updated.'));
+        ], __('Checkout customer context validated.'));
     }
 
     public function bookService(Request $request, BookingAvailabilityService $availabilityService)
@@ -5636,36 +5617,11 @@ class PosController extends Controller
             ->filter(fn (int $id) => $id > 0)
             ->unique()
             ->values();
-        $existingGuestServiceKeys = $cart->serviceItems
-            ->filter(fn (PosCartServiceItem $row) => empty($row->customer_id))
-            ->map(fn (PosCartServiceItem $row) => $this->resolvePosGuestIdentityKeyFromCartServiceItem($row))
-            ->filter(fn (?string $key) => ! empty($key))
-            ->unique()
-            ->values();
-        $currentGuestKey = $hasMember ? null : $this->resolvePosGuestIdentityKey($booking);
-
-        if ($existingMemberServiceCustomerIds->isNotEmpty()) {
-            if (! $hasMember) {
-                return $this->respondError(__('Cannot add guest settlement while cart has member booking services.'), 422);
-            }
-            if ($existingMemberServiceCustomerIds->count() !== 1 || (int) $existingMemberServiceCustomerIds->first() !== (int) $booking->customer_id) {
-                return $this->respondError(__('This settlement belongs to a different member than the booking services in cart.'), 422);
-            }
-        }
-
-        if ($existingGuestServiceKeys->isNotEmpty()) {
-            if ($hasMember) {
-                return $this->respondError(__('Cannot add member settlement while cart has guest booking services.'), 422);
-            }
-            if ($existingGuestServiceKeys->count() !== 1) {
-                return $this->respondError(__('All booking services in one cart must belong to the same guest.'), 422);
-            }
-            $lockedGuestServiceKey = (string) $existingGuestServiceKeys->first();
-            if ($currentGuestKey !== null
-                && $currentGuestKey !== $lockedGuestServiceKey
-                && ! in_array('unknown', [$lockedGuestServiceKey, $currentGuestKey], true)) {
-                return $this->respondError(__('This settlement belongs to a different guest than the booking services in cart.'), 422);
-            }
+        $prospectiveMemberIds = $existingMemberServiceCustomerIds
+            ->concat($cart->appointmentSettlementItems->map(fn (PosCartAppointmentSettlementItem $row) => $row->booking?->customer_id))
+            ->push($booking->customer_id);
+        if (\App\Support\PosSettlementCustomerIdentity::hasConflict($prospectiveMemberIds)) {
+            return $this->respondError(__(\App\Support\PosSettlementCustomerIdentity::CONFLICT_MESSAGE), 422);
         }
 
         $existingPackageCustomerIds = $cart->packageItems
@@ -5686,42 +5642,8 @@ class PosController extends Controller
             }
         }
 
-        $existingSettlementCustomerIds = $cart->appointmentSettlementItems
-            ->map(fn (PosCartAppointmentSettlementItem $row) => (int) ($row->booking?->customer_id ?? 0))
-            ->filter(fn (int $id) => $id > 0)
-            ->unique()
-            ->values();
-        $existingSettlementGuestKeys = $cart->appointmentSettlementItems
-            ->map(fn (PosCartAppointmentSettlementItem $row) => $this->resolvePosGuestIdentityKey($row->booking))
-            ->filter(fn (?string $key) => ! empty($key))
-            ->unique()
-            ->values();
-        if ($existingSettlementCustomerIds->isNotEmpty() && $existingSettlementGuestKeys->isNotEmpty()) {
-            return $this->respondError(__('Appointment settlement items cannot mix member and guest in one cart.'), 422);
-        }
-        if ($existingSettlementCustomerIds->isNotEmpty()) {
-            if ($existingSettlementCustomerIds->count() !== 1) {
-                return $this->respondError(__('All appointment settlement items in one cart must belong to the same member.'), 422);
-            }
-            if (! $hasMember) {
-                return $this->respondError(__('This cart already has member settlement. Remove settlement to switch to guest.'), 422);
-            }
-            $lockedCustomerId = (int) $existingSettlementCustomerIds->first();
-            if ($lockedCustomerId > 0 && $lockedCustomerId !== (int) $booking->customer_id) {
-                return $this->respondError(__('This settlement belongs to a different member. Remove the current settlement item(s) to change member.'), 422);
-            }
-        } elseif ($existingSettlementGuestKeys->isNotEmpty()) {
-            if ($existingSettlementGuestKeys->count() !== 1) {
-                return $this->respondError(__('All appointment settlement items in one cart must belong to the same guest.'), 422);
-            }
-            if ($hasMember) {
-                return $this->respondError(__('This cart already has guest settlement. Remove settlement to switch to member.'), 422);
-            }
-            $lockedGuestKey = (string) $existingSettlementGuestKeys->first();
-            if ($currentGuestKey !== null && $currentGuestKey !== $lockedGuestKey) {
-                return $this->respondError(__('This settlement belongs to a different guest. Remove the current settlement item(s) to change guest.'), 422);
-            }
-        }
+        // Guest contact snapshots do not conflict. The authoritative rule is
+        // solely that settlement bookings contain at most one non-null member.
 
         $item = PosCartAppointmentSettlementItem::query()->firstOrCreate([
             'pos_cart_id' => (int) $cart->id,
@@ -7777,14 +7699,6 @@ class PosController extends Controller
                 $customerId = null;
                 $checkoutGuestPhone = '';
                 $checkoutGuestEmail = '';
-                foreach ($cart->serviceItems as $row) {
-                    $row->update([
-                        'customer_id' => null,
-                        'guest_name' => 'UNKNOWN',
-                        'guest_phone' => null,
-                        'guest_email' => null,
-                    ]);
-                }
             }
 
             if ($cart->packageItems->isNotEmpty() && empty($customerId)) {
@@ -7819,6 +7733,10 @@ class PosController extends Controller
                     ->unique()
                     ->values();
 
+                if ($settlementCustomerIds->count() > 1) {
+                    abort(422, __(\App\Support\PosSettlementCustomerIdentity::CONFLICT_MESSAGE));
+                }
+
                 if ($settlementCustomerIds->count() === 1) {
                     $settlementCustomerId = (int) $settlementCustomerIds->first();
                     if (empty($customerId)) {
@@ -7832,18 +7750,8 @@ class PosController extends Controller
                     if ($cart->packageItems->isNotEmpty()) {
                         abort(422, __('Cannot checkout guest settlement together with service packages.'));
                     }
-                    $guestKeys = $cart->appointmentSettlementItems
-                        ->map(fn (PosCartAppointmentSettlementItem $row) => $this->resolvePosGuestIdentityKey($row->booking))
-                        ->filter(fn (?string $key) => ! empty($key))
-                        ->unique()
-                        ->values();
-                    if ($guestKeys->count() !== 1) {
-                        abort(422, __('All appointment settlement items in one checkout must belong to the same guest.'));
-                    }
-                    // Force member to be null for guest settlement.
-                    $customerId = null;
-                } else {
-                    abort(422, __('All appointment settlement items in one checkout must belong to the same member or guest.'));
+                    // An optional checkout member remains an Order/receipt/points
+                    // recipient and does not become the owner of guest bookings.
                 }
             }
 
