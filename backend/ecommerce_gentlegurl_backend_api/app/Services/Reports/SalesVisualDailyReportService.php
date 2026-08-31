@@ -452,12 +452,12 @@ class SalesVisualDailyReportService
             'offline' => $paymentBlock['totals']['offline'],
         ];
 
-        $roster = $this->allStaffRoster();
         $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
+        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
+        $roster = $this->salesReportStaffRoster(array_unique(array_merge(array_keys($ecKeyed), array_keys($svcKeyed))));
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
         [$staffSales, $staffService] = $this->attachStaffBranchBreakdowns($staffSales, $staffService, $start, $end);
         $packageRedemption = $this->packageRedemptionValue($start, $end);
@@ -523,12 +523,12 @@ class SalesVisualDailyReportService
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as multi_package")
             ->first();
 
-        $roster = $this->allStaffRoster();
         $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
+        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
+        $roster = $this->salesReportStaffRoster(array_unique(array_merge(array_keys($ecKeyed), array_keys($svcKeyed))));
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
         [$staffSales, $staffService] = $this->attachStaffBranchBreakdowns($staffSales, $staffService, $start, $end);
         $packageRedemption = $this->packageRedemptionValue($start, $end);
@@ -649,12 +649,12 @@ class SalesVisualDailyReportService
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as multi_package")
             ->first();
 
-        $roster = $this->allStaffRoster();
         $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
+        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
+        $roster = $this->salesReportStaffRoster(array_unique(array_merge(array_keys($ecKeyed), array_keys($svcKeyed))));
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
         [$staffSales, $staffService] = $this->attachStaffBranchBreakdowns($staffSales, $staffService, $start, $end);
         $packageRedemption = $this->packageRedemptionValue($start, $end);
@@ -845,12 +845,38 @@ class SalesVisualDailyReportService
         });
     }
 
-    /** @return list<array{staff_id: int, name: string}> */
-    private function allStaffRoster(): array
+    /**
+     * Build the summary roster after period activity has been aggregated.
+     *
+     * Configured zero rows respect current Branch assignment. Activity IDs are
+     * always unioned afterwards, so a later preference or assignment change can
+     * never erase transaction-Branch history.
+     *
+     * @param list<int> $activityStaffIds
+     * @return list<array{staff_id: int, name: string}>
+     */
+    private function salesReportStaffRoster(array $activityStaffIds): array
     {
-        return DB::table('staffs')
-            ->orderBy('name')
-            ->select('id', 'name')
+        $scope = ReportBranchScope::current();
+
+        return DB::table('staffs as st')
+            ->where(function (Builder $query) use ($scope, $activityStaffIds) {
+                $query->where(function (Builder $configured) use ($scope) {
+                    $configured->where('st.show_in_sales_report', true)
+                        ->whereExists(function (Builder $assignment) use ($scope) {
+                            $assignment->selectRaw('1')
+                                ->from('staff_store_location as ssl')
+                                ->whereColumn('ssl.staff_id', 'st.id')
+                                ->whereIn('ssl.store_location_id', $scope->storeLocationIds);
+                        });
+                });
+
+                if ($activityStaffIds !== []) {
+                    $query->orWhereIn('st.id', $activityStaffIds);
+                }
+            })
+            ->orderBy('st.name')
+            ->select('st.id', 'st.name')
             ->get()
             ->map(fn ($r) => [
                 'staff_id' => (int) $r->id,

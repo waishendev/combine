@@ -28,6 +28,7 @@ interface FormState {
   avatarFile: File | null
   commissionPercent: string
   serviceCommissionPercent: string
+  showInSalesReport: boolean
 }
 
 const initialFormState: FormState = {
@@ -41,6 +42,7 @@ const initialFormState: FormState = {
   avatarFile: null,
   commissionPercent: '0',
   serviceCommissionPercent: '0',
+  showInSalesReport: true,
 }
 
 export default function StaffCreateModal({
@@ -124,6 +126,7 @@ export default function StaffCreateModal({
         commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
         service_commission_rate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
         is_active: true,
+        show_in_sales_report: form.showInSalesReport,
         store_location_ids: storeLocationIds,
       }
 
@@ -141,7 +144,7 @@ export default function StaffCreateModal({
               const fd = new FormData()
               Object.entries(basePayload).forEach(([key, value]) => {
                 if (value === null || value === undefined) return
-                if (key === 'is_active') {
+                if (key === 'is_active' || key === 'show_in_sales_report') {
                   fd.append(key, value === true ? '1' : '0')
                   return
                 }
@@ -203,6 +206,7 @@ export default function StaffCreateModal({
             commissionRate: Number.isFinite(commissionRate) ? commissionRate : 0,
             serviceCommissionRate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
             isActive: true,
+            showInSalesReport: form.showInSalesReport,
             createdAt: new Date().toISOString(),
           }
 
@@ -478,6 +482,17 @@ export default function StaffCreateModal({
                   />
                 </div>
               </div>
+
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.showInSalesReport}
+                  onChange={(event) => setForm((prev) => ({ ...prev, showInSalesReport: event.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  disabled={submitting}
+                />
+                Show in Sales Report
+              </label>
             </div>
           </div>
 

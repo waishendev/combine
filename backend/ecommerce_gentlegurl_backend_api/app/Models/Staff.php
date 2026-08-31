@@ -25,6 +25,7 @@ class Staff extends Model
         'commission_rate',
         'service_commission_rate',
         'is_active',
+        'show_in_sales_report',
     ];
 
     protected $appends = [
@@ -35,6 +36,7 @@ class Staff extends Model
         'commission_rate' => 'decimal:4',
         'service_commission_rate' => 'decimal:4',
         'is_active' => 'boolean',
+        'show_in_sales_report' => 'boolean',
     ];
 
     public function admin()

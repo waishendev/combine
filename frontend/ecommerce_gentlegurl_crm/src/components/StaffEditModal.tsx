@@ -29,6 +29,7 @@ interface FormState {
   commissionPercent: string
   serviceCommissionPercent: string
   isActive: 'true' | 'false'
+  showInSalesReport: boolean
 }
 
 const initialFormState: FormState = {
@@ -43,6 +44,7 @@ const initialFormState: FormState = {
   commissionPercent: '0',
   serviceCommissionPercent: '0',
   isActive: 'true',
+  showInSalesReport: true,
 }
 
 export default function StaffEditModal({
@@ -122,6 +124,7 @@ export default function StaffEditModal({
           commissionPercent: String((mappedStaff.commissionRate * 100).toFixed(2)).replace(/\.00$/, ''),
           serviceCommissionPercent: String((mappedStaff.serviceCommissionRate * 100).toFixed(2)).replace(/\.00$/, ''),
           isActive: mappedStaff.isActive ? 'true' : 'false',
+          showInSalesReport: mappedStaff.showInSalesReport,
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -210,6 +213,7 @@ export default function StaffEditModal({
         String(Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0),
       )
       fd.append('is_active', form.isActive === 'true' ? '1' : '0')
+      fd.append('show_in_sales_report', form.showInSalesReport ? '1' : '0')
       storeLocationIds.forEach((id) => fd.append('store_location_ids[]', String(id)))
 
       const trimmedPassword = form.password.trim()
@@ -286,6 +290,7 @@ export default function StaffEditModal({
             commissionRate: Number.isFinite(commissionRate) ? commissionRate : 0,
             serviceCommissionRate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
             isActive: form.isActive === 'true',
+            showInSalesReport: form.showInSalesReport,
             createdAt: loadedStaff?.createdAt ?? '',
           }
 
@@ -592,6 +597,17 @@ export default function StaffEditModal({
                   </div>
                   <div className="flex-1" />
                 </div>
+
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={form.showInSalesReport}
+                    onChange={(event) => setForm((prev) => ({ ...prev, showInSalesReport: event.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    disabled={disableForm}
+                  />
+                  Show in Sales Report
+                </label>
               </div>
             </div>
           )}
