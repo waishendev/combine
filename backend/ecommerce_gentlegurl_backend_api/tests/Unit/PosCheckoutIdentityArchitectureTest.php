@@ -33,4 +33,16 @@ class PosCheckoutIdentityArchitectureTest extends TestCase
         $this->assertStringNotContainsString('Guest booking services in cart'.' — member settlement cannot be added.', $frontend);
         $this->assertStringNotContainsString('posGuestIdentityKeysCompatible(cartGuestServiceKey, apptGuestKey)', $frontend);
     }
+
+    public function test_checkout_lock_depends_on_a_concrete_settlement_member(): void
+    {
+        $frontend = file_get_contents(__DIR__.'/../../../../frontend/ecommerce_gentlegurl_crm/src/components/PosPageContent.tsx');
+
+        $this->assertStringContainsString('const checkoutRequiresMemberOnly = hasCartPackages || cartMemberServiceCustomerIds.size > 0 || settlementLockedCustomerId !== null', $frontend);
+        $this->assertStringContainsString('hasCartAppointmentSettlements && settlementLockedCustomerId === null', $frontend);
+        $this->assertStringContainsString('disabled={Boolean(settlementLockedCustomerId)}', $frontend);
+        $this->assertStringContainsString('member.id !== settlementLockedCustomerId', $frontend);
+        $this->assertStringNotContainsString('all booking lines will update'.' to match', $frontend);
+        $this->assertStringNotContainsString('Settlement is in the cart — customer is locked'.' to', $frontend);
+    }
 }

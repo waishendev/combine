@@ -18,6 +18,8 @@ The same backend policy is applied at all three stages: Settlement search/list e
 
 For Guest + Member A, Member A becomes the checkout context by default while every Guest booking remains unchanged. For guest-only settlements, a Member may be selected for Order-level receipt/points attribution without changing booking ownership.
 
+Guest-only Settlement carts do not lock Checkout Customer: operators may choose Guest details or assign a Member for the Order, receipt, points, products, and Customer Balance. When settlement lines contain exactly one concrete Member, Checkout Customer is resolved and locked to that Member; any Guest settlement lines remain Guest. Package eligibility remains tied to each Booking/line owner rather than this checkout selection.
+
 ## Safety boundaries retained
 
 - Customer Balance still requires and charges the concrete checkout/Order Member, with existing balance and audit checks.

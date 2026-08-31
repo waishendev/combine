@@ -2297,16 +2297,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const hasCartGuestSettlement = useMemo(() => {
     return cartAppointmentSettlementItems.some((row) => !row.customer_id)
   }, [cartAppointmentSettlementItems])
-  /** Member/guest validation before pay (product-only carts skip) */
-  const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages || hasCartAppointmentSettlements
-  /** Rules C,E,F,G: any package or member booking service ⇒ member only */
-  const checkoutRequiresMemberOnly = hasCartPackages || cartMemberServiceCustomerIds.size > 0 || (hasCartAppointmentSettlements && !hasCartGuestSettlement)
-  /** Rules B,D: book services without packages ⇒ member or guest */
-  const checkoutAllowsGuestToggle = hasCartBookServices && !hasCartPackages
-  /** Same Member / Guest UI as booking flow; product-only adds optional context + Clear */
-  const showMemberGuestToggleInCheckout = checkoutAllowsGuestToggle || !checkoutRequiresCustomerValidation
-
-  /** When settlement exists, customer context is locked (must remove settlement to change). */
+  /** A settlement locks checkout only when it owns one concrete Member. */
   const settlementLockedCustomerId = useMemo(() => {
     if (!hasCartAppointmentSettlements) return null
     const ids = new Set<number>()
@@ -2323,6 +2314,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     // Order recipient selectable without changing any Booking customer.
     return settlementLockedCustomerId ? 'member' : null
   }, [hasCartAppointmentSettlements, settlementLockedCustomerId])
+  /** Member/guest validation before pay (product-only carts skip). */
+  const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages || hasCartAppointmentSettlements
+  /** Package/member booking lines and a concrete settlement Member require member checkout. */
+  const checkoutRequiresMemberOnly = hasCartPackages || cartMemberServiceCustomerIds.size > 0 || settlementLockedCustomerId !== null
+  /** Guest booking lines and Guest-only settlements may choose checkout Member or Guest. */
+  const checkoutAllowsGuestToggle = (hasCartBookServices || (hasCartAppointmentSettlements && settlementLockedCustomerId === null)) && !hasCartPackages
+  /** Same Member / Guest UI as booking flow; product-only adds optional context + Clear. */
+  const showMemberGuestToggleInCheckout = checkoutAllowsGuestToggle || !checkoutRequiresCustomerValidation
 
   useEffect(() => {
     if (!hasCartAppointmentSettlements) return
@@ -2354,7 +2353,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setCheckoutIdentityMode('member')
     setBookingIdentityMode('member')
     if (settlementLockedCustomerId && selectedMember?.id !== settlementLockedCustomerId) {
-      const raw = cartAppointmentSettlementItems[0]?.customer_name?.trim()
+      const raw = cartAppointmentSettlementItems
+        .find((row) => Number(row.customer_id ?? 0) === settlementLockedCustomerId)
+        ?.customer_name?.trim()
       const name = raw && raw.length > 0 ? raw : `Member (#${settlementLockedCustomerId})`
       setSelectedMember({ id: settlementLockedCustomerId, name, phone: null, email: null })
     }
@@ -7637,6 +7638,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [selectedMember, showMsg, topupTarget])
 
   const onAssignMember = async (member: Member) => {
+    if (settlementLockedCustomerId && member.id !== settlementLockedCustomerId) {
+      showMsg('Settlement includes a Member booking — checkout customer cannot be changed to a different Member.', 'error')
+      return
+    }
     const shouldRemoveCurrentVoucher = Boolean(appliedVoucher && !appliedVoucher.customer_voucher_id)
     if (shouldRemoveCurrentVoucher) {
       await removeVoucher(true)
@@ -12269,7 +12274,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     </p>
                   ) : (
                     <p className="mt-1 text-xs font-bold text-amber-800">
-                     IMPORTANT : This cart includes booking services — choose a member or guest details. You can switch here before paying; all booking lines will update to match.
+                     IMPORTANT : Choose the customer for this checkout and receipt. Existing Booking customer identities will remain unchanged.
                     </p>
                   )}
 
@@ -12301,9 +12306,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     </div>
                   ) : null}
 
-                  {hasCartAppointmentSettlements ? (
+                  {settlementLockedCustomerId ? (
                     <p className="mt-2 text-[11px] text-amber-700">
-                      Settlement is in the cart — customer is locked to <span className="font-semibold">{settlementLockedIdentityMode === 'guest' ? 'guest' : 'member'}</span>. Remove the settlement item to change customer.
+                      Settlement includes a Member booking — checkout customer is fixed to <span className="font-semibold">{selectedMember?.name ?? `Member #${settlementLockedCustomerId}`}</span>.
                     </p>
                   ) : null}
 
@@ -12314,9 +12319,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
-                            disabled={hasCartAppointmentSettlements}
+                            disabled={Boolean(settlementLockedCustomerId)}
                             onClick={() => openAssignMemberModal('checkout')}
-                            className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
+                            className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${settlementLockedCustomerId ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
                           >
                             {selectedMember ? 'change member' : 'assign member'}
                           </button>
@@ -13381,9 +13386,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       Guest details
                     </button>
                   </div>
-                  {hasCartAppointmentSettlements ? (
+                  {settlementLockedCustomerId ? (
                     <p className="mt-2 text-[11px] text-amber-700">
-                      Settlement is in the cart — customer is locked to <span className="font-semibold">{settlementLockedIdentityMode === 'guest' ? 'guest' : 'member'}</span>. Remove settlement to change customer mode.
+                      Settlement includes a Member booking — customer is fixed to <span className="font-semibold">{selectedMember?.name ?? `Member #${settlementLockedCustomerId}`}</span>.
                     </p>
                   ) : null}
                 </div>
