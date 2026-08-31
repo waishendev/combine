@@ -7,6 +7,7 @@ import StaffConsumableProductModal, {
   type ConsumableVariant,
 } from '@/components/staff-consumables/StaffConsumableProductModal'
 import { NameStack, VariantNameStack } from '@/components/NameStack'
+import { useBranch } from '@/contexts/BranchContext'
 
 type CartItem = {
   key: string
@@ -40,6 +41,7 @@ type ClaimHistoryRow = {
   qty: number
   original_price: number
   final_amount: number
+  branch?: string | null
 }
 
 const formatCurrency = (value: number | string | null | undefined) => {
@@ -59,6 +61,7 @@ const getPagedData = <T,>(json: unknown): T[] => {
 }
 
 export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }: { canCheckout: boolean; canViewLogs: boolean }) {
+  const { accessibleBranches, selectedBranchId, isAllBranches, loading: branchesLoading } = useBranch()
   const [products, setProducts] = useState<ConsumableProduct[]>([])
   const [history, setHistory] = useState<ClaimHistoryRow[]>([])
   const [query, setQuery] = useState('')
@@ -88,7 +91,12 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
       const params = new URLSearchParams({ per_page: '100' })
       if (query.trim()) params.set('q', query.trim())
       if (category !== 'all') params.set('category_id', category)
-      const res = await fetch(`/api/proxy/pos/staff-consumables/products?${params.toString()}`, { cache: 'no-store' })
+      if (!selectedBranchId) {
+        setProducts([])
+        return
+      }
+      params.set('store_location_id', String(selectedBranchId))
+      const res = await fetch(`/api/proxy/admin/staff-consumables/catalog?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to load consumable products.')
       setProducts(getPagedData<ConsumableProduct>(json).filter((product) => product && product.product_id))
@@ -98,7 +106,7 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
     } finally {
       setLoading(false)
     }
-  }, [category, query])
+  }, [category, query, selectedBranchId])
 
   const loadHistory = useCallback(async () => {
     if (!canViewLogs) {
@@ -106,13 +114,15 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
       return
     }
     try {
-      const res = await fetch('/api/proxy/admin/staff-consumables/logs?per_page=15', { cache: 'no-store' })
+      const params = new URLSearchParams({ per_page: '15' })
+      if (selectedBranchId) params.set('store_location_id', String(selectedBranchId))
+      const res = await fetch(`/api/proxy/admin/staff-consumables/logs?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (res.ok) setHistory(getPagedData<ClaimHistoryRow>(json))
     } catch {
       // History is helpful, but claims should still work when it cannot load.
     }
-  }, [canViewLogs])
+  }, [canViewLogs, selectedBranchId])
 
 
   useEffect(() => {
@@ -199,11 +209,17 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
     setCheckingOut(true)
     setError(null)
     setMessage(null)
+    if (!selectedBranchId) {
+      setError(accessibleBranches.length === 0 ? 'No active branches.' : 'Select a Branch before purchasing consumables.')
+      setCheckingOut(false)
+      return
+    }
     try {
-      const res = await fetch('/api/proxy/pos/staff-consumables/checkout', {
+      const res = await fetch('/api/proxy/admin/staff-consumables/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          store_location_id: selectedBranchId,
           items: cart.map((item) => ({ product_id: item.product_id, variant_id: item.variant_id, qty: item.qty })),
         }),
       })
@@ -244,6 +260,13 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
           {error || message}
         </div>
       )}
+
+      {!branchesLoading && accessibleBranches.length === 0 ? (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">No active branches. Consumable purchasing is unavailable.</div>
+      ) : null}
+      {!branchesLoading && isAllBranches ? (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">Select a Branch before purchasing consumables. History remains available across your accessible Branches.</div>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -406,7 +429,7 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
             <button
               type="button"
               onClick={checkout}
-              disabled={cart.length === 0 || checkingOut || !canCheckout}
+              disabled={cart.length === 0 || checkingOut || !canCheckout || !selectedBranchId}
               className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {!canCheckout ? 'No checkout permission' : checkingOut ? 'Recording claim...' : 'Checkout RM0 & Deduct Stock'}
@@ -426,6 +449,7 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
                     <tr>
                       <th className="py-2 pr-2">Date/time</th>
                       <th className="py-2 pr-2">Staff</th>
+                      {isAllBranches ? <th className="py-2 pr-2">Branch</th> : null}
                       <th className="py-2 pr-2">Product</th>
                       <th className="py-2 pr-2 text-right">Qty</th>
                       <th className="py-2 text-right">Final</th>
@@ -436,6 +460,7 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
                       <tr key={row.id}>
                         <td className="py-2 pr-2 text-slate-500">{row.claimed_at ?? '-'}</td>
                         <td className="py-2 pr-2 text-slate-700">{row.staff ?? '-'}</td>
+                        {isAllBranches ? <td className="py-2 pr-2 text-slate-700">{row.branch ?? '-'}</td> : null}
                         <td className="py-2 pr-2">
                           <NameStack
                             name={row.product}

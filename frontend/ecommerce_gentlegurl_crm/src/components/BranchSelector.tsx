@@ -50,6 +50,18 @@ export default function BranchSelector() {
     )
   }
 
+  if (!hasMultiple) {
+    return (
+      <div className="rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-3 py-3 shadow-sm">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Branch</p>
+        <div className="mt-2 flex min-h-[44px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-800">
+          <i className="fa-solid fa-location-dot shrink-0 text-pink-500" aria-hidden="true" />
+          <span className="truncate">{accessibleBranches[0].name}</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-3 py-3 shadow-sm">
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Branch</p>
@@ -59,7 +71,6 @@ export default function BranchSelector() {
         <select
           aria-label="Current branch"
           value={value}
-          disabled={!hasMultiple}
           onChange={(event) => setSelectedBranch(event.target.value === 'all' ? null : Number(event.target.value))}
           className="min-w-0 flex-1 appearance-none truncate bg-transparent py-2.5 pr-5 text-sm font-semibold outline-none disabled:cursor-default"
         >
@@ -69,12 +80,10 @@ export default function BranchSelector() {
             </option>
           ))}
         </select>
-        {hasMultiple ? (
-          <i
-            className="fa-solid fa-chevron-down pointer-events-none absolute right-2.5 text-[10px] text-slate-400"
-            aria-hidden="true"
-          />
-        ) : null}
+        <i
+          className="fa-solid fa-chevron-down pointer-events-none absolute right-2.5 text-[10px] text-slate-400"
+          aria-hidden="true"
+        />
       </label>
     </div>
   )
