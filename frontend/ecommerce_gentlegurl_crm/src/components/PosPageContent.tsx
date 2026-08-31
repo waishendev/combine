@@ -122,6 +122,7 @@ import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import { getThermalPrinterAvailability } from '@/lib/thermalPrinterSettings'
 import { useOptionalThermalPrinterSettings } from '@/hooks/useOptionalThermalPrinterSettings'
+import { usePosPaymentConfiguration } from '@/hooks/usePosPaymentConfiguration'
 import OrderViewPanel from './OrderViewPanel'
 import CustomerAdjustBalanceModal, { type AdjustBalanceCustomer } from './CustomerAdjustBalanceModal'
 import CustomerCreateModal from './CustomerCreateModal'
@@ -1716,6 +1717,8 @@ type PosPageContentProps = {
 
 export default function PosPageContent({ currentUser, permissions = [] }: PosPageContentProps) {
   const { selectedBranchId } = useBranch()
+  const { configuration: posPaymentConfiguration } = usePosPaymentConfiguration(selectedBranchId)
+  const visiblePosPaymentMethods = useMemo(() => SPLIT_PAYMENT_METHODS.filter(method => posPaymentConfiguration?.methods.find(row => row.key === method.method)?.is_enabled ?? method.method === 'cash'), [posPaymentConfiguration])
   const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const canManageBalance = useMemo(() => permissions.includes('customer_wallet.adjust'), [permissions])
   const { hasOpenShift, cashShiftLoading } = usePosCashShift()
@@ -12488,7 +12491,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         : 'Defaults to QRPay. Edit price/discount updates amounts unless Cash and QRPay are both filled.'}
                     </p>
                   </div>
-                  {!cartCheckoutIsZeroTotal ? (
+                  {!cartCheckoutIsZeroTotal && (posPaymentConfiguration?.allow_split_payment ?? true) ? (
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
                     <input
                       type="checkbox"
@@ -12501,7 +12504,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ) : null}
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                  {visiblePosPaymentMethods.map(({ method, label }) => {
                     const customerBalanceLocked = method === 'customer_balance' && !selectedMember?.id
                     return (
                     <div

@@ -1,0 +1,56 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\PosPaymentMethod;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+
+class PosPaymentMethodService
+{
+    public function configuration(int $storeLocationId): array
+    {
+        $rows = PosPaymentMethod::query()
+            ->leftJoin('store_location_pos_payment_methods as branch', function ($join) use ($storeLocationId) {
+                $join->on('branch.pos_payment_method_id', '=', 'pos_payment_methods.id')
+                    ->where('branch.store_location_id', $storeLocationId);
+            })
+            ->orderByRaw('COALESCE(branch.sort_order, pos_payment_methods.default_sort_order)')
+            ->get(['pos_payment_methods.id', 'pos_payment_methods.key', 'pos_payment_methods.name', 'pos_payment_methods.default_sort_order', 'branch.is_enabled', 'branch.sort_order']);
+        $configured = $rows->contains(fn ($row) => $row->is_enabled !== null);
+        $settings = DB::table('store_location_pos_payment_settings')->where('store_location_id', $storeLocationId)->first();
+
+        return [
+            'store_location_id' => $storeLocationId,
+            'is_configured' => $configured,
+            'methods' => $rows->map(fn ($row) => [
+                'key' => $row->key,
+                'name' => $row->name,
+                // Safe deterministic fallback for a new/unconfigured Branch.
+                'is_enabled' => $row->is_enabled === null ? $row->key === 'cash' : (bool) $row->is_enabled,
+                'sort_order' => (int) ($row->sort_order ?? $row->default_sort_order),
+            ])->values()->all(),
+            'allow_split_payment' => (bool) ($settings->allow_split_payment ?? true),
+            'auto_calculate_split' => (bool) ($settings->auto_calculate_split ?? true),
+        ];
+    }
+
+    public function normalize(string $method): string
+    {
+        return in_array($method, ['billplz_credit_card', 'billplz_card'], true) ? 'credit_card' : $method;
+    }
+
+    public function assertAllowed(int $storeLocationId, array $paymentRows): void
+    {
+        $configuration = $this->configuration($storeLocationId);
+        if (! $configuration['allow_split_payment'] && count($paymentRows) > 1) {
+            throw ValidationException::withMessages(['payments' => __('Split payment is disabled for this Branch.')]);
+        }
+        $enabled = collect($configuration['methods'])->where('is_enabled', true)->pluck('key');
+        foreach ($paymentRows as $row) {
+            if (! $enabled->contains($this->normalize((string) ($row['method'] ?? '')))) {
+                throw ValidationException::withMessages(['payment_method' => __('The selected POS payment method is disabled for this Branch.')]);
+            }
+        }
+    }
+}

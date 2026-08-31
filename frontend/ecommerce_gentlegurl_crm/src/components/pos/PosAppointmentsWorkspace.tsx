@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useBranch } from '@/contexts/BranchContext'
+import { usePosPaymentConfiguration } from '@/hooks/usePosPaymentConfiguration'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
@@ -616,6 +617,9 @@ export default function PosAppointmentsWorkspace({
     [permissions],
   )
   const [appointmentDetail, setAppointmentDetail] = useState<PosAppointmentDetail | null>(null)
+  // The persisted appointment Branch wins over Header ALL/specific Branch for settlement.
+  const { configuration: appointmentPaymentConfiguration } = usePosPaymentConfiguration(appointmentDetail?.store_location_id)
+  const appointmentPaymentMethods = useMemo(() => SPLIT_PAYMENT_METHODS.filter(method => appointmentPaymentConfiguration?.methods.find(row => row.key === method.method)?.is_enabled ?? method.method === 'cash'), [appointmentPaymentConfiguration])
   const appointmentDetailRequest = useRef(0)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
   const [settlementSheetOpen, setSettlementSheetOpen] = useState(false)
@@ -9071,7 +9075,7 @@ export default function PosAppointmentsWorkspace({
                   <p className="mb-3 text-sm font-bold text-gray-900">Payment Method (for receipt)</p>
                   <p className="mb-3 text-xs text-slate-600">RM 0 to collect — choose how this settlement is recorded on the receipt.</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                    {appointmentPaymentMethods.map(({ method, label }) => {
                       const customerBalanceLocked = method === 'customer_balance' && !appointmentDetail?.customer?.id
                       return (
                       <button
@@ -9104,7 +9108,7 @@ export default function PosAppointmentsWorkspace({
                     <span className="text-xs font-semibold text-gray-500">Enter paid amount per method</span>
                   </div>
                   <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
-                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => {
+                    {appointmentPaymentMethods.map(({ method, label }) => {
                       const customerBalanceLocked = method === 'customer_balance' && !appointmentDetail?.customer?.id
                       return (
                       <div
