@@ -73,6 +73,8 @@ class AdminController extends Controller
             $username = null;
         }
 
+        $roleIds = $this->filterAssignableRoleIds($validated['role_ids'] ?? [], $request->user());
+
         $user = User::create([
             'name' => $username ?: (string) strstr($validated['email'], '@', true),
             'email' => $validated['email'],
@@ -82,7 +84,6 @@ class AdminController extends Controller
             'staff_id' => $validated['staff_id'] ?? null,
         ]);
 
-        $roleIds = $this->filterAssignableRoleIds($validated['role_ids'] ?? [], $request->user());
         $this->syncStoreLocations($request, $user, $validated['store_location_ids'] ?? null);
         $this->syncRoles($user, $roleIds, $validated['store_location_ids'] ?? []);
 
@@ -136,7 +137,7 @@ class AdminController extends Controller
         $admin->save();
 
         if ($request->has('role_ids')) {
-            $roleIds = $this->filterAssignableRoleIds($validated['role_ids'] ?? [], $request->user());
+            $roleIds = $this->filterAssignableRoleIds($validated['role_ids'] ?? [], $request->user(), $admin);
             $branchIds = $validated['store_location_ids'] ?? $admin->storeLocations()->pluck('store_locations.id')->all();
             $this->syncRoles($admin, $roleIds, $branchIds);
         }
@@ -189,7 +190,7 @@ class AdminController extends Controller
         }
     }
 
-    private function filterAssignableRoleIds(array $roleIds, ?User $actor): array
+    private function filterAssignableRoleIds(array $roleIds, ?User $actor, ?User $target = null): array
     {
         if (empty($roleIds)) {
             return $roleIds;
@@ -211,7 +212,47 @@ class AdminController extends Controller
             abort(403, __('You are not allowed to assign one or more selected roles.'));
         }
 
+        $this->rejectNewStaffRoleAssignment($assignableRoleIds, $target);
+
         return $assignableRoleIds;
+    }
+
+    /**
+     * Staff role belongs to Staffs-page profiles, not Admins create/edit.
+     * Existing Staff logins may keep the role (or be promoted away from it).
+     */
+    private function rejectNewStaffRoleAssignment(array $roleIds, ?User $target = null): void
+    {
+        $requestedStaffRoleIds = Role::query()
+            ->whereIn('id', $roleIds)
+            ->get()
+            ->filter(fn (Role $role) => $role->isOperationalStaffRole())
+            ->pluck('id')
+            ->map(fn ($roleId) => (int) $roleId)
+            ->values()
+            ->all();
+
+        if ($requestedStaffRoleIds === []) {
+            return;
+        }
+
+        $alreadyAssigned = [];
+        if ($target) {
+            $alreadyAssigned = $target->roles()
+                ->whereIn('roles.id', $requestedStaffRoleIds)
+                ->pluck('roles.id')
+                ->concat(
+                    $target->branchRoles()->whereIn('roles.id', $requestedStaffRoleIds)->pluck('roles.id')
+                )
+                ->map(fn ($roleId) => (int) $roleId)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        if (array_diff($requestedStaffRoleIds, $alreadyAssigned) !== []) {
+            abort(403, __('Staff role can only be assigned from the Staffs page.'));
+        }
     }
 
     private function syncRoles(User $admin, array $roleIds, array $storeLocationIds): void

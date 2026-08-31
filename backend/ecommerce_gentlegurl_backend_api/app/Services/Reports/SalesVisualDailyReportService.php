@@ -454,7 +454,7 @@ class SalesVisualDailyReportService
 
         $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
         $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
-        $roster = $this->salesReportStaffRoster(array_unique(array_merge(array_keys($ecKeyed), array_keys($svcKeyed))));
+        $roster = $this->salesReportStaffRoster();
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
@@ -525,7 +525,7 @@ class SalesVisualDailyReportService
 
         $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
         $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
-        $roster = $this->salesReportStaffRoster(array_unique(array_merge(array_keys($ecKeyed), array_keys($svcKeyed))));
+        $roster = $this->salesReportStaffRoster();
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
@@ -651,7 +651,7 @@ class SalesVisualDailyReportService
 
         $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
         $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
-        $roster = $this->salesReportStaffRoster(array_unique(array_merge(array_keys($ecKeyed), array_keys($svcKeyed))));
+        $roster = $this->salesReportStaffRoster();
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
@@ -846,34 +846,22 @@ class SalesVisualDailyReportService
     }
 
     /**
-     * Build the summary roster after period activity has been aggregated.
+     * Staff cards list Staffs-page profiles only (`staffs`), never Admins / Staff-role logins.
+     * A row appears when show_in_sales_report is on and the staff is assigned to the current Branch.
      *
-     * Configured zero rows respect current Branch assignment. Activity IDs are
-     * always unioned afterwards, so a later preference or assignment change can
-     * never erase transaction-Branch history.
-     *
-     * @param list<int> $activityStaffIds
      * @return list<array{staff_id: int, name: string}>
      */
-    private function salesReportStaffRoster(array $activityStaffIds): array
+    private function salesReportStaffRoster(): array
     {
         $scope = ReportBranchScope::current();
 
         return DB::table('staffs as st')
-            ->where(function (Builder $query) use ($scope, $activityStaffIds) {
-                $query->where(function (Builder $configured) use ($scope) {
-                    $configured->where('st.show_in_sales_report', true)
-                        ->whereExists(function (Builder $assignment) use ($scope) {
-                            $assignment->selectRaw('1')
-                                ->from('staff_store_location as ssl')
-                                ->whereColumn('ssl.staff_id', 'st.id')
-                                ->whereIn('ssl.store_location_id', $scope->storeLocationIds);
-                        });
-                });
-
-                if ($activityStaffIds !== []) {
-                    $query->orWhereIn('st.id', $activityStaffIds);
-                }
+            ->where('st.show_in_sales_report', true)
+            ->whereExists(function (Builder $assignment) use ($scope) {
+                $assignment->selectRaw('1')
+                    ->from('staff_store_location as ssl')
+                    ->whereColumn('ssl.staff_id', 'st.id')
+                    ->whereIn('ssl.store_location_id', $scope->storeLocationIds);
             })
             ->orderBy('st.name')
             ->select('st.id', 'st.name')

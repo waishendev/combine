@@ -38,6 +38,16 @@ class Role extends BaseModel
         return $this->belongsTo(\App\Models\Ecommerce\StoreLocation::class);
     }
 
+    public static function isOperationalStaffRoleName(?string $name): bool
+    {
+        return strtolower(trim((string) $name)) === 'staff';
+    }
+
+    public function isOperationalStaffRole(): bool
+    {
+        return self::isOperationalStaffRoleName($this->name);
+    }
+
     public function branchUsers()
     {
         return $this->belongsToMany(User::class, 'role_user_store_location')

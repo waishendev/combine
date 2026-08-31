@@ -50,8 +50,6 @@ class StaffController extends Controller
             })
             ->when($request->has('is_active'), function ($query) use ($request) {
                 $query->where('is_active', $request->boolean('is_active'));
-            }, function ($query) {
-                $query->where('is_active', true);
             })
             ->orderBy('name')
             ->paginate($perPage);

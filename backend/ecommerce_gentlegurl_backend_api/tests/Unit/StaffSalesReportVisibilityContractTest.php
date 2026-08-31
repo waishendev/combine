@@ -21,13 +21,12 @@ class StaffSalesReportVisibilityContractTest extends TestCase
     {
         $source = file_get_contents((new ReflectionClass(SalesVisualDailyReportService::class))->getFileName());
 
-        $this->assertSame(3, substr_count($source, 'salesReportStaffRoster(array_unique(array_merge(array_keys($ecKeyed), array_keys($svcKeyed))))'));
+        $this->assertSame(3, substr_count($source, '$roster = $this->salesReportStaffRoster();'));
         $this->assertStringContainsString("where('st.show_in_sales_report', true)", $source);
-        $this->assertStringContainsString("orWhereIn('st.id', \$activityStaffIds)", $source);
         $this->assertStringContainsString("from('staff_store_location as ssl')", $source);
     }
 
-    public function testRosterDoesNotUseActiveStatusOrFilterTransactions(): void
+    public function testRosterIsStaffsTableOnlyAndRequiresSalesReportFlag(): void
     {
         $reflection = new ReflectionClass(SalesVisualDailyReportService::class);
         $source = file_get_contents($reflection->getFileName());
@@ -35,7 +34,13 @@ class StaffSalesReportVisibilityContractTest extends TestCase
         $end = strpos($source, 'private function keyRowsByStaffId', $start);
         $rosterSource = substr($source, $start, $end - $start);
 
+        $this->assertStringContainsString("DB::table('staffs as st')", $rosterSource);
+        $this->assertStringContainsString("where('st.show_in_sales_report', true)", $rosterSource);
+        $this->assertStringNotContainsString('orWhereIn', $rosterSource);
+        $this->assertStringNotContainsString('activityStaffIds', $rosterSource);
         $this->assertStringNotContainsString('is_active', $rosterSource);
         $this->assertStringNotContainsString('orders', $rosterSource);
+        $this->assertStringNotContainsString('users', $rosterSource);
+        $this->assertStringNotContainsString('roles', $rosterSource);
     }
 }
