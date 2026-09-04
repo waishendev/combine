@@ -784,8 +784,11 @@ $protectedRoutes = function () {
     Route::get('/admin/reports/product-profit', [ProductProfitReportController::class, 'index'])
         ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
+    // NEW ENHANCEMENT — profit-loss-cash-shifts-query-v1
+    // Page: CRM /reports/profit-loss — already year aggregates; no query rewrite required
     Route::get('/admin/reports/profit-loss', [ProfitLossReportController::class, 'index'])
         ->middleware('permission:ecommerce.reports.profit-loss.view');
+    // END NEW ENHANCEMENT
 
     Route::get('/admin/reports/sales-summary', [SalesChannelReportController::class, 'salesSummary'])
         ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
@@ -1495,11 +1498,15 @@ $protectedRoutes = function () {
             Route::get('/pos-summary', [PosSummaryReportController::class, 'index'])
                 ->middleware('permission:reports.pos-summary.view');
 
+            // NEW ENHANCEMENT — profit-loss-cash-shifts-query-v1
+            // Pages: CRM /reports/cash-shifts (+ P&L unchanged / already aggregate-healthy)
+            // Report: sargable dates, cash_sales_snapshot on CLOSE, request-memo live cash sales, slim period summary
             Route::get('/cash-shifts/summary', [PosCashShiftController::class, 'summary'])
                 ->middleware('permission:ecommerce.reports.sales.view|reports.pos-summary.view|reports.my-pos-summary.view');
 
             Route::get('/cash-shifts', [PosCashShiftController::class, 'report'])
                 ->middleware('permission:ecommerce.reports.sales.view|reports.pos-summary.view|reports.my-pos-summary.view');
+            // END NEW ENHANCEMENT
 
             Route::get('/wishlist', [WishlistReportController::class, 'index'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');

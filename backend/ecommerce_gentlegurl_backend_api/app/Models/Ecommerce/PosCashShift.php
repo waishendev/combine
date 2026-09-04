@@ -37,6 +37,7 @@ class PosCashShift extends Model
         'remark',
         'total_initial_cash',
         'total_withdraw',
+        'cash_sales_snapshot',
     ];
 
     protected function casts(): array
@@ -52,6 +53,7 @@ class PosCashShift extends Model
             'closed_at' => 'datetime',
             'total_initial_cash' => 'decimal:2',
             'total_withdraw' => 'decimal:2',
+            'cash_sales_snapshot' => 'decimal:2',
         ];
     }
 

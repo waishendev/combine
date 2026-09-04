@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\PosCashShift;
 use App\Services\Ecommerce\PosCashPoolService;
+use App\Services\Ecommerce\PosCashShiftCashSalesService;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,10 +18,11 @@ use App\Models\Ecommerce\PosCashPoolAccount;
 
 class PosCashShiftController extends Controller
 {
-    /** Order statuses excluded from shift cash sales (void/cancelled never count toward drawer). */
-    private const EXCLUDED_ORDER_STATUSES = ['cancelled', 'draft', 'voided'];
-
-    public function __construct(private readonly PosCashPoolService $cashPoolService, private readonly StoreLocationAccessService $branchAccess) {}
+    public function __construct(
+        private readonly PosCashPoolService $cashPoolService,
+        private readonly StoreLocationAccessService $branchAccess,
+        private readonly PosCashShiftCashSalesService $cashSalesService,
+    ) {}
 
     public function current(Request $request)
     {
@@ -110,6 +113,12 @@ class PosCashShiftController extends Controller
             $closingAmount = round((float) $validated['closing_amount'], 2);
             $withdraw = round((float) ($validated['closing_withdraw'] ?? 0), 2);
             $refillCash = round((float) ($validated['closing_refill_cash'] ?? 0), 2);
+            $closedAt = now();
+            $cashSalesSnapshot = $this->cashSalesService->compute(
+                $openShift->opened_at,
+                $closedAt,
+                $openShift->store_location_id ? (int) $openShift->store_location_id : null,
+            );
 
             $closeShift = PosCashShift::query()->create([
                 'store_location_id' => $openShift->store_location_id,
@@ -126,9 +135,10 @@ class PosCashShiftController extends Controller
                 'closing_refill_cash' => $refillCash > 0 ? $refillCash : null,
                 'closed_by' => $request->user()?->id,
                 'closed_staff_id' => (int) $validated['closed_staff_id'],
-                'closed_at' => now(),
+                'closed_at' => $closedAt,
                 'status' => PosCashShift::STATUS_CLOSED,
                 'remark' => $validated['remark'] ?? null,
+                'cash_sales_snapshot' => $cashSalesSnapshot,
             ]);
 
             $pools = $this->cashPoolService->applyCloseMovements(
@@ -214,18 +224,6 @@ class PosCashShiftController extends Controller
             ->when($branchId, fn (Builder $q) => $q->where('store_location_id', $branchId))
             ->when(! $branchId, fn (Builder $q) => $q->where(fn (Builder $scope) => $scope
                 ->whereIn('store_location_id', $accessibleIds)->orWhereNull('store_location_id')))
-            ->when(! empty($validated['date_from']), function (Builder $q) use ($validated) {
-                $q->where(function (Builder $inner) use ($validated) {
-                    $inner->whereDate('opened_at', '>=', $validated['date_from'])
-                        ->orWhereDate('closed_at', '>=', $validated['date_from']);
-                });
-            })
-            ->when(! empty($validated['date_to']), function (Builder $q) use ($validated) {
-                $q->where(function (Builder $inner) use ($validated) {
-                    $inner->whereDate('opened_at', '<=', $validated['date_to'])
-                        ->orWhereDate('closed_at', '<=', $validated['date_to']);
-                });
-            })
             ->when(! empty($validated['status']), fn (Builder $q) => $q->where('event_type', $validated['status']))
             ->when(! empty($validated['user_id']), function (Builder $q) use ($validated) {
                 $q->where(function (Builder $inner) use ($validated) {
@@ -238,8 +236,15 @@ class PosCashShiftController extends Controller
                     $inner->where('opened_staff_id', (int) $validated['staff_id'])
                         ->orWhere('closed_staff_id', (int) $validated['staff_id']);
                 });
-            })
-            ->orderByDesc(DB::raw('COALESCE(closed_at, opened_at)'));
+            });
+
+        $this->applySargableEventDateFilters(
+            $query,
+            $validated['date_from'] ?? null,
+            $validated['date_to'] ?? null,
+        );
+
+        $query->orderByDesc(DB::raw('COALESCE(closed_at, opened_at)'));
 
         $periodSummary = $this->buildPeriodSummary(clone $query);
 
@@ -263,29 +268,74 @@ class PosCashShiftController extends Controller
     }
 
     /**
+     * Calendar-day filters without whereDate() so opened_at/closed_at indexes stay usable.
+     * Semantics match prior whereDate OR window (activity overlapping the inclusive day range).
+     */
+    private function applySargableEventDateFilters(Builder $query, ?string $dateFrom, ?string $dateTo): void
+    {
+        if (! empty($dateFrom)) {
+            $from = Carbon::parse($dateFrom)->startOfDay();
+            $query->where(function (Builder $inner) use ($from) {
+                $inner->where('opened_at', '>=', $from)
+                    ->orWhere('closed_at', '>=', $from);
+            });
+        }
+
+        if (! empty($dateTo)) {
+            $toExclusive = Carbon::parse($dateTo)->startOfDay()->addDay();
+            $query->where(function (Builder $inner) use ($toExclusive) {
+                $inner->where('opened_at', '<', $toExclusive)
+                    ->orWhere('closed_at', '<', $toExclusive);
+            });
+        }
+    }
+
+    /**
      * Sum Cash Sales / Difference (Cash Sales − Withdraw) for CLOSE events in the current report filter.
      *
      * @return array{cash_sales: float, difference: float}
      */
     private function buildPeriodSummary(Builder $query): array
     {
-        $closeShifts = $query
-            ->where('event_type', PosCashShift::EVENT_CLOSE)
+        $base = (clone $query)->where('event_type', PosCashShift::EVENT_CLOSE);
+
+        $missingSnapshots = (clone $base)->reorder()->whereNull('cash_sales_snapshot')->exists();
+        if (! $missingSnapshots) {
+            $row = (clone $base)
+                ->reorder()
+                ->selectRaw('COALESCE(SUM(COALESCE(cash_sales_snapshot, 0)), 0) as cash_sales')
+                ->selectRaw('COALESCE(SUM(COALESCE(cash_sales_snapshot, 0) - COALESCE(closing_withdraw, 0)), 0) as difference')
+                ->first();
+
+            return [
+                'cash_sales' => round((float) ($row->cash_sales ?? 0), 2),
+                'difference' => round((float) ($row->difference ?? 0), 2),
+            ];
+        }
+
+        $closeShifts = $base
             ->with([
-                'linkedOpenShift.openedStaff:id,name,email,phone',
-                'linkedOpenShift.opener:id,name,email',
+                'linkedOpenShift:id,opened_at,store_location_id,opening_amount',
             ])
-            ->get();
+            ->get([
+                'id',
+                'event_type',
+                'linked_open_shift_id',
+                'opened_at',
+                'closed_at',
+                'store_location_id',
+                'opening_amount',
+                'closing_withdraw',
+                'cash_sales_snapshot',
+            ]);
 
         $cashSales = 0.0;
         $difference = 0.0;
 
         foreach ($closeShifts as $shift) {
-            $row = $this->serializeShift($shift);
-            $cashSales += (float) ($row['cash_sales'] ?? 0);
-            if ($row['difference'] !== null) {
-                $difference += (float) $row['difference'];
-            }
+            $sales = $this->cashSalesForShift($shift, $shift->linkedOpenShift);
+            $cashSales += $sales;
+            $difference += $sales - (float) ($shift->closing_withdraw ?? 0);
         }
 
         return [
@@ -309,9 +359,7 @@ class PosCashShiftController extends Controller
         $openShift = $shift->isCloseEvent() ? $shift->linkedOpenShift : $shift;
         $openingAmount = (float) ($openShift?->opening_amount ?? $shift->opening_amount ?? 0);
         $cashSales = $this->cashSalesForShift($shift, $openShift);
-        $expectedCash = $shift->isCloseEvent()
-            ? round($openingAmount + $cashSales, 2)
-            : round($openingAmount + $cashSales, 2);
+        $expectedCash = round($openingAmount + $cashSales, 2);
         $closingAmount = $shift->closing_amount !== null ? (float) $shift->closing_amount : null;
         $eventAt = $shift->isCloseEvent()
             ? optional($shift->closed_at)?->toDateTimeString()
@@ -362,6 +410,16 @@ class PosCashShiftController extends Controller
     private function cashSalesForShift(PosCashShift $shift, ?PosCashShift $openShift = null): float
     {
         $openShift ??= $shift->isCloseEvent() ? $shift->linkedOpenShift : $shift;
+
+        // Preserve legacy CLOSE rows with no linked open: cash sales stay 0.
+        if ($shift->isCloseEvent() && ! $openShift) {
+            return 0.0;
+        }
+
+        if ($shift->isCloseEvent() && $shift->cash_sales_snapshot !== null) {
+            return round((float) $shift->cash_sales_snapshot, 2);
+        }
+
         if (! $openShift?->opened_at) {
             return 0.0;
         }
@@ -369,47 +427,11 @@ class PosCashShiftController extends Controller
         $start = $openShift->opened_at;
         $end = $shift->isCloseEvent() ? ($shift->closed_at ?? now()) : now();
 
-        $cashFromPayments = (float) DB::table('order_payments')
-            ->join('orders', 'orders.id', '=', 'order_payments.order_id')
-            ->whereRaw('LOWER(order_payments.payment_method) = ?', ['cash'])
-            ->where(function ($query) use ($start, $end) {
-                $query->whereBetween('orders.paid_at', [$start, $end])
-                    ->orWhere(function ($nested) use ($start, $end) {
-                        $nested->whereNull('orders.paid_at')
-                            ->whereBetween('orders.created_at', [$start, $end]);
-                    });
-            })
-            ->whereNotIn('orders.status', self::EXCLUDED_ORDER_STATUSES)
-            ->when($openShift->store_location_id, fn ($query) => $query->where('orders.store_location_id', $openShift->store_location_id))
-            ->where(function ($query) {
-                $query->whereIn('orders.pickup_or_shipping', ['pos', 'in_store'])
-                    ->orWhereNotNull('orders.created_by_user_id');
-            })
-            ->sum('order_payments.amount');
-
-        $fallbackCash = (float) DB::table('orders')
-            ->whereRaw('LOWER(payment_method) = ?', ['cash'])
-            ->where(function ($query) use ($start, $end) {
-                $query->whereBetween('paid_at', [$start, $end])
-                    ->orWhere(function ($nested) use ($start, $end) {
-                        $nested->whereNull('paid_at')
-                            ->whereBetween('created_at', [$start, $end]);
-                    });
-            })
-            ->whereNotIn('status', self::EXCLUDED_ORDER_STATUSES)
-            ->when($openShift->store_location_id, fn ($query) => $query->where('store_location_id', $openShift->store_location_id))
-            ->where(function ($query) {
-                $query->whereIn('pickup_or_shipping', ['pos', 'in_store'])
-                    ->orWhereNotNull('created_by_user_id');
-            })
-            ->whereNotExists(function ($query) {
-                $query->selectRaw('1')
-                    ->from('order_payments')
-                    ->whereColumn('order_payments.order_id', 'orders.id');
-            })
-            ->sum('grand_total');
-
-        return round($cashFromPayments + $fallbackCash, 2);
+        return $this->cashSalesService->compute(
+            $start,
+            $end,
+            $openShift->store_location_id ? (int) $openShift->store_location_id : null,
+        );
     }
 
     private function operationalBranch(Request $request): StoreLocation
