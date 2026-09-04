@@ -171,7 +171,8 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
 
     const loadCategories = async () => {
       try {
-        const res = await fetch('/api/proxy/ecommerce/categories?page=1&per_page=500', {
+        // Slim options endpoint (id/name only) — same filter UX, less payload than full categories list.
+        const res = await fetch('/api/proxy/ecommerce/categories/options/query?page=1&per_page=500', {
           cache: 'no-store',
           signal: controller.signal,
         })

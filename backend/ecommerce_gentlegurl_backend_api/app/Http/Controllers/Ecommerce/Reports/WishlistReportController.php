@@ -8,7 +8,12 @@ use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
+/**
+ * Wishlist report — wishlist-product-profit-query-v1:
+ * scoped side aggregates, pre-aggregated bundle stock, TEMP materialize for summary/top/page.
+ */
 class WishlistReportController extends Controller
 {
     public function index(Request $request)
@@ -24,41 +29,57 @@ class WishlistReportController extends Controller
         $customerSub = $this->wishlistCounts('customer_wishlist_items', 'customer', $dateFrom, $dateTo);
         $guestSub = $this->wishlistCounts('guest_wishlist_items', 'guest', $dateFrom, $dateTo);
 
+        $hitProductIds = DB::table('customer_wishlist_items')
+            ->select('product_id')
+            ->when($dateFrom, fn (Builder $q) => $q->where('created_at', '>=', Carbon::parse($dateFrom)->startOfDay()))
+            ->when($dateTo, fn (Builder $q) => $q->where('created_at', '<=', Carbon::parse($dateTo)->endOfDay()))
+            ->union(
+                DB::table('guest_wishlist_items')
+                    ->select('product_id')
+                    ->when($dateFrom, fn (Builder $q) => $q->where('created_at', '>=', Carbon::parse($dateFrom)->startOfDay()))
+                    ->when($dateTo, fn (Builder $q) => $q->where('created_at', '<=', Carbon::parse($dateTo)->endOfDay()))
+            );
+
         $coverImageSub = DB::table('product_media as pm')
             ->select(['pm.product_id', DB::raw('(array_agg(pm.path ORDER BY pm.sort_order ASC, pm.id ASC))[1] as image_url')])
             ->where('pm.type', 'image')
+            ->whereIn('pm.product_id', $hitProductIds)
             ->groupBy('pm.product_id');
 
         $categorySub = DB::table('product_categories as pc')
             ->join('categories as c', 'c.id', '=', 'pc.category_id')
             ->select(['pc.product_id', DB::raw('(array_agg(c.name ORDER BY c.name ASC))[1] as category_name')])
+            ->whereIn('pc.product_id', $hitProductIds)
             ->groupBy('pc.product_id');
 
-        // Wishlist identity is product-level. Stock therefore summarizes all active,
-        // purchasable variants rather than treating the product's legacy stock as a variant result.
+        // Pre-aggregate bundle availability once (replaces per-variant correlated SubPlan).
+        $bundleAvailSub = DB::table('product_variant_bundle_items as bundle_item')
+            ->join('product_variants as component', 'component.id', '=', 'bundle_item.component_variant_id')
+            ->where('component.track_stock', true)
+            ->groupBy('bundle_item.bundle_variant_id')
+            ->selectRaw('bundle_item.bundle_variant_id, MIN(FLOOR(component.stock / GREATEST(bundle_item.quantity, 1))) as bundle_available');
+
         $variantAvailable = "CASE
             WHEN v.track_stock = false THEN 1
-            WHEN COALESCE(v.is_bundle, false) = true THEN CASE WHEN COALESCE((
-                SELECT MIN(FLOOR(component.stock / GREATEST(bundle_item.quantity, 1)))
-                FROM product_variant_bundle_items bundle_item
-                JOIN product_variants component ON component.id = bundle_item.component_variant_id
-                WHERE bundle_item.bundle_variant_id = v.id AND component.track_stock = true
-            ), 1) > 0 THEN 1 ELSE 0 END
+            WHEN COALESCE(v.is_bundle, false) = true THEN CASE WHEN COALESCE(ba.bundle_available, 1) > 0 THEN 1 ELSE 0 END
             WHEN v.stock > 0 THEN 1 ELSE 0 END";
 
         $variantSub = DB::table('product_variants as v')
+            ->leftJoinSub($bundleAvailSub, 'ba', fn ($join) => $join->on('ba.bundle_variant_id', '=', 'v.id'))
+            ->whereIn('v.product_id', $hitProductIds)
             ->selectRaw("v.product_id, COUNT(*) as variant_record_count,
                 SUM(CASE WHEN v.is_active = true THEN 1 ELSE 0 END) as variant_count,
                 SUM(CASE WHEN v.is_active = true AND ({$variantAvailable}) = 0 THEN 1 ELSE 0 END) as out_of_stock_variant_count")
             ->groupBy('v.product_id');
 
+        // Drive from wishlisted products (whereIn hits) rather than scanning full catalog then filtering.
         $baseQuery = DB::table('products as p')
             ->leftJoinSub($customerSub, 'cw', fn ($join) => $join->on('cw.product_id', '=', 'p.id'))
             ->leftJoinSub($guestSub, 'gw', fn ($join) => $join->on('gw.product_id', '=', 'p.id'))
             ->leftJoinSub($coverImageSub, 'img', fn ($join) => $join->on('img.product_id', '=', 'p.id'))
             ->leftJoinSub($categorySub, 'cat', fn ($join) => $join->on('cat.product_id', '=', 'p.id'))
             ->leftJoinSub($variantSub, 'vs', fn ($join) => $join->on('vs.product_id', '=', 'p.id'))
-            ->where(fn (Builder $q) => $q->whereNotNull('cw.product_id')->orWhereNotNull('gw.product_id'))
+            ->whereIn('p.id', $hitProductIds)
             ->when($search !== '', function (Builder $q) use ($search) {
                 $q->where(fn (Builder $sq) => $sq->where('p.name', 'like', "%{$search}%")
                     ->orWhere('p.cn_name', 'like', "%{$search}%")
@@ -89,25 +110,31 @@ class WishlistReportController extends Controller
                     ELSE 'in_stock' END as stock_status"),
             ]);
 
-        $query = DB::query()->fromSub($baseQuery, 'wishlist_rows')
+        $filtered = DB::query()->fromSub($baseQuery, 'wishlist_rows')
             ->when($stockStatus === 'in_stock', fn (Builder $q) => $q->whereIn('stock_status', ['in_stock', 'partial']))
-            ->when($stockStatus === 'out_of_stock', fn (Builder $q) => $q->where('stock_status', 'out_of_stock'))
-            ->orderByDesc('total_wishlist_count')->orderBy('product_id');
+            ->when($stockStatus === 'out_of_stock', fn (Builder $q) => $q->where('stock_status', 'out_of_stock'));
 
-        $summaryTotals = DB::query()->fromSub(clone $query, 'summary_rows')
+        $rowsFrom = $this->materializedRowsQuery($filtered);
+
+        $summaryTotals = $rowsFrom()
             ->selectRaw('COUNT(*) as total_wishlisted_products')
             ->selectRaw('COALESCE(SUM(total_wishlist_count), 0) as total_wishlist_adds')
             ->selectRaw("SUM(CASE WHEN stock_status = 'out_of_stock' AND total_wishlist_count > 0 THEN 1 ELSE 0 END) as out_of_stock_products_with_demand")
-            ->selectRaw('COALESCE(MAX(total_wishlist_count), 0) as max_wishlist_count')->first();
+            ->selectRaw('COALESCE(MAX(total_wishlist_count), 0) as max_wishlist_count')
+            ->first();
 
         $maxCount = (int) ($summaryTotals->max_wishlist_count ?? 0);
         $topProducts = $maxCount > 0
-            ? DB::query()->fromSub(clone $query, 'top_rows')->where('total_wishlist_count', $maxCount)
+            ? $rowsFrom()->where('total_wishlist_count', $maxCount)
                 ->orderBy('product_id')->get(['product_id', 'product_name', 'sku', 'total_wishlist_count', 'last_wishlisted_at'])
             : collect();
         $uniqueTop = $topProducts->count() === 1 ? $topProducts->first() : null;
 
-        $paginator = $query->paginate($perPage)->withQueryString();
+        $paginator = $rowsFrom()
+            ->orderByDesc('total_wishlist_count')
+            ->orderBy('product_id')
+            ->paginate($perPage)
+            ->withQueryString();
 
         return response()->json([
             'data' => collect($paginator->items()),
@@ -165,5 +192,25 @@ class WishlistReportController extends Controller
         ])->when($dateFrom, fn (Builder $q) => $q->where('created_at', '>=', Carbon::parse($dateFrom)->startOfDay()))
             ->when($dateTo, fn (Builder $q) => $q->where('created_at', '<=', Carbon::parse($dateTo)->endOfDay()))
             ->groupBy('product_id');
+    }
+
+    /**
+     * Materialize filtered wishlist rows once so summary / top / page share work.
+     * Postgres TEMP TABLE; other drivers re-read the filtered subquery (still correct).
+     *
+     * @return \Closure(): Builder
+     */
+    private function materializedRowsQuery(Builder $filtered): \Closure
+    {
+        $driver = DB::connection()->getDriverName();
+        if ($driver === 'pgsql') {
+            $table = 'tmp_wishlist_report_'.Str::lower(Str::random(8));
+            // Identifier is generated server-side (random alnum) — safe to interpolate.
+            DB::statement("CREATE TEMPORARY TABLE {$table} ON COMMIT PRESERVE ROWS AS {$filtered->toSql()}", $filtered->getBindings());
+
+            return fn () => DB::table($table);
+        }
+
+        return fn () => DB::query()->fromSub($filtered, 'wishlist_rows_mat');
     }
 }

@@ -10,6 +10,10 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Product profit report — wishlist-product-profit-query-v1:
+ * orders-first join, drawer-only details skip list/summary aggregates.
+ */
 class ProductProfitReportController extends Controller
 {
     public function index(Request $request)
@@ -40,6 +44,58 @@ class ProductProfitReportController extends Controller
         $channel = (string) ($validated['channel'] ?? '');
         $branchScope = ReportBranchScope::current();
         $isAllBranches = $branchScope->selectedStoreLocationId === null;
+
+        $detailsOnly = $request->boolean('include_details') && isset($validated['product_id']);
+
+        $filtersMeta = [
+            'date_from' => $start->toDateString(),
+            'date_to' => $end->toDateString(),
+            'search' => $search,
+            'category_id' => $categoryId,
+            'staff_id' => $staffId,
+            'channel' => $channel ?: null,
+        ];
+        $meta = [
+            'default_range_applied' => $defaultRangeApplied,
+            'valid_statuses' => SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT,
+            'valid_payment_statuses' => SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT,
+            'timestamp_field' => 'placed_at_or_created_at',
+            'costing' => 'order_items.cost_amount_snapshot_only',
+            'row_grain' => $isAllBranches ? 'store_location_product_variant' : 'product_variant',
+        ];
+
+        // Drawer loads only need `details` — skip grouped list + summary (same JSON keys).
+        if ($detailsOnly) {
+            return response()->json([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => $perPage,
+                'total' => 0,
+                'summary' => [
+                    'total_sales' => 0.0,
+                    'total_cost' => 0.0,
+                    'gross_profit' => 0.0,
+                    'profit_margin' => 0.0,
+                    'quantity_sold' => 0,
+                    'orders_count' => 0,
+                    'missing_cost_items_count' => 0,
+                ],
+                'filters' => $filtersMeta,
+                'meta' => $meta,
+                'details' => $this->detailRows(
+                    $start,
+                    $end,
+                    (int) $validated['product_id'],
+                    isset($validated['product_variant_id']) ? (int) $validated['product_variant_id'] : null,
+                    $search,
+                    $categoryId,
+                    $staffId,
+                    $channel,
+                    ($validated['detail_branch'] ?? null) === 'unassigned'
+                ),
+            ]);
+        }
 
         $baseItems = $this->baseProductItemsQuery($start, $end, $search, $categoryId, $staffId, $channel);
         $rowGroupColumns = [
@@ -93,7 +149,8 @@ class ProductProfitReportController extends Controller
 
         $totalSales = (float) ($summaryRaw->total_sales ?? 0);
         $grossProfit = (float) ($summaryRaw->gross_profit ?? 0);
-        $response = [
+
+        return response()->json([
             'data' => $rows,
             'current_page' => $paginator->currentPage(),
             'last_page' => $paginator->lastPage(),
@@ -108,39 +165,9 @@ class ProductProfitReportController extends Controller
                 'orders_count' => (int) ($summaryRaw->orders_count ?? 0),
                 'missing_cost_items_count' => (int) ($summaryRaw->missing_cost_items_count ?? 0),
             ],
-            'filters' => [
-                'date_from' => $start->toDateString(),
-                'date_to' => $end->toDateString(),
-                'search' => $search,
-                'category_id' => $categoryId,
-                'staff_id' => $staffId,
-                'channel' => $channel ?: null,
-            ],
-            'meta' => [
-                'default_range_applied' => $defaultRangeApplied,
-                'valid_statuses' => SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT,
-                'valid_payment_statuses' => SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT,
-                'timestamp_field' => 'placed_at_or_created_at',
-                'costing' => 'order_items.cost_amount_snapshot_only',
-                'row_grain' => $isAllBranches ? 'store_location_product_variant' : 'product_variant',
-            ],
-        ];
-
-        if ($request->boolean('include_details') && isset($validated['product_id'])) {
-            $response['details'] = $this->detailRows(
-                $start,
-                $end,
-                (int) $validated['product_id'],
-                isset($validated['product_variant_id']) ? (int) $validated['product_variant_id'] : null,
-                $search,
-                $categoryId,
-                $staffId,
-                $channel,
-                ($validated['detail_branch'] ?? null) === 'unassigned'
-            );
-        }
-
-        return response()->json($response);
+            'filters' => $filtersMeta,
+            'meta' => $meta,
+        ]);
     }
 
     private function resolveDateRange(Request $request): array
@@ -169,46 +196,50 @@ class ProductProfitReportController extends Controller
         ?int $staffId,
         string $channel
     ): Builder {
-        return ReportBranchScope::applyCurrent(DB::table('order_items as oi'), 'o.store_location_id')
-            ->join('orders as o', 'o.id', '=', 'oi.order_id')
-            ->leftJoin('store_locations as sl', 'sl.id', '=', 'o.store_location_id')
-            ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
-            ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
-            ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
-            ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
-            ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
-            ->whereNotNull('oi.product_id')
-            ->where(function (Builder $query) {
-                $query->whereNull('oi.line_type')->orWhere('oi.line_type', 'product');
-            })
-            ->when($search !== '', function (Builder $query) use ($search) {
-                $query->where(function (Builder $subQuery) use ($search) {
-                    $subQuery->where('oi.product_name_snapshot', 'like', "%{$search}%")
-                        ->orWhere('oi.sku_snapshot', 'like', "%{$search}%")
-                        ->orWhere('oi.variant_name_snapshot', 'like', "%{$search}%")
-                        ->orWhere('oi.variant_sku_snapshot', 'like', "%{$search}%")
-                        ->orWhere('p.cn_name', 'like', "%{$search}%")
-                        ->orWhere('pv.cn_name', 'like', "%{$search}%");
-                });
-            })
-            ->when($categoryId, function (Builder $query) use ($categoryId) {
-                $query->whereExists(function (Builder $categoryQuery) use ($categoryId) {
-                    $categoryQuery->select(DB::raw(1))
-                        ->from('product_categories as pc')
-                        ->whereColumn('pc.product_id', 'oi.product_id')
-                        ->where('pc.category_id', $categoryId);
-                });
-            })
-            ->when($staffId, function (Builder $query) use ($staffId) {
-                $query->whereExists(function (Builder $staffQuery) use ($staffId) {
-                    $staffQuery->select(DB::raw(1))
-                        ->from('order_item_staff_splits as oiss')
-                        ->whereColumn('oiss.order_item_id', 'oi.id')
-                        ->where('oiss.staff_id', $staffId);
-                });
-            })
-            ->when($channel === 'pos', fn (Builder $query) => $query->whereNotNull('o.created_by_user_id'))
-            ->when($channel === 'online', fn (Builder $query) => $query->whereNull('o.created_by_user_id'));
+        // Orders-first join nudges the planner toward date/branch indexes as order_items grows.
+        return ReportBranchScope::applyCurrent(
+            DB::table('orders as o')
+                ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
+                ->leftJoin('store_locations as sl', 'sl.id', '=', 'o.store_location_id')
+                ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
+                ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
+                ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
+                ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
+                ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
+                ->whereNotNull('oi.product_id')
+                ->where(function (Builder $query) {
+                    $query->whereNull('oi.line_type')->orWhere('oi.line_type', 'product');
+                })
+                ->when($search !== '', function (Builder $query) use ($search) {
+                    $query->where(function (Builder $subQuery) use ($search) {
+                        $subQuery->where('oi.product_name_snapshot', 'like', "%{$search}%")
+                            ->orWhere('oi.sku_snapshot', 'like', "%{$search}%")
+                            ->orWhere('oi.variant_name_snapshot', 'like', "%{$search}%")
+                            ->orWhere('oi.variant_sku_snapshot', 'like', "%{$search}%")
+                            ->orWhere('p.cn_name', 'like', "%{$search}%")
+                            ->orWhere('pv.cn_name', 'like', "%{$search}%");
+                    });
+                })
+                ->when($categoryId, function (Builder $query) use ($categoryId) {
+                    $query->whereExists(function (Builder $categoryQuery) use ($categoryId) {
+                        $categoryQuery->select(DB::raw(1))
+                            ->from('product_categories as pc')
+                            ->whereColumn('pc.product_id', 'oi.product_id')
+                            ->where('pc.category_id', $categoryId);
+                    });
+                })
+                ->when($staffId, function (Builder $query) use ($staffId) {
+                    $query->whereExists(function (Builder $staffQuery) use ($staffId) {
+                        $staffQuery->select(DB::raw(1))
+                            ->from('order_item_staff_splits as oiss')
+                            ->whereColumn('oiss.order_item_id', 'oi.id')
+                            ->where('oiss.staff_id', $staffId);
+                    });
+                })
+                ->when($channel === 'pos', fn (Builder $query) => $query->whereNotNull('o.created_by_user_id'))
+                ->when($channel === 'online', fn (Builder $query) => $query->whereNull('o.created_by_user_id')),
+            'o.store_location_id'
+        );
     }
 
     private function transformSummaryRow(object $row, bool $includeBranch): array

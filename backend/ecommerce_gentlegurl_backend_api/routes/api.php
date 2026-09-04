@@ -781,8 +781,10 @@ $protectedRoutes = function () {
     Route::post('/admin/products/stock-movements/{id}/revoke', [ProductStockMovementController::class, 'revoke'])
         ->middleware('permission:ecommerce.products.update');
 
+    // NEW ENHANCEMENT — wishlist-product-profit-query-v1 (orders-first join, drawer-only details, indexes)
     Route::get('/admin/reports/product-profit', [ProductProfitReportController::class, 'index'])
         ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+    // END NEW ENHANCEMENT
 
     // NEW ENHANCEMENT — profit-loss-cash-shifts-query-v1
     // Page: CRM /reports/profit-loss — already year aggregates; no query rewrite required
@@ -1508,13 +1510,17 @@ $protectedRoutes = function () {
                 ->middleware('permission:ecommerce.reports.sales.view|reports.pos-summary.view|reports.my-pos-summary.view');
             // END NEW ENHANCEMENT
 
+            // NEW ENHANCEMENT — wishlist-product-profit-query-v1 (TEMP materialize, scoped subs, indexes)
             Route::get('/wishlist', [WishlistReportController::class, 'index'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
             Route::get('/wishlist/products/{product}/inventory-detail', [WishlistReportController::class, 'inventoryDetail'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+            // END NEW ENHANCEMENT
 
+            // NEW ENHANCEMENT — wishlist-product-profit-query-v1
             Route::get('/product-profit', [ProductProfitReportController::class, 'index'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+            // END NEW ENHANCEMENT
 
             Route::prefix('sales')->group(function () {
                 Route::get('/export/overview', [SalesReportExportController::class, 'overview'])
