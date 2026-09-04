@@ -20,14 +20,9 @@ export function topWishlistCardContent(summary: TopWishlistSummary): TopWishlist
   const wishLabel = summary.top_wishlist_count === 1 ? '1 wish' : `${summary.top_wishlist_count} wishes`
 
   if (summary.top_wishlisted_is_tie) {
-    const productLabel =
-      summary.top_wishlisted_product_count === 1
-        ? '1 product'
-        : `${summary.top_wishlisted_product_count} products`
-
     return {
       label: 'Top Wishlisted Products',
-      primary: productLabel,
+      primary: String(summary.top_wishlisted_product_count),
       secondary: `${wishLabel} each`,
       badge: 'Tied',
     }

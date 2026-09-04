@@ -25,17 +25,17 @@ test('renders a unique top wishlisted product', () => {
 test('renders two- and three-product ties without choosing an arbitrary product', () => {
   assert.deepEqual(topWishlistCardContent(summary(5, 2, true)), {
     label: 'Top Wishlisted Products',
-    primary: '2 products',
+    primary: '2',
     secondary: '5 wishes each',
     badge: 'Tied',
   })
   assert.deepEqual(topWishlistCardContent(summary(1, 3, true)), {
     label: 'Top Wishlisted Products',
-    primary: '3 products',
+    primary: '3',
     secondary: '1 wish each',
     badge: 'Tied',
   })
-  assert.equal(topWishlistSummary(summary(1, 3, true)), 'Tied: 3 products · 1 wish each')
+  assert.equal(topWishlistSummary(summary(1, 3, true)), 'Tied: 3 · 1 wish each')
 })
 
 test('renders an explicit zero-data state', () => {

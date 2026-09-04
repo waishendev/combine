@@ -218,6 +218,28 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
         </div>
       </div>
 
+      <div className="flex items-center justify-end gap-3">
+        <label htmlFor="wishlist-page-size" className="text-sm text-gray-700">
+          Show
+        </label>
+        <select
+          id="wishlist-page-size"
+          value={perPage}
+          onChange={(e) => {
+            setPerPage(Number(e.target.value))
+            setPage(1)
+          }}
+          className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+          disabled={loading}
+        >
+          {[15, 30, 50, 100].map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -226,11 +248,11 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
                 <th className="px-4 py-3 text-left">Product</th>
                 <th className="px-4 py-3 text-left">SKU</th>
                 <th className="px-4 py-3 text-left">Category</th>
-                <th className="px-4 py-3 text-right">Customer Wishlist Count</th>
-                <th className="px-4 py-3 text-right">Guest Wishlist Count</th>
-                <th className="px-4 py-3 text-right">Total Wishlist Count</th>
-                <th className="px-4 py-3 text-right">Current Stock</th>
-                <th className="px-4 py-3 text-left">Last Wishlisted At</th>
+                <th className="px-4 py-3 text-right">Customer Wishlist</th>
+                <th className="px-4 py-3 text-right">Guest Wishlist</th>
+                <th className="px-4 py-3 text-right">Total Wishlist</th>
+                <th className="px-4 py-3 text-right">Stock</th>
+                <th className="px-4 py-3 text-left">Last Wishlisted</th>
                 <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
@@ -261,7 +283,6 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
                             primaryClassName="font-medium text-slate-900"
                             secondaryClassName="mt-0.5 text-xs text-slate-500"
                           />
-                          <div className="text-xs text-slate-500">{row.product_status ?? '-'}</div>
                         </div>
                       </div>
                     </td>
@@ -291,18 +312,6 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
         <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
           <div className="text-slate-600">Showing {startItem} - {endItem} of {total}</div>
           <div className="flex items-center gap-2">
-            <select
-              className="rounded-md border px-2 py-1"
-              value={perPage}
-              onChange={(e) => {
-                setPerPage(Number(e.target.value))
-                setPage(1)
-              }}
-            >
-              {[15, 30, 50].map((size) => (
-                <option key={size} value={size}>{size}/page</option>
-              ))}
-            </select>
             <button className="rounded-md border px-3 py-1 disabled:opacity-50" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
             <span className="text-slate-700">Page {page} / {lastPage}</span>
             <button className="rounded-md border px-3 py-1 disabled:opacity-50" disabled={page >= lastPage || loading} onClick={() => setPage((p) => Math.min(lastPage, p + 1))}>Next</button>
@@ -376,7 +385,6 @@ function SummaryCard({
         </div>
       </div>
       <div className="mt-1 text-xl font-semibold leading-snug break-words">{value}</div>
-      {secondary ? <div className="mt-1 text-xs font-medium opacity-75">{secondary}</div> : null}
     </div>
   )
 }
@@ -418,7 +426,7 @@ function TiedProductsModal({
             {products.map((product) => (
               <li key={product.product_id} className="px-4 py-3">
                 <p className="truncate font-medium text-slate-900">{product.product_name}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{product.sku ? `SKU: ${product.sku}` : 'No SKU'}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{product.sku ? `SKU: ${product.sku}` : 'SKU: -'}</p>
               </li>
             ))}
           </ul>
@@ -444,8 +452,8 @@ function VariantStockModal({ product, detail, loading, error, onClose }: { produ
           {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading variant stock details...</p> : null}
           {error ? <p className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
           {detail ? <>
-            <table className="min-w-full text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-3 py-2 text-left">Variant</th><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">Current Stock</th><th className="px-3 py-2 text-left">Status</th></tr></thead>
-              <tbody>{detail.variants.map((variant) => <tr key={variant.id} className="border-t"><td className="px-3 py-3"><NameStack name={variant.name} cnName={variant.cn_name} primaryClassName="font-medium text-slate-900" secondaryClassName="text-xs text-slate-500" /></td><td className="px-3 py-3">{variant.sku || '-'}</td><td className="px-3 py-3 text-right">{variant.current_stock ?? 'Not tracked'}</td><td className="px-3 py-3">{variant.stock_status === 'in_stock' ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">In stock</span> : <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700">Out of stock</span>}</td></tr>)}</tbody>
+            <table className="min-w-full text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-3 py-2 text-left">Variant</th><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-right">Stock</th></tr></thead>
+              <tbody>{detail.variants.map((variant) => <tr key={variant.id} className="border-t"><td className="px-3 py-3"><NameStack name={variant.name} cnName={variant.cn_name} primaryClassName="font-medium text-slate-900" secondaryClassName="text-xs text-slate-500" /></td><td className="px-3 py-3">{variant.sku || '-'}</td><td className="px-3 py-3">{variant.stock_status === 'in_stock' ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">In stock</span> : <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700">Out of stock</span>}</td><td className="px-3 py-3 text-right">{variant.current_stock ?? 'Not tracked'}</td></tr>)}</tbody>
             </table>
           </> : null}
         </div>

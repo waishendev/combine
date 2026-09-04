@@ -261,10 +261,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
-        <p className="font-medium">Default search:<strong>{formatDisplayDay(defaults.from)}</strong> to{' '}
-        <strong>{formatDisplayDay(defaults.to)}</strong>. </p>
-      </div>
+
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         This report uses <strong>order_items cost snapshots</strong>. Missing cost snapshots are treated as RM 0.00 and flagged.
@@ -316,6 +313,28 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
           <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" onClick={() => { setSearch(searchInput.trim()); setPage(1) }}>Apply</button>
           <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={resetFilters}>Reset</button>
         </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3">
+        <label htmlFor="product-profit-page-size" className="text-sm text-gray-700">
+          Show
+        </label>
+        <select
+          id="product-profit-page-size"
+          value={perPage}
+          onChange={(e) => {
+            setPerPage(Number(e.target.value))
+            setPage(1)
+          }}
+          className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+          disabled={loading}
+        >
+          {[15, 30, 50, 100].map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -383,9 +402,6 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
         <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
           <div className="text-slate-600">Showing {startItem} - {endItem} of {total}</div>
           <div className="flex items-center gap-2">
-            <select className="rounded-md border px-2 py-1" value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1) }}>
-              {[15, 30, 50, 100].map((size) => <option key={size} value={size}>{size}/page</option>)}
-            </select>
             <button className="rounded-md border px-3 py-1 disabled:opacity-50" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
             <span className="text-slate-700">Page {page} / {lastPage}</span>
             <button className="rounded-md border px-3 py-1 disabled:opacity-50" disabled={page >= lastPage || loading} onClick={() => setPage((p) => Math.min(lastPage, p + 1))}>Next</button>
