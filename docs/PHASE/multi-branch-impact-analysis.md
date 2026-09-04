@@ -502,6 +502,58 @@ Branch-scoped Product listing is intentionally driven by `store_location_product
 
 Phase 9 converts the rendered ecommerce dashboard inventory and sales surfaces to the authorized shared Header Branch Context and fixes Orders table Branch state ownership. All Branches is server-derived accessible scope, with legacy NULL transaction activity explicitly Unassigned; specific Branch never absorbs NULL. Global masters and entitlement balances remain global. The audit matrix, 52-point regression, limitations, and non-destructive production checklist are maintained in [the Phase 9 reporting runbook](phase-9-reporting-runbook.md).
 
+### Cash Shift and Product Profit Branch visibility (2026-09-04)
+
+- Cash Shift report rows are individual persisted `pos_cash_shifts` OPEN/CLOSE events. Their authoritative Branch is `pos_cash_shifts.store_location_id`; Staff or current Header assignment is never used as a historical substitute. The report eager-loads StoreLocation metadata with the page query. All Branches shows a Branch column (and the same Branch in its detail drawer), while a specific Header Branch hides the redundant column. Existing All compatibility retains NULL shifts as **Unassigned**; specific scope excludes NULL.
+- Product Profit uses persisted `orders.store_location_id`, joined once to StoreLocation, rather than Product availability. In All Branches, table grain is Branch + Product + Variant (including a separate Unassigned group); in a specific Branch it remains Product + Variant within that authorized Branch and the Branch column is hidden. Detail requests retain the selected row's Branch grain.
+- Product Profit cards deliberately remain ungrouped totals over the authorized selected scope. Cost snapshots, missing-cost treatment, sales/profit/margin calculations, filters, pagination and distinct Order counting are unchanged. Cash Shift cards likewise retain their existing live-pool and filtered-period semantics.
+- Neither page currently offers an export, so no export format changed. All access remains the server-derived accessible Branch union via the existing access services, and no per-row Branch lookup or new index was introduced.
+
+#### Product Profit Unassigned audit and recovery
+
+The Product Profit Branch cell intentionally displays only `store_locations.name`; it does not display the Branch code. **Unassigned** is emitted only when the grouped persisted `orders.store_location_id` is NULL. A non-NULL Order whose StoreLocation metadata cannot be joined is shown as **Unknown Branch**, making referential/report defects distinguishable from genuine unresolved history. Product availability, Staff assignment, inventory and Header state are never attribution evidence.
+
+The report path is `order_items.order_id -> orders.id`, and Branch comes from `orders.store_location_id`; the StoreLocation left join supplies display metadata only. All groups independently on `o.store_location_id` plus Product/Variant snapshot identity, so attributed and NULL sales of the same Product cannot merge. Product Profit includes only paid/refunded payments, report-valid Order statuses (`paid`, `packed`, `shipped`, `completed`), non-NULL Product IDs, and Product/legacy-NULL line types.
+
+Use this read-only PostgreSQL audit for the affected Product names. It uses actual report columns and reproduces the report's eligibility boundary while exposing linked Booking evidence and the Online/POS channel rule:
+
+```sql
+SELECT
+    oi.id AS order_item_id,
+    oi.order_id,
+    oi.product_id,
+    oi.product_variant_id,
+    oi.product_name_snapshot,
+    COALESCE(oi.variant_sku_snapshot, oi.sku_snapshot) AS sku,
+    o.store_location_id,
+    sl.code AS branch_code,
+    sl.name AS branch_name,
+    CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'pos' END AS report_channel,
+    o.pickup_or_shipping,
+    o.pickup_store_id,
+    o.created_at,
+    o.placed_at,
+    oi.booking_id,
+    b.store_location_id AS booking_store_location_id
+FROM order_items AS oi
+JOIN orders AS o ON o.id = oi.order_id
+LEFT JOIN store_locations AS sl ON sl.id = o.store_location_id
+LEFT JOIN bookings AS b ON b.id = oi.booking_id
+WHERE o.store_location_id IS NULL
+  AND o.payment_status IN ('paid', 'refunded')
+  AND o.status IN ('paid', 'packed', 'shipped', 'completed')
+  AND oi.product_id IS NOT NULL
+  AND (oi.line_type IS NULL OR oi.line_type = 'product')
+  AND oi.product_name_snapshot IN (
+      'Iron on Patch',
+      'ILSO Sebum Softener 150ml + Cotton Pad',
+      'Mediheal Mask (OY-Exclusive)'
+  )
+ORDER BY COALESCE(o.placed_at, o.created_at) DESC, oi.id DESC;
+```
+
+`branch-transactions:backfill` covers NULL Orders only when deterministic evidence exists: a linked Booking Branch, or `pickup_store_id` for pickup/self-pickup Orders. Product-only historical Orders without either remain unresolved by design; `--store-code` is not used as a blanket Order fallback. Current POS checkout, Staff Consumables, Booking checkout/payment and Ecommerce fulfilment writers persist their resolved Cart, Booking or fulfilment Branch. Recovery must therefore start with `php artisan branch-transactions:backfill --store-code=<reviewed-code> --dry-run`; use `--force` only after reviewing evidence and a database backup. Orders with no deterministic evidence must remain Unassigned rather than being assigned to the supplied code.
+
 ## Phase 9B executable reporting completion (2026-08-15)
 
 Phase 9B applies the existing `ReportBranchScope` safe default across executable Sales, Booking, Appointment, POS, Product Profit, ecommerce commission, stock movement, Return and Package-usage reporting. Specific Branch excludes NULL; All is derived from authenticated accessible StoreLocations and retains meaningful NULL as Unassigned. Operational Sales/Booking CSVs reuse the scoped services. Physical reporting uses accessible Branch inventory; low stock is evaluated per Branch and ACTIVE-Branch notifications name the shortage Branch.

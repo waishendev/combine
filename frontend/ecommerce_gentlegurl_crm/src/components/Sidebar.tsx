@@ -171,18 +171,18 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             href: '/ecommerce/commissions',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
-          {
-            key: 'my-pos-summary',
-            label: 'My POS Summary',
-            href: '/reports/my-pos-summary',
-            requiredPermission: 'reports.my-pos-summary.view',
-          },
-          {
-            key: 'pos-summary',
-            label: 'POS Summary Report',
-            href: '/reports/pos-summary',
-            requiredPermission: 'reports.pos-summary.view',
-          },
+          // {
+          //   key: 'my-pos-summary',
+          //   label: 'My POS Summary',
+          //   href: '/reports/my-pos-summary',
+          //   requiredPermission: 'reports.my-pos-summary.view',
+          // },
+          // {
+          //   key: 'pos-summary',
+          //   label: 'POS Summary Report',
+          //   href: '/reports/pos-summary',
+          //   requiredPermission: 'reports.pos-summary.view',
+          // },
           {
             key: 'cash-shifts',
             label: 'Cash Shift Report',

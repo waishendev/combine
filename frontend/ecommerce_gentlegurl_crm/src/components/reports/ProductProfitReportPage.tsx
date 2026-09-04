@@ -6,6 +6,8 @@ import { ReportDetailDrawer, ReportViewDetailsButton } from './ReportActions'
 import { useBranch } from '@/contexts/BranchContext'
 
 type ProductProfitRow = {
+  store_location_id?: number | null
+  store_location?: { id: number; name: string; code: string | null } | null
   product_id: number
   product_variant_id: number | null
   product_name: string
@@ -65,8 +67,34 @@ type Props = {
   initialSearch?: string
 }
 
+function formatYmd(date: Date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** Matches backend default when date_from / date_to are omitted: current calendar month. */
+function defaultMonthRange() {
+  const today = new Date()
+  const from = new Date(today.getFullYear(), today.getMonth(), 1)
+  const to = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+  return { from: formatYmd(from), to: formatYmd(to) }
+}
+
+function formatDisplayDay(ymd: string) {
+  const d = new Date(`${ymd}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return ymd
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(d)
+}
+
 export default function ProductProfitReportPage({ initialDateFrom = '', initialDateTo = '', initialSearch = '' }: Props) {
   const { selectedBranchId } = useBranch()
+  const isAllBranches = selectedBranchId === null
+  const tableColumnCount = isAllBranches ? 10 : 9
+  const defaults = useMemo(() => defaultMonthRange(), [])
+  const resolvedInitialFrom = initialDateFrom || defaults.from
+  const resolvedInitialTo = initialDateTo || defaults.to
   const [rows, setRows] = useState<ProductProfitRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,8 +103,8 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
   const [perPage, setPerPage] = useState(15)
   const [search, setSearch] = useState(initialSearch)
   const [searchInput, setSearchInput] = useState(initialSearch)
-  const [dateFrom, setDateFrom] = useState(initialDateFrom)
-  const [dateTo, setDateTo] = useState(initialDateTo)
+  const [dateFrom, setDateFrom] = useState(resolvedInitialFrom)
+  const [dateTo, setDateTo] = useState(resolvedInitialTo)
   const [categoryId, setCategoryId] = useState('')
   const [channel, setChannel] = useState('')
 
@@ -183,6 +211,10 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
       if (dateTo) qs.set('date_to', dateTo)
       if (categoryId) qs.set('category_id', categoryId)
       if (channel) qs.set('channel', channel)
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
+      if (row.store_location_id) qs.set('branch_store_location_id', String(row.store_location_id))
+      else if (isAllBranches) qs.set('detail_branch', 'unassigned')
 
       const res = await fetch(`/api/proxy/admin/reports/product-profit?${qs.toString()}`, { cache: 'no-store' })
       const data = await res.json().catch(() => ({})) as Partial<ProductProfitResponse> & { message?: string }
@@ -208,8 +240,32 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
     { label: 'Missing Cost Items', value: summary?.missing_cost_items_count ?? 0, accent: 'rose' as const },
   ], [summary])
 
+  const periodLabel = dateFrom && dateTo
+    ? `${formatDisplayDay(dateFrom)} – ${formatDisplayDay(dateTo)}`
+    : dateFrom
+      ? `From ${formatDisplayDay(dateFrom)}`
+      : dateTo
+        ? `Until ${formatDisplayDay(dateTo)}`
+        : 'All dates'
+
+  const resetFilters = () => {
+    const month = defaultMonthRange()
+    setSearchInput('')
+    setSearch('')
+    setDateFrom(month.from)
+    setDateTo(month.to)
+    setCategoryId('')
+    setChannel('')
+    setPage(1)
+  }
+
   return (
     <div className="space-y-6">
+      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+        <p className="font-medium">Default search:<strong>{formatDisplayDay(defaults.from)}</strong> to{' '}
+        <strong>{formatDisplayDay(defaults.to)}</strong>. </p>
+      </div>
+
       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         This report uses <strong>order_items cost snapshots</strong>. Missing cost snapshots are treated as RM 0.00 and flagged.
       </div>
@@ -221,6 +277,12 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-slate-800">Filters</p>
+          <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+            Showing period: {periodLabel}
+          </p>
+        </div>
         <div className="grid gap-3 lg:grid-cols-6">
           <label className="text-sm font-medium text-slate-700">
             Date From
@@ -252,7 +314,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" onClick={() => { setSearch(searchInput.trim()); setPage(1) }}>Apply</button>
-          <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={() => { setSearchInput(''); setSearch(''); setDateFrom(''); setDateTo(''); setCategoryId(''); setChannel(''); setPage(1) }}>Reset</button>
+          <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={resetFilters}>Reset</button>
         </div>
       </div>
 
@@ -261,6 +323,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
+                {isAllBranches ? <th className="px-4 py-3 text-left">Branch</th> : null}
                 <th className="px-4 py-3 text-left">Product</th>
                 <th className="px-4 py-3 text-left">Variant</th>
                 <th className="px-4 py-3 text-right">Quantity Sold</th>
@@ -274,13 +337,18 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>Loading product profit report...</td></tr>
+                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={tableColumnCount}>Loading product profit report...</td></tr>
               ) : error ? (
-                <tr><td className="px-4 py-6 text-center text-red-600" colSpan={9}>{error}</td></tr>
+                <tr><td className="px-4 py-6 text-center text-red-600" colSpan={tableColumnCount}>{error}</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>No product profit data found.</td></tr>
+                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={tableColumnCount}>No product profit data found.</td></tr>
               ) : rows.map((row) => (
-                <tr key={`${row.product_id}:${row.product_variant_id ?? 'base'}`} className="border-t hover:bg-blue-50/40">
+                <tr key={`${row.store_location_id ?? 'unassigned'}:${row.product_id}:${row.product_variant_id ?? 'base'}`} className="border-t hover:bg-blue-50/40">
+                  {isAllBranches ? (
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-700">
+                      {row.store_location_id === null ? 'Unassigned' : (row.store_location?.name ?? 'Unknown Branch')}
+                    </td>
+                  ) : null}
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{row.product_name}</div>
                     {row.product_cn_name ? <div className="text-xs text-slate-500">{row.product_cn_name}</div> : null}

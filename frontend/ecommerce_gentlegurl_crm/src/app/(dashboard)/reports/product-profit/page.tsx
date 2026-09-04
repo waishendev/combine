@@ -42,6 +42,7 @@ export default async function ProductProfitReportRoute({ searchParams }: Product
       <h2 className="mb-2 text-3xl font-semibold">Product Profit Report</h2>
       <p className="mb-6 text-sm text-slate-600">
         Review gross sales, cost snapshots, gross profit, and margin by product and variant.
+        Opens on the current calendar month by default — change the date filters for another period.
       </p>
 
       <ProductProfitReportPage

@@ -31,9 +31,11 @@ php artisan expense-branch:backfill --store-code=PNG --force
 
 php artisan role-branch:reconcile --store-code=PNG --dry-run
 
-php artisan commission-branch:reconcile --store-code=PNG --dry-run
-
 php artisan role-branch:reconcile --store-code=PNG --force
+
+
+
+php artisan commission-branch:reconcile --store-code=PNG --dry-run
 
 php artisan commission-branch:reconcile --store-code=PNG --force
 
@@ -49,7 +51,9 @@ php artisan role-branch:replicate --store-codes=PNG --force
 
 
 
+php artisan role-branch:cleanup-legacy-global --dry-run
 
+php artisan role-branch:cleanup-legacy-global --force --confirm=CLEANUP_LEGACY_GLOBAL_ROLES
 
 
 php artisan role-branch:replicate --store-codes=PNG,asdsadas --dry-run
