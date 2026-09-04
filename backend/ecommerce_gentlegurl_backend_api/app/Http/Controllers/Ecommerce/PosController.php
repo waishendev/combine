@@ -117,6 +117,12 @@ class PosController extends Controller
      */
     private ?array $appointmentSearchPackageBalanceByCustomerService = null;
 
+    /**
+     * When true (history list preload window), skip package-eligibility counts in financial summary.
+     * History responses do not expose can_apply_package / eligible_package_count.
+     */
+    private bool $appointmentFinancialSummarySkipEligibility = false;
+
     private const APPOINTMENT_SEARCH_ACTIVE_ORDER_LINE_TYPES = [
         'booking_addon',
         'booking_deposit',
@@ -157,6 +163,48 @@ class PosController extends Controller
         $this->appointmentSearchBookingServicesById = null;
         $this->appointmentSearchRefundsByBookingId = null;
         $this->appointmentSearchPackageBalanceByCustomerService = null;
+        $this->appointmentFinancialSummarySkipEligibility = false;
+    }
+
+    /**
+     * Request-local financial preload window (same helpers as appointmentSearch).
+     * Used by admin appointment-history list mapping so mapHistoryBooking shares one PosController instance.
+     *
+     * @param  \Illuminate\Support\Collection<int, Booking>|iterable<int, Booking>  $bookings
+     * @param  callable(): mixed  $callback
+     * @return mixed
+     */
+    public function withAppointmentFinancialPreload($bookings, callable $callback): mixed
+    {
+        $bookings = collect($bookings)
+            ->filter(fn ($booking) => $booking instanceof Booking)
+            ->values();
+        $bookingIds = $bookings
+            ->map(fn (Booking $booking) => (int) $booking->id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->beginAppointmentSearchMemo();
+        $this->appointmentFinancialSummarySkipEligibility = true;
+        try {
+            if ($bookingIds !== []) {
+                $this->preloadAppointmentSearchActiveOrderItems($bookingIds);
+                $this->preloadAppointmentSearchBookingServices($bookings);
+                $this->preloadAppointmentSearchRefunds($bookingIds);
+                // History list does not surface eligibility counts; skip balance preload.
+                $this->appointmentSearchPackageBalanceByCustomerService = [];
+                $this->preloadAppointmentSearchStaffSplits($bookings);
+                $this->preloadAppointmentSearchPosCartIds($bookingIds);
+                $this->preloadAppointmentSearchPackageUsages($bookings);
+                $this->preloadAppointmentSearchVisitFinalized($bookingIds);
+            }
+
+            return $callback();
+        } finally {
+            $this->endAppointmentSearchMemo();
+        }
     }
 
     /**
@@ -811,6 +859,7 @@ class PosController extends Controller
             $this->preloadAppointmentSearchPosCartIds($pageBookingIds);
             // After pos_cart_ids memo is seeded — claims OR branches depend on it.
             $this->preloadAppointmentSearchPackageUsages($pageBookings);
+            $this->preloadAppointmentSearchVisitFinalized($pageBookingIds);
         }
         $holdMetaByBookingId = $this->preloadHoldDepositOrderMetaForBookings(
             $pageBookings
@@ -9898,6 +9947,72 @@ class PosController extends Controller
     }
 
     /**
+     * Seed visit_finalized memo for a booking ID set (one OSI scan instead of N exists()).
+     *
+     * Mirrors appointmentVisitCheckoutFinalized:
+     * - true if active order_items include booking_settlement
+     * - else true if an OrderServiceItem exists on an order that has no booking_deposit line for that booking
+     *
+     * @param  list<int>  $bookingIds
+     */
+    protected function preloadAppointmentSearchVisitFinalized(array $bookingIds): void
+    {
+        if (! $this->appointmentSearchMemoEnabled) {
+            return;
+        }
+
+        $bookingIds = collect($bookingIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        foreach ($bookingIds as $bookingId) {
+            $this->appointmentSearchMemo["visit_finalized:{$bookingId}"] = false;
+        }
+
+        if ($bookingIds === []) {
+            return;
+        }
+
+        $remaining = [];
+        foreach ($bookingIds as $bookingId) {
+            if ($this->appointmentSearchActiveOrderItemsByBookingId !== null) {
+                $preloaded = $this->appointmentSearchActiveOrderItemsByBookingId->get($bookingId, collect());
+                if ($preloaded->contains(fn (OrderItem $item) => (string) $item->line_type === 'booking_settlement')) {
+                    $this->appointmentSearchMemo["visit_finalized:{$bookingId}"] = true;
+
+                    continue;
+                }
+            }
+            $remaining[] = $bookingId;
+        }
+
+        if ($remaining === []) {
+            return;
+        }
+
+        $finalizedIds = DB::table('order_service_items as osi')
+            ->whereIn('osi.booking_id', $remaining)
+            ->whereNotExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('order_items as oi')
+                    ->whereColumn('oi.order_id', 'osi.order_id')
+                    ->whereColumn('oi.booking_id', 'osi.booking_id')
+                    ->where('oi.line_type', 'booking_deposit');
+            })
+            ->distinct()
+            ->pluck('osi.booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        foreach ($finalizedIds as $bookingId) {
+            $this->appointmentSearchMemo["visit_finalized:{$bookingId}"] = true;
+        }
+    }
+
+    /**
      * Active order items for a booking, optionally filtered by line_type / variant snapshot.
      * Uses P1-B preload during appointmentSearch; otherwise falls back to activeBookingOrderItemQuery.
      *
@@ -13105,6 +13220,15 @@ class PosController extends Controller
     public function appointmentFinancialSummaryForBooking(Booking $booking): array
     {
         $booking->loadMissing(['service', 'customer']);
+        $bookingId = (int) $booking->id;
+        if ($bookingId > 0 && $this->appointmentSearchMemoEnabled) {
+            /** @var array<string, mixed> $summary */
+            $summary = $this->rememberAppointmentSearch("fin_summary:{$bookingId}", function () use ($booking) {
+                return $this->resolveAppointmentFinancialSummary($booking);
+            });
+
+            return $summary;
+        }
 
         return $this->resolveAppointmentFinancialSummary($booking);
     }
@@ -13377,19 +13501,8 @@ class PosController extends Controller
         $packageClaims = $this->resolvePerLinePackageClaims($booking, []);
         $packageUsages = collect($packageClaims);
         // Prefer the early usage row already loaded above — avoids a redundant find by usage_id.
+        // resolveAppointmentPackageUsageEarly already includes the POS-cart booking_id fallback when needed.
         $packageUsage = $packageUsageEarly;
-
-        $posCartItemIds = $this->resolvePosCartServiceItemIdsForBookingCached((int) $booking->id);
-
-        if (! $packageUsage && $booking->customer_id && $booking->service_id && $posCartItemIds !== []) {
-            $packageUsage = CustomerServicePackageUsage::query()
-                ->where('customer_id', (int) $booking->customer_id)
-                ->where('booking_service_id', (int) $booking->service_id)
-                ->whereIn('booking_id', $posCartItemIds)
-                ->whereIn('status', ['reserved', 'consumed'])
-                ->latest('id')
-                ->first();
-        }
 
         $coveredByPackage = $packageUsage !== null && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true);
         $claimedServiceIds = $packageUsages
@@ -13421,7 +13534,13 @@ class PosController extends Controller
         } else {
             $packageOffset = $coveredByPackage ? max(0.0, $originalServiceAmount) : 0.0;
         }
-        $packageEligibility = $this->resolveAppointmentPackageEligibility($booking, $packageUsage, $claimedServiceIds);
+        $packageEligibility = $this->appointmentFinancialSummarySkipEligibility
+            ? [
+                'can_apply_package' => false,
+                'package_disabled_reason' => null,
+                'eligible_package_count' => 0,
+            ]
+            : $this->resolveAppointmentPackageEligibility($booking, $packageUsage, $claimedServiceIds);
 
         $serviceOutstandingRows = $mainSettlementItems->map(function (array $item, int $idx) use ($depositPaid, $claimedServiceIds, $coveredByPackage, $originalServiceAmount) {
             $lineAmount = max(0, (float) ($item['extra_price'] ?? 0));

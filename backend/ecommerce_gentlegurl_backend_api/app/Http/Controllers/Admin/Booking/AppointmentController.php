@@ -26,6 +26,25 @@ use Illuminate\Support\Facades\Storage;
 
 class AppointmentController extends Controller
 {
+    /**
+     * Shared PosController for a history list preload window (must match financial memo instance).
+     */
+    private ?PosController $historyPosController = null;
+
+    /**
+     * Preloaded booking_service_staff_splits for history list mapping.
+     *
+     * @var array<int, list<array{staff_id: int, staff_name: string, share_percent: int, share_amount?: float|null, split_mode?: string|null}>>|null
+     */
+    private ?array $historyStaffSplitsByBookingId = null;
+
+    /**
+     * Preloaded staff id → name for mapHistoryRawStaffSplits.
+     *
+     * @var array<int, string>|null
+     */
+    private ?array $historyStaffNameById = null;
+
     public function __construct(
         private readonly StaffCommissionService $staffCommissionService,
         private readonly CustomerServicePackageService $customerServicePackageService,
@@ -110,16 +129,8 @@ class AppointmentController extends Controller
     {
         $query = Booking::query()->with(['service', 'staff', 'customer', 'storeLocation:id,name,code']);
         $this->applyBranchScope($query, $request);
+        $this->applyHistoryCreatedAtFilters($query, $request);
 
-        if ($request->filled('from_date')) {
-            $query->whereDate('created_at', '>=', $request->string('from_date'));
-        }
-        if ($request->filled('to_date')) {
-            $query->whereDate('created_at', '<=', $request->string('to_date'));
-        }
-        if ($request->filled('date')) {
-            $query->whereDate('created_at', $request->string('date'));
-        }
         if ($request->filled('staff_id')) {
             $query->where('staff_id', (int) $request->staff_id);
         }
@@ -150,7 +161,7 @@ class AppointmentController extends Controller
             $paginator = $query->orderByDesc('created_at')->orderByDesc('id')->paginate($perPage, ['*'], 'page', $page);
 
             return $this->respond([
-                'data' => collect($paginator->items())->map(fn (Booking $booking) => $this->mapHistoryBooking($booking))->values(),
+                'data' => $this->mapHistoryBookings(collect($paginator->items()))->values(),
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
                 'per_page' => $paginator->perPage(),
@@ -158,13 +169,17 @@ class AppointmentController extends Controller
             ]);
         }
 
-        $rows = $query->orderByDesc('created_at')->orderByDesc('id')->get()
-            ->map(fn (Booking $booking) => $this->mapHistoryBooking($booking))
-            ->filter(fn (array $row) => strtolower((string) $row['computed_payment_status']) === $paymentStatus)
-            ->values();
+        // Same semantics: compute payment status for every matching row, then paginate in PHP.
+        // Status-only pass skips response shaping; full map runs only for the requested page.
+        $matchedBookings = $this->filterHistoryBookingsByPaymentStatus(
+            $query->orderByDesc('created_at')->orderByDesc('id')->get(),
+            $paymentStatus,
+        );
 
-        $total = $rows->count();
-        $pageRows = $rows->forPage($page, $perPage)->values();
+        $total = $matchedBookings->count();
+        $pageRows = $this->mapHistoryBookings(
+            $matchedBookings->forPage($page, $perPage)->values()
+        )->values();
 
         return $this->respond([
             'data' => $pageRows,
@@ -190,7 +205,8 @@ class AppointmentController extends Controller
             'storeLocation:id,name,code',
         ])->findOrFail($id);
         $this->authorizeBookingBranch($booking, request());
-        $row = $this->mapHistoryBooking($booking);
+        $row = $this->mapHistoryBookings(collect([$booking]))->first()
+            ?? $this->mapHistoryBooking($booking);
         $logs = BookingLog::query()
             ->where('booking_id', $booking->id)
             ->orderByDesc('created_at')
@@ -311,10 +327,236 @@ class AppointmentController extends Controller
             ->all();
     }
 
+    /**
+     * Sargable created_at bounds (same calendar-day semantics as whereDate in app TZ).
+     */
+    private function applyHistoryCreatedAtFilters($query, Request $request): void
+    {
+        if ($request->filled('from_date')) {
+            $query->where(
+                'created_at',
+                '>=',
+                Carbon::parse((string) $request->string('from_date'))->startOfDay()
+            );
+        }
+        if ($request->filled('to_date')) {
+            $query->where(
+                'created_at',
+                '<=',
+                Carbon::parse((string) $request->string('to_date'))->endOfDay()
+            );
+        }
+        if ($request->filled('date')) {
+            $day = Carbon::parse((string) $request->string('date'));
+            $query->where('created_at', '>=', $day->copy()->startOfDay())
+                ->where('created_at', '<=', $day->copy()->endOfDay());
+        }
+    }
+
+    /**
+     * Map history rows with POS financial preload + batched staff-split/name lookups.
+     *
+     * @param  \Illuminate\Support\Collection<int, Booking>|iterable<int, Booking>  $bookings
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function mapHistoryBookings($bookings)
+    {
+        $bookings = collect($bookings)
+            ->filter(fn ($booking) => $booking instanceof Booking)
+            ->values();
+        if ($bookings->isEmpty()) {
+            return collect();
+        }
+
+        $posController = app(PosController::class);
+        $mapped = collect();
+
+        foreach ($bookings->chunk(100) as $chunk) {
+            $chunk = $chunk->values();
+            $this->historyPosController = $posController;
+            try {
+                $chunkMapped = $posController->withAppointmentFinancialPreload($chunk, function () use ($chunk) {
+                    $this->preloadHistoryStaffSplitsForBookings($chunk);
+                    $this->preloadHistoryStaffNamesForBookings($chunk);
+                    try {
+                        return $chunk->map(fn (Booking $booking) => $this->mapHistoryBooking($booking))->values();
+                    } finally {
+                        $this->historyStaffSplitsByBookingId = null;
+                        $this->historyStaffNameById = null;
+                    }
+                });
+                $mapped = $mapped->concat($chunkMapped);
+            } finally {
+                $this->historyPosController = null;
+            }
+        }
+
+        return $mapped->values();
+    }
+
+    /**
+     * Payment-status filter pass: compute status only (no service-block response shaping).
+     *
+     * @param  \Illuminate\Support\Collection<int, Booking>|iterable<int, Booking>  $bookings
+     * @return \Illuminate\Support\Collection<int, Booking>
+     */
+    private function filterHistoryBookingsByPaymentStatus($bookings, string $paymentStatus)
+    {
+        $bookings = collect($bookings)
+            ->filter(fn ($booking) => $booking instanceof Booking)
+            ->values();
+        if ($bookings->isEmpty()) {
+            return collect();
+        }
+
+        $paymentStatus = strtolower($paymentStatus);
+        $posController = app(PosController::class);
+        $matched = collect();
+
+        // Larger chunks cut preload overhead on wide payment-status scans.
+        foreach ($bookings->chunk(250) as $chunk) {
+            $chunk = $chunk->values();
+            $this->historyPosController = $posController;
+            try {
+                $posController->withAppointmentFinancialPreload($chunk, function () use ($chunk, $paymentStatus, $matched) {
+                    foreach ($chunk as $booking) {
+                        if ($this->resolveHistoryComputedPaymentStatusOnly($booking) === $paymentStatus) {
+                            $matched->push($booking);
+                        }
+                    }
+                });
+            } finally {
+                $this->historyPosController = null;
+            }
+        }
+
+        return $matched->values();
+    }
+
+    private function resolveHistoryComputedPaymentStatusOnly(Booking $booking): string
+    {
+        $booking->loadMissing(['service', 'customer']);
+        $posController = $this->historyPosController ?? app(PosController::class);
+        $summary = $posController->appointmentFinancialSummaryForBooking($booking);
+        $packageClaims = $posController->resolvePerLinePackageClaims($booking, $summary);
+        $financial = $this->resolveHistoryFinancialsFromSummary($booking, $summary, $packageClaims);
+
+        return strtolower((string) ($financial['computed_payment_status'] ?? ''));
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Booking>  $bookings
+     */
+    private function preloadHistoryStaffSplitsForBookings($bookings): void
+    {
+        $bookingIds = $bookings
+            ->map(fn (Booking $booking) => (int) $booking->id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->historyStaffSplitsByBookingId = [];
+        foreach ($bookingIds as $bookingId) {
+            $this->historyStaffSplitsByBookingId[$bookingId] = [];
+        }
+
+        if ($bookingIds === []) {
+            return;
+        }
+
+        $splitRows = DB::table('booking_service_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->whereIn('splits.booking_id', $bookingIds)
+            ->orderBy('splits.id')
+            ->get(['splits.booking_id', 'splits.staff_id', 'staffs.name as staff_name', 'splits.split_percent', 'splits.share_amount', 'splits.split_mode']);
+
+        foreach ($splitRows as $row) {
+            $bookingId = (int) ($row->booking_id ?? 0);
+            $mapped = StaffSplitNormalizer::toReportSplit([
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+                'share_amount' => $row->share_amount,
+                'split_mode' => $row->split_mode ?? null,
+            ], (string) ($row->staff_name ?? '-'));
+            if ($bookingId <= 0 || $mapped['staff_id'] <= 0 || ($mapped['share_percent'] <= 0 && ($mapped['share_amount'] ?? 0) <= 0)) {
+                continue;
+            }
+            $this->historyStaffSplitsByBookingId[$bookingId][] = $mapped;
+        }
+
+        foreach ($bookings as $booking) {
+            $bookingId = (int) $booking->id;
+            if (($this->historyStaffSplitsByBookingId[$bookingId] ?? []) !== []) {
+                continue;
+            }
+            if ($booking->staff) {
+                $this->historyStaffSplitsByBookingId[$bookingId] = [[
+                    'staff_id' => (int) $booking->staff->id,
+                    'staff_name' => (string) ($booking->staff->name ?? '-'),
+                    'share_percent' => 100,
+                ]];
+            }
+        }
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Booking>  $bookings
+     */
+    private function preloadHistoryStaffNamesForBookings($bookings): void
+    {
+        $staffIds = [];
+        foreach ($bookings as $booking) {
+            foreach ((array) ($booking->addon_items_json ?? []) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                foreach ((array) ($item['staff_splits'] ?? []) as $split) {
+                    $staffId = (int) (is_array($split) ? ($split['staff_id'] ?? 0) : 0);
+                    if ($staffId > 0) {
+                        $staffIds[$staffId] = $staffId;
+                    }
+                }
+                foreach ((array) ($item['addon_items'] ?? []) as $addon) {
+                    if (! is_array($addon)) {
+                        continue;
+                    }
+                    foreach ((array) ($addon['staff_splits'] ?? []) as $split) {
+                        $staffId = (int) (is_array($split) ? ($split['staff_id'] ?? 0) : 0);
+                        if ($staffId > 0) {
+                            $staffIds[$staffId] = $staffId;
+                        }
+                    }
+                }
+            }
+            foreach ($this->historyStaffSplitsByBookingId[(int) $booking->id] ?? [] as $split) {
+                $staffId = (int) ($split['staff_id'] ?? 0);
+                if ($staffId > 0) {
+                    $staffIds[$staffId] = $staffId;
+                }
+            }
+            $staffId = (int) ($booking->staff_id ?? 0);
+            if ($staffId > 0) {
+                $staffIds[$staffId] = $staffId;
+            }
+        }
+
+        $this->historyStaffNameById = [];
+        if ($staffIds === []) {
+            return;
+        }
+
+        $this->historyStaffNameById = DB::table('staffs')
+            ->whereIn('id', array_values($staffIds))
+            ->pluck('name', 'id')
+            ->mapWithKeys(fn ($name, $id) => [(int) $id => (string) $name])
+            ->all();
+    }
+
     private function mapHistoryBooking(Booking $booking): array
     {
         $booking->loadMissing(['service', 'staff', 'customer']);
-        $posController = app(PosController::class);
+        $posController = $this->historyPosController ?? app(PosController::class);
         $summary = $posController->appointmentFinancialSummaryForBooking($booking);
         $packageClaims = $posController->resolvePerLinePackageClaims($booking, $summary);
         $financial = $this->resolveHistoryFinancialsFromSummary($booking, $summary, $packageClaims);
@@ -662,9 +904,14 @@ class AppointmentController extends Controller
     private function mapHistoryRawStaffSplits($rawSplits, array $fallback = []): array
     {
         $splits = collect(is_array($rawSplits) ? $rawSplits : []);
-        $staffNameLookup = DB::table('staffs')
-            ->whereIn('id', $splits->pluck('staff_id')->filter()->unique()->values()->all())
-            ->pluck('name', 'id');
+        $staffIds = $splits->pluck('staff_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        if ($this->historyStaffNameById !== null) {
+            $staffNameLookup = collect($this->historyStaffNameById)->only($staffIds);
+        } else {
+            $staffNameLookup = DB::table('staffs')
+                ->whereIn('id', $staffIds)
+                ->pluck('name', 'id');
+        }
 
         $mapped = $splits
             ->map(fn ($split) => StaffSplitNormalizer::toReportSplit([
@@ -699,9 +946,22 @@ class AppointmentController extends Controller
 
     private function resolveHistoryStaffSplits(Booking $booking): array
     {
+        $bookingId = (int) $booking->id;
+        if ($this->historyStaffSplitsByBookingId !== null) {
+            if (array_key_exists($bookingId, $this->historyStaffSplitsByBookingId)) {
+                return $this->historyStaffSplitsByBookingId[$bookingId];
+            }
+
+            return $booking->staff ? [[
+                'staff_id' => (int) $booking->staff->id,
+                'staff_name' => (string) ($booking->staff->name ?? '-'),
+                'share_percent' => 100,
+            ]] : [];
+        }
+
         $rows = DB::table('booking_service_staff_splits as splits')
             ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
-            ->where('splits.booking_id', (int) $booking->id)
+            ->where('splits.booking_id', $bookingId)
             ->orderBy('splits.id')
             ->get(['splits.staff_id', 'staffs.name as staff_name', 'splits.split_percent', 'splits.share_amount', 'splits.split_mode'])
             ->map(fn ($row) => StaffSplitNormalizer::toReportSplit([

@@ -1621,8 +1621,10 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.landing-page.update');
 
     Route::get('/appointments', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'index']);
+    // NEW ENHANCEMENT — appointment-history-query-v1 / v1b (batch financial preload + indexes + sargable dates + status-only payment filter)
     Route::get('/appointment-history', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'history']);
     Route::get('/appointment-history/{id}', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'historyShow']);
+    // END NEW ENHANCEMENT
     Route::get('/appointments/{id}', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'show']);
     Route::patch('/appointments/{id}/status', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'updateStatus']);
     Route::post('/appointments/{id}/photos', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'uploadPhoto']);

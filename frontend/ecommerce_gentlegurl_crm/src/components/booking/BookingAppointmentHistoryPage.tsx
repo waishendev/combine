@@ -552,10 +552,17 @@ export default function BookingAppointmentHistoryPage() {
 
   const loadStaffs = useCallback(async () => {
     try {
-      const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', { cache: 'no-store' })
+      const res = await fetch('/api/proxy/staffs/options/query?per_page=500&is_active=true', { cache: 'no-store' })
       const json = await res.json().catch(() => null) as { data?: StaffOption[] | { data?: StaffOption[] } } | null
       const data = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : []
-      setStaffs(data)
+      setStaffs(
+        data
+          .map((row) => ({
+            id: Number(row?.id),
+            name: String(row?.name ?? ''),
+          }))
+          .filter((row) => Number.isFinite(row.id) && row.id > 0),
+      )
     } catch {
       setStaffs([])
     }
