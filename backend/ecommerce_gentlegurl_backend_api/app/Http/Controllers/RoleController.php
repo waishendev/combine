@@ -9,6 +9,7 @@ use App\Services\ExpenseBranchScope;
 use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Validation\Rule;
 
 class RoleController extends Controller
@@ -219,7 +220,22 @@ class RoleController extends Controller
         $this->ensureNotSystemRole($role);
         $this->authorizeRole($request, $role);
 
-        $role->delete();
+        $assignedUserCount = $role->users()->pluck('users.id')
+            ->merge($role->branchUsers()->pluck('users.id'))
+            ->unique()
+            ->count();
+        if ($assignedUserCount > 0) {
+            $noun = $assignedUserCount === 1 ? 'user' : 'users';
+            abort(409, "This Role cannot be deleted because it is still assigned to {$assignedUserCount} {$noun}.");
+        }
+
+        try {
+            $role->delete();
+        } catch (QueryException) {
+            // A concurrent reference can appear after the explicit assignment check.
+            // Keep the database restriction and translate it into a safe business error.
+            abort(409, 'This Role cannot be deleted because it is still referenced by other records.');
+        }
 
         return $this->respond(null, __('Role deleted successfully.'));
     }
@@ -261,7 +277,7 @@ class RoleController extends Controller
             if ($allowSuperAdmin && $user && ($user->isSuperAdmin() || $user->canManageSystemAdmins())) {
                 return;
             }
-            abort(404);
+            abort(409, 'This protected system Role cannot be deleted.');
         }
     }
 

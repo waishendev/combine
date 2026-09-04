@@ -32,7 +32,16 @@ class CheckPermission
         $allowed = collect($required)->contains(fn (string $slug) => $permissionSlugs->contains($slug));
 
         if (! $allowed) {
-            return response()->json(['error' => 'Forbidden'], 403);
+            $message = $permission === 'roles.delete'
+                ? 'You do not have permission to delete Roles for this Branch.'
+                : 'Forbidden';
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'errors' => null,
+                'data' => null,
+            ], 403);
         }
 
         return $next($request);

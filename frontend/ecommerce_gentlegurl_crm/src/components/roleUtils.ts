@@ -23,7 +23,25 @@ export type RoleApiItem = {
   permissions_count?: number | string | null
   created_at?: string | null
   updated_at?: string | null
-  store_location?: { id?: number; name?: string | null } | null
+  store_location_id?: number | string | null
+  store_location?: { id?: number; name?: string | null; code?: string | null } | null
+}
+
+export const roleApiErrorMessage = (payload: unknown, fallback: string): string => {
+  if (!payload || typeof payload !== 'object') return fallback
+
+  const response = payload as { message?: unknown; errors?: unknown; error?: unknown }
+  if (typeof response.message === 'string' && response.message.trim() && response.message !== 'HTTP Error') {
+    return response.message
+  }
+  if (response.errors && typeof response.errors === 'object') {
+    for (const value of Object.values(response.errors as Record<string, unknown>)) {
+      if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+      if (typeof value === 'string') return value
+    }
+  }
+  if (typeof response.error === 'string' && response.error.trim()) return response.error
+  return fallback
 }
 
 export const mapRoleApiItemToRow = (item: RoleApiItem): RoleRowData => {
