@@ -70,6 +70,24 @@ Dry-run now prints every classification with Role ID, name, `is_system`, `store_
 
 User identity remains global and `store_location_user` remains the sole Branch-access authority. For every selected Branch, only Users who already have that access receive `(user_id, store_location_id, branch_role_id)` in `role_user_store_location`. The command never inserts, updates, or deletes Branch access. Eligible migrated operational `role_user` rows are removed only after all selected eligible assignments are written and verified in the transaction; platform/system and unresolved assignments remain. The legacy NULL Role definition is retained non-destructively for history/audit compatibility. Repeated force runs reuse matching Roles and assignments.
 
+### Reviewed cleanup of legacy global operational Roles
+
+Reconciliation and replication intentionally retain the source NULL Role definition: those commands create or move replacements and assignments, but do not assume that an operator is ready to delete historical protected definitions. After every required active Branch has been replicated, use the separate destructive cleanup in this order:
+
+```bash
+php artisan role-branch:reconcile --store-code=PNG --dry-run
+php artisan role-branch:reconcile --store-code=PNG --force
+php artisan role-branch:replicate --store-codes=PNG,OTHER_BRANCH --dry-run
+php artisan role-branch:replicate --store-codes=PNG,OTHER_BRANCH --force
+php artisan role-branch:cleanup-legacy-global --dry-run
+# Review every copy, permission, assignment, conflict, and summary line.
+php artisan role-branch:cleanup-legacy-global --force --confirm=CLEANUP_LEGACY_GLOBAL_ROLES
+```
+
+Cleanup is never invoked by migration or seeding. It always preserves every name in `multi_branch.platform_global_role_names` (`infra_core_x1`), regardless of `is_system`, assignments, or `--force`. `is_system` remains built-in/delete protection: legacy NULL `Staff` and `superAdmin` may be cleanup candidates even though normal API deletion remains blocked. Configured built-ins (`Staff`, `superAdmin`, and `Admin`) are recognized conservatively; another NULL Role needs existing Branch copies as ownership evidence, otherwise it remains ambiguous.
+
+A candidate is safe only when matching-name copies cover all active real Branches and every Branch assigned to its legacy Users, every required copy has the exact legacy Permission set and protection flag, every legacy `role_user` User has the corresponding copy assignment for every authoritative `store_location_user` row, and no Branch or supported polymorphic pivot still references the legacy Role ID. Force re-audits under locks, removes only verified obsolete `role_user` rows, and deletes only the safe NULL definitions. It never changes `store_location_user`, Branch Role assignments, Branch Role permissions, or global Permission definitions. Missing copies, permission/protection differences, assignment gaps, legacy-ID Branch references, and unclassified custom NULL Roles remain unresolved for operator review. Dry-run writes nothing; subsequent dry-run/force executions are idempotent no-ops after safe cleanup.
+
 Commission reconciliation assigns legacy tier policy to the approved target only when target thresholds do not conflict. A legacy snapshot is rebuilt only when persisted earning rows prove one or more Branches; multi-Branch evidence creates separate snapshots. Logs inherit Branch only for a single proven Branch. Rows without evidence remain NULL. Output reports pre/post earning and commission totals; tier-driven commission deltas are visible rather than normalized away.
 
 ## UI behavior

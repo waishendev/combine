@@ -5,6 +5,11 @@ return [
     // not by itself mean platform-global. Only these NULL Roles bypass Branches.
     'platform_global_role_names' => ['infra_core_x1'],
 
+    // Conservative evidence for classifying obsolete NULL built-ins during the
+    // explicit cleanup command. Custom NULL Roles still require existing Branch
+    // copies before they can become candidates.
+    'legacy_operational_role_names' => ['Staff', 'superAdmin', 'Admin'],
+
     'fresh_install_store_code' => env(
         'DEFAULT_STORE_LOCATION_CODE',
         env('MULTI_BRANCH_SEED_BRANCH_ONE_CODE', 'PNG'),
