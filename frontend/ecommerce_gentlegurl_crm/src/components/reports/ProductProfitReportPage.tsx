@@ -67,10 +67,34 @@ type Props = {
   initialSearch?: string
 }
 
+function formatYmd(date: Date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** Matches backend default when date_from / date_to are omitted: current calendar month. */
+function defaultMonthRange() {
+  const today = new Date()
+  const from = new Date(today.getFullYear(), today.getMonth(), 1)
+  const to = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+  return { from: formatYmd(from), to: formatYmd(to) }
+}
+
+function formatDisplayDay(ymd: string) {
+  const d = new Date(`${ymd}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return ymd
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(d)
+}
+
 export default function ProductProfitReportPage({ initialDateFrom = '', initialDateTo = '', initialSearch = '' }: Props) {
   const { selectedBranchId } = useBranch()
   const isAllBranches = selectedBranchId === null
   const tableColumnCount = isAllBranches ? 10 : 9
+  const defaults = useMemo(() => defaultMonthRange(), [])
+  const resolvedInitialFrom = initialDateFrom || defaults.from
+  const resolvedInitialTo = initialDateTo || defaults.to
   const [rows, setRows] = useState<ProductProfitRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -79,8 +103,8 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
   const [perPage, setPerPage] = useState(15)
   const [search, setSearch] = useState(initialSearch)
   const [searchInput, setSearchInput] = useState(initialSearch)
-  const [dateFrom, setDateFrom] = useState(initialDateFrom)
-  const [dateTo, setDateTo] = useState(initialDateTo)
+  const [dateFrom, setDateFrom] = useState(resolvedInitialFrom)
+  const [dateTo, setDateTo] = useState(resolvedInitialTo)
   const [categoryId, setCategoryId] = useState('')
   const [channel, setChannel] = useState('')
 
@@ -216,8 +240,32 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
     { label: 'Missing Cost Items', value: summary?.missing_cost_items_count ?? 0, accent: 'rose' as const },
   ], [summary])
 
+  const periodLabel = dateFrom && dateTo
+    ? `${formatDisplayDay(dateFrom)} – ${formatDisplayDay(dateTo)}`
+    : dateFrom
+      ? `From ${formatDisplayDay(dateFrom)}`
+      : dateTo
+        ? `Until ${formatDisplayDay(dateTo)}`
+        : 'All dates'
+
+  const resetFilters = () => {
+    const month = defaultMonthRange()
+    setSearchInput('')
+    setSearch('')
+    setDateFrom(month.from)
+    setDateTo(month.to)
+    setCategoryId('')
+    setChannel('')
+    setPage(1)
+  }
+
   return (
     <div className="space-y-6">
+      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+        <p className="font-medium">Default search:<strong>{formatDisplayDay(defaults.from)}</strong> to{' '}
+        <strong>{formatDisplayDay(defaults.to)}</strong>. </p>
+      </div>
+
       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         This report uses <strong>order_items cost snapshots</strong>. Missing cost snapshots are treated as RM 0.00 and flagged.
       </div>
@@ -229,6 +277,12 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-slate-800">Filters</p>
+          <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+            Showing period: {periodLabel}
+          </p>
+        </div>
         <div className="grid gap-3 lg:grid-cols-6">
           <label className="text-sm font-medium text-slate-700">
             Date From
@@ -260,7 +314,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" onClick={() => { setSearch(searchInput.trim()); setPage(1) }}>Apply</button>
-          <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={() => { setSearchInput(''); setSearch(''); setDateFrom(''); setDateTo(''); setCategoryId(''); setChannel(''); setPage(1) }}>Reset</button>
+          <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={resetFilters}>Reset</button>
         </div>
       </div>
 
