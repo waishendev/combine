@@ -899,6 +899,9 @@ class SalesChannelReportService
             ->selectRaw('COALESCE(SUM(net_amount), 0) as total_sales')
             ->selectRaw("COALESCE(SUM(CASE WHEN channel = 'online' THEN net_amount ELSE 0 END), 0) as online_sales")
             ->selectRaw("COALESCE(SUM(CASE WHEN channel = 'offline' THEN net_amount ELSE 0 END), 0) as offline_sales")
+            // Fold former grand_totals clone scans into the same aggregate (same numbers).
+            ->selectRaw('COALESCE(SUM(product_amount), 0) as product_amount')
+            ->selectRaw('COALESCE(SUM(discount), 0) as discount')
             ->first();
 
         $totalsPage = $this->aggregateEcommerceTotals($rows);
@@ -907,8 +910,8 @@ class SalesChannelReportService
         $refundNetTotal = (float) $refundRows->sum('net_amount');
         $grandTotals = [
             'orders_count' => (int) ($summaryRow->total_orders ?? 0) + ($refundNetTotal !== 0.0 ? (int) $refundRows->count() : 0),
-            'product_amount' => (float) ((clone $baseQuery)->sum('product_amount') ?? 0),
-            'discount' => (float) ((clone $baseQuery)->sum('discount') ?? 0),
+            'product_amount' => (float) ($summaryRow->product_amount ?? 0),
+            'discount' => (float) ($summaryRow->discount ?? 0),
             'net_amount' => (float) ($summaryRow->total_sales ?? 0) + $refundNetTotal,
         ];
 
@@ -1059,6 +1062,9 @@ class SalesChannelReportService
             ->selectRaw("COALESCE(SUM(CASE WHEN type = 'addon' THEN net_amount ELSE 0 END), 0) as addon_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN type = 'package_purchase' THEN net_amount ELSE 0 END), 0) as package_purchase_amount")
             ->selectRaw("COALESCE(SUM(CASE WHEN type = 'booking_product' THEN net_amount ELSE 0 END), 0) as booking_product_amount")
+            // Fold former grand_totals clone scans into the same aggregate (same numbers).
+            ->selectRaw('COALESCE(SUM(gross_amount), 0) as gross_amount')
+            ->selectRaw('COALESCE(SUM(discount), 0) as discount')
             ->first();
 
         $totalsPage = $this->aggregateBookingTotals($rows);
@@ -1068,8 +1074,8 @@ class SalesChannelReportService
             : 0.0;
         $grandTotals = [
             'orders_count' => (int) ($summaryRow->total_transactions ?? 0) + ($refundNetTotal !== 0.0 ? (int) $refundRows->count() : 0),
-            'gross_amount' => (float) ((clone $baseQuery)->sum('gross_amount') ?? 0),
-            'discount' => (float) ((clone $baseQuery)->sum('discount') ?? 0),
+            'gross_amount' => (float) ($summaryRow->gross_amount ?? 0),
+            'discount' => (float) ($summaryRow->discount ?? 0),
             'net_amount' => (float) ($summaryRow->total_booking_revenue ?? 0) + $refundNetTotal,
             'booking_deposit_amount' => (float) ($summaryRow->booking_deposit_amount ?? 0),
             'booking_settlement_amount' => (float) ($summaryRow->booking_settlement_amount ?? 0),

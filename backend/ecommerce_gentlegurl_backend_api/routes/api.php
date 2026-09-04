@@ -1455,16 +1455,19 @@ $protectedRoutes = function () {
             Route::get('/sales/by-customers', [SalesReportController::class, 'byCustomers'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
+            // NEW ENHANCEMENT — sales-pages-query-v1 / v1b (gateway batch, package-claim memo, item agg fold)
             Route::get('/sales/ecommerce', [SalesChannelReportController::class, 'ecommerce'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
 
             Route::get('/sales/booking', [SalesChannelReportController::class, 'booking'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
+            // END NEW ENHANCEMENT
 
             Route::get('/sales/{orderId}/details', [SalesChannelReportController::class, 'details'])
                 ->whereNumber('orderId')
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
 
+            // NEW ENHANCEMENT — sales-pages-query-v1 / v1b
             Route::get('/sales-summary', [SalesChannelReportController::class, 'salesSummary'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
@@ -1476,6 +1479,7 @@ $protectedRoutes = function () {
 
             Route::get('/sales/visual-daily/all', [SalesChannelReportController::class, 'visualDailyAll'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.with-void.view');
+            // END NEW ENHANCEMENT
 
             Route::get('/sales/visual-period/all', [SalesChannelReportController::class, 'visualPeriodAll'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');

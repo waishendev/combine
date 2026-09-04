@@ -626,27 +626,16 @@ class SalesVisualDailyReportService
         $paymentBlock = $this->paymentMethodsForAllWorkspace($start, $end);
         $lineTotal = $this->lineNetAmountSql('oi');
 
-        $itemEcommerce = $this->applyOrderScope(
+        // One aggregate for product/service/package (same split as before; avoids a second scan).
+        $itemAgg = $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
-            // service_package lines are booking/POS package purchases and are counted in
-            // $itemBooking below. Including them here too doubles the Package item type
-            // in the combined All workspace (e.g. RM899 shows as RM1,798).
-            ->whereIn('oi.line_type', ['product', 'service'])
+            ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'product' THEN $lineTotal ELSE 0 END), 0) as product")
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'service' THEN $lineTotal ELSE 0 END), 0) as service")
-            ->selectRaw("0 as multi_package")
-            ->first();
-
-        $bookingPackageSub = $this->applyOrderScope(
-            ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
-                ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
-                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
-        )
-            ->where('oi.line_type', 'service_package')
-            ->selectRaw("COALESCE(SUM($lineTotal), 0) as multi_package")
+            ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'service_package' THEN $lineTotal ELSE 0 END), 0) as multi_package")
             ->first();
 
         $ecKeyed = $this->keyRowsByStaffId($this->ecommerceStaffProductSales($start, $end, $lineTotal));
@@ -677,9 +666,9 @@ class SalesVisualDailyReportService
             'refunds' => $this->refundRows($start, $end),
             'item_types' => [
                 'estimate' => true,
-                'product' => round((float) ($itemEcommerce->product ?? 0), 2),
-                'service' => round((float) ($itemEcommerce->service ?? 0) + $this->bookingServiceItemTypeAmount($start, $end), 2),
-                'multi_package' => round((float) ($itemEcommerce->multi_package ?? 0) + (float) ($bookingPackageSub->multi_package ?? 0), 2),
+                'product' => round((float) ($itemAgg->product ?? 0), 2),
+                'service' => round((float) ($itemAgg->service ?? 0) + $this->bookingServiceItemTypeAmount($start, $end), 2),
+                'multi_package' => round((float) ($itemAgg->multi_package ?? 0), 2),
                 'package_redemption' => $packageRedemption,
                 'unlimited_plan' => 0.0,
                 'other' => 0.0,
@@ -761,30 +750,18 @@ class SalesVisualDailyReportService
     private function bookingServiceItemTypeAmount(Carbon $start, Carbon $end): float
     {
         $lineTotal = $this->lineNetAmountSql('oi');
-
-        $settledBookingIds = $this->applyOrderScope(
-            DB::table('order_items as oi')
-                ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->where('oi.line_type', 'booking_settlement')
-                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
-                ->whereNotNull('oi.booking_id')
-        )
-            ->pluck('oi.booking_id')
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->unique()
-            ->values()
-            ->all();
+        $settledBookingIds = $this->settledBookingIdsInRange($start, $end);
 
         $settledAmount = 0.0;
         if ($settledBookingIds !== []) {
+            $packageClaimBookingIds = $this->bookingIdsWithPackageClaimRedemption($settledBookingIds);
             $settledQuery = $this->applyOrderScope(
                 DB::table('order_items as oi')
                     ->join('orders as o', 'o.id', '=', 'oi.order_id')
                     ->whereIn('oi.booking_id', $settledBookingIds)
                     ->whereIn('oi.line_type', self::BOOKING_STAFF_SALES_LINE_TYPES)
             );
-            $this->excludePackageRefundedBookingDeposits($settledQuery, 'oi');
+            $this->excludePackageRefundedBookingDeposits($settledQuery, 'oi', $packageClaimBookingIds);
             $settledAmount = (float) $settledQuery
                 ->selectRaw("COALESCE(SUM($lineTotal), 0) as v")
                 ->value('v');
@@ -804,6 +781,10 @@ class SalesVisualDailyReportService
 
     private function packageRedemptionValue(Carbon $start, Carbon $end): float
     {
+        // Only candidate zero-net / positive-gross settlement|addon lines can contribute;
+        // prefilter so the correlated usage lookup is not evaluated on every booking line.
+        $netExpr = "COALESCE(oi.line_total_after_discount, oi.effective_line_total, oi.line_total, 0)::numeric";
+        $grossExpr = "COALESCE(oi.line_total_snapshot, oi.line_total, 0)::numeric";
         $redemptionExpr = $this->packageRedemptionLineValueExpr('oi');
 
         return round((float) $this->applyOrderScope(
@@ -813,7 +794,11 @@ class SalesVisualDailyReportService
             'o'
         )
             ->whereIn('oi.line_type', ['booking_settlement', 'booking_addon'])
-            ->selectRaw("COALESCE(SUM($redemptionExpr), 0) as v")
+            ->whereNotNull('oi.booking_id')
+            ->whereNotNull('oi.booking_service_id')
+            ->whereRaw("{$netExpr} <= 0.0001")
+            ->whereRaw("{$grossExpr} > 0.0001")
+            ->selectRaw("COALESCE(SUM({$redemptionExpr}), 0) as v")
             ->value('v'), 2);
     }
 
@@ -829,9 +814,28 @@ class SalesVisualDailyReportService
      * A deposit is returned when the service is ultimately paid by a package claim.
      * Exclude that old deposit from staff sales; the package redemption value is the
      * commissionable service value for the completed booking.
+     *
+     * When $packageClaimBookingIds is provided (precomputed), uses a cheap NOT IN
+     * instead of a correlated EXISTS with packageRedemptionLineValueExpr per row.
+     *
+     * @param  list<int>|null  $packageClaimBookingIds
      */
-    private function excludePackageRefundedBookingDeposits(Builder $query, string $orderItemAlias = 'order_items'): Builder
-    {
+    private function excludePackageRefundedBookingDeposits(
+        Builder $query,
+        string $orderItemAlias = 'order_items',
+        ?array $packageClaimBookingIds = null
+    ): Builder {
+        if ($packageClaimBookingIds !== null) {
+            if ($packageClaimBookingIds === []) {
+                return $query;
+            }
+
+            return $query->where(function (Builder $scope) use ($orderItemAlias, $packageClaimBookingIds) {
+                $scope->where("{$orderItemAlias}.line_type", '!=', 'booking_deposit')
+                    ->orWhereNotIn("{$orderItemAlias}.booking_id", $packageClaimBookingIds);
+            });
+        }
+
         $packageValue = $this->packageRedemptionLineValueExpr('package_claim_item');
 
         return $query->where(function (Builder $scope) use ($orderItemAlias, $packageValue) {
@@ -846,6 +850,90 @@ class SalesVisualDailyReportService
     }
 
     /**
+     * Settled booking IDs in range (request-memoized — staff + item-type paths share this).
+     *
+     * @return list<int>
+     */
+    private function settledBookingIdsInRange(Carbon $start, Carbon $end): array
+    {
+        $scope = ReportBranchScope::current();
+        $cacheKey = implode(':', [
+            'sales_visual_settled_bookings',
+            $start->timestamp,
+            $end->timestamp,
+            $this->includeVoidOrders ? '1' : '0',
+            $scope->selectedStoreLocationId ?? 'all',
+            implode(',', $scope->storeLocationIds),
+        ]);
+        $cached = request()->attributes->get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $ids = $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->where('oi.line_type', 'booking_settlement')
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
+                ->whereNotNull('oi.booking_id')
+        )
+            ->pluck('oi.booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        request()->attributes->set($cacheKey, $ids);
+
+        return $ids;
+    }
+
+    /**
+     * Booking IDs that have at least one package-claim line with redemption value > 0
+     * (same min-usage-id rule as packageRedemptionLineValueExpr).
+     *
+     * @param  list<int>  $bookingIds
+     * @return list<int>
+     */
+    private function bookingIdsWithPackageClaimRedemption(array $bookingIds): array
+    {
+        if ($bookingIds === []) {
+            return [];
+        }
+
+        $sorted = $bookingIds;
+        sort($sorted);
+        $cacheKey = 'sales_visual_pkg_claim_'.md5(implode(',', $sorted));
+        $cached = request()->attributes->get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $netExpr = "COALESCE(oi.line_total_after_discount, oi.effective_line_total, oi.line_total, 0)::numeric";
+        $grossExpr = "COALESCE(oi.line_total_snapshot, oi.line_total, 0)::numeric";
+        $redemptionScalar = $this->packageRedemptionLineValueExpr('oi');
+
+        $ids = DB::table('order_items as oi')
+            ->whereIn('oi.booking_id', $bookingIds)
+            ->whereIn('oi.line_type', ['booking_settlement', 'booking_addon'])
+            ->whereNotNull('oi.booking_service_id')
+            ->whereRaw("{$netExpr} <= 0.0001")
+            ->whereRaw("{$grossExpr} > 0.0001")
+            ->whereRaw("({$redemptionScalar}) > 0.0001")
+            ->distinct()
+            ->pluck('oi.booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->values()
+            ->all();
+
+        request()->attributes->set($cacheKey, $ids);
+
+        return $ids;
+    }
+
+    /**
      * Staff cards list Staffs-page profiles only (`staffs`), never Admins / Staff-role logins.
      * A row appears when show_in_sales_report is on and the staff is assigned to the current Branch.
      *
@@ -854,8 +942,13 @@ class SalesVisualDailyReportService
     private function salesReportStaffRoster(): array
     {
         $scope = ReportBranchScope::current();
+        $cacheKey = 'sales_visual_staff_roster_'.($scope->selectedStoreLocationId ?? 'all').'_'.implode(',', $scope->storeLocationIds);
+        $cached = request()->attributes->get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
 
-        return DB::table('staffs as st')
+        $roster = DB::table('staffs as st')
             ->where('st.show_in_sales_report', true)
             ->whereExists(function (Builder $assignment) use ($scope) {
                 $assignment->selectRaw('1')
@@ -872,6 +965,10 @@ class SalesVisualDailyReportService
             ])
             ->values()
             ->all();
+
+        request()->attributes->set($cacheKey, $roster);
+
+        return $roster;
     }
 
     /**
@@ -1010,25 +1107,14 @@ class SalesVisualDailyReportService
     {
         // Step 1: Find all bookings that were SETTLED within the date range
         // A booking is considered "settled" when it has a booking_settlement order_item in a valid paid order
-        $settledBookingIds = $this->applyOrderScope(
-            DB::table('order_items')
-                ->join('orders', 'orders.id', '=', 'order_items.order_id')
-                ->where('order_items.line_type', 'booking_settlement')
-                ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end])
-                ->whereNotNull('order_items.booking_id'),
-            'orders'
-        )
-            ->pluck('order_items.booking_id')
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->unique()
-            ->values()
-            ->all();
+        $settledBookingIds = $this->settledBookingIdsInRange($start, $end);
 
         $byStaff = [];
         $countedBookingsByStaff = [];
 
         if (! empty($settledBookingIds)) {
+            $packageClaimBookingIds = $this->bookingIdsWithPackageClaimRedemption($settledBookingIds);
+
             // Step 2a: Get amounts from order_item_staff_splits (POS deposits and all settlements)
             $bookingSplitSalesSql = StaffSplitNormalizer::splitSalesSql(
                 'order_item_staff_splits',
@@ -1043,7 +1129,7 @@ class SalesVisualDailyReportService
                     ->whereIn('order_items.line_type', self::BOOKING_STAFF_SALES_LINE_TYPES),
                 'orders'
             );
-            $this->excludePackageRefundedBookingDeposits($splitRowsQuery);
+            $this->excludePackageRefundedBookingDeposits($splitRowsQuery, 'order_items', $packageClaimBookingIds);
             $splitRows = $splitRowsQuery
                 ->selectRaw('staffs.id as staff_id')
                 ->selectRaw('staffs.name as staff_name')
@@ -1095,7 +1181,7 @@ class SalesVisualDailyReportService
                     }),
                 'orders'
             );
-            $this->excludePackageRefundedBookingDeposits($fallbackItemsQuery);
+            $this->excludePackageRefundedBookingDeposits($fallbackItemsQuery, 'order_items', $packageClaimBookingIds);
             $fallbackItems = $fallbackItemsQuery
                 ->selectRaw('order_items.id as order_item_id')
                 ->selectRaw('order_items.booking_id as booking_id')
@@ -1308,21 +1394,44 @@ class SalesVisualDailyReportService
             'customer_credit' => 'Customer Credit',
         ];
 
-        return collect($labels)->map(function (string $label, string $method) use ($start, $end) {
-            $base = DB::table('booking_refunds')
-                ->where('status', 'completed')
-                ->where('method', $method)
-                ->whereRaw("COALESCE(reason, '') <> ?", [\App\Services\Ecommerce\VoidRefundService::REASON])
-                ->whereBetween(DB::raw('COALESCE(processed_at, created_at)'), [$start, $end]);
-            $online = (clone $base)->where('channel', 'online')->sum('amount');
-            $offline = (clone $base)->where('channel', 'offline')->sum('amount');
+        $aggregated = DB::table('booking_refunds')
+            ->where('status', 'completed')
+            ->whereIn('method', array_keys($labels))
+            ->whereRaw("COALESCE(reason, '') <> ?", [\App\Services\Ecommerce\VoidRefundService::REASON])
+            ->whereBetween(DB::raw('COALESCE(processed_at, created_at)'), [$start, $end])
+            ->selectRaw('method')
+            ->selectRaw('channel')
+            ->selectRaw('COALESCE(SUM(amount), 0) as amount')
+            ->groupBy('method', 'channel')
+            ->get();
+
+        $byMethod = [];
+        foreach ($labels as $method => $_label) {
+            $byMethod[$method] = ['online' => 0.0, 'offline' => 0.0];
+        }
+        foreach ($aggregated as $row) {
+            $method = (string) $row->method;
+            if (! isset($byMethod[$method])) {
+                continue;
+            }
+            $channel = strtolower(trim((string) $row->channel));
+            if ($channel === 'online') {
+                $byMethod[$method]['online'] = (float) $row->amount;
+            } elseif ($channel === 'offline') {
+                $byMethod[$method]['offline'] = (float) $row->amount;
+            }
+        }
+
+        return collect($labels)->map(function (string $label, string $method) use ($byMethod) {
+            $online = $byMethod[$method]['online'] ?? 0.0;
+            $offline = $byMethod[$method]['offline'] ?? 0.0;
 
             return [
                 'key' => $method,
                 'label' => $label,
-                'online' => round((float) $online, 2),
-                'offline' => round((float) $offline, 2),
-                'total' => round((float) $online + (float) $offline, 2),
+                'online' => round($online, 2),
+                'offline' => round($offline, 2),
+                'total' => round($online + $offline, 2),
             ];
         })->values()->all();
     }
@@ -1343,124 +1452,75 @@ class SalesVisualDailyReportService
             ->orderBy('id')
             ->get(['key', 'name']);
 
-        $rows = [];
-        $sumOnline = 0.0;
-        $sumOffline = 0.0;
-
+        $keys = [];
+        $labels = [];
         foreach ($gateways as $gw) {
             $key = trim((string) $gw->key);
             if ($key === '') {
                 continue;
             }
+            $keys[] = $key;
+            $labels[$key] = (string) (($gw->name !== null && trim((string) $gw->name) !== '') ? $gw->name : $key);
+        }
 
-            $online = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, $key, true);
-            $offline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, $key, false);
+        $syntheticHead = [];
+        $hasCashGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
+        if (! $hasCashGateway) {
+            $keys[] = 'cash';
+            $labels['cash'] = 'Cash';
+            $syntheticHead[] = 'cash';
+        }
+        $hasQrpayGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
+        if (! $hasQrpayGateway) {
+            $keys[] = 'qrpay';
+            $labels['qrpay'] = 'QR Pay (POS)';
+            $syntheticHead[] = 'qrpay';
+        }
 
+        $amounts = $this->sumOrderNetAmountsGroupedByGateway($workspaceType, $start, $end, $keys);
+
+        $rows = [];
+        $sumOnline = 0.0;
+        $sumOffline = 0.0;
+        $headRows = [];
+        foreach ($syntheticHead as $key) {
+            $online = $amounts[$key]['online'] ?? 0.0;
+            $offline = $amounts[$key]['offline'] ?? 0.0;
             $sumOnline += $online;
             $sumOffline += $offline;
-
+            $headRows[] = [
+                'key' => $key,
+                'label' => $labels[$key],
+                'online' => round($online, 2),
+                'offline' => round($offline, 2),
+                'total' => round($online + $offline, 2),
+            ];
+        }
+        foreach ($gateways as $gw) {
+            $key = trim((string) $gw->key);
+            if ($key === '') {
+                continue;
+            }
+            $online = $amounts[$key]['online'] ?? 0.0;
+            $offline = $amounts[$key]['offline'] ?? 0.0;
+            $sumOnline += $online;
+            $sumOffline += $offline;
             $rows[] = [
                 'key' => $key,
-                'label' => (string) (($gw->name !== null && trim((string) $gw->name) !== '') ? $gw->name : $key),
+                'label' => $labels[$key],
                 'online' => round($online, 2),
                 'offline' => round($offline, 2),
                 'total' => round($online + $offline, 2),
             ];
         }
 
-        $syntheticHead = [];
-
-        $hasCashGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
-        if (! $hasCashGateway) {
-            $cashOnline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, 'cash', true);
-            $cashOffline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, 'cash', false);
-            $sumOnline += $cashOnline;
-            $sumOffline += $cashOffline;
-            $syntheticHead[] = [
-                'key' => 'cash',
-                'label' => 'Cash',
-                'online' => round($cashOnline, 2),
-                'offline' => round($cashOffline, 2),
-                'total' => round($cashOnline + $cashOffline, 2),
-            ];
-        }
-
-        $hasQrpayGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
-        if (! $hasQrpayGateway) {
-            $qrOnline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, 'qrpay', true);
-            $qrOffline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, 'qrpay', false);
-            $sumOnline += $qrOnline;
-            $sumOffline += $qrOffline;
-            $syntheticHead[] = [
-                'key' => 'qrpay',
-                'label' => 'QR Pay (POS)',
-                'online' => round($qrOnline, 2),
-                'offline' => round($qrOffline, 2),
-                'total' => round($qrOnline + $qrOffline, 2),
-            ];
-        }
-
-        $rows = array_merge($syntheticHead, $rows);
-
         return [
-            'rows' => $rows,
+            'rows' => array_merge($headRows, $rows),
             'totals' => [
                 'online' => round($sumOnline, 2),
                 'offline' => round($sumOffline, 2),
             ],
         ];
-    }
-
-    private function sumOrderNetAmountForGatewayKey(
-        string $workspaceType,
-        Carbon $start,
-        Carbon $end,
-        string $paymentKey,
-        bool $online
-    ): float {
-        $methodVariants = SalesReportService::paymentMethodVariantsForMatch($paymentKey);
-        $workspaceLineFilter = $workspaceType === WorkspaceType::ECOMMERCE
-            ? $this->ecommerceWorkspaceLineFilterSql()
-            : $this->bookingWorkspaceLineFilterSql();
-        $orderNetSql = $this->orderNetAmountSubquery($workspaceLineFilter);
-        $allocatedNetSql = $this->allocatedPaymentNetSql($orderNetSql);
-
-        $q = $this->applyOrderScope(
-            ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
-                ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
-                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
-        )
-            ->where(function ($q) use ($methodVariants) {
-                $q->whereIn(DB::raw('LOWER(TRIM(COALESCE(op.payment_method, \'\')))'), $methodVariants)
-                    ->orWhere(function ($fallback) use ($methodVariants) {
-                        $fallback->whereNull('op.id')
-                            ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
-                    });
-            });
-
-        if ($online) {
-            $q->whereNull('o.created_by_user_id');
-        } else {
-            $q->whereNotNull('o.created_by_user_id');
-        }
-
-        if ($workspaceType === WorkspaceType::ECOMMERCE) {
-            $q->whereExists(function ($sub) {
-                $sub->selectRaw('1')
-                    ->from('order_items as oi')
-                    ->whereColumn('oi.order_id', 'o.id')
-                    ->where('oi.line_type', 'product');
-            });
-        } else {
-            $q->whereExists(function ($sub) {
-                $sub->selectRaw('1')
-                    ->from('order_items as oi')
-                    ->whereColumn('oi.order_id', 'o.id')
-                    ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES);
-            });
-        }
-
-        return (float) $q->sum(DB::raw($allocatedNetSql));
     }
 
     /**
@@ -1471,96 +1531,92 @@ class SalesVisualDailyReportService
         Carbon $start,
         Carbon $end
     ): array {
-        $ec = PaymentGateway::query()
-            ->where('type', WorkspaceType::ECOMMERCE)
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get();
-        $bk = PaymentGateway::query()
-            ->where('type', WorkspaceType::BOOKING)
+        $gateways = PaymentGateway::query()
+            ->whereIn('type', [WorkspaceType::ECOMMERCE, WorkspaceType::BOOKING])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
 
         $merged = [];
         $seen = [];
-        foreach ([$ec, $bk] as $collection) {
-            foreach ($collection as $gw) {
-                $k = strtolower(trim((string) $gw->key));
-                if ($k === '') {
-                    continue;
-                }
-                if (isset($seen[$k])) {
-                    continue;
-                }
-                $seen[$k] = true;
-                $merged[] = $gw;
+        foreach ($gateways as $gw) {
+            $k = strtolower(trim((string) $gw->key));
+            if ($k === '') {
+                continue;
             }
+            if (isset($seen[$k])) {
+                continue;
+            }
+            $seen[$k] = true;
+            $merged[] = $gw;
         }
 
         usort($merged, fn ($a, $b) => [$a->sort_order, $a->id] <=> [$b->sort_order, $b->id]);
 
-        $rows = [];
-        $sumOnline = 0.0;
-        $sumOffline = 0.0;
-
+        $keys = [];
+        $labels = [];
         foreach ($merged as $gw) {
             $key = trim((string) $gw->key);
             if ($key === '') {
                 continue;
             }
+            $keys[] = $key;
+            $labels[$key] = (string) (($gw->name !== null && trim((string) $gw->name) !== '') ? $gw->name : $key);
+        }
 
-            $online = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, $key, true);
-            $offline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, $key, false);
+        $syntheticHead = [];
+        $hasCashGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
+        if (! $hasCashGateway) {
+            $keys[] = 'cash';
+            $labels['cash'] = 'Cash';
+            $syntheticHead[] = 'cash';
+        }
+        $hasQrpayGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
+        if (! $hasQrpayGateway) {
+            $keys[] = 'qrpay';
+            $labels['qrpay'] = 'QR Pay (POS)';
+            $syntheticHead[] = 'qrpay';
+        }
 
+        $amounts = $this->sumOrderNetAmountsGroupedByGateway('all', $start, $end, $keys);
+
+        $rows = [];
+        $sumOnline = 0.0;
+        $sumOffline = 0.0;
+        $headRows = [];
+        foreach ($syntheticHead as $key) {
+            $online = $amounts[$key]['online'] ?? 0.0;
+            $offline = $amounts[$key]['offline'] ?? 0.0;
             $sumOnline += $online;
             $sumOffline += $offline;
-
+            $headRows[] = [
+                'key' => $key,
+                'label' => $labels[$key],
+                'online' => round($online, 2),
+                'offline' => round($offline, 2),
+                'total' => round($online + $offline, 2),
+            ];
+        }
+        foreach ($merged as $gw) {
+            $key = trim((string) $gw->key);
+            if ($key === '') {
+                continue;
+            }
+            $online = $amounts[$key]['online'] ?? 0.0;
+            $offline = $amounts[$key]['offline'] ?? 0.0;
+            $sumOnline += $online;
+            $sumOffline += $offline;
             $rows[] = [
                 'key' => $key,
-                'label' => (string) (($gw->name !== null && trim((string) $gw->name) !== '') ? $gw->name : $key),
+                'label' => $labels[$key],
                 'online' => round($online, 2),
                 'offline' => round($offline, 2),
                 'total' => round($online + $offline, 2),
             ];
         }
 
-        $syntheticHead = [];
-
-        $hasCashGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
-        if (! $hasCashGateway) {
-            $cashOnline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, 'cash', true);
-            $cashOffline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, 'cash', false);
-            $sumOnline += $cashOnline;
-            $sumOffline += $cashOffline;
-            $syntheticHead[] = [
-                'key' => 'cash',
-                'label' => 'Cash',
-                'online' => round($cashOnline, 2),
-                'offline' => round($cashOffline, 2),
-                'total' => round($cashOnline + $cashOffline, 2),
-            ];
-        }
-
-        $hasQrpayGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
-        if (! $hasQrpayGateway) {
-            $qrOnline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, 'qrpay', true);
-            $qrOffline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, 'qrpay', false);
-            $sumOnline += $qrOnline;
-            $sumOffline += $qrOffline;
-            $syntheticHead[] = [
-                'key' => 'qrpay',
-                'label' => 'QR Pay (POS)',
-                'online' => round($qrOnline, 2),
-                'offline' => round($qrOffline, 2),
-                'total' => round($qrOnline + $qrOffline, 2),
-            ];
-        }
-
-        $rows = array_merge($syntheticHead, $rows);
-
         return [
-            'rows' => $rows,
+            'rows' => array_merge($headRows, $rows),
             'totals' => [
                 'online' => round($sumOnline, 2),
                 'offline' => round($sumOffline, 2),
@@ -1568,50 +1624,94 @@ class SalesVisualDailyReportService
         ];
     }
 
-    private function sumOrderNetAmountForGatewayKeyAll(
+    /**
+     * One scan of allocated payment nets, grouped by effective payment method + online/offline,
+     * then rolled up to gateway keys (same variants rule as per-key sums).
+     *
+     * @param  list<string>  $keys
+     * @return array<string, array{online: float, offline: float}>
+     */
+    private function sumOrderNetAmountsGroupedByGateway(
+        string $workspaceType,
         Carbon $start,
         Carbon $end,
-        string $paymentKey,
-        bool $online
-    ): float {
-        $methodVariants = SalesReportService::paymentMethodVariantsForMatch($paymentKey);
-        $orderNetSql = $this->orderNetAmountSubquery($this->allWorkspaceLineFilterSql());
+        array $keys
+    ): array {
+        $result = [];
+        foreach ($keys as $key) {
+            $result[$key] = ['online' => 0.0, 'offline' => 0.0];
+        }
+        if ($keys === []) {
+            return $result;
+        }
+
+        $workspaceLineFilter = match ($workspaceType) {
+            WorkspaceType::ECOMMERCE => $this->ecommerceWorkspaceLineFilterSql(),
+            WorkspaceType::BOOKING => $this->bookingWorkspaceLineFilterSql(),
+            default => $this->allWorkspaceLineFilterSql(),
+        };
+        $orderNetSql = $this->orderNetAmountSubquery($workspaceLineFilter);
         $allocatedNetSql = $this->allocatedPaymentNetSql($orderNetSql);
+        $effectiveMethodSql = "LOWER(TRIM(COALESCE(CASE WHEN op.id IS NULL THEN o.payment_method ELSE op.payment_method END, '')))";
 
         $q = $this->applyOrderScope(
             ReportBranchScope::applyCurrent(DB::table('orders as o'), 'o.store_location_id')
                 ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
-        )
-            ->where(function ($q) use ($methodVariants) {
-                $q->whereIn(DB::raw('LOWER(TRIM(COALESCE(op.payment_method, \'\')))'), $methodVariants)
-                    ->orWhere(function ($fallback) use ($methodVariants) {
-                        $fallback->whereNull('op.id')
-                            ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
-                    });
-            });
+        );
 
-        if ($online) {
-            $q->whereNull('o.created_by_user_id');
-        } else {
-            $q->whereNotNull('o.created_by_user_id');
-        }
-
-        $q->where(function ($outer) {
-            $outer->whereExists(function ($sub) {
+        if ($workspaceType === WorkspaceType::ECOMMERCE) {
+            $q->whereExists(function ($sub) {
                 $sub->selectRaw('1')
                     ->from('order_items as oi')
                     ->whereColumn('oi.order_id', 'o.id')
                     ->where('oi.line_type', 'product');
-            })->orWhereExists(function ($sub) {
+            });
+        } elseif ($workspaceType === WorkspaceType::BOOKING) {
+            $q->whereExists(function ($sub) {
                 $sub->selectRaw('1')
                     ->from('order_items as oi')
                     ->whereColumn('oi.order_id', 'o.id')
                     ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES);
             });
-        });
+        } else {
+            $q->where(function ($outer) {
+                $outer->whereExists(function ($sub) {
+                    $sub->selectRaw('1')
+                        ->from('order_items as oi')
+                        ->whereColumn('oi.order_id', 'o.id')
+                        ->where('oi.line_type', 'product');
+                })->orWhereExists(function ($sub) {
+                    $sub->selectRaw('1')
+                        ->from('order_items as oi')
+                        ->whereColumn('oi.order_id', 'o.id')
+                        ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES);
+                });
+            });
+        }
 
-        return (float) $q->sum(DB::raw($allocatedNetSql));
+        $rows = $q
+            ->selectRaw("{$effectiveMethodSql} as payment_method_key")
+            ->selectRaw('(CASE WHEN o.created_by_user_id IS NULL THEN 1 ELSE 0 END) as is_online')
+            ->selectRaw("COALESCE(SUM({$allocatedNetSql}), 0) as amount")
+            ->groupByRaw("{$effectiveMethodSql}, (CASE WHEN o.created_by_user_id IS NULL THEN 1 ELSE 0 END)")
+            ->get();
+
+        $byMethod = [];
+        foreach ($rows as $row) {
+            $method = (string) $row->payment_method_key;
+            $channel = ((int) $row->is_online === 1) ? 'online' : 'offline';
+            $byMethod[$method][$channel] = (float) $row->amount;
+        }
+
+        foreach ($keys as $key) {
+            foreach (SalesReportService::paymentMethodVariantsForMatch($key) as $variant) {
+                $result[$key]['online'] += $byMethod[$variant]['online'] ?? 0.0;
+                $result[$key]['offline'] += $byMethod[$variant]['offline'] ?? 0.0;
+            }
+        }
+
+        return $result;
     }
 
     private function completedBookingServiceActivityByStaff(Carbon $start, Carbon $end, string $lineTotal): array
