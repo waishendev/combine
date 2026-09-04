@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { NameStack } from '@/components/NameStack'
+import { topWishlistSummary, wishlistStockDisplay } from '@/lib/wishlistReport'
 import { resolveImageUrl } from '@/utils/resolveImageUrl'
 
 type WishlistRow = {
@@ -16,6 +17,10 @@ type WishlistRow = {
   guest_wishlist_count: number
   total_wishlist_count: number
   current_stock: number | null
+  stock_status: 'in_stock' | 'partial' | 'out_of_stock'
+  has_variants: boolean
+  variant_count: number
+  out_of_stock_variant_count: number
   low_stock_threshold?: number | null
   product_status: string | null
   last_wishlisted_at: string | null
@@ -31,8 +36,17 @@ type WishlistResponse = {
     total_wishlisted_products: number
     total_wishlist_adds: number
     top_wishlisted_product: string | null
+    top_wishlist_count: number
+    top_wishlisted_product_count: number
+    top_wishlisted_is_tie: boolean
     out_of_stock_products_with_demand: number
   }
+}
+
+type VariantDetail = {
+  product: { id: number; name: string; cn_name?: string | null }
+  variants: Array<{ id: number; name: string; cn_name?: string | null; sku: string; current_stock: number | null; stock_status: 'in_stock' | 'out_of_stock' }>
+  wishlist_identity: 'product'
 }
 
 type Props = {
@@ -56,6 +70,26 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
   const [total, setTotal] = useState(0)
   const [lastPage, setLastPage] = useState(1)
   const [summary, setSummary] = useState<WishlistResponse['summary']>()
+  const [detailProduct, setDetailProduct] = useState<WishlistRow | null>(null)
+  const [variantDetail, setVariantDetail] = useState<VariantDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+
+  const openVariantDetail = async (row: WishlistRow) => {
+    setDetailProduct(row)
+    setVariantDetail(null)
+    setDetailError(null)
+    setDetailLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/ecommerce/reports/wishlist/products/${row.product_id}/inventory-detail`, { cache: 'no-store' })
+      if (!res.ok) throw new Error(`Failed to load variant stock details (${res.status})`)
+      setVariantDetail(await res.json())
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : 'Failed to load variant stock details.')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -110,7 +144,11 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Total Wishlist Adds" value={summary.total_wishlist_adds} accent="blue" />
           <SummaryCard label="Total Wishlisted Products" value={summary.total_wishlisted_products} accent="indigo" />
-          <SummaryCard label="Top Wishlisted Product" value={summary.top_wishlisted_product ?? '-'} accent="emerald" />
+          <SummaryCard
+            label={summary.top_wishlisted_is_tie ? 'Top Wishlisted Products' : 'Top Wishlisted Product'}
+            value={topWishlistSummary(summary)}
+            accent="emerald"
+          />
           <SummaryCard label="Out-of-stock Products With Wishlist Demand" value={summary.out_of_stock_products_with_demand} accent="rose" />
         </div>
       ) : null}
@@ -173,19 +211,20 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
                 <th className="px-4 py-3 text-right">Total Wishlist Count</th>
                 <th className="px-4 py-3 text-right">Current Stock</th>
                 <th className="px-4 py-3 text-left">Last Wishlisted At</th>
+                <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={8}>Loading wishlist report...</td></tr>
+                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>Loading wishlist report...</td></tr>
               ) : error ? (
-                <tr><td className="px-4 py-6 text-center text-red-600" colSpan={8}>{error}</td></tr>
+                <tr><td className="px-4 py-6 text-center text-red-600" colSpan={9}>{error}</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={8}>No wishlist data found.</td></tr>
+                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>No wishlist data found.</td></tr>
               ) : (
                 rows.map((row) => (
                   <tr
-                    className={`border-t ${row.current_stock !== null && row.current_stock <= 0 && row.total_wishlist_count >= 3 ? 'bg-rose-50/80' : ''}`}
+                    className={`border-t ${row.stock_status === 'out_of_stock' && row.total_wishlist_count >= 3 ? 'bg-rose-50/80' : ''}`}
                     key={row.product_id}
                   >
                     <td className="px-4 py-3">
@@ -212,9 +251,16 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
                     <td className="px-4 py-3 text-right">{row.guest_wishlist_count}</td>
                     <td className="px-4 py-3 text-right font-semibold">{row.total_wishlist_count}</td>
                     <td className="px-4 py-3 text-right">
-                      <StockBadge currentStock={row.current_stock} lowStockThreshold={row.low_stock_threshold ?? null} />
+                      <StockBadge row={row} />
                     </td>
                     <td className="px-4 py-3">{row.last_wishlisted_at || '-'}</td>
+                    <td className="px-4 py-3 text-center">
+                      {row.has_variants ? (
+                        <button type="button" onClick={() => void openVariantDetail(row)} className="inline-flex rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50 hover:text-blue-600" aria-label={`View variant stock for ${row.product_name}`} title="View variant stock">
+                          <EyeIcon />
+                        </button>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
                   </tr>
                 ))
               )}
@@ -243,6 +289,15 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
           </div>
         </div>
       </div>
+      {detailProduct ? (
+        <VariantStockModal
+          product={detailProduct}
+          detail={variantDetail}
+          loading={detailLoading}
+          error={detailError}
+          onClose={() => setDetailProduct(null)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -263,19 +318,35 @@ function SummaryCard({ label, value, accent }: { label: string; value: string | 
   )
 }
 
-function StockBadge({ currentStock, lowStockThreshold }: { currentStock: number | null; lowStockThreshold: number | null }) {
-  if (currentStock === null) {
-    return <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Unknown</span>
-  }
+function StockBadge({ row }: { row: WishlistRow }) {
+  const display = wishlistStockDisplay(row)
+  const classes = { slate: 'bg-slate-100 text-slate-600', rose: 'bg-rose-100 text-rose-700', amber: 'bg-amber-100 text-amber-700', emerald: 'bg-emerald-100 text-emerald-700' }[display.tone]
+  return <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${classes}`}>{display.label}</span>
+}
 
-  if (currentStock <= 0) {
-    return <span className="inline-flex rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700">Out of stock</span>
-  }
+function EyeIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /></svg>
+}
 
-  const threshold = lowStockThreshold && lowStockThreshold > 0 ? lowStockThreshold : 5
-  if (currentStock <= threshold) {
-    return <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">Low stock ({currentStock})</span>
-  }
-
-  return <span className="inline-flex rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">In stock ({currentStock})</span>
+function VariantStockModal({ product, detail, loading, error, onClose }: { product: WishlistRow; detail: VariantDetail | null; loading: boolean; error: string | null; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="variant-stock-title" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-xl">
+        <div className="flex items-start justify-between border-b px-5 py-4">
+          <div><h3 id="variant-stock-title" className="text-lg font-semibold text-slate-900">Variant Stock Details</h3><p className="mt-1 text-sm text-slate-600">Product: {product.product_name}</p></div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close variant stock details">✕</button>
+        </div>
+        <div className="max-h-[65vh] overflow-auto p-5">
+          {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading variant stock details...</p> : null}
+          {error ? <p className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+          {detail ? <>
+            <p className="mb-3 text-xs text-slate-500">Wishlist demand is recorded for the product, not an individual variant.</p>
+            <table className="min-w-full text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-3 py-2 text-left">Variant</th><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">Current Stock</th><th className="px-3 py-2 text-left">Status</th></tr></thead>
+              <tbody>{detail.variants.map((variant) => <tr key={variant.id} className="border-t"><td className="px-3 py-3"><NameStack name={variant.name} cnName={variant.cn_name} primaryClassName="font-medium text-slate-900" secondaryClassName="text-xs text-slate-500" /></td><td className="px-3 py-3">{variant.sku || '-'}</td><td className="px-3 py-3 text-right">{variant.current_stock ?? 'Not tracked'}</td><td className="px-3 py-3">{variant.stock_status === 'in_stock' ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">In stock</span> : <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700">Out of stock</span>}</td></tr>)}</tbody>
+            </table>
+          </> : null}
+        </div>
+      </div>
+    </div>
+  )
 }

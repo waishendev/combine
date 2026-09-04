@@ -1510,6 +1510,8 @@ $protectedRoutes = function () {
 
             Route::get('/wishlist', [WishlistReportController::class, 'index'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+            Route::get('/wishlist/products/{product}/inventory-detail', [WishlistReportController::class, 'inventoryDetail'])
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/product-profit', [ProductProfitReportController::class, 'index'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
