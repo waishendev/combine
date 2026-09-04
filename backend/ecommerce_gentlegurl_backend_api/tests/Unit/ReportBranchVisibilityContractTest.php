@@ -40,4 +40,26 @@ class ReportBranchVisibilityContractTest extends TestCase
         $this->assertStringContainsString('colSpan={tableHeadings.length}', $cash);
         $this->assertStringContainsString('colSpan={tableColumnCount}', $profit);
     }
+
+    public function test_product_profit_table_renders_only_branch_name_and_reserves_unassigned_for_null_orders(): void
+    {
+        $profit = file_get_contents(base_path('../frontend/ecommerce_gentlegurl_crm/src/components/reports/ProductProfitReportPage.tsx'));
+        $table = substr($profit, strpos($profit, '<table className="min-w-full text-sm">'), strpos($profit, '<ReportDetailDrawer') - strpos($profit, '<table className="min-w-full text-sm">'));
+
+        $this->assertStringContainsString("row.store_location_id === null ? 'Unassigned'", $table);
+        $this->assertStringContainsString("row.store_location?.name ?? 'Unknown Branch'", $table);
+        $this->assertStringNotContainsString('row.store_location.code', $table);
+        $this->assertStringNotContainsString('store_location_product', $table);
+    }
+
+    public function test_product_profit_keeps_real_and_null_branch_groups_separate_without_changing_math(): void
+    {
+        $controller = file_get_contents(app_path('Http/Controllers/Ecommerce/Reports/ProductProfitReportController.php'));
+
+        $this->assertStringContainsString("...(\$isAllBranches ? ['o.store_location_id', 'sl.name', 'sl.code'] : [])", $controller);
+        $this->assertStringContainsString("'store_location_id' => \$row->store_location_id !== null", $controller);
+        $this->assertStringContainsString("DB::raw('SUM(oi.quantity) as quantity_sold')", $controller);
+        $this->assertStringContainsString("DB::raw('COALESCE(SUM(oi.line_total), 0) as sales_amount')", $controller);
+        $this->assertStringContainsString("DB::raw('COUNT(DISTINCT o.id) as orders_count')", $controller);
+    }
 }

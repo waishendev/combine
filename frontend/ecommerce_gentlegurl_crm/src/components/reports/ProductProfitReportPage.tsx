@@ -292,7 +292,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
                 <tr key={`${row.store_location_id ?? 'unassigned'}:${row.product_id}:${row.product_variant_id ?? 'base'}`} className="border-t hover:bg-blue-50/40">
                   {isAllBranches ? (
                     <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-700">
-                      {row.store_location ? `${row.store_location.code ? `${row.store_location.code} · ` : ''}${row.store_location.name}` : 'Unassigned'}
+                      {row.store_location_id === null ? 'Unassigned' : (row.store_location?.name ?? 'Unknown Branch')}
                     </td>
                   ) : null}
                   <td className="px-4 py-3">

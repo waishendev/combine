@@ -100,6 +100,7 @@ The labels below describe executable state, not intended behavior.
 - Profit/Loss revenue, COGS and refunds follow report Branch scope. Because Expense has no deterministic Branch field, global expenses are excluded from specific/restricted views and included only for the platform bypass's company-wide view.
 - Cash Shift/Cash Pool keeps earlier isolation, adds accessible per-Branch pool totals, and exposes legacy NULL Cash Shift count/rows as Unassigned in All.
 - Cash Shift and Product Profit tables now expose persisted Branch identity only in All Branches. Cash Shift uses `pos_cash_shifts.store_location_id`; Product Profit uses `orders.store_location_id` and changes only its All table grain to Branch + Product + Variant. Specific-Branch tables hide the redundant Branch column, while report cards retain scope-wide totals. StoreLocation metadata is joined/eager-loaded in the report query, and neither page has an export to alter.
+- Product Profit renders only the StoreLocation name (never its code). `Unassigned` strictly means `orders.store_location_id IS NULL`; a missing join for a non-NULL ID is surfaced separately as `Unknown Branch`. Investigate NULL rows with the read-only query in `multi-branch-impact-analysis.md`, then use the existing transaction Branch backfill only for linked-Booking or pickup evidence. Product-only Orders without deterministic persisted evidence remain Unassigned.
 
 ### AUTOMATED TESTED
 
