@@ -21,7 +21,9 @@ class WishlistReportContractTest extends TestCase
         $component = file_get_contents(base_path('../../frontend/ecommerce_gentlegurl_crm/src/components/reports/WishlistReportPage.tsx'));
         self::assertStringContainsString('Wishlist Demand Details', $component);
         self::assertStringContainsString('Not tracked per variant', $component);
-        self::assertStringContainsString('aria-label={`View ${row.product_name} wishlist details`}', $component);
+        self::assertStringContainsString('ReportViewDetailsButton', $component);
+        self::assertStringContainsString('fa-solid fa-xmark', $component);
+        self::assertStringNotContainsString("from 'lucide-react'", $component);
         self::assertStringContainsString('/detail?', $component);
     }
 }
