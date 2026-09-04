@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { NameStack } from '@/components/NameStack'
-import { topWishlistSummary, wishlistStockDisplay } from '@/lib/wishlistReport'
+import { topWishlistCardContent, wishlistStockDisplay } from '@/lib/wishlistReport'
 import { resolveImageUrl } from '@/utils/resolveImageUrl'
 
 type WishlistRow = {
@@ -26,6 +26,13 @@ type WishlistRow = {
   last_wishlisted_at: string | null
 }
 
+type TopWishlistedProduct = {
+  product_id: number
+  product_name: string
+  sku: string | null
+  total_wishlist_count: number
+}
+
 type WishlistResponse = {
   data: WishlistRow[]
   current_page: number
@@ -39,6 +46,7 @@ type WishlistResponse = {
     top_wishlist_count: number
     top_wishlisted_product_count: number
     top_wishlisted_is_tie: boolean
+    top_wishlisted_products?: TopWishlistedProduct[]
     out_of_stock_products_with_demand: number
   }
 }
@@ -74,6 +82,7 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
   const [variantDetail, setVariantDetail] = useState<VariantDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [showTiedProducts, setShowTiedProducts] = useState(false)
 
   const openVariantDetail = async (row: WishlistRow) => {
     setDetailProduct(row)
@@ -136,18 +145,29 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
 
   const startItem = useMemo(() => (total === 0 ? 0 : (page - 1) * perPage + 1), [page, perPage, total])
   const endItem = useMemo(() => Math.min(page * perPage, total), [page, perPage, total])
+  const topWishlistCard = useMemo(
+    () => (summary ? topWishlistCardContent(summary) : null),
+    [summary],
+  )
 
   return (
     <div className="space-y-5">
-      <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">Global customer/Ecommerce metric — wishlist intent is not Branch-attributed.</p>
-      {summary ? (
+      {summary && topWishlistCard ? (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Total Wishlist Adds" value={summary.total_wishlist_adds} accent="blue" />
           <SummaryCard label="Total Wishlisted Products" value={summary.total_wishlisted_products} accent="indigo" />
           <SummaryCard
-            label={summary.top_wishlisted_is_tie ? 'Top Wishlisted Products' : 'Top Wishlisted Product'}
-            value={topWishlistSummary(summary)}
+            label={topWishlistCard.label}
+            value={topWishlistCard.primary}
+            secondary={topWishlistCard.secondary}
+            badge={topWishlistCard.badge}
             accent="emerald"
+            onView={
+              summary.top_wishlisted_is_tie && (summary.top_wishlisted_products?.length ?? 0) > 0
+                ? () => setShowTiedProducts(true)
+                : undefined
+            }
+            viewLabel="View tied products"
           />
           <SummaryCard label="Out-of-stock Products With Wishlist Demand" value={summary.out_of_stock_products_with_demand} accent="rose" />
         </div>
@@ -298,11 +318,33 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
           onClose={() => setDetailProduct(null)}
         />
       ) : null}
+      {showTiedProducts && summary?.top_wishlisted_products ? (
+        <TiedProductsModal
+          products={summary.top_wishlisted_products}
+          onClose={() => setShowTiedProducts(false)}
+        />
+      ) : null}
     </div>
   )
 }
 
-function SummaryCard({ label, value, accent }: { label: string; value: string | number; accent: 'blue' | 'indigo' | 'emerald' | 'rose' }) {
+function SummaryCard({
+  label,
+  value,
+  secondary,
+  badge,
+  accent,
+  onView,
+  viewLabel,
+}: {
+  label: string
+  value: string | number
+  secondary?: string
+  badge?: string
+  accent: 'blue' | 'indigo' | 'emerald' | 'rose'
+  onView?: () => void
+  viewLabel?: string
+}) {
   const accentClass = {
     blue: 'from-blue-50 to-blue-100/40 border-blue-200 text-blue-900',
     indigo: 'from-indigo-50 to-indigo-100/40 border-indigo-200 text-indigo-900',
@@ -312,8 +354,29 @@ function SummaryCard({ label, value, accent }: { label: string; value: string | 
 
   return (
     <div className={`rounded-2xl border bg-gradient-to-br p-4 shadow-sm ${accentClass}`}>
-      <div className="text-xs opacity-80">{label}</div>
-      <div className="mt-1 text-xl font-semibold">{value}</div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-xs opacity-80">{label}</div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {badge ? (
+            <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 ring-1 ring-emerald-300/60">
+              {badge}
+            </span>
+          ) : null}
+          {onView ? (
+            <button
+              type="button"
+              onClick={onView}
+              className="inline-flex rounded-lg border border-emerald-300/70 bg-white/70 p-1.5 text-emerald-800 hover:bg-white"
+              aria-label={viewLabel ?? 'View details'}
+              title={viewLabel ?? 'View details'}
+            >
+              <EyeIcon />
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-1 text-xl font-semibold leading-snug break-words">{value}</div>
+      {secondary ? <div className="mt-1 text-xs font-medium opacity-75">{secondary}</div> : null}
     </div>
   )
 }
@@ -322,6 +385,47 @@ function StockBadge({ row }: { row: WishlistRow }) {
   const display = wishlistStockDisplay(row)
   const classes = { slate: 'bg-slate-100 text-slate-600', rose: 'bg-rose-100 text-rose-700', amber: 'bg-amber-100 text-amber-700', emerald: 'bg-emerald-100 text-emerald-700' }[display.tone]
   return <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${classes}`}>{display.label}</span>
+}
+
+function TiedProductsModal({
+  products,
+  onClose,
+}: {
+  products: TopWishlistedProduct[]
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tied-products-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl">
+        <div className="flex items-start justify-between border-b px-5 py-4">
+          <h3 id="tied-products-title" className="text-lg font-semibold text-slate-900">
+            Tied top products
+          </h3>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close tied products">
+            ✕
+          </button>
+        </div>
+        <div className="max-h-[65vh] overflow-auto p-5">
+          <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+            {products.map((product) => (
+              <li key={product.product_id} className="px-4 py-3">
+                <p className="truncate font-medium text-slate-900">{product.product_name}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{product.sku ? `SKU: ${product.sku}` : 'No SKU'}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function EyeIcon() {
@@ -340,7 +444,6 @@ function VariantStockModal({ product, detail, loading, error, onClose }: { produ
           {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading variant stock details...</p> : null}
           {error ? <p className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
           {detail ? <>
-            <p className="mb-3 text-xs text-slate-500">Wishlist demand is recorded for the product, not an individual variant.</p>
             <table className="min-w-full text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="px-3 py-2 text-left">Variant</th><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">Current Stock</th><th className="px-3 py-2 text-left">Status</th></tr></thead>
               <tbody>{detail.variants.map((variant) => <tr key={variant.id} className="border-t"><td className="px-3 py-3"><NameStack name={variant.name} cnName={variant.cn_name} primaryClassName="font-medium text-slate-900" secondaryClassName="text-xs text-slate-500" /></td><td className="px-3 py-3">{variant.sku || '-'}</td><td className="px-3 py-3 text-right">{variant.current_stock ?? 'Not tracked'}</td><td className="px-3 py-3">{variant.stock_status === 'in_stock' ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">In stock</span> : <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700">Out of stock</span>}</td></tr>)}</tbody>
             </table>

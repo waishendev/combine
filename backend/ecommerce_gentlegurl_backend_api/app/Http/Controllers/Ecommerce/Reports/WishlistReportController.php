@@ -120,6 +120,12 @@ class WishlistReportController extends Controller
                 'top_wishlist_count' => $maxCount,
                 'top_wishlisted_product_count' => $topProducts->count(),
                 'top_wishlisted_is_tie' => $topProducts->count() > 1,
+                'top_wishlisted_products' => $topProducts->map(fn ($row) => [
+                    'product_id' => (int) $row->product_id,
+                    'product_name' => (string) $row->product_name,
+                    'sku' => $row->sku,
+                    'total_wishlist_count' => (int) $row->total_wishlist_count,
+                ])->values()->all(),
                 'out_of_stock_products_with_demand' => (int) ($summaryTotals->out_of_stock_products_with_demand ?? 0),
             ],
             'filters' => [

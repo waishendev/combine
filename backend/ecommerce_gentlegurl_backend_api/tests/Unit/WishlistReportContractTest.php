@@ -33,6 +33,7 @@ class WishlistReportContractTest extends TestCase
         $this->assertStringContainsString('MAX(total_wishlist_count)', $source);
         $this->assertStringContainsString("->where('total_wishlist_count', \$maxCount)", $source);
         $this->assertStringContainsString("'top_wishlisted_is_tie' => \$topProducts->count() > 1", $source);
+        $this->assertStringContainsString("'top_wishlisted_products' => \$topProducts->map", $source);
         $this->assertStringNotContainsString("->value('product_name')", $source);
     }
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { topWishlistSummary, wishlistStockDisplay } from '../../lib/wishlistReport.ts'
+import { topWishlistCardContent, topWishlistSummary, wishlistStockDisplay } from '../../lib/wishlistReport.ts'
 
 const summary = (count: number, products: number, tie: boolean, name: string | null = null) => ({
   total_wishlisted_products: products,
@@ -14,15 +14,32 @@ const summary = (count: number, products: number, tie: boolean, name: string | n
 })
 
 test('renders a unique top wishlisted product', () => {
-  assert.equal(topWishlistSummary(summary(5, 1, false, 'Product A')), 'Product A')
+  assert.deepEqual(topWishlistCardContent(summary(5, 1, false, 'Product A')), {
+    label: 'Top Wishlisted Product',
+    primary: 'Product A',
+    secondary: '5 wishes',
+  })
+  assert.equal(topWishlistSummary(summary(5, 1, false, 'Product A')), 'Product A · 5 wishes')
 })
 
 test('renders two- and three-product ties without choosing an arbitrary product', () => {
-  assert.equal(topWishlistSummary(summary(5, 2, true)), 'Tie — 2 products (5 wishes each)')
-  assert.equal(topWishlistSummary(summary(1, 3, true)), 'Tie — 3 products (1 wish each)')
+  assert.deepEqual(topWishlistCardContent(summary(5, 2, true)), {
+    label: 'Top Wishlisted Products',
+    primary: '2 products',
+    secondary: '5 wishes each',
+    badge: 'Tied',
+  })
+  assert.deepEqual(topWishlistCardContent(summary(1, 3, true)), {
+    label: 'Top Wishlisted Products',
+    primary: '3 products',
+    secondary: '1 wish each',
+    badge: 'Tied',
+  })
+  assert.equal(topWishlistSummary(summary(1, 3, true)), 'Tied: 3 products · 1 wish each')
 })
 
 test('renders an explicit zero-data state', () => {
+  assert.equal(topWishlistCardContent(summary(0, 0, false)).primary, 'No wishlist data')
   assert.equal(topWishlistSummary(summary(0, 0, false)), 'No wishlist data')
 })
 
