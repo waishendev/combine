@@ -19,6 +19,7 @@ class CommissionController extends Controller
     {
         $type = $this->staffCommissionService->normalizeType($request->query('type', StaffCommissionService::TYPE_BOOKING));
         $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
+        $perPage = min(200, max(1, $request->integer('per_page', 20)));
 
         $query = StaffMonthlySale::query()
             ->with(['staff:id,name', 'storeLocation:id,code,name'])
@@ -37,7 +38,7 @@ class CommissionController extends Controller
             $query->where('staff_id', (int) $request->query('staff_id'));
         }
 
-        return $this->respond($query->orderByDesc('year')->orderByDesc('month')->paginate($request->integer('per_page', 20)));
+        return $this->respond($query->orderByDesc('year')->orderByDesc('month')->paginate($perPage));
     }
 
     public function override(Request $request, int $id)

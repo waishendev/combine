@@ -137,6 +137,7 @@ class StaffCommissionService
             return;
         }
 
+        $tiers = $this->tiersForBranchType(self::TYPE_BOOKING, (int) $branchId);
         foreach ($commissionRows as $row) {
             $staffId = (int) ($row['staff_id'] ?? 0);
             $splitSales = (float) ($row['split_sales'] ?? 0);
@@ -147,7 +148,7 @@ class StaffCommissionService
             $monthly->total_sales = (float) $monthly->total_sales + $splitSales;
             $monthly->booking_count = (int) $monthly->booking_count + 1;
             $monthly->save();
-            $this->recalculateMonthly($monthly);
+            $this->recalculateMonthly($monthly, false, $tiers);
         }
 
         $booking->forceFill([
@@ -183,6 +184,7 @@ class StaffCommissionService
             return;
         }
 
+        $tiers = $this->tiersForBranchType(self::TYPE_BOOKING, (int) $booking->store_location_id);
         foreach ($commissionRows as $row) {
             $staffId = (int) ($row['staff_id'] ?? 0);
             $splitSales = (float) ($row['split_sales'] ?? 0);
@@ -193,7 +195,7 @@ class StaffCommissionService
             $monthly->total_sales = max(0, (float) $monthly->total_sales - $splitSales);
             $monthly->booking_count = max(0, (int) $monthly->booking_count - 1);
             $monthly->save();
-            $this->recalculateMonthly($monthly);
+            $this->recalculateMonthly($monthly, false, $tiers);
         }
 
         $booking->forceFill(['commission_counted_at' => null])->save();
@@ -257,8 +259,33 @@ class StaffCommissionService
         return $monthly;
     }
 
-    private function recalculateBookingForStaffMonth(int $staffId, int $year, int $month, bool $force = false, ?int $storeLocationId = null): StaffMonthlySale
+    /**
+     * Tiers for a branch+type, highest min_sales first (same rule as recalculateMonthly).
+     *
+     * @return Collection<int, StaffCommissionTier>
+     */
+    private function tiersForBranchType(string $type, ?int $storeLocationId): Collection
     {
+        if ($storeLocationId === null || $storeLocationId <= 0) {
+            return collect();
+        }
+
+        return StaffCommissionTier::query()
+            ->where('type', $this->normalizeType($type))
+            ->where('store_location_id', $storeLocationId)
+            ->orderByDesc('min_sales')
+            ->get();
+    }
+
+    private function recalculateBookingForStaffMonth(
+        int $staffId,
+        int $year,
+        int $month,
+        bool $force = false,
+        ?int $storeLocationId = null,
+        ?Collection $preloadedTiers = null,
+    ): StaffMonthlySale {
+
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $nextMonthStart = $start->copy()->addMonth();
 
@@ -396,7 +423,9 @@ class StaffCommissionService
         $monthly->booking_count = $bookingCount;
         $monthly->save();
 
-        return $this->recalculateMonthly($monthly, $force);
+        $tiers = $preloadedTiers ?? $this->tiersForBranchType(self::TYPE_BOOKING, $storeLocationId);
+
+        return $this->recalculateMonthly($monthly, $force, $tiers);
     }
 
     /**
@@ -467,13 +496,23 @@ class StaffCommissionService
                     ->join('order_items', 'order_items.booking_id', '=', 'bookings.id')->join('orders', 'orders.id', '=', 'order_items.order_id')
                     ->where('bookings.store_location_id', $branchId)->where('orders.created_at', '>=', $start)->where('orders.created_at', '<', $nextMonthStart)
                     ->pluck('booking_service_staff_splits.staff_id'))->filter()->unique();
-            foreach ($staffIds as $staffId) $result[] = $this->recalculateBookingForStaffMonth((int) $staffId, $year, $month, $force, (int) $branchId);
+            $tiers = $this->tiersForBranchType(self::TYPE_BOOKING, (int) $branchId);
+            foreach ($staffIds as $staffId) {
+                $result[] = $this->recalculateBookingForStaffMonth((int) $staffId, $year, $month, $force, (int) $branchId, $tiers);
+            }
         }
         return $result;
     }
 
-    private function recalculateEcommerceForStaffMonth(int $staffId, int $year, int $month, bool $force = false, ?int $storeLocationId = null): StaffMonthlySale
-    {
+    private function recalculateEcommerceForStaffMonth(
+        int $staffId,
+        int $year,
+        int $month,
+        bool $force = false,
+        ?int $storeLocationId = null,
+        ?Collection $preloadedTiers = null,
+    ): StaffMonthlySale {
+
         [$start, $nextMonthStart] = $this->monthWindow($year, $month);
 
         $splitSalesExpr = StaffSplitNormalizer::splitSalesSql(
@@ -526,7 +565,9 @@ class StaffCommissionService
         $monthly->booking_count = $productCount + $packageCount;
         $monthly->save();
 
-        return $this->recalculateMonthly($monthly, $force);
+        $tiers = $preloadedTiers ?? $this->tiersForBranchType(self::TYPE_ECOMMERCE, $storeLocationId);
+
+        return $this->recalculateMonthly($monthly, $force, $tiers);
     }
 
     private function recalculateEcommerceForMonthAll(int $year, int $month, bool $force = false, ?array $storeLocationIds = null): array
@@ -542,7 +583,10 @@ class StaffCommissionService
                 ->concat($this->baseEcommercePackageSplitQuery($start, $nextMonthStart, (int) $branchId)->pluck('service_package_staff_splits.staff_id'))
                 ->concat(StaffMonthlySale::query()->where('type', self::TYPE_ECOMMERCE)->where('year', $year)->where('month', $month)
                     ->where('store_location_id', $branchId)->pluck('staff_id'))->unique();
-            foreach ($staffIds as $staffId) $result[] = $this->recalculateEcommerceForStaffMonth((int) $staffId, $year, $month, $force, (int) $branchId);
+            $tiers = $this->tiersForBranchType(self::TYPE_ECOMMERCE, (int) $branchId);
+            foreach ($staffIds as $staffId) {
+                $result[] = $this->recalculateEcommerceForStaffMonth((int) $staffId, $year, $month, $force, (int) $branchId, $tiers);
+            }
         }
         return $result;
     }

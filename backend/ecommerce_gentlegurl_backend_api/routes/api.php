@@ -612,10 +612,10 @@ $protectedRoutes = function () {
         ->middleware('permission:customer-service-packages.update|pos.checkout');
 
     // Staffs
-    // NEW ENHANCEMENT
-    // Page: CRM /logs/staff-consumables — slim staff dropdown (id, name)
+    // NEW ENHANCEMENT — staff-consumables + booking-ecommerce-commissions-query-v1
+    // Pages: CRM /logs/staff-consumables, /booking/commissions, /ecommerce/commissions — slim staff dropdown (id, name)
     Route::get('/staffs/options/query', [StaffController::class, 'options'])
-        ->middleware('permission:staff.view|pos.checkout|pos.appointments.manage|pos.staff_consumables.view_logs');
+        ->middleware('permission:staff.view|pos.checkout|pos.appointments.manage|pos.staff_consumables.view_logs|booking.commissions.view|booking.commissions.override|ecommerce.reports.sales.view');
     // END NEW ENHANCEMENT
 
     // OLD QUERY
@@ -1698,6 +1698,10 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);
     Route::apiResource('/commission-tiers', \App\Http\Controllers\Admin\Booking\CommissionTierController::class)
         ->only(['index', 'store', 'update', 'destroy']);
+    // NEW ENHANCEMENT — booking-ecommerce-commissions-query-v1
+    // Pages: CRM /booking/commissions + /ecommerce/commissions
+    // List: per_page cap 200 + type/period/staff indexes; recalculate month batches tiers per branch
+    // Staff filter: GET /staffs/options/query (permissions extended above)
     Route::get('/commissions', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'index']);
     Route::get('/commission-logs', [\App\Http\Controllers\Admin\Booking\CommissionLogController::class, 'index']);
     Route::patch('/commissions/freeze-month', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'freezeMonth']);
@@ -1706,4 +1710,5 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::patch('/commissions/{id}/freeze', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'freeze']);
     Route::patch('/commissions/{id}/reopen', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'reopen']);
     Route::post('/commissions/recalculate', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'recalculate']);
+    // END NEW ENHANCEMENT
 });
