@@ -203,6 +203,7 @@ class PosCashShiftController extends Controller
         $accessibleIds = $this->branchAccess->accessibleStoreLocations($request->user(), true)->pluck('id');
         $query = PosCashShift::query()
             ->with([
+                'storeLocation:id,name,code',
                 'opener:id,name,email',
                 'closer:id,name,email',
                 'openedStaff:id,name,email,phone',
@@ -296,7 +297,7 @@ class PosCashShiftController extends Controller
     private function openShiftQuery(?int $storeLocationId = null): Builder
     {
         return PosCashShift::query()
-            ->with(['opener:id,name,email', 'closer:id,name,email', 'openedStaff:id,name,email,phone', 'closedStaff:id,name,email,phone'])
+            ->with(['storeLocation:id,name,code', 'opener:id,name,email', 'closer:id,name,email', 'openedStaff:id,name,email,phone', 'closedStaff:id,name,email,phone'])
             ->where('event_type', PosCashShift::EVENT_OPEN)
             ->whereDoesntHave('closeEvent')
             ->when($storeLocationId, fn (Builder $query) => $query->where('store_location_id', $storeLocationId))

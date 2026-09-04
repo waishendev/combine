@@ -6,6 +6,8 @@ import { ReportDetailDrawer, ReportViewDetailsButton } from './ReportActions'
 import { useBranch } from '@/contexts/BranchContext'
 
 type ProductProfitRow = {
+  store_location_id?: number | null
+  store_location?: { id: number; name: string; code: string | null } | null
   product_id: number
   product_variant_id: number | null
   product_name: string
@@ -67,6 +69,8 @@ type Props = {
 
 export default function ProductProfitReportPage({ initialDateFrom = '', initialDateTo = '', initialSearch = '' }: Props) {
   const { selectedBranchId } = useBranch()
+  const isAllBranches = selectedBranchId === null
+  const tableColumnCount = isAllBranches ? 10 : 9
   const [rows, setRows] = useState<ProductProfitRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -183,6 +187,10 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
       if (dateTo) qs.set('date_to', dateTo)
       if (categoryId) qs.set('category_id', categoryId)
       if (channel) qs.set('channel', channel)
+      if (selectedBranchId === null) qs.set('branch_scope', 'all')
+      else qs.set('branch_store_location_id', String(selectedBranchId))
+      if (row.store_location_id) qs.set('branch_store_location_id', String(row.store_location_id))
+      else if (isAllBranches) qs.set('detail_branch', 'unassigned')
 
       const res = await fetch(`/api/proxy/admin/reports/product-profit?${qs.toString()}`, { cache: 'no-store' })
       const data = await res.json().catch(() => ({})) as Partial<ProductProfitResponse> & { message?: string }
@@ -261,6 +269,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
+                {isAllBranches ? <th className="px-4 py-3 text-left">Branch</th> : null}
                 <th className="px-4 py-3 text-left">Product</th>
                 <th className="px-4 py-3 text-left">Variant</th>
                 <th className="px-4 py-3 text-right">Quantity Sold</th>
@@ -274,13 +283,18 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>Loading product profit report...</td></tr>
+                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={tableColumnCount}>Loading product profit report...</td></tr>
               ) : error ? (
-                <tr><td className="px-4 py-6 text-center text-red-600" colSpan={9}>{error}</td></tr>
+                <tr><td className="px-4 py-6 text-center text-red-600" colSpan={tableColumnCount}>{error}</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>No product profit data found.</td></tr>
+                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={tableColumnCount}>No product profit data found.</td></tr>
               ) : rows.map((row) => (
-                <tr key={`${row.product_id}:${row.product_variant_id ?? 'base'}`} className="border-t hover:bg-blue-50/40">
+                <tr key={`${row.store_location_id ?? 'unassigned'}:${row.product_id}:${row.product_variant_id ?? 'base'}`} className="border-t hover:bg-blue-50/40">
+                  {isAllBranches ? (
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-700">
+                      {row.store_location ? `${row.store_location.code ? `${row.store_location.code} · ` : ''}${row.store_location.name}` : 'Unassigned'}
+                    </td>
+                  ) : null}
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{row.product_name}</div>
                     {row.product_cn_name ? <div className="text-xs text-slate-500">{row.product_cn_name}</div> : null}

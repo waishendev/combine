@@ -99,6 +99,7 @@ The labels below describe executable state, not intended behavior.
 - Package ownership and remaining entitlement remain global; existing Package dashboard redemption/usage metrics and detail usage rows scope `customer_service_package_usages.store_location_id`.
 - Profit/Loss revenue, COGS and refunds follow report Branch scope. Because Expense has no deterministic Branch field, global expenses are excluded from specific/restricted views and included only for the platform bypass's company-wide view.
 - Cash Shift/Cash Pool keeps earlier isolation, adds accessible per-Branch pool totals, and exposes legacy NULL Cash Shift count/rows as Unassigned in All.
+- Cash Shift and Product Profit tables now expose persisted Branch identity only in All Branches. Cash Shift uses `pos_cash_shifts.store_location_id`; Product Profit uses `orders.store_location_id` and changes only its All table grain to Branch + Product + Variant. Specific-Branch tables hide the redundant Branch column, while report cards retain scope-wide totals. StoreLocation metadata is joined/eager-loaded in the report query, and neither page has an export to alter.
 
 ### AUTOMATED TESTED
 

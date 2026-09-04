@@ -26,6 +26,9 @@ class ProductProfitReportController extends Controller
             'include_details' => ['nullable', 'boolean'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'branch_scope' => ['nullable', 'string', 'in:all'],
+            'branch_store_location_id' => ['nullable', 'integer', 'min:1'],
+            'detail_branch' => ['nullable', 'string', 'in:unassigned'],
         ]);
 
         [$start, $end, $defaultRangeApplied] = $this->resolveDateRange($request);
@@ -35,18 +38,27 @@ class ProductProfitReportController extends Controller
         $categoryId = isset($validated['category_id']) ? (int) $validated['category_id'] : null;
         $staffId = isset($validated['staff_id']) ? (int) $validated['staff_id'] : null;
         $channel = (string) ($validated['channel'] ?? '');
+        $branchScope = ReportBranchScope::current();
+        $isAllBranches = $branchScope->selectedStoreLocationId === null;
 
         $baseItems = $this->baseProductItemsQuery($start, $end, $search, $categoryId, $staffId, $channel);
+        $rowGroupColumns = [
+            ...($isAllBranches ? ['o.store_location_id', 'sl.name', 'sl.code'] : []),
+            'oi.product_id',
+            'oi.product_variant_id',
+            'oi.product_name_snapshot',
+            'oi.sku_snapshot',
+            'oi.variant_name_snapshot',
+            'oi.variant_sku_snapshot',
+        ];
         $rowsQuery = (clone $baseItems)
-            ->groupBy(
-                'oi.product_id',
-                'oi.product_variant_id',
-                'oi.product_name_snapshot',
-                'oi.sku_snapshot',
-                'oi.variant_name_snapshot',
-                'oi.variant_sku_snapshot'
-            )
+            ->groupBy($rowGroupColumns)
             ->select([
+                ...($isAllBranches ? [
+                    'o.store_location_id',
+                    'sl.name as store_location_name',
+                    'sl.code as store_location_code',
+                ] : []),
                 'oi.product_id',
                 'oi.product_variant_id',
                 'oi.product_name_snapshot as product_name',
@@ -66,7 +78,7 @@ class ProductProfitReportController extends Controller
             ->orderByDesc('sales_amount');
 
         $paginator = $rowsQuery->paginate($perPage, ['*'], 'page', $page);
-        $rows = collect($paginator->items())->map(fn ($row) => $this->transformSummaryRow($row))->values();
+        $rows = collect($paginator->items())->map(fn ($row) => $this->transformSummaryRow($row, $isAllBranches))->values();
 
         $summaryRaw = (clone $baseItems)
             ->select([
@@ -110,6 +122,7 @@ class ProductProfitReportController extends Controller
                 'valid_payment_statuses' => SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT,
                 'timestamp_field' => 'placed_at_or_created_at',
                 'costing' => 'order_items.cost_amount_snapshot_only',
+                'row_grain' => $isAllBranches ? 'store_location_product_variant' : 'product_variant',
             ],
         ];
 
@@ -122,7 +135,8 @@ class ProductProfitReportController extends Controller
                 $search,
                 $categoryId,
                 $staffId,
-                $channel
+                $channel,
+                ($validated['detail_branch'] ?? null) === 'unassigned'
             );
         }
 
@@ -157,6 +171,7 @@ class ProductProfitReportController extends Controller
     ): Builder {
         return ReportBranchScope::applyCurrent(DB::table('order_items as oi'), 'o.store_location_id')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->leftJoin('store_locations as sl', 'sl.id', '=', 'o.store_location_id')
             ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
             ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
@@ -196,12 +211,20 @@ class ProductProfitReportController extends Controller
             ->when($channel === 'online', fn (Builder $query) => $query->whereNull('o.created_by_user_id'));
     }
 
-    private function transformSummaryRow(object $row): array
+    private function transformSummaryRow(object $row, bool $includeBranch): array
     {
         $salesAmount = (float) $row->sales_amount;
         $grossProfit = (float) $row->gross_profit;
 
         return [
+            ...($includeBranch ? [
+                'store_location_id' => $row->store_location_id !== null ? (int) $row->store_location_id : null,
+                'store_location' => $row->store_location_id !== null ? [
+                    'id' => (int) $row->store_location_id,
+                    'name' => $row->store_location_name,
+                    'code' => $row->store_location_code,
+                ] : null,
+            ] : []),
             'product_id' => (int) $row->product_id,
             'product_variant_id' => $row->product_variant_id ? (int) $row->product_variant_id : null,
             'product_name' => (string) $row->product_name,
@@ -229,9 +252,11 @@ class ProductProfitReportController extends Controller
         string $search,
         ?int $categoryId,
         ?int $staffId,
-        string $channel
+        string $channel,
+        bool $unassignedBranchOnly
     ) {
         return $this->baseProductItemsQuery($start, $end, $search, $categoryId, $staffId, $channel)
+            ->when($unassignedBranchOnly, fn (Builder $query) => $query->whereNull('o.store_location_id'))
             ->where('oi.product_id', $productId)
             ->when($productVariantId, fn (Builder $query) => $query->where('oi.product_variant_id', $productVariantId))
             ->when($productVariantId === null, fn (Builder $query) => $query->whereNull('oi.product_variant_id'))

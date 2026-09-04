@@ -30,6 +30,8 @@ type CashShiftRow = {
   cash_sales: number
   expected_cash: number
   difference?: number | null
+  store_location_id?: number | null
+  store_location?: { id: number; name: string; code: string | null } | null
 }
 
 type PoolBalances = {
@@ -158,7 +160,7 @@ function DateTimeCell({ value }: { value?: string | null }) {
   )
 }
 
-const tableHeadings = [
+const baseTableHeadings = [
   'Event',
   'Date',
   'Staff',
@@ -183,6 +185,13 @@ function cashShiftDifference(row: Pick<CashShiftRow, 'event_type' | 'cash_sales'
 
 export default function CashShiftReportPage() {
   const { selectedBranchId } = useBranch()
+  const isAllBranches = selectedBranchId === null
+  const tableHeadings = useMemo(
+    () => isAllBranches
+      ? [...baseTableHeadings.slice(0, 2), 'Branch', ...baseTableHeadings.slice(2)]
+      : baseTableHeadings,
+    [isAllBranches],
+  )
   const defaults = useMemo(() => defaultDateRange(), [])
   const [filters, setFilters] = useState({ date_from: defaults.from, date_to: defaults.to, status: '', staff_id: '', user_id: '' })
   const [appliedFilters, setAppliedFilters] = useState(filters)
@@ -375,6 +384,11 @@ export default function CashShiftReportPage() {
                     <td className="whitespace-nowrap px-4 py-3">
                       <DateTimeCell value={eventDate} />
                     </td>
+                    {isAllBranches ? (
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {row.store_location ? `${row.store_location.code ? `${row.store_location.code} · ` : ''}${row.store_location.name}` : 'Unassigned'}
+                      </td>
+                    ) : null}
                     <td className="whitespace-nowrap px-4 py-3">{staffName ?? '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold">{row.opening_amount ? currency(row.opening_amount) : '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3">{!isOpen && row.closing_amount != null ? currency(row.closing_amount) : '—'}</td>
@@ -427,6 +441,7 @@ export default function CashShiftReportPage() {
             <section>
               <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600">Pool Snapshot</h4>
               <div className="grid gap-3 sm:grid-cols-2">
+                {isAllBranches ? <DetailField label="Branch" value={selectedRow.store_location ? `${selectedRow.store_location.code ? `${selectedRow.store_location.code} · ` : ''}${selectedRow.store_location.name}` : 'Unassigned'} /> : null}
                 <DetailField label="Total Initial Cash" value={currency(selectedRow.total_initial_cash)} valueClassName="text-blue-700" />
                 <DetailField label="Total Withdraw" value={currency(selectedRow.total_withdraw)} valueClassName="text-violet-700" />
               </div>
