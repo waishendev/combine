@@ -27,27 +27,27 @@ type CartItem = {
   qty: number
 }
 
-type ClaimHistoryRow = {
-  id: number
-  claimed_at?: string | null
-  staff?: string | null
-  order_number?: string | null
-  reference_no?: string | null
-  product?: string | null
-  product_cn_name?: string | null
-  variant?: string | null
-  variant_cn_name?: string | null
-  sku?: string | null
-  qty: number
-  original_price: number
-  final_amount: number
-  branch?: string | null
-}
+// type ClaimHistoryRow = {
+//   id: number
+//   claimed_at?: string | null
+//   staff?: string | null
+//   order_number?: string | null
+//   reference_no?: string | null
+//   product?: string | null
+//   product_cn_name?: string | null
+//   variant?: string | null
+//   variant_cn_name?: string | null
+//   sku?: string | null
+//   qty: number
+//   original_price: number
+//   final_amount: number
+//   branch?: string | null
+// }
 
-const formatCurrency = (value: number | string | null | undefined) => {
-  const numeric = Number(value ?? 0)
-  return `RM${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)}`
-}
+// const formatCurrency = (value: number | string | null | undefined) => {
+//   const numeric = Number(value ?? 0)
+//   return `RM${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)}`
+// }
 
 const getPagedData = <T,>(json: unknown): T[] => {
   if (!json || typeof json !== 'object') return []
@@ -63,7 +63,7 @@ const getPagedData = <T,>(json: unknown): T[] => {
 export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }: { canCheckout: boolean; canViewLogs: boolean }) {
   const { accessibleBranches, selectedBranchId, isAllBranches, loading: branchesLoading } = useBranch()
   const [products, setProducts] = useState<ConsumableProduct[]>([])
-  const [history, setHistory] = useState<ClaimHistoryRow[]>([])
+  // const [history, setHistory] = useState<ClaimHistoryRow[]>([])
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [cart, setCart] = useState<CartItem[]>([])
@@ -73,7 +73,8 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
   const [checkingOut, setCheckingOut] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [recentClaimsOpen, setRecentClaimsOpen] = useState(true)
+  // const [recentClaimsOpen, setRecentClaimsOpen] = useState(true)
+  void canViewLogs
 
   const categories = useMemo(() => {
     const seen = new Map<string, string>()
@@ -109,22 +110,22 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
     }
   }, [category, query, selectedBranchId])
 
-  const loadHistory = useCallback(async () => {
-    if (!canViewLogs) {
-      setHistory([])
-      return
-    }
-    try {
-      const params = new URLSearchParams({ per_page: '15' })
-      if (selectedBranchId) params.set('store_location_id', String(selectedBranchId))
-      const res = await fetch(`/api/proxy/admin/staff-consumables/logs?${params.toString()}`, { cache: 'no-store' })
-      const json = await res.json().catch(() => null)
-      if (res.ok) setHistory(getPagedData<ClaimHistoryRow>(json))
-    } catch {
-      // History is helpful, but claims should still work when it cannot load.
-    }
-  }, [canViewLogs, selectedBranchId])
-
+  // Recent Consumable Claims — disabled for now
+  // const loadHistory = useCallback(async () => {
+  //   if (!canViewLogs) {
+  //     setHistory([])
+  //     return
+  //   }
+  //   try {
+  //     const params = new URLSearchParams({ per_page: '15' })
+  //     if (selectedBranchId) params.set('store_location_id', String(selectedBranchId))
+  //     const res = await fetch(`/api/proxy/admin/staff-consumables/logs?${params.toString()}`, { cache: 'no-store' })
+  //     const json = await res.json().catch(() => null)
+  //     if (res.ok) setHistory(getPagedData<ClaimHistoryRow>(json))
+  //   } catch {
+  //     // History is helpful, but claims should still work when it cannot load.
+  //   }
+  // }, [canViewLogs, selectedBranchId])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -133,9 +134,9 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
     return () => window.clearTimeout(timer)
   }, [loadProducts])
 
-  useEffect(() => {
-    loadHistory()
-  }, [loadHistory])
+  // useEffect(() => {
+  //   loadHistory()
+  // }, [loadHistory])
 
   const openProductModal = (product: ConsumableProduct) => {
     setMessage(null)
@@ -228,7 +229,8 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
       if (!res.ok) throw new Error(json?.message ?? 'Unable to record consumable claim.')
       setCart([])
       setMessage(`Consumable claim recorded. Order ${json?.data?.order_number ?? json?.order_number ?? ''}`.trim())
-      await Promise.all([loadProducts(), loadHistory()])
+      await loadProducts()
+      // await Promise.all([loadProducts(), loadHistory()])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to record consumable claim.')
     } finally {
@@ -264,10 +266,13 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
       {!branchesLoading && accessibleBranches.length === 0 ? (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">No active branches. Consumable purchasing is unavailable.</div>
       ) : null}
-      {!branchesLoading && isAllBranches ? (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">Select a Branch before purchasing consumables. History remains available across your accessible Branches.</div>
-      ) : null}
 
+      {!branchesLoading && (isAllBranches || !selectedBranchId) ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-6 text-amber-950">
+          <h2 className="font-semibold">Select a specific Branch to use Staff Consumables</h2>
+          <p className="mt-2 text-sm">All Branches is for reporting and configuration only. Consumable claims cannot operate across Branches.</p>
+        </div>
+      ) : (
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-4 flex flex-col gap-3 md:flex-row">
@@ -434,77 +439,16 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
             </button>
           </section>
 
-
+          {/* Recent Consumable Claims — disabled for now
           {canViewLogs ? (
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setRecentClaimsOpen((open) => !open)}
-              className="flex w-full items-center justify-between gap-3 text-left"
-              aria-expanded={recentClaimsOpen}
-            >
-              <h2 className="text-lg font-bold text-slate-900">Recent Consumable Claims</h2>
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500">
-                <i className={`fa-solid text-xs ${recentClaimsOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`} />
-              </span>
-            </button>
-            {recentClaimsOpen ? (
-              history.length === 0 ? (
-                <p className="mt-3 rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">No recent consumable claims.</p>
-              ) : (
-                <div className="mt-3 max-h-96 overflow-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="sticky top-0 bg-white text-slate-500">
-                      <tr>
-                        <th className="py-2 pr-2">Date/time</th>
-                        <th className="py-2 pr-2">Staff</th>
-                        {isAllBranches ? <th className="py-2 pr-2">Branch</th> : null}
-                        <th className="py-2 pr-2">Product</th>
-                        <th className="py-2 pr-2 text-right">Qty</th>
-                        <th className="py-2 text-right">Final</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {history.map((row) => (
-                        <tr key={row.id}>
-                          <td className="py-2 pr-2 text-slate-500">{row.claimed_at ?? '-'}</td>
-                          <td className="py-2 pr-2 text-slate-700">{row.staff ?? '-'}</td>
-                          {isAllBranches ? <td className="py-2 pr-2 text-slate-700">{row.branch ?? '-'}</td> : null}
-                          <td className="py-2 pr-2">
-                            <NameStack
-                              name={row.product}
-                              cnName={row.product_cn_name}
-                              primaryClassName="font-semibold text-slate-800"
-                              secondaryClassName="text-xs text-slate-500"
-                              fallback="-"
-                            />
-                            {row.variant?.trim() || row.variant_cn_name?.trim() ? (
-                              <div className="mt-0.5">
-                                <VariantNameStack
-                                  name={row.variant}
-                                  cnName={row.variant_cn_name}
-                                  nameClassName="text-xs text-slate-700"
-                                  labelClassName="text-xs text-slate-500"
-                                  cnClassName="text-xs text-slate-500"
-                                />
-                              </div>
-                            ) : null}
-                            <span className="text-slate-500">{row.sku ?? '-'}</span>
-                            <span className="block text-slate-500">Original {formatCurrency(row.original_price)}</span>
-                          </td>
-                          <td className="py-2 pr-2 text-right text-slate-700">{row.qty}</td>
-                          <td className="py-2 text-right font-bold text-emerald-700">{formatCurrency(row.final_amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            ) : null}
+            ...
           </section>
           ) : null}
+          */}
         </aside>
       </div>
+      )}
 
       <StaffConsumableProductModal
         product={selectedProduct}

@@ -68,10 +68,10 @@ export default function StaffConsumableHistoryPageContent() {
             <thead className="bg-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Date/time</th>
+                {isAllBranches && <th className="px-4 py-3">Branch</th>}
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">SKU</th>
                 <th className="px-4 py-3 text-right">Qty</th>
-                {isAllBranches && <th className="px-4 py-3">Branch</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -82,10 +82,10 @@ export default function StaffConsumableHistoryPageContent() {
               ) : rows.map((row) => (
                 <tr key={row.id}>
                   <td className="px-4 py-3 text-slate-600">{row.claimed_at ?? '-'}</td>
+                  {isAllBranches && <td className="px-4 py-3 text-slate-600">{row.store_location?.name ?? (row.store_location_id ? 'Unknown Branch' : 'Unassigned')}</td>}
                   <td className="px-4 py-3 font-medium text-slate-800">{row.product ?? '-'}</td>
                   <td className="px-4 py-3 text-slate-600">{row.sku ?? '-'}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.qty}</td>
-                  {isAllBranches && <td className="px-4 py-3 text-slate-600">{row.store_location?.name ?? (row.store_location_id ? 'Unknown Branch' : 'Unassigned')}</td>}
                 </tr>
               ))}
             </tbody>
