@@ -5,9 +5,11 @@ namespace App\Providers;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItemStaffSplit;
 use App\Models\Ecommerce\ServicePackageStaffSplit;
+use App\Models\User;
 use App\Observers\EcommerceOrderItemStaffSplitObserver;
 use App\Observers\EcommerceOrderObserver;
 use App\Observers\EcommerceServicePackageStaffSplitObserver;
+use App\Observers\UserStaffBranchAccessObserver;
 use App\Listeners\LogMailSent;
 use App\Listeners\LogMailSending;
 use Illuminate\Mail\Events\MessageSent;
@@ -37,5 +39,6 @@ class AppServiceProvider extends ServiceProvider
         Order::observe(EcommerceOrderObserver::class);
         OrderItemStaffSplit::observe(EcommerceOrderItemStaffSplitObserver::class);
         ServicePackageStaffSplit::observe(EcommerceServicePackageStaffSplitObserver::class);
+        User::observe(UserStaffBranchAccessObserver::class);
     }
 }

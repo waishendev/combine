@@ -13,10 +13,14 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use App\Services\StoreLocationAccessService;
+use App\Services\StaffBranchAccessService;
 
 class StaffController extends Controller
 {
-    public function __construct(private readonly StoreLocationAccessService $storeLocationAccess) {}
+    public function __construct(
+        private readonly StoreLocationAccessService $storeLocationAccess,
+        private readonly StaffBranchAccessService $staffBranchAccess,
+    ) {}
 
     public function index(Request $request)
     {
@@ -426,6 +430,7 @@ class StaffController extends Controller
 
             $user->roles()->sync([$staffRole->id]);
             $staff->storeLocations()->sync($storeLocationIds);
+            $this->staffBranchAccess->synchronize($staff, $user);
 
             return [
                 'staff' => $staff->load(['admin:id,staff_id,username,email', 'storeLocations:id,name,code']),
@@ -516,6 +521,9 @@ class StaffController extends Controller
 
             if ($storeLocationIds !== null) {
                 $staff->storeLocations()->sync($storeLocationIds);
+            }
+            if ($user) {
+                $this->staffBranchAccess->synchronize($staff, $user);
             }
 
             return $staff->load(['admin:id,staff_id,username,email', 'storeLocations:id,name,code']);
