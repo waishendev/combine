@@ -7,6 +7,7 @@ use App\Models\Booking\BookingBlock;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingStaffSchedule;
 use App\Models\Booking\BookingStaffTimeoff;
+use App\Models\Booking\BookingLeaveRequest;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Staff;
 use App\Models\User;
@@ -127,6 +128,55 @@ class BookingBranchSchedulingTest extends TestCase
         $branch->update(['is_booking_available' => false]);
         $monday = Carbon::parse('next monday')->addWeeks(2);
         $this->assertSame([], app(BookingAvailabilityService::class)->getAvailableSlots($service, $staff->id, $monday->toDateString(), 15, 0, true, $branch->id));
+    }
+
+    public function test_public_pooled_slots_apply_every_branch_availability_gate(): void
+    {
+        Carbon::setTestNow('2026-09-07 08:00:00');
+        [$staff, $branchA, $branchB] = $this->workplace();
+        $otherStaff = Staff::create(['name'=>'Bob','email'=>'bob@test.test','is_active'=>true]);
+        $otherStaff->storeLocations()->sync([$branchB->id]);
+        $service = BookingService::create(['name'=>'Gel','service_type'=>'standard','duration_min'=>60,'buffer_min'=>0]);
+        $service->storeLocations()->sync([$branchA->id]);
+        $service->allowedStaffs()->attach($staff->id, ['is_active'=>true]);
+        $service->allowedStaffs()->attach($otherStaff->id, ['is_active'=>true]);
+        BookingStaffSchedule::create($this->schedule($staff, $branchA, 1, '10:00', '14:00'));
+        BookingStaffSchedule::create($this->schedule($otherStaff, $branchB, 1, '10:00', '14:00'));
+        $date = '2026-09-14';
+
+        $response = $this->getJson("/api/booking/availability/pooled?service_id={$service->id}&date={$date}&store_location_id={$branchA->id}")
+            ->assertOk();
+        $this->assertSame([$staff->id], $response->json('data.visible_slots.0.available_staff_ids'));
+        $this->assertSame('2026-09-14T10:00:00+08:00', $response->json('data.visible_slots.0.start_at'));
+
+        $this->getJson("/api/booking/availability/pooled?service_id={$service->id}&date={$date}&store_location_id={$branchB->id}")
+            ->assertUnprocessable();
+
+        BookingStaffTimeoff::create(['staff_id'=>$staff->id,'store_location_id'=>$branchB->id,'start_at'=>'2026-09-14 10:00:00','end_at'=>'2026-09-14 11:00:00']);
+        BookingLeaveRequest::create(['staff_id'=>$staff->id,'store_location_id'=>$branchB->id,'leave_type'=>'off_day','day_type'=>'full_day','start_date'=>$date,'end_date'=>$date,'days'=>1,'status'=>'approved']);
+        $this->getJson("/api/booking/availability/pooled?service_id={$service->id}&date={$date}&store_location_id={$branchA->id}")
+            ->assertOk()->assertJsonPath('data.visible_slots.0.start_at', '2026-09-14T10:00:00+08:00');
+
+        $sameBranchTimeoff = BookingStaffTimeoff::create(['staff_id'=>$staff->id,'store_location_id'=>$branchA->id,'start_at'=>'2026-09-14 10:00:00','end_at'=>'2026-09-14 11:00:00']);
+        $this->getJson("/api/booking/availability/pooled?service_id={$service->id}&date={$date}&store_location_id={$branchA->id}")
+            ->assertOk()->assertJsonMissing(['start_at'=>'2026-09-14T10:00:00+08:00']);
+        $sameBranchTimeoff->delete();
+
+        $sameBranchLeave = BookingLeaveRequest::create(['staff_id'=>$staff->id,'store_location_id'=>$branchA->id,'leave_type'=>'off_day','day_type'=>'full_day','start_date'=>$date,'end_date'=>$date,'days'=>1,'status'=>'approved']);
+        $this->getJson("/api/booking/availability/pooled?service_id={$service->id}&date={$date}&store_location_id={$branchA->id}")
+            ->assertOk()->assertJsonMissing(['start_at'=>'2026-09-14T10:00:00+08:00']);
+        $sameBranchLeave->delete();
+
+        $legacyUnattributedTimeoff = BookingStaffTimeoff::create(['staff_id'=>$staff->id,'store_location_id'=>null,'start_at'=>'2026-09-14 10:00:00','end_at'=>'2026-09-14 11:00:00']);
+        $this->getJson("/api/booking/availability/pooled?service_id={$service->id}&date={$date}&store_location_id={$branchA->id}")
+            ->assertOk()->assertJsonPath('data.visible_slots.0.start_at', '2026-09-14T10:00:00+08:00');
+        $legacyUnattributedTimeoff->delete();
+
+        Booking::create(['source'=>'STAFF','staff_id'=>$staff->id,'service_id'=>$service->id,'store_location_id'=>$branchA->id,'start_at'=>'2026-09-14 10:00:00','end_at'=>'2026-09-14 11:00:00','status'=>'CONFIRMED']);
+        $this->getJson("/api/booking/availability/pooled?service_id={$service->id}&date={$date}&store_location_id={$branchA->id}")
+            ->assertOk()->assertJsonMissing(['start_at'=>'2026-09-14T10:00:00+08:00']);
+
+        Carbon::setTestNow();
     }
 
     private function workplace(): array
