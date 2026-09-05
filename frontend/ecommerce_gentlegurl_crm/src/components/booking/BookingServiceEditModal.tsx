@@ -340,45 +340,13 @@ export default function BookingServiceEditModal({
     }
   }, [serviceId])
 
-
-
-  useEffect(() => {
-    let ignore = false
-    const loadCategories = async () => {
-      try {
-        const res = await fetch('/api/proxy/admin/booking/categories?all=1', { cache: 'no-store' })
-        if (!res.ok) {
-          if (!ignore) setCategoryOptions([])
-          return
-        }
-        const json = await res.json().catch(() => null)
-        const payload = json?.data ?? json
-        const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
-        const mapped = rows
-          .map((row: { id?: unknown; name?: unknown; cn_name?: unknown; is_active?: unknown; sort_order?: unknown }) => ({
-            id: Number(row?.id),
-            name: String(row?.name ?? '').trim(),
-            cn_name: typeof row?.cn_name === 'string' ? row.cn_name : null,
-            is_active: row?.is_active !== false && row?.is_active !== 0 && row?.is_active !== '0',
-            sort_order: row?.sort_order != null ? Number(row.sort_order) : undefined,
-          }))
-          .filter((row: BookingServiceCategoryOption) => row.id > 0 && row.name)
-        if (!ignore) setCategoryOptions(mapped)
-      } catch {
-        if (!ignore) setCategoryOptions([])
-      }
-    }
-    void loadCategories()
-    return () => { ignore = true }
-  }, [])
-
   useEffect(() => {
     let ignore = false
 
     const loadStaffs = async () => {
       setStaffLoading(true)
       try {
-        const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', { cache: 'no-store' })
+        const res = await fetch('/api/proxy/staffs/options/query?per_page=200&is_active=true', { cache: 'no-store' })
         if (!res.ok) {
           if (!ignore) setStaffOptions([])
           return
@@ -420,59 +388,41 @@ export default function BookingServiceEditModal({
   useEffect(() => {
     let ignore = false
 
+    // NEW ENHANCEMENT — booking-services-crm-query-v1: slim options (was paged full list)
     const loadBookingServices = async () => {
       try {
         const controller = new AbortController()
-        const perPage = 200
-        const collected = new Map<number, BookingServiceOption>()
-
-        for (let page = 1; page <= 50; page += 1) {
-          const res = await fetch(
-            `/api/proxy/admin/booking/services?page=${page}&per_page=${perPage}`,
-            { cache: 'no-store', signal: controller.signal },
-          )
-          if (!res.ok) break
-
-          const json = await res.json().catch(() => null)
-          const payload =
-            json && typeof json === 'object' && 'data' in json
-              ? (json as { data?: { data?: unknown[]; last_page?: number } | unknown[] }).data
-              : null
-
-          const rows = Array.isArray((payload as { data?: unknown[] } | null)?.data)
-            ? ((payload as { data?: unknown[] }).data ?? [])
-            : Array.isArray(payload)
-              ? payload
-              : []
-
-          for (const row of rows) {
-            if (!row || typeof row !== 'object') continue
-            const maybe = row as Record<string, unknown>
-            const id = Number(maybe.id)
-            const name = String(maybe.name ?? '').trim()
-            if (!id || !name) continue
-            if (id === serviceId) continue
-            collected.set(id, {
-              id,
-              name,
-              cn_name: typeof maybe.cn_name === 'string' ? maybe.cn_name : null,
-              duration_min: Math.max(0, Number(maybe.duration_min ?? 0)),
-              service_price: Math.max(0, Number(maybe.service_price ?? 0)),
-            })
-          }
-
-          const lastPage =
-            payload && typeof payload === 'object' && 'last_page' in payload
-              ? Number((payload as { last_page?: unknown }).last_page)
-              : NaN
-
-          if (Number.isFinite(lastPage) && page >= lastPage) break
-          if (rows.length < perPage) break
+        const res = await fetch('/api/proxy/admin/booking/services/options?limit=2000', {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          if (!ignore) setBookingServiceOptions([])
+          return
         }
 
-        if (!ignore) {
-          setBookingServiceOptions(Array.from(collected.values()))
+        const json = await res.json().catch(() => null)
+        const payload = json?.data ?? json
+        const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
+        const mapped: BookingServiceOption[] = []
+
+        for (const row of rows) {
+          if (!row || typeof row !== 'object') continue
+          const maybe = row as Record<string, unknown>
+          const id = Number(maybe.id)
+          const name = String(maybe.name ?? '').trim()
+          if (!id || !name) continue
+          if (id === serviceId) continue
+          mapped.push({
+            id,
+            name,
+            cn_name: typeof maybe.cn_name === 'string' ? maybe.cn_name : null,
+            duration_min: Math.max(0, Number(maybe.duration_min ?? 0)),
+            service_price: Math.max(0, Number(maybe.service_price ?? 0)),
+          })
         }
+
+        if (!ignore) setBookingServiceOptions(mapped)
       } catch {
         if (!ignore) setBookingServiceOptions([])
       }

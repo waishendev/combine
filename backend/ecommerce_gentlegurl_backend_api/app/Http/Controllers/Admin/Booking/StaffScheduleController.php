@@ -20,6 +20,8 @@ class StaffScheduleController extends Controller
     public function index(Request $request)
     {
         $accessibleIds = $this->storeAccess->accessibleStoreLocations($request->user(), true)->pluck('id');
+        // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1: honor per_page + day_of_week from CRM
+        $perPage = max(1, min(200, $request->integer('per_page', 50)));
         $query = BookingStaffSchedule::query()->with(['staff:id,name', 'storeLocation:id,name,code,is_active,is_booking_available'])
             ->where(fn ($scope) => $scope->whereIn('store_location_id', $accessibleIds)
                 ->when($this->storeAccess->hasPlatformBypass($request->user()), fn ($legacy) => $legacy->orWhereNull('store_location_id')));
@@ -33,6 +35,13 @@ class StaffScheduleController extends Controller
             $query->where('staff_id', (int) $request->staff_id);
         }
 
+        if ($request->filled('day_of_week')) {
+            $day = $request->integer('day_of_week');
+            if ($day >= 0 && $day <= 6) {
+                $query->where('day_of_week', $day);
+            }
+        }
+
         if ($request->has('is_active')) {
             $isActive = filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             if ($isActive !== null) {
@@ -40,14 +49,16 @@ class StaffScheduleController extends Controller
             }
         }
 
-        return $this->respond($query->paginate(50));
+        return $this->respond($query->orderBy('id')->paginate($perPage));
     }
     public function show(Request $request, int $id) { $item = BookingStaffSchedule::with(['staff:id,name','storeLocation:id,name,code,is_active,is_booking_available'])->findOrFail($id); $this->authorizeRecord($request, $item); return $this->respond($item); }
     public function store(Request $request) {
         $data = $request->validate([
             'staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'store_location_id' => ['required', 'integer', 'exists:store_locations,id'],
-            'day_of_week' => ['required', 'integer', 'between:0,6'],
+            'day_of_week' => ['required_without:days_of_week', 'integer', 'between:0,6'],
+            'days_of_week' => ['required_without:day_of_week', 'array', 'min:1'],
+            'days_of_week.*' => ['integer', 'distinct', 'between:0,6'],
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i'],
             'break_start' => ['nullable', 'date_format:H:i'],
@@ -55,6 +66,12 @@ class StaffScheduleController extends Controller
             'is_active' => ['nullable', 'boolean'],
         ]);
         $data['is_active'] = $data['is_active'] ?? true;
+        $days = array_values(array_unique(array_map(
+            'intval',
+            $data['days_of_week'] ?? [$data['day_of_week']],
+        )));
+        sort($days);
+
         if ($data['is_active']) {
             $this->branchSchedules->authorizeOperationalBranch($request->user(), (int) $data['store_location_id']);
         } else {
@@ -62,8 +79,46 @@ class StaffScheduleController extends Controller
         }
         $this->branchSchedules->assertStaffAssigned((int) $data['staff_id'], (int) $data['store_location_id']);
         $this->validateScheduleTimes($data['start_time'], $data['end_time'], $data['break_start'] ?? null, $data['break_end'] ?? null);
-        $this->branchSchedules->assertScheduleDoesNotOverlap((int) $data['staff_id'], (int) $data['day_of_week'], $data['start_time'], $data['end_time'], (bool) $data['is_active']);
-        return $this->respond(BookingStaffSchedule::create($data)->load(['staff:id,name','storeLocation:id,name,code,is_active,is_booking_available']), null, true, 201);
+
+        try {
+            $created = DB::transaction(function () use ($data, $days) {
+                $rows = [];
+                foreach ($days as $day) {
+                    $this->branchSchedules->assertScheduleDoesNotOverlap(
+                        (int) $data['staff_id'],
+                        $day,
+                        $data['start_time'],
+                        $data['end_time'],
+                        (bool) $data['is_active'],
+                    );
+                    $rows[] = BookingStaffSchedule::create([
+                        'staff_id' => (int) $data['staff_id'],
+                        'store_location_id' => (int) $data['store_location_id'],
+                        'day_of_week' => $day,
+                        'start_time' => $data['start_time'],
+                        'end_time' => $data['end_time'],
+                        'break_start' => $data['break_start'] ?? null,
+                        'break_end' => $data['break_end'] ?? null,
+                        'is_active' => (bool) $data['is_active'],
+                    ])->load(['staff:id,name', 'storeLocation:id,name,code,is_active,is_booking_available']);
+                }
+
+                return $rows;
+            });
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            throw $exception;
+        } catch (\InvalidArgumentException $exception) {
+            return $this->respondError($exception->getMessage(), 422);
+        }
+
+        if (count($created) === 1) {
+            return $this->respond($created[0], null, true, 201);
+        }
+
+        return $this->respond([
+            'created_count' => count($created),
+            'items' => $created,
+        ], null, true, 201);
     }
     public function update(Request $request, int $id) {
         $item = BookingStaffSchedule::findOrFail($id);

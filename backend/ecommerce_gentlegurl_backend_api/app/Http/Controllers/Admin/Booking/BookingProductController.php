@@ -22,8 +22,31 @@ class BookingProductController extends Controller
             : null;
         $perPage = max(1, min(200, $request->integer('per_page', 20)));
 
+        // NEW ENHANCEMENT — booking-products-crm-query-v1: list skips questions.options (Edit uses show);
+        // lean product columns + linked service id + stores only.
         $query = BookingProduct::query()
-            ->with(['categories', 'questions.options', 'linkedBookingService.storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code')])
+            ->select([
+                'booking_products.id',
+                'booking_products.name',
+                'booking_products.cn_name',
+                'booking_products.price',
+                'booking_products.price_mode',
+                'booking_products.price_range_min',
+                'booking_products.price_range_max',
+                'booking_products.barcode',
+                'booking_products.description',
+                'booking_products.image_path',
+                'booking_products.is_active',
+                'booking_products.created_at',
+                'booking_products.updated_at',
+            ])
+            ->with([
+                'categories:id,name,cn_name',
+                'linkedBookingService:id,linked_booking_product_id',
+                'linkedBookingService.storeLocations' => fn ($locations) => $locations
+                    ->whereIn('store_locations.id', $accessibleIds)
+                    ->select('store_locations.id', 'name', 'code'),
+            ])
             ->whereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
             ->when($branchId, fn ($query) => $query->whereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->orderByRaw("COALESCE(booking_products.name, '') asc")
@@ -46,7 +69,19 @@ class BookingProductController extends Controller
             $query->whereHas('categories', fn ($q) => $q->where('booking_product_categories.id', (int) $request->input('category_id')));
         }
 
-        return $this->respond($query->paginate($perPage));
+        $paginator = $query->paginate($perPage);
+        $paginator->getCollection()->transform(function (BookingProduct $product) {
+            // Preserve list key for clients; questions only needed on show / write responses.
+            $product->setRelation('questions', collect());
+
+            if ($product->relationLoaded('linkedBookingService') && $product->linkedBookingService) {
+                $product->linkedBookingService->setAppends([]);
+            }
+
+            return $product;
+        });
+
+        return $this->respond($paginator);
     }
 
     public function store(Request $request)

@@ -88,7 +88,7 @@ export default function BookingServiceBulkUpdateModal({
     const loadStaffs = async () => {
       setStaffLoading(true)
       try {
-        const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', {
+        const res = await fetch('/api/proxy/staffs/options/query?per_page=200&is_active=true', {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -146,7 +146,8 @@ export default function BookingServiceBulkUpdateModal({
     const loadOptions = async () => {
       setQuestionsLoading(true)
       try {
-        const res = await fetch('/api/proxy/admin/booking/services?per_page=200', {
+        // NEW ENHANCEMENT — booking-services-crm-query-v1
+        const res = await fetch('/api/proxy/admin/booking/services/options?limit=2000', {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -155,7 +156,7 @@ export default function BookingServiceBulkUpdateModal({
           return
         }
         const json = await res.json().catch(() => null)
-        const payload = json?.data?.data ?? json?.data ?? json
+        const payload = json?.data ?? json
         const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
         const mapped = rows
           .map((row: any) => ({

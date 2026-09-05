@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import type { StaffScheduleRowData } from './StaffScheduleRow'
@@ -10,14 +10,15 @@ import { useBranch } from '@/contexts/BranchContext'
 
 interface StaffScheduleCreateModalProps {
   onClose: () => void
-  onSuccess: (schedule: StaffScheduleRowData) => void
+  onSuccess: (schedules: StaffScheduleRowData[]) => void
   defaultStaffId?: string
+  staffs?: StaffOption[]
 }
 
 interface FormState {
   staff_id: string
   store_location_id: string
-  day_of_week: string
+  days_of_week: number[]
   start_time: string
   end_time: string
   break_start: string
@@ -25,20 +26,24 @@ interface FormState {
   is_active: boolean
 }
 
-const DAYS: Array<{ value: number; label: string }> = [
-  { value: 0, label: 'Sunday' },
-  { value: 1, label: 'Monday' },
-  { value: 2, label: 'Tuesday' },
-  { value: 3, label: 'Wednesday' },
-  { value: 4, label: 'Thursday' },
-  { value: 5, label: 'Friday' },
-  { value: 6, label: 'Saturday' },
+/** Display Mon→Sun; values still match backend 0=Sun … 6=Sat. */
+const DAYS: Array<{ value: number; label: string; short: string }> = [
+  { value: 1, label: 'Monday', short: 'Mon' },
+  { value: 2, label: 'Tuesday', short: 'Tue' },
+  { value: 3, label: 'Wednesday', short: 'Wed' },
+  { value: 4, label: 'Thursday', short: 'Thu' },
+  { value: 5, label: 'Friday', short: 'Fri' },
+  { value: 6, label: 'Saturday', short: 'Sat' },
+  { value: 0, label: 'Sunday', short: 'Sun' },
 ]
+
+const WEEKDAYS = [1, 2, 3, 4, 5]
+const ALL_WEEK = [1, 2, 3, 4, 5, 6, 0]
 
 const initialFormState: FormState = {
   staff_id: '',
   store_location_id: '',
-  day_of_week: '1',
+  days_of_week: [1],
   start_time: '10:00',
   end_time: '19:00',
   break_start: '',
@@ -52,18 +57,37 @@ const timeToMinutes = (time: string): number => {
   return hour * 60 + minute
 }
 
+const sameDaySet = (a: number[], b: number[]) => {
+  if (a.length !== b.length) return false
+  const left = [...a].sort()
+  const right = [...b].sort()
+  return left.every((value, index) => value === right[index])
+}
+
 export default function StaffScheduleCreateModal({
   onClose,
   onSuccess,
   defaultStaffId,
+  staffs: staffsProp,
 }: StaffScheduleCreateModalProps) {
   const { t } = useI18n()
   const { accessibleBranches, selectedBranchId } = useBranch()
-  const [form, setForm] = useState<FormState>({ ...initialFormState, staff_id: defaultStaffId || '', store_location_id: selectedBranchId ? String(selectedBranchId) : '' })
+  const [form, setForm] = useState<FormState>({
+    ...initialFormState,
+    staff_id: defaultStaffId || '',
+    store_location_id: selectedBranchId ? String(selectedBranchId) : '',
+  })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [staffs, setStaffs] = useState<StaffOption[]>([])
+  const [staffsLocal, setStaffsLocal] = useState<StaffOption[]>([])
+  const staffs = staffsProp && staffsProp.length > 0 ? staffsProp : staffsLocal
   const selectedBranch = accessibleBranches.find((branch) => branch.id === Number(form.store_location_id))
+
+  const selectedDayCount = form.days_of_week.length
+  const selectedDayLabels = useMemo(
+    () => DAYS.filter((day) => form.days_of_week.includes(day.value)).map((day) => day.short).join(', '),
+    [form.days_of_week],
+  )
 
   useEffect(() => {
     if (selectedBranchId) setForm((current) => current.store_location_id ? current : { ...current, store_location_id: String(selectedBranchId) })
@@ -76,28 +100,42 @@ export default function StaffScheduleCreateModal({
   }, [selectedBranch])
 
   useEffect(() => {
+    if (staffsProp && staffsProp.length > 0) return
     const controller = new AbortController()
+    // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1: slim staff options fallback
     const fetchStaffs = async () => {
       try {
-        const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', {
+        const res = await fetch('/api/proxy/staffs/options/query?per_page=200&is_active=true', {
           cache: 'no-store',
           signal: controller.signal,
         })
         if (!res.ok) return
         const payload = await res.json().catch(() => ({}))
         const data = payload?.data
-        if (Array.isArray(data)) {
-          setStaffs(data as StaffOption[])
-        } else if (data?.data && Array.isArray(data.data)) {
-          setStaffs(data.data as StaffOption[])
-        }
+        const rows = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.data)
+            ? data.data
+            : []
+        setStaffsLocal(
+          rows
+            .map((row: unknown): StaffOption | null => {
+              if (!row || typeof row !== 'object') return null
+              const rec = row as Record<string, unknown>
+              const id = Number(rec.id)
+              const name = String(rec.name ?? '').trim()
+              if (!id || !name) return null
+              return { id, name }
+            })
+            .filter((row: StaffOption | null): row is StaffOption => Boolean(row)),
+        )
       } catch {
         // Ignore
       }
     }
     fetchStaffs()
     return () => controller.abort()
-  }, [])
+  }, [staffsProp])
 
   const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = event.target
@@ -108,10 +146,25 @@ export default function StaffScheduleCreateModal({
     }))
   }
 
+  const toggleDay = (day: number) => {
+    setForm((prev) => {
+      const exists = prev.days_of_week.includes(day)
+      const nextDays = exists
+        ? prev.days_of_week.filter((value) => value !== day)
+        : [...prev.days_of_week, day]
+      return { ...prev, days_of_week: nextDays }
+    })
+  }
+
+  const applyDayPreset = (days: number[]) => {
+    setForm((prev) => ({ ...prev, days_of_week: [...days] }))
+  }
+
   const validate = (): string | null => {
     if (!form.staff_id) return 'Staff is required.'
     if (!form.store_location_id) return 'A specific Branch is required; All Branches cannot be saved.'
     if (!selectedBranch) return 'Select a Branch you are authorized to access.'
+    if (form.days_of_week.length === 0) return 'Select at least one day of the week.'
     if (form.is_active && (!selectedBranch.is_active || !selectedBranch.is_booking_available)) return 'Active schedules require an active, booking-enabled Branch.'
     const startMin = timeToMinutes(form.start_time)
     const endMin = timeToMinutes(form.end_time)
@@ -161,7 +214,7 @@ export default function StaffScheduleCreateModal({
         body: JSON.stringify({
           staff_id: Number(form.staff_id),
           store_location_id: Number(form.store_location_id),
-          day_of_week: Number(form.day_of_week),
+          days_of_week: form.days_of_week,
           start_time: form.start_time,
           end_time: form.end_time,
           break_start: form.break_start || null,
@@ -175,33 +228,44 @@ export default function StaffScheduleCreateModal({
         let message = 'Failed to create schedule'
         if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string') {
           message = data.message
+        } else if (data?.errors && typeof data.errors === 'object') {
+          const first = Object.values(data.errors as Record<string, string[]>)[0]
+          if (Array.isArray(first) && typeof first[0] === 'string') message = first[0]
         }
         setError(message)
         return
       }
 
-      const payload = data?.data as StaffScheduleApiItem | undefined
-      const staffNameMap = new Map(staffs.map(s => [s.id, s.name]))
-      const scheduleRow: StaffScheduleRowData = payload
-        ? mapStaffScheduleApiItemToRow(payload, staffNameMap)
-        : {
-            id: 0,
-            staff_id: Number(form.staff_id),
-            store_location_id: Number(form.store_location_id),
-            branch_name: accessibleBranches.find((b) => b.id === Number(form.store_location_id))?.name || `Branch #${form.store_location_id}`,
-            branch_is_active: true,
-            branch_is_booking_available: true,
-            staff_name: staffs.find(s => s.id === Number(form.staff_id))?.name || `Staff #${form.staff_id}`,
-            day_of_week: Number(form.day_of_week),
-            start_time: form.start_time,
-            end_time: form.end_time,
-            break_start: form.break_start || null,
-            break_end: form.break_end || null,
-            is_active: form.is_active,
-          }
+      const staffNameMap = new Map(staffs.map((s) => [s.id, s.name]))
+      const payloadRoot = data?.data
+      let scheduleRows: StaffScheduleRowData[] = []
+
+      if (payloadRoot && typeof payloadRoot === 'object' && Array.isArray((payloadRoot as { items?: unknown }).items)) {
+        scheduleRows = ((payloadRoot as { items: StaffScheduleApiItem[] }).items).map((item) =>
+          mapStaffScheduleApiItemToRow(item, staffNameMap),
+        )
+      } else if (payloadRoot && typeof payloadRoot === 'object' && 'id' in (payloadRoot as object)) {
+        scheduleRows = [mapStaffScheduleApiItemToRow(payloadRoot as StaffScheduleApiItem, staffNameMap)]
+      } else {
+        scheduleRows = form.days_of_week.map((day) => ({
+          id: 0,
+          staff_id: Number(form.staff_id),
+          store_location_id: Number(form.store_location_id),
+          branch_name: accessibleBranches.find((b) => b.id === Number(form.store_location_id))?.name || `Branch #${form.store_location_id}`,
+          branch_is_active: true,
+          branch_is_booking_available: true,
+          staff_name: staffs.find((s) => s.id === Number(form.staff_id))?.name || `Staff #${form.staff_id}`,
+          day_of_week: day,
+          start_time: form.start_time,
+          end_time: form.end_time,
+          break_start: form.break_start || null,
+          break_end: form.break_end || null,
+          is_active: form.is_active,
+        }))
+      }
 
       setForm({ ...initialFormState })
-      onSuccess(scheduleRow)
+      onSuccess(scheduleRows)
     } catch (err) {
       console.error(err)
       setError('Failed to create schedule')
@@ -235,7 +299,11 @@ export default function StaffScheduleCreateModal({
             className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
             disabled={submitting}
           >
-            {submitting ? t('common.creating') : t('common.create')}
+            {submitting
+              ? t('common.creating')
+              : selectedDayCount > 1
+                ? `Create ${selectedDayCount} days`
+                : t('common.create')}
           </button>
         </>
       }
@@ -276,23 +344,64 @@ export default function StaffScheduleCreateModal({
           </div>
 
           <div>
-            <label htmlFor="day_of_week" className="block text-sm font-medium text-gray-700 mb-1">
-              Day of Week <span className="text-red-500">*</span>
-            </label>
-            <select
-              id="day_of_week"
-              name="day_of_week"
-              value={form.day_of_week}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              disabled={submitting}
-            >
-              {DAYS.map((day) => (
-                <option key={day.value} value={day.value}>
-                  {day.label}
-                </option>
-              ))}
-            </select>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Days of Week <span className="text-red-500">*</span>
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => applyDayPreset(WEEKDAYS)}
+                  disabled={submitting}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                    sameDaySet(form.days_of_week, WEEKDAYS)
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Mon–Fri
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyDayPreset(ALL_WEEK)}
+                  disabled={submitting}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                    sameDaySet(form.days_of_week, ALL_WEEK)
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Mon–Sun
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+              {DAYS.map((day) => {
+                const selected = form.days_of_week.includes(day.value)
+                return (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleDay(day.value)}
+                    disabled={submitting}
+                    aria-pressed={selected}
+                    className={`rounded-xl border px-2 py-2.5 text-center transition ${
+                      selected
+                        ? 'border-blue-500 bg-blue-50 text-blue-800 ring-1 ring-blue-300'
+                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="block text-xs font-semibold">{day.short}</span>
+                    <span className="mt-0.5 block text-[10px] text-gray-500 sm:hidden">{day.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {selectedDayCount === 0
+                ? 'Select one or more days. Same hours/break will apply to each selected day.'
+                : `Creating ${selectedDayCount} day${selectedDayCount > 1 ? 's' : ''}: ${selectedDayLabels}`}
+            </p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -368,7 +477,7 @@ export default function StaffScheduleCreateModal({
               disabled={submitting || Boolean(selectedBranch && !selectedBranch.is_booking_available)}
             />
             <span>
-              Active — staff can be booked on this day when status is on
+              Active — staff can be booked on these days when status is on
             </span>
           </label>
 

@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Admin\Booking;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking\BookingProductCategory;
 use App\Models\Booking\BookingServiceCategory;
 use App\Services\Booking\BookingServiceCategoryProductLinkService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -18,6 +21,9 @@ class CategoryController extends Controller
     ) {
     }
 
+    /** @var Collection<int, BookingProductCategory>|null */
+    private ?Collection $linkedProductCategoryCache = null;
+
     public function index(Request $request)
     {
         $access = app(StoreLocationAccessService::class);
@@ -26,23 +32,42 @@ class CategoryController extends Controller
         $branchId = $requestedBranchId > 0
             ? (int) $access->authorizeStoreLocation($request->user(), $requestedBranchId, false)->id
             : null;
+
+        // NEW ENHANCEMENT — booking-categories-crm-query-v1: all=1 dropdown-slim; list uses join for branches
+        $all = $request->boolean('all');
+
         $query = BookingServiceCategory::query()
-            ->with(['services.storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code')])
             ->whereHas('services.storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
             ->when($branchId, fn ($query) => $query->whereHas('services.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->when($request->filled('name'), fn ($inner) => $inner->where('name', 'like', '%' . $request->string('name') . '%'))
             ->orderBy('sort_order')
             ->orderBy('name');
 
-        if ($request->boolean('all')) {
+        if ($all) {
+            $categories = $query->get();
+            $this->preloadLinkedProductCategories($categories);
+
             return $this->respond(
-                $query->get()->map(fn (BookingServiceCategory $category) => $this->formatCategoryWithBranches($category))->values()
+                $categories->map(fn (BookingServiceCategory $category) => array_merge(
+                    $this->formatCategory($category),
+                    ['store_locations' => []]
+                ))->values()
             );
         }
 
         $categories = $query->paginate($request->integer('per_page', 20));
+        $this->preloadLinkedProductCategories($categories->getCollection());
+        $storeLocationsByCategory = $this->loadStoreLocationsForCategories(
+            $categories->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $accessibleIds->map(fn ($id) => (int) $id)->all(),
+        );
 
-        $categories->getCollection()->transform(fn (BookingServiceCategory $category) => $this->formatCategoryWithBranches($category));
+        $categories->getCollection()->transform(function (BookingServiceCategory $category) use ($storeLocationsByCategory) {
+            return array_merge(
+                $this->formatCategory($category),
+                ['store_locations' => $storeLocationsByCategory[(int) $category->id] ?? []]
+            );
+        });
 
         return $this->respond($categories);
     }
@@ -51,6 +76,84 @@ class CategoryController extends Controller
     {
         return array_merge($this->formatCategory($category), ['store_locations' => $category->services
             ->flatMap(fn ($service) => $service->storeLocations)->unique('id')->values()->all()]);
+    }
+
+    /**
+     * Distinct store locations per category via pivots (no full services hydrate).
+     *
+     * @param  list<int>  $categoryIds
+     * @param  list<int>  $accessibleIds
+     * @return array<int, list<array{id:int,name:?string,code:?string}>>
+     */
+    private function loadStoreLocationsForCategories(array $categoryIds, array $accessibleIds): array
+    {
+        if ($categoryIds === [] || $accessibleIds === []) {
+            return [];
+        }
+
+        $rows = DB::table('booking_service_category_service as pivot')
+            ->join(
+                'booking_service_store_location as bssl',
+                'bssl.booking_service_id',
+                '=',
+                'pivot.booking_service_id'
+            )
+            ->join('store_locations as sl', 'sl.id', '=', 'bssl.store_location_id')
+            ->whereIn('pivot.booking_service_category_id', $categoryIds)
+            ->whereIn('sl.id', $accessibleIds)
+            ->select([
+                'pivot.booking_service_category_id as category_id',
+                'sl.id',
+                'sl.name',
+                'sl.code',
+            ])
+            ->distinct()
+            ->get();
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $categoryId = (int) $row->category_id;
+            $storeId = (int) $row->id;
+            $grouped[$categoryId][$storeId] = [
+                'id' => $storeId,
+                'name' => $row->name,
+                'code' => $row->code,
+            ];
+        }
+
+        $result = [];
+        foreach ($grouped as $categoryId => $stores) {
+            $result[(int) $categoryId] = array_values($stores);
+        }
+
+        return $result;
+    }
+
+    /**
+     * NEW ENHANCEMENT — booking-services-crm-query-v1: batch linked product categories (avoid N+1).
+     *
+     * @param  iterable<int, BookingServiceCategory>  $categories
+     */
+    private function preloadLinkedProductCategories(iterable $categories): void
+    {
+        $ids = collect($categories)
+            ->pluck('linked_booking_product_category_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            $this->linkedProductCategoryCache = collect();
+
+            return;
+        }
+
+        $this->linkedProductCategoryCache = BookingProductCategory::query()
+            ->whereIn('id', $ids)
+            ->get(['id', 'name', 'cn_name', 'is_active'])
+            ->keyBy(fn (BookingProductCategory $row) => (int) $row->id);
     }
 
     public function show(int $id)
@@ -420,7 +523,11 @@ class CategoryController extends Controller
     {
         $linkedProductCategory = null;
         if ($category->linked_booking_product_category_id) {
-            $linked = $this->productCategoryLinkService->resolveLinkedProductCategory($category);
+            $linkedId = (int) $category->linked_booking_product_category_id;
+            $linked = $this->linkedProductCategoryCache?->get($linkedId);
+            if (! $linked) {
+                $linked = $this->productCategoryLinkService->resolveLinkedProductCategory($category);
+            }
             if ($linked) {
                 $linkedProductCategory = [
                     'id' => (int) $linked->id,

@@ -12,6 +12,7 @@ interface StaffScheduleEditModalProps {
   scheduleId: number
   onClose: () => void
   onSuccess: (schedule: StaffScheduleRowData) => void
+  staffs?: StaffOption[]
 }
 
 interface FormState {
@@ -45,6 +46,7 @@ export default function StaffScheduleEditModal({
   scheduleId,
   onClose,
   onSuccess,
+  staffs: staffsProp,
 }: StaffScheduleEditModalProps) {
   const { t } = useI18n()
   const { accessibleBranches } = useBranch()
@@ -62,31 +64,46 @@ export default function StaffScheduleEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadedSchedule, setLoadedSchedule] = useState<StaffScheduleRowData | null>(null)
-  const [staffs, setStaffs] = useState<StaffOption[]>([])
+  const [staffsLocal, setStaffsLocal] = useState<StaffOption[]>([])
+  const staffs = staffsProp && staffsProp.length > 0 ? staffsProp : staffsLocal
 
   useEffect(() => {
+    if (staffsProp && staffsProp.length > 0) return
     const controller = new AbortController()
+    // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1: slim staff options fallback
     const fetchStaffs = async () => {
       try {
-        const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', {
+        const res = await fetch('/api/proxy/staffs/options/query?per_page=200&is_active=true', {
           cache: 'no-store',
           signal: controller.signal,
         })
         if (!res.ok) return
         const payload = await res.json().catch(() => ({}))
         const data = payload?.data
-        if (Array.isArray(data)) {
-          setStaffs(data as StaffOption[])
-        } else if (data?.data && Array.isArray(data.data)) {
-          setStaffs(data.data as StaffOption[])
-        }
+        const rows = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.data)
+            ? data.data
+            : []
+        setStaffsLocal(
+          rows
+            .map((row: unknown): StaffOption | null => {
+              if (!row || typeof row !== 'object') return null
+              const rec = row as Record<string, unknown>
+              const id = Number(rec.id)
+              const name = String(rec.name ?? '').trim()
+              if (!id || !name) return null
+              return { id, name }
+            })
+            .filter((row: StaffOption | null): row is StaffOption => Boolean(row)),
+        )
       } catch {
         // Ignore
       }
     }
     fetchStaffs()
     return () => controller.abort()
-  }, [])
+  }, [staffsProp])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -117,8 +134,7 @@ export default function StaffScheduleEditModal({
           return
         }
 
-        const staffNameMap = new Map(staffs.map(s => [s.id, s.name]))
-        const mappedSchedule = mapStaffScheduleApiItemToRow(schedule, staffNameMap)
+        const mappedSchedule = mapStaffScheduleApiItemToRow(schedule)
         setLoadedSchedule(mappedSchedule)
 
         setForm({
@@ -142,7 +158,7 @@ export default function StaffScheduleEditModal({
 
     loadSchedule()
     return () => controller.abort()
-  }, [scheduleId, staffs])
+  }, [scheduleId])
 
   const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = event.target

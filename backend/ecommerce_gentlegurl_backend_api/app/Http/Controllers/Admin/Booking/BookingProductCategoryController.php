@@ -23,33 +23,108 @@ class BookingProductCategoryController extends Controller
             : null;
         $query = BookingProductCategory::query()
             ->select(['id', 'name', 'cn_name', 'sort_order', 'is_active', 'show_in_pos_filter'])
-            ->with(['products.linkedBookingService.storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code')])
             ->whereHas('products.linkedBookingService.storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
             ->when($branchId, fn ($query) => $query->whereHas('products.linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->orderBy('sort_order')
             ->orderBy('id');
 
+        // NEW ENHANCEMENT — booking-categories-crm-query-v1: all=1 picker needs id/name only
         if ($request->boolean('all')) {
-            return $this->respond($this->withBranchMetadata($query->get()));
+            return $this->respond(
+                $query->get()->map(fn (BookingProductCategory $category) => [
+                    'id' => (int) $category->id,
+                    'name' => $category->name,
+                    'cn_name' => $category->cn_name,
+                    'sort_order' => (int) $category->sort_order,
+                    'is_active' => (bool) $category->is_active,
+                    'show_in_pos_filter' => (bool) ($category->show_in_pos_filter ?? true),
+                    'store_locations' => [],
+                ])->values()
+            );
         }
 
         if ($request->filled('page') || $request->filled('per_page')) {
             $paginator = $query->paginate($request->integer('per_page', 50));
-            $paginator->setCollection($this->withBranchMetadata($paginator->getCollection()));
+            $storeLocationsByCategory = $this->loadStoreLocationsForProductCategories(
+                $paginator->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all(),
+                $accessibleIds->map(fn ($id) => (int) $id)->all(),
+            );
+            $paginator->setCollection(
+                $paginator->getCollection()->map(function (BookingProductCategory $category) use ($storeLocationsByCategory) {
+                    $category->setAttribute(
+                        'store_locations',
+                        $storeLocationsByCategory[(int) $category->id] ?? []
+                    );
+
+                    return $category;
+                })
+            );
+
             return $this->respond($paginator);
         }
 
-        return $this->respond($this->withBranchMetadata($query->get()));
+        $categories = $query->get();
+        $storeLocationsByCategory = $this->loadStoreLocationsForProductCategories(
+            $categories->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $accessibleIds->map(fn ($id) => (int) $id)->all(),
+        );
+
+        return $this->respond(
+            $categories->map(function (BookingProductCategory $category) use ($storeLocationsByCategory) {
+                $category->setAttribute(
+                    'store_locations',
+                    $storeLocationsByCategory[(int) $category->id] ?? []
+                );
+
+                return $category;
+            })
+        );
     }
 
-    private function withBranchMetadata($categories)
+    /**
+     * @param  list<int>  $categoryIds
+     * @param  list<int>  $accessibleIds
+     * @return array<int, list<\App\Models\Ecommerce\StoreLocation|array{id:int,name:?string,code:?string}>>
+     */
+    private function loadStoreLocationsForProductCategories(array $categoryIds, array $accessibleIds): array
     {
-        return $categories->map(function ($category) {
-            $category->setAttribute('store_locations', $category->products
-                ->flatMap(fn ($product) => $product->linkedBookingService?->storeLocations ?? collect())
-                ->unique('id')->values());
-            return $category;
-        });
+        if ($categoryIds === [] || $accessibleIds === []) {
+            return [];
+        }
+
+        $rows = \Illuminate\Support\Facades\DB::table('booking_product_category_product as pivot')
+            ->join('booking_products as bp', 'bp.id', '=', 'pivot.booking_product_id')
+            ->join('booking_services as bs', 'bs.linked_booking_product_id', '=', 'bp.id')
+            ->join('booking_service_store_location as bssl', 'bssl.booking_service_id', '=', 'bs.id')
+            ->join('store_locations as sl', 'sl.id', '=', 'bssl.store_location_id')
+            ->whereIn('pivot.booking_product_category_id', $categoryIds)
+            ->whereIn('sl.id', $accessibleIds)
+            ->select([
+                'pivot.booking_product_category_id as category_id',
+                'sl.id',
+                'sl.name',
+                'sl.code',
+            ])
+            ->distinct()
+            ->get();
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $categoryId = (int) $row->category_id;
+            $storeId = (int) $row->id;
+            $grouped[$categoryId][$storeId] = [
+                'id' => $storeId,
+                'name' => $row->name,
+                'code' => $row->code,
+            ];
+        }
+
+        $result = [];
+        foreach ($grouped as $categoryId => $stores) {
+            $result[(int) $categoryId] = array_values($stores);
+        }
+
+        return $result;
     }
 
     public function store(Request $request)

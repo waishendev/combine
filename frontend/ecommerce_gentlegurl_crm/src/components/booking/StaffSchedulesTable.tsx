@@ -112,9 +112,10 @@ export default function StaffSchedulesTable({
 
   useEffect(() => {
     const controller = new AbortController()
+    // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1: slim staff options
     const fetchStaffs = async () => {
       try {
-        const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', {
+        const res = await fetch('/api/proxy/staffs/options/query?per_page=200&is_active=true', {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -122,9 +123,31 @@ export default function StaffSchedulesTable({
         const payload = await res.json().catch(() => ({}))
         const data = payload?.data
         if (Array.isArray(data)) {
-          setStaffs(data as StaffOption[])
+          setStaffs(
+            data
+              .map((row: unknown): StaffOption | null => {
+                if (!row || typeof row !== 'object') return null
+                const rec = row as Record<string, unknown>
+                const id = Number(rec.id)
+                const name = String(rec.name ?? '').trim()
+                if (!id || !name) return null
+                return { id, name }
+              })
+              .filter((row: StaffOption | null): row is StaffOption => Boolean(row)),
+          )
         } else if (data?.data && Array.isArray(data.data)) {
-          setStaffs(data.data as StaffOption[])
+          setStaffs(
+            data.data
+              .map((row: unknown): StaffOption | null => {
+                if (!row || typeof row !== 'object') return null
+                const rec = row as Record<string, unknown>
+                const id = Number(rec.id)
+                const name = String(rec.name ?? '').trim()
+                if (!id || !name) return null
+                return { id, name }
+              })
+              .filter((row: StaffOption | null): row is StaffOption => Boolean(row)),
+          )
         }
       } catch {
         // Ignore
@@ -221,7 +244,7 @@ export default function StaffSchedulesTable({
         paginationData = { ...paginationData, ...response.meta }
       }
 
-      const list: StaffScheduleRowData[] = scheduleItems.map((item) => mapStaffScheduleApiItemToRow(item, staffNameMap))
+      const list: StaffScheduleRowData[] = scheduleItems.map((item) => mapStaffScheduleApiItemToRow(item))
 
       setRows(list)
       
@@ -242,7 +265,7 @@ export default function StaffSchedulesTable({
     } finally {
       setLoading(false)
     }
-  }, [currentPage, filters, pageSize, staffNameMap, selectedBranchId])
+  }, [currentPage, filters, pageSize, selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -414,17 +437,20 @@ export default function StaffSchedulesTable({
     }
   }
 
-  const handleScheduleCreated = (schedule: StaffScheduleRowData) => {
+  const handleSchedulesCreated = (schedules: StaffScheduleRowData[]) => {
+    if (schedules.length === 0) return
+
     setRows((prev) => {
       if (currentPage !== 1) return prev
-      const filtered = prev.filter((item) => item.id !== schedule.id)
-      const next = [schedule, ...filtered]
+      const createdIds = new Set(schedules.map((item) => item.id).filter((id) => id > 0))
+      const filtered = prev.filter((item) => !createdIds.has(item.id))
+      const next = [...schedules, ...filtered]
       return next.length > pageSize ? next.slice(0, pageSize) : next
     })
 
     setMeta((prevMeta) => {
       const perPage = prevMeta.per_page || pageSize || 1
-      const total = (prevMeta.total || 0) + 1
+      const total = (prevMeta.total || 0) + schedules.length
       const last_page = Math.max(
         prevMeta.last_page || 1,
         Math.ceil(total / perPage),
@@ -599,11 +625,12 @@ export default function StaffSchedulesTable({
       {isCreateModalOpen && (
         <StaffScheduleCreateModal
           onClose={() => setIsCreateModalOpen(false)}
-          onSuccess={(schedule) => {
+          onSuccess={(schedules) => {
             setIsCreateModalOpen(false)
-            handleScheduleCreated(schedule)
+            handleSchedulesCreated(schedules)
           }}
           defaultStaffId={filters.staff_id}
+          staffs={staffs}
         />
       )}
 
@@ -827,6 +854,7 @@ export default function StaffSchedulesTable({
             setEditingScheduleId(null)
             handleScheduleUpdated(schedule)
           }}
+          staffs={staffs}
         />
       )}
 

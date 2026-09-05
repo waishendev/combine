@@ -74,7 +74,7 @@ export default function ServicePackageFormModal({
     const loadServices = async () => {
       setLoadingServices(true)
       try {
-        const res = await fetch('/api/proxy/admin/booking/services?page=1&per_page=200', {
+        const res = await fetch('/api/proxy/admin/booking/services/options?limit=2000&is_active=true&is_package_eligible=1', {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -84,25 +84,21 @@ export default function ServicePackageFormModal({
           return
         }
 
+        // NEW ENHANCEMENT — booking-services-crm-query-v1 + booking-packages-schedules-crm-query-v1
         const rows: unknown[] =
-          data &&
-          typeof data === 'object' &&
-          'data' in data &&
-          data.data &&
-          typeof data.data === 'object' &&
-          'data' in data.data &&
-          Array.isArray(data.data.data)
-            ? data.data.data
-            : []
+          data && typeof data === 'object' && 'data' in data && Array.isArray((data as { data?: unknown }).data)
+            ? ((data as { data: unknown[] }).data)
+            : Array.isArray(data)
+              ? data
+              : []
 
         setServices(
           rows
-            .filter((item: unknown): item is { id: number; name: string; is_package_eligible?: boolean } => {
+            .filter((item: unknown): item is { id: number; name: string } => {
               if (typeof item !== 'object' || item === null) return false
               const rec = item as Record<string, unknown>
               return typeof rec.id === 'number' && typeof rec.name === 'string'
             })
-            .filter((item) => item.is_package_eligible !== false)
             .map((item) => ({ id: item.id, name: item.name })),
         )
       } catch (err) {

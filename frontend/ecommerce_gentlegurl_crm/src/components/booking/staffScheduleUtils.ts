@@ -3,6 +3,7 @@ import type { StaffScheduleRowData } from './StaffScheduleRow'
 export type StaffScheduleApiItem = {
   id: number | string
   staff_id?: number | string | null
+  staff?: { id?: number | string; name?: string | null } | null
   store_location_id?: number | string | null
   store_location?: { id: number; name: string; code?: string; is_active?: boolean; is_booking_available?: boolean } | null
   day_of_week?: number | string | null
@@ -20,7 +21,7 @@ export type StaffOption = {
 
 export const mapStaffScheduleApiItemToRow = (
   item: StaffScheduleApiItem,
-  staffNameMap: Map<number, string>
+  staffNameMap?: Map<number, string>
 ): StaffScheduleRowData => {
   const idValue =
     typeof item.id === 'number'
@@ -32,7 +33,14 @@ export const mapStaffScheduleApiItemToRow = (
     ? item.staff_id 
     : (item.staff_id ? Number(item.staff_id) : 0)
 
-  const staffName = staffNameMap.get(staffId) || `Staff #${staffId}`
+  const staffNameFromRelation =
+    typeof item.staff?.name === 'string' && item.staff.name.trim()
+      ? item.staff.name.trim()
+      : null
+  const staffName =
+    staffNameFromRelation ||
+    staffNameMap?.get(staffId) ||
+    `Staff #${staffId}`
 
   const isActiveRaw = item.is_active
   const is_active =

@@ -594,7 +594,7 @@ $protectedRoutes = function () {
         ->middleware('permission:customers.delete');
 
 
-    Route::get('/service-packages', [ServicePackageController::class, 'index'])
+    Route::get('/service-packages', [ServicePackageController::class, 'index']) // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1 (list slim)
         ->middleware('permission:service-packages.view|pos.checkout');
     Route::get('/service-packages/export', [ServicePackageController::class, 'exportCsv'])
         ->middleware('permission:service-packages.view');
@@ -624,12 +624,13 @@ $protectedRoutes = function () {
 
     // Staffs
     // NEW ENHANCEMENT — staff-consumables + booking-ecommerce-commissions-query-v1 + leave-pages-query-v1
+    //   + booking-packages-schedules-crm-query-v1 (staff-schedules Create/Edit/filter)
     // Pages: CRM /logs/staff-consumables, /booking/commissions, /ecommerce/commissions,
-    //        /booking/leave-requests, /booking/leave-logs — slim staff dropdown (id, name)
+    //        /booking/leave-requests, /booking/leave-logs, /booking/staff-schedules — slim staff dropdown (id, name)
     // leave-pages-query-v1: also booking.schedules.view | booking.leave.logs.view;
     //   include_inactive + require_store_location flags match leave-balances staff set
     Route::get('/staffs/options/query', [StaffController::class, 'options'])
-        ->middleware('permission:staff.view|pos.checkout|pos.appointments.manage|pos.staff_consumables.view_logs|booking.commissions.view|booking.commissions.override|ecommerce.reports.sales.view|booking.schedules.view|booking.leave.logs.view');
+        ->middleware('permission:staff.view|pos.checkout|pos.appointments.manage|pos.staff_consumables.view_logs|booking.commissions.view|booking.commissions.override|ecommerce.reports.sales.view|booking.schedules.view|booking.schedules.create|booking.schedules.update|booking.leave.logs.view');
     // END NEW ENHANCEMENT
 
     // OLD QUERY
@@ -1679,6 +1680,9 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.services.update');
     Route::delete('/services/bulk', [\App\Http\Controllers\Admin\Booking\ServiceController::class, 'bulkDelete'])
         ->middleware('permission:booking.services.delete');
+    // NEW ENHANCEMENT — booking-services-crm-query-v1 (slim list + options picker + category all=1)
+    Route::get('/services/options', [\App\Http\Controllers\Admin\Booking\ServiceController::class, 'options'])
+        ->middleware('permission:booking.services.view|booking.services.create|booking.services.update');
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
 
     Route::get('/products/export', [\App\Http\Controllers\Admin\Booking\BookingProductController::class, 'exportCsv'])
@@ -1689,6 +1693,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.services.update');
     Route::delete('/products/bulk', [\App\Http\Controllers\Admin\Booking\BookingProductController::class, 'bulkDelete'])
         ->middleware('permission:booking.services.delete');
+    // NEW ENHANCEMENT — booking-products-crm-query-v1 (list slim: no questions.options)
     Route::apiResource('/products', \App\Http\Controllers\Admin\Booking\BookingProductController::class);
     Route::get('/product-categories/export', [\App\Http\Controllers\Admin\Booking\BookingProductCategoryController::class, 'exportCsv'])
         ->middleware('permission:booking.services.view');
@@ -1696,6 +1701,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.services.create|booking.services.update');
     Route::put('/product-categories/bulk', [\App\Http\Controllers\Admin\Booking\BookingProductCategoryController::class, 'bulkUpdate'])
         ->middleware('permission:booking.services.update');
+    // NEW ENHANCEMENT — booking-categories-crm-query-v1 (all=1 + list branch join); sort index via booking-products-crm-query-v1
     Route::apiResource('/product-categories', \App\Http\Controllers\Admin\Booking\BookingProductCategoryController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::get('/categories/export', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'exportCsv'])
         ->middleware('permission:booking.services.view');
@@ -1703,6 +1709,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.services.create|booking.services.update');
     Route::put('/categories/bulk', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'bulkUpdate'])
         ->middleware('permission:booking.services.update');
+    // NEW ENHANCEMENT — booking-categories-crm-query-v1 (list join branches; all=1 slim)
+    // NEW ENHANCEMENT — booking-services-crm-query-v1 (categories?all=1 slim + batch linked product cats)
     Route::apiResource('/categories', \App\Http\Controllers\Admin\Booking\CategoryController::class);
     Route::post('/categories/{id}/move-up', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'moveUp']);
     Route::post('/categories/{id}/move-down', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'moveDown']);
@@ -1713,7 +1721,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.schedules.create|booking.schedules.update');
 
 
-    Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
+    Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class); // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1 (per_page + day_of_week)
     // NEW ENHANCEMENT — leave-pages-query-v1
     // Pages: CRM /booking/leave-requests, /booking/leave-balances, /booking/leave-logs
     // Indexes: (store_location_id, status, created_at DESC), (staff_id, status, leave_type) INCLUDE days,

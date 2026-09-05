@@ -11,13 +11,30 @@ class ServicePackageController extends Controller
 {
     public function index(Request $request)
     {
-        $query = ServicePackage::query()->with(['items.bookingService:id,name']);
+        // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1: list skips items (Edit uses show)
+        $query = ServicePackage::query()->select([
+            'id',
+            'name',
+            'description',
+            'selling_price',
+            'valid_days',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]);
 
         if ($request->has('is_active')) {
             $query->where('is_active', $request->boolean('is_active'));
         }
 
-        return $this->respond($query->orderByDesc('id')->paginate(min(100, max(1, (int) $request->query('per_page', 20)))));
+        $paginator = $query->orderByDesc('id')->paginate(min(100, max(1, (int) $request->query('per_page', 20))));
+        $paginator->getCollection()->transform(function (ServicePackage $package) {
+            $package->setRelation('items', collect());
+
+            return $package;
+        });
+
+        return $this->respond($paginator);
     }
 
     public function show(int $id)

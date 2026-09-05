@@ -40,8 +40,35 @@ class ServiceController extends Controller
         $perPage = $request->integer('per_page', 20);
         $perPage = max(1, min(200, $perPage));
 
+        // NEW ENHANCEMENT — booking-services-crm-query-v1 / v1b: list omits questions/slots; lean columns
         $services = BookingService::query()
-            ->with(['allowedStaffs:id,name', 'storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code'), 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->select([
+                'id',
+                'name',
+                'cn_name',
+                'description',
+                'service_type',
+                'service_price',
+                'price',
+                'price_mode',
+                'price_range_min',
+                'price_range_max',
+                'duration_min',
+                'deposit_amount',
+                'buffer_min',
+                'is_active',
+                'allow_photo_upload',
+                'image_path',
+                'linked_booking_product_id',
+                'created_at',
+                'updated_at',
+            ])
+            ->with([
+                'allowedStaffs:id,name',
+                'storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id', 'name', 'code'),
+                'categories:id,name,cn_name',
+                'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
+            ])
             ->whereHas('storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
             ->when($branchId, fn ($query) => $query->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->when($request->filled('name'), function ($query) use ($request) {
@@ -73,9 +100,63 @@ class ServiceController extends Controller
             ->latest()
             ->paginate($perPage);
 
-        $services->getCollection()->transform(fn (BookingService $service) => $this->formatService($service));
+        $services->getCollection()->transform(fn (BookingService $service) => $this->formatService($service, forList: true));
 
         return $this->respond($services);
+    }
+
+    /**
+     * NEW ENHANCEMENT — booking-services-crm-query-v1: slim picker rows (Edit/Create/Bulk/Packages).
+     */
+    public function options(Request $request)
+    {
+        $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
+        $requestedBranchId = $request->integer('branch_store_location_id') ?: $request->integer('store_location_id');
+        $branchId = $requestedBranchId > 0
+            ? (int) $this->storeLocationAccess->authorizeStoreLocation($request->user(), $requestedBranchId, false)->id
+            : null;
+        $limit = max(1, min(5000, $request->integer('limit', 2000)));
+
+        $query = BookingService::query()
+            ->select([
+                'id',
+                'name',
+                'cn_name',
+                'duration_min',
+                'service_price',
+                'is_active',
+                'is_package_eligible',
+            ])
+            ->whereHas('storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
+            ->when($branchId, fn ($q) => $q->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branchId)))
+            ->when($request->has('is_active'), function ($q) use ($request) {
+                $isActive = filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($isActive !== null) {
+                    $q->where('is_active', $isActive);
+                }
+            })
+            // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1: package Create/Edit picker
+            ->when($request->has('is_package_eligible'), function ($q) use ($request) {
+                $eligible = filter_var($request->get('is_package_eligible'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($eligible !== null) {
+                    $q->where('is_package_eligible', $eligible);
+                }
+            })
+            ->orderBy('name')
+            ->orderBy('id')
+            ->limit($limit);
+
+        $rows = $query->get()->map(fn (BookingService $service) => [
+            'id' => (int) $service->id,
+            'name' => (string) $service->name,
+            'cn_name' => $service->cn_name,
+            'duration_min' => (int) $service->duration_min,
+            'service_price' => $service->service_price,
+            'is_active' => (bool) $service->is_active,
+            'is_package_eligible' => (bool) ($service->is_package_eligible ?? true),
+        ])->values();
+
+        return $this->respond($rows);
     }
 
     public function show(int $id)
@@ -1132,31 +1213,36 @@ class ServiceController extends Controller
         );
     }
 
-    private function formatService(BookingService $service): array
+    private function formatService(BookingService $service, bool $forList = false): array
     {
-        $allowedStaffs = $service->allowedStaffs
-            ->sortBy('name')
-            ->values()
-            ->map(fn (Staff $staff) => [
-                'id' => (int) $staff->id,
-                'name' => $staff->name,
-                'position' => $staff->position,
-                'avatar_path' => $staff->avatar_path,
-                'avatar_url' => $staff->avatar_url,
-            ])
-            ->all();
+        $allowedStaffs = $service->relationLoaded('allowedStaffs')
+            ? $service->allowedStaffs
+                ->sortBy('name')
+                ->values()
+                ->map(fn (Staff $staff) => [
+                    'id' => (int) $staff->id,
+                    'name' => $staff->name,
+                    'position' => $staff->position ?? null,
+                    'avatar_path' => $staff->avatar_path ?? null,
+                    'avatar_url' => $staff->avatar_url ?? null,
+                ])
+                ->all()
+            : [];
 
-        $primarySlots = $service->primarySlots
-            ->where('is_active', true)
-            ->sortBy('sort_order')
-            ->values()
-            ->map(fn (BookingServicePrimarySlot $slot) => [
-                'id' => (int) $slot->id,
-                'start_time' => substr((string) $slot->start_time, 0, 5),
-                'sort_order' => (int) $slot->sort_order,
-                'is_active' => (bool) $slot->is_active,
-            ])
-            ->all();
+        $primarySlots = [];
+        if (! $forList && $service->relationLoaded('primarySlots')) {
+            $primarySlots = $service->primarySlots
+                ->where('is_active', true)
+                ->sortBy('sort_order')
+                ->values()
+                ->map(fn (BookingServicePrimarySlot $slot) => [
+                    'id' => (int) $slot->id,
+                    'start_time' => substr((string) $slot->start_time, 0, 5),
+                    'sort_order' => (int) $slot->sort_order,
+                    'is_active' => (bool) $slot->is_active,
+                ])
+                ->all();
+        }
 
         $categories = $service->relationLoaded('categories')
             ? $service->categories->sortBy('name')->values()
@@ -1170,20 +1256,56 @@ class ServiceController extends Controller
 
         $firstCategory = $categoryPayload[0] ?? null;
 
-        return array_merge($service->toArray(), [
-            'allowed_staffs' => $allowedStaffs,
-            'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
-            'allowed_staff_count' => count($allowedStaffs),
-            'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
-            'store_locations' => $service->storeLocations->values()->all(),
-            'store_location_ids' => $service->storeLocations->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
-            'category_id' => $firstCategory ? (int) $firstCategory['id'] : null,
-            'category' => $firstCategory,
-            'categories' => $categoryPayload,
-            'category_ids' => array_map(fn (array $category) => (int) $category['id'], $categoryPayload),
-            'linked_booking_product' => $this->productLinkService->formatLinkedProduct($service->linkedBookingProduct),
-            'linked_booking_product_id' => $service->linked_booking_product_id ? (int) $service->linked_booking_product_id : null,
-            'questions' => $service->questions
+        // NEW ENHANCEMENT — booking-services-crm-query-v1b: lean list payload (no full toArray)
+        if ($forList) {
+            return [
+                'id' => (int) $service->id,
+                'name' => $service->name,
+                'cn_name' => $service->cn_name,
+                'description' => $service->description,
+                'service_type' => $service->service_type,
+                'service_price' => $service->service_price,
+                'price' => $service->price,
+                'price_mode' => $service->price_mode,
+                'price_range_min' => $service->price_range_min,
+                'price_range_max' => $service->price_range_max,
+                'duration_min' => $service->duration_min,
+                'deposit_amount' => $service->deposit_amount,
+                'buffer_min' => $service->buffer_min,
+                'is_active' => (bool) $service->is_active,
+                'allow_photo_upload' => (bool) $service->allow_photo_upload,
+                'image_path' => $service->image_path,
+                'image_url' => $service->image_url,
+                'linked_booking_product_id' => $service->linked_booking_product_id
+                    ? (int) $service->linked_booking_product_id
+                    : null,
+                'created_at' => $service->created_at,
+                'updated_at' => $service->updated_at,
+                'allowed_staffs' => $allowedStaffs,
+                'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
+                'allowed_staff_count' => count($allowedStaffs),
+                'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
+                'store_locations' => $service->relationLoaded('storeLocations')
+                    ? $service->storeLocations->values()->all()
+                    : [],
+                'store_location_ids' => $service->relationLoaded('storeLocations')
+                    ? $service->storeLocations->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
+                    : [],
+                'category_id' => $firstCategory ? (int) $firstCategory['id'] : null,
+                'category' => $firstCategory,
+                'categories' => $categoryPayload,
+                'category_ids' => array_map(fn (array $category) => (int) $category['id'], $categoryPayload),
+                'linked_booking_product' => $this->productLinkService->formatLinkedProduct(
+                    $service->relationLoaded('linkedBookingProduct') ? $service->linkedBookingProduct : null
+                ),
+                'questions' => [],
+                'primary_slots' => [],
+            ];
+        }
+
+        $questions = [];
+        if ($service->relationLoaded('questions')) {
+            $questions = $service->questions
                 ->sortBy('sort_order')
                 ->values()
                 ->map(fn (BookingServiceQuestion $question) => [
@@ -1197,7 +1319,29 @@ class ServiceController extends Controller
                     'is_required' => (bool) $question->is_required,
                     'is_active' => (bool) $question->is_active,
                     'options' => $question->options->sortBy('sort_order')->values()->map(fn ($option) => $this->formatQuestionOption($option))->all(),
-                ])->all(),
+                ])->all();
+        }
+
+        return array_merge($service->toArray(), [
+            'allowed_staffs' => $allowedStaffs,
+            'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
+            'allowed_staff_count' => count($allowedStaffs),
+            'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
+            'store_locations' => $service->relationLoaded('storeLocations')
+                ? $service->storeLocations->values()->all()
+                : [],
+            'store_location_ids' => $service->relationLoaded('storeLocations')
+                ? $service->storeLocations->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
+                : [],
+            'category_id' => $firstCategory ? (int) $firstCategory['id'] : null,
+            'category' => $firstCategory,
+            'categories' => $categoryPayload,
+            'category_ids' => array_map(fn (array $category) => (int) $category['id'], $categoryPayload),
+            'linked_booking_product' => $this->productLinkService->formatLinkedProduct(
+                $service->relationLoaded('linkedBookingProduct') ? $service->linkedBookingProduct : null
+            ),
+            'linked_booking_product_id' => $service->linked_booking_product_id ? (int) $service->linked_booking_product_id : null,
+            'questions' => $questions,
             'primary_slots' => $primarySlots,
         ]);
     }
