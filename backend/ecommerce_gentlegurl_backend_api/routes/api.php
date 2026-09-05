@@ -621,10 +621,13 @@ $protectedRoutes = function () {
         ->middleware('permission:customer-service-packages.update|pos.checkout');
 
     // Staffs
-    // NEW ENHANCEMENT — staff-consumables + booking-ecommerce-commissions-query-v1
-    // Pages: CRM /logs/staff-consumables, /booking/commissions, /ecommerce/commissions — slim staff dropdown (id, name)
+    // NEW ENHANCEMENT — staff-consumables + booking-ecommerce-commissions-query-v1 + leave-pages-query-v1
+    // Pages: CRM /logs/staff-consumables, /booking/commissions, /ecommerce/commissions,
+    //        /booking/leave-requests, /booking/leave-logs — slim staff dropdown (id, name)
+    // leave-pages-query-v1: also booking.schedules.view | booking.leave.logs.view;
+    //   include_inactive + require_store_location flags match leave-balances staff set
     Route::get('/staffs/options/query', [StaffController::class, 'options'])
-        ->middleware('permission:staff.view|pos.checkout|pos.appointments.manage|pos.staff_consumables.view_logs|booking.commissions.view|booking.commissions.override|ecommerce.reports.sales.view');
+        ->middleware('permission:staff.view|pos.checkout|pos.appointments.manage|pos.staff_consumables.view_logs|booking.commissions.view|booking.commissions.override|ecommerce.reports.sales.view|booking.schedules.view|booking.leave.logs.view');
     // END NEW ENHANCEMENT
 
     // OLD QUERY
@@ -1702,6 +1705,12 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
 
 
     Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
+    // NEW ENHANCEMENT — leave-pages-query-v1
+    // Pages: CRM /booking/leave-requests, /booking/leave-balances, /booking/leave-logs
+    // Indexes: (store_location_id, status, created_at DESC), (staff_id, status, leave_type) INCLUDE days,
+    //          leave_logs (staff_id, action_type, created_at DESC)
+    // Staff filter on requests/logs: GET /staffs/options/query (see staffs block above)
+    // No list response / decide / adjust behavior changes
     Route::get('/leave-requests', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'index'])
         ->middleware('permission:booking.schedules.view');
     Route::patch('/leave-requests/{id}/decision', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'decide'])
@@ -1724,6 +1733,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.schedules.update');
     Route::get('/leave-logs', [\App\Http\Controllers\Admin\Booking\LeaveLogController::class, 'index'])
         ->middleware('permission:booking.leave.logs.view');
+    // END NEW ENHANCEMENT
 
         
     Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);

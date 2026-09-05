@@ -316,13 +316,6 @@ const extractPaginated = <T,>(payload: unknown): { rows: T[]; meta: PaginationMe
   return { rows: [], meta: emptyMeta }
 }
 
-const extractArray = <T,>(payload: unknown): T[] => {
-  if (!payload || typeof payload !== 'object') return []
-  const root = payload as { data?: unknown }
-  if (Array.isArray(root.data)) return root.data as T[]
-  return []
-}
-
 export default function BookingLeaveRequestsPage({
   onDecisionComplete,
 }: {
@@ -379,10 +372,23 @@ export default function BookingLeaveRequestsPage({
   }
 
   const loadStaffOptions = async () => {
-    const res = await fetch(`/api/proxy/admin/booking/leave-balances?${selectedBranchId !== null ? `store_location_id=${selectedBranchId}` : 'accessible_union=1'}`, { cache: 'no-store' })
+    const qs = new URLSearchParams()
+    qs.set('per_page', '500')
+    qs.set('include_inactive', '1')
+    qs.set('require_store_location', '1')
+    if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
+    const res = await fetch(`/api/proxy/staffs/options/query?${qs.toString()}`, { cache: 'no-store' })
     if (!res.ok) return
-    const list = extractArray<StaffOption>(await res.json().catch(() => ({})))
-    setStaffOptions(list)
+    const json = await res.json().catch(() => null) as { data?: Array<{ id?: number; name?: string }> | { data?: Array<{ id?: number; name?: string }> } } | null
+    const data = Array.isArray(json?.data) ? json.data : Array.isArray((json?.data as { data?: unknown })?.data) ? (json!.data as { data: Array<{ id?: number; name?: string }> }).data : []
+    setStaffOptions(
+      data
+        .map((row) => ({
+          staff_id: Number(row?.id),
+          staff_name: String(row?.name ?? ''),
+        }))
+        .filter((row) => Number.isFinite(row.staff_id) && row.staff_id > 0 && row.staff_name !== ''),
+    )
   }
 
   useEffect(() => {

@@ -73,6 +73,7 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
   const [checkingOut, setCheckingOut] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [recentClaimsOpen, setRecentClaimsOpen] = useState(true)
 
   const categories = useMemo(() => {
     const seen = new Map<string, string>()
@@ -236,7 +237,6 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
   }
 
   const claimCount = cart.reduce((sum, item) => sum + item.qty, 0)
-  const originalTotal = cart.reduce((sum, item) => sum + item.original_price * item.qty, 0)
 
   return (
     <div className="min-h-full bg-slate-100 px-3 py-4 sm:px-5 lg:px-8">
@@ -368,7 +368,7 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
         <aside className="space-y-4">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-900">Claim cart</h2>
+              <h2 className="text-lg font-bold text-slate-900">CART</h2>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{claimCount} item(s)</span>
             </div>
             {cart.length === 0 ? (
@@ -403,7 +403,7 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
                           </div>
                         ) : null}
                         <p className="truncate text-xs text-slate-500">SKU: {item.sku || '-'}</p>
-                        <p className="mt-1 text-xs text-slate-500">Original {formatCurrency(item.original_price)} → <span className="font-bold text-emerald-700">RM0.00</span></p>
+                        <p className="mt-1 text-xs font-bold text-emerald-700">RM 0.00</p>
                       </div>
                       <button type="button" onClick={() => setCart((current) => current.filter((row) => row.key !== item.key))} className="text-slate-400 hover:text-red-500">
                         <i className="fa-solid fa-xmark" />
@@ -422,9 +422,7 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
               </div>
             )}
             <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm">
-              <div className="flex justify-between text-slate-500"><span>Original value</span><span>{formatCurrency(originalTotal)}</span></div>
-              <div className="mt-1 flex justify-between text-slate-500"><span>Staff free discount</span><span>-{formatCurrency(originalTotal)}</span></div>
-              <div className="mt-3 flex justify-between border-t border-slate-200 pt-3 text-lg font-bold text-slate-900"><span>Total</span><span className="text-emerald-700">RM0.00</span></div>
+              <div className="flex justify-between text-lg font-bold text-slate-900"><span>Total</span><span className="text-emerald-700">RM 0.00</span></div>
             </div>
             <button
               type="button"
@@ -439,58 +437,70 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
 
           {canViewLogs ? (
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-3 text-lg font-bold text-slate-900">Recent Consumable Claims</h2>
-            {history.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">No recent consumable claims.</p>
-            ) : (
-              <div className="max-h-96 overflow-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="sticky top-0 bg-white text-slate-500">
-                    <tr>
-                      <th className="py-2 pr-2">Date/time</th>
-                      <th className="py-2 pr-2">Staff</th>
-                      {isAllBranches ? <th className="py-2 pr-2">Branch</th> : null}
-                      <th className="py-2 pr-2">Product</th>
-                      <th className="py-2 pr-2 text-right">Qty</th>
-                      <th className="py-2 text-right">Final</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {history.map((row) => (
-                      <tr key={row.id}>
-                        <td className="py-2 pr-2 text-slate-500">{row.claimed_at ?? '-'}</td>
-                        <td className="py-2 pr-2 text-slate-700">{row.staff ?? '-'}</td>
-                        {isAllBranches ? <td className="py-2 pr-2 text-slate-700">{row.branch ?? '-'}</td> : null}
-                        <td className="py-2 pr-2">
-                          <NameStack
-                            name={row.product}
-                            cnName={row.product_cn_name}
-                            primaryClassName="font-semibold text-slate-800"
-                            secondaryClassName="text-xs text-slate-500"
-                            fallback="-"
-                          />
-                          {row.variant?.trim() || row.variant_cn_name?.trim() ? (
-                            <div className="mt-0.5">
-                              <VariantNameStack
-                                name={row.variant}
-                                cnName={row.variant_cn_name}
-                                nameClassName="text-xs text-slate-700"
-                                labelClassName="text-xs text-slate-500"
-                                cnClassName="text-xs text-slate-500"
-                              />
-                            </div>
-                          ) : null}
-                          <span className="text-slate-500">{row.sku ?? '-'}</span>
-                          <span className="block text-slate-500">Original {formatCurrency(row.original_price)}</span>
-                        </td>
-                        <td className="py-2 pr-2 text-right text-slate-700">{row.qty}</td>
-                        <td className="py-2 text-right font-bold text-emerald-700">{formatCurrency(row.final_amount)}</td>
+            <button
+              type="button"
+              onClick={() => setRecentClaimsOpen((open) => !open)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+              aria-expanded={recentClaimsOpen}
+            >
+              <h2 className="text-lg font-bold text-slate-900">Recent Consumable Claims</h2>
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500">
+                <i className={`fa-solid text-xs ${recentClaimsOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`} />
+              </span>
+            </button>
+            {recentClaimsOpen ? (
+              history.length === 0 ? (
+                <p className="mt-3 rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">No recent consumable claims.</p>
+              ) : (
+                <div className="mt-3 max-h-96 overflow-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-white text-slate-500">
+                      <tr>
+                        <th className="py-2 pr-2">Date/time</th>
+                        <th className="py-2 pr-2">Staff</th>
+                        {isAllBranches ? <th className="py-2 pr-2">Branch</th> : null}
+                        <th className="py-2 pr-2">Product</th>
+                        <th className="py-2 pr-2 text-right">Qty</th>
+                        <th className="py-2 text-right">Final</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {history.map((row) => (
+                        <tr key={row.id}>
+                          <td className="py-2 pr-2 text-slate-500">{row.claimed_at ?? '-'}</td>
+                          <td className="py-2 pr-2 text-slate-700">{row.staff ?? '-'}</td>
+                          {isAllBranches ? <td className="py-2 pr-2 text-slate-700">{row.branch ?? '-'}</td> : null}
+                          <td className="py-2 pr-2">
+                            <NameStack
+                              name={row.product}
+                              cnName={row.product_cn_name}
+                              primaryClassName="font-semibold text-slate-800"
+                              secondaryClassName="text-xs text-slate-500"
+                              fallback="-"
+                            />
+                            {row.variant?.trim() || row.variant_cn_name?.trim() ? (
+                              <div className="mt-0.5">
+                                <VariantNameStack
+                                  name={row.variant}
+                                  cnName={row.variant_cn_name}
+                                  nameClassName="text-xs text-slate-700"
+                                  labelClassName="text-xs text-slate-500"
+                                  cnClassName="text-xs text-slate-500"
+                                />
+                              </div>
+                            ) : null}
+                            <span className="text-slate-500">{row.sku ?? '-'}</span>
+                            <span className="block text-slate-500">Original {formatCurrency(row.original_price)}</span>
+                          </td>
+                          <td className="py-2 pr-2 text-right text-slate-700">{row.qty}</td>
+                          <td className="py-2 text-right font-bold text-emerald-700">{formatCurrency(row.final_amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : null}
           </section>
           ) : null}
         </aside>

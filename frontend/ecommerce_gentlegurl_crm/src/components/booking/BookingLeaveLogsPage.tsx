@@ -100,13 +100,20 @@ const extractPaginated = (payload: unknown): { rows: LeaveLogRow[]; meta: Pagina
 const extractStaffOptions = (payload: unknown): StaffOption[] => {
   if (!payload || typeof payload !== 'object') return []
   const root = payload as { data?: unknown }
-  if (!Array.isArray(root.data)) return []
-  return root.data
+  const page = root.data
+  const rows = Array.isArray(page)
+    ? page
+    : page && typeof page === 'object' && Array.isArray((page as { data?: unknown }).data)
+      ? (page as { data: unknown[] }).data
+      : []
+  return rows
     .map((r) => {
       if (!r || typeof r !== 'object') return null
-      const row = r as { staff_id?: number; staff_name?: string }
-      if (!row.staff_id || !row.staff_name) return null
-      return { staff_id: row.staff_id, staff_name: row.staff_name }
+      const row = r as { id?: number; name?: string; staff_id?: number; staff_name?: string }
+      const staffId = Number(row.staff_id ?? row.id)
+      const staffName = String(row.staff_name ?? row.name ?? '')
+      if (!Number.isFinite(staffId) || staffId <= 0 || staffName === '') return null
+      return { staff_id: staffId, staff_name: staffName }
     })
     .filter((v): v is StaffOption => Boolean(v))
 }
@@ -139,7 +146,12 @@ export default function BookingLeaveLogsPage() {
   const [detailsRow, setDetailsRow] = useState<LeaveLogRow | null>(null)
 
   const loadStaffOptions = async () => {
-    const res = await fetch(`/api/proxy/admin/booking/leave-balances?${selectedBranchId !== null ? `store_location_id=${selectedBranchId}` : 'accessible_union=1'}`, { cache: 'no-store' })
+    const qs = new URLSearchParams()
+    qs.set('per_page', '500')
+    qs.set('include_inactive', '1')
+    qs.set('require_store_location', '1')
+    if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
+    const res = await fetch(`/api/proxy/staffs/options/query?${qs.toString()}`, { cache: 'no-store' })
     if (!res.ok) return
     const payload = await res.json().catch(() => ({}))
     setStaffOptions(extractStaffOptions(payload))

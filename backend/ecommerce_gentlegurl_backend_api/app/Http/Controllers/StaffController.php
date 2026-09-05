@@ -114,7 +114,11 @@ class StaffController extends Controller
 
     /**
      * Slim staff catalog for dropdowns (id + name only).
-     * Enhancement: staff-consumables-commission-query-v1
+     * Enhancement: staff-consumables-commission-query-v1 + leave-pages-query-v1
+     *
+     * Optional flags (leave pages):
+     * - include_inactive=1 — keep inactive staff (matches leave-balances staff list)
+     * - require_store_location=1 — always require an accessible branch assignment (even platform bypass)
      */
     public function options(Request $request)
     {
@@ -124,6 +128,8 @@ class StaffController extends Controller
             $this->storeLocationAccess->authorizeStoreLocation($request->user(), $storeLocationId, false);
         }
         $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
+        $requireStoreLocation = $request->boolean('require_store_location');
+        $includeInactive = $request->boolean('include_inactive');
 
         $staffs = Staff::query()
             ->select(['id', 'name'])
@@ -131,14 +137,19 @@ class StaffController extends Controller
                 'storeLocations',
                 fn ($locations) => $locations->where('store_locations.id', $storeLocationId),
             ))
-            ->when($storeLocationId <= 0 && ! $this->storeLocationAccess->hasPlatformBypass($request->user()), fn ($query) => $query->whereHas(
-                'storeLocations',
-                fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds),
-            ))
-            ->when($request->has('is_active'), function ($query) use ($request) {
-                $query->where('is_active', $request->boolean('is_active'));
-            }, function ($query) {
-                $query->where('is_active', true);
+            ->when(
+                $storeLocationId <= 0 && ($requireStoreLocation || ! $this->storeLocationAccess->hasPlatformBypass($request->user())),
+                fn ($query) => $query->whereHas(
+                    'storeLocations',
+                    fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds),
+                ),
+            )
+            ->when(! $includeInactive, function ($query) use ($request) {
+                if ($request->has('is_active')) {
+                    $query->where('is_active', $request->boolean('is_active'));
+                } else {
+                    $query->where('is_active', true);
+                }
             })
             ->orderBy('name')
             ->paginate($perPage);
