@@ -177,9 +177,21 @@ export async function getBookingServices(search?: string, categoryId?: number, s
 }
 
 export async function getBookingServiceDetail(id: string, storeLocationId: number) {
+  // NEW ENHANCEMENT — booking-shop-query-v1: short TTL cache across service→slots→staff
+  const cacheKey = `${id}:${storeLocationId}`;
+  const cached = serviceDetailCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < 60_000) {
+    return cached.data;
+  }
   const response = await request<{ data: Service & { staffs?: Staff[] } } | (Service & { staffs?: Staff[] })>(`/booking/services/${id}?store_location_id=${storeLocationId}`);
-  return unwrapData<Service & { staffs?: Staff[] }>(response);
+  const data = unwrapData<Service & { staffs?: Staff[] }>(response);
+  if (data) {
+    serviceDetailCache.set(cacheKey, { at: Date.now(), data });
+  }
+  return data;
 }
+
+const serviceDetailCache = new Map<string, { at: number; data: Service & { staffs?: Staff[] } }>();
 
 export async function getAvailability(serviceId: string, staffId: string, date: string, extraDurationMin?: number, storeLocationId?: number) {
   const qs = new URLSearchParams();
@@ -445,9 +457,39 @@ export async function getBookingBankAccounts() {
   return unwrapData<PublicBookingBankAccount[]>(response) ?? [];
 }
 
+// NEW ENHANCEMENT — booking-shop-query-v1: one in-flight / short-lived homepage fetch for all settings helpers
+type BookingHomepagePayload = {
+  payment_gateways?: PublicBookingPaymentGateway[];
+  settings?: Record<string, unknown>;
+};
+
+let bookingHomepageInflight: Promise<BookingHomepagePayload> | null = null;
+let bookingHomepageCache: { at: number; data: BookingHomepagePayload } | null = null;
+const BOOKING_HOMEPAGE_TTL_MS = 30_000;
+
+async function getBookingHomepagePayload(): Promise<BookingHomepagePayload> {
+  const now = Date.now();
+  if (bookingHomepageCache && now - bookingHomepageCache.at < BOOKING_HOMEPAGE_TTL_MS) {
+    return bookingHomepageCache.data;
+  }
+  if (bookingHomepageInflight) {
+    return bookingHomepageInflight;
+  }
+  bookingHomepageInflight = request<{ data?: BookingHomepagePayload }>("/public/shop/homepage?type=booking")
+    .then((response) => {
+      const data = (response?.data ?? {}) as BookingHomepagePayload;
+      bookingHomepageCache = { at: Date.now(), data };
+      return data;
+    })
+    .finally(() => {
+      bookingHomepageInflight = null;
+    });
+  return bookingHomepageInflight;
+}
+
 export async function getBookingPaymentGateways() {
-  const response = await request<{ data?: { payment_gateways?: PublicBookingPaymentGateway[] } }>("/public/shop/homepage?type=booking");
-  return (response?.data?.payment_gateways ?? []).filter((gateway) => gateway.is_active !== false && gateway.allow_checkout !== false);
+  const data = await getBookingHomepagePayload();
+  return (data.payment_gateways ?? []).filter((gateway) => gateway.is_active !== false && gateway.allow_checkout !== false);
 }
 
 export async function payBooking(bookingId: string | number, payload?: {
@@ -928,21 +970,19 @@ export async function makeDefaultCustomerAddress(id: number) {
 }
 
 export async function getBookingPolicySettings() {
-  // Use public homepage endpoint (admin shop-settings requires admin auth)
-  const response = await request<{ data?: { settings?: { booking_policy?: BookingPolicy } } }>(
-    "/public/shop/homepage?type=booking",
-  );
-  return response?.data?.settings?.booking_policy ?? {
+  // NEW ENHANCEMENT — booking-shop-query-v1: shared homepage payload
+  const data = await getBookingHomepagePayload();
+  const settings = data.settings as { booking_policy?: BookingPolicy } | undefined;
+  return settings?.booking_policy ?? {
     reschedule: { enabled: true, max_changes: 1, cutoff_hours: 72 },
     cancel: { customer_cancel_allowed: false, deposit_refundable: false },
   };
 }
 
 export async function getBookingServiceDepositNote(): Promise<string | null> {
-  const response = await request<{ data?: { settings?: { booking_service_deposit_note?: string | null } } }>(
-    "/public/shop/homepage?type=booking",
-  );
-  const note = response?.data?.settings?.booking_service_deposit_note;
+  const data = await getBookingHomepagePayload();
+  const settings = data.settings as { booking_service_deposit_note?: string | null } | undefined;
+  const note = settings?.booking_service_deposit_note;
   if (typeof note !== "string") return null;
   const trimmed = note.trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -956,14 +996,17 @@ export type BookingDepositTncSettings = {
 };
 
 export async function getBookingDepositTncSettings(): Promise<BookingDepositTncSettings> {
-  const response = await request<{ data?: { settings?: { booking_deposit_tnc_enabled?: boolean; booking_deposit_tnc_text?: string | null; booking_deposit_tnc_image?: string | null } } }>(
-    "/public/shop/homepage?type=booking",
-  );
+  const data = await getBookingHomepagePayload();
+  const settings = data.settings as {
+    booking_deposit_tnc_enabled?: boolean;
+    booking_deposit_tnc_text?: string | null;
+    booking_deposit_tnc_image?: string | null;
+  } | undefined;
 
-  const enabled = Boolean(response?.data?.settings?.booking_deposit_tnc_enabled);
-  const rawText = response?.data?.settings?.booking_deposit_tnc_text;
+  const enabled = Boolean(settings?.booking_deposit_tnc_enabled);
+  const rawText = settings?.booking_deposit_tnc_text;
   const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : "";
-  const rawImage = response?.data?.settings?.booking_deposit_tnc_image;
+  const rawImage = settings?.booking_deposit_tnc_image;
   const image = typeof rawImage === "string" && rawImage.trim().length > 0 ? rawImage.trim() : null;
 
   return {
@@ -980,12 +1023,14 @@ export type BookingSlotsHelpNoteSettings = {
 };
 
 export async function getBookingSlotsHelpNoteSettings(): Promise<BookingSlotsHelpNoteSettings> {
-  const response = await request<{ data?: { settings?: { booking_slots_help_note_enabled?: boolean; booking_slots_help_note_text?: string | null } } }>(
-    "/public/shop/homepage?type=booking",
-  );
+  const data = await getBookingHomepagePayload();
+  const settings = data.settings as {
+    booking_slots_help_note_enabled?: boolean;
+    booking_slots_help_note_text?: string | null;
+  } | undefined;
 
-  const enabled = Boolean(response?.data?.settings?.booking_slots_help_note_enabled);
-  const rawText = response?.data?.settings?.booking_slots_help_note_text;
+  const enabled = Boolean(settings?.booking_slots_help_note_enabled);
+  const rawText = settings?.booking_slots_help_note_text;
   const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : "";
 
   return {
@@ -996,10 +1041,9 @@ export async function getBookingSlotsHelpNoteSettings(): Promise<BookingSlotsHel
 
 
 export async function getBookingMaxAdvanceDays(): Promise<number> {
-  const response = await request<{ data?: { settings?: { booking_max_advance_days?: number | string | null } } }>(
-    "/public/shop/homepage?type=booking",
-  );
-  const value = Number(response?.data?.settings?.booking_max_advance_days ?? 365);
+  const data = await getBookingHomepagePayload();
+  const settings = data.settings as { booking_max_advance_days?: number | string | null } | undefined;
+  const value = Number(settings?.booking_max_advance_days ?? 365);
   return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 365;
 }
 

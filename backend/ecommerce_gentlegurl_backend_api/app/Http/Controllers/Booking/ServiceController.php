@@ -75,7 +75,8 @@ class ServiceController extends Controller
         );
 
         $payload = $services->map(
-            fn (BookingService $service) => $this->mapService($service, false, $staffByServiceId[(int) $service->id] ?? [])
+            // NEW ENHANCEMENT — booking-shop-query-v1: list skips questions + primary_slots (detail uses show)
+            fn (BookingService $service) => $this->mapService($service, false, $staffByServiceId[(int) $service->id] ?? [], null, forList: true)
         )->values();
 
         return $this->respond($payload);
@@ -175,7 +176,7 @@ class ServiceController extends Controller
     /**
      * @param  list<array{id:int,name:mixed,position:mixed,description:mixed,avatar_path:mixed,avatar_url:mixed}>|null  $preloadedStaffs
      */
-    private function mapService(BookingService $service, bool $includeDescription, ?array $preloadedStaffs = null, ?int $storeLocationId = null): array
+    private function mapService(BookingService $service, bool $includeDescription, ?array $preloadedStaffs = null, ?int $storeLocationId = null, bool $forList = false): array
     {
         if ($preloadedStaffs !== null) {
             $staffs = $preloadedStaffs;
@@ -197,9 +198,55 @@ class ServiceController extends Controller
                 ->all();
         }
 
+        // NEW ENHANCEMENT — booking-shop-query-v1: catalog cards do not need slots/questions
+        if ($forList) {
+            $payload = [
+                'id' => (int) $service->id,
+                'name' => $service->name,
+                'cn_name' => $service->cn_name,
+                'service_type' => $service->service_type,
+                'duration_min' => (int) $service->duration_min,
+                'duration_minutes' => (int) $service->duration_min,
+                'service_price' => (float) $service->service_price,
+                'price' => (float) ($service->price ?? $service->service_price),
+                'price_mode' => (string) ($service->price_mode ?? 'fixed'),
+                'price_range_min' => $service->price_range_min !== null ? (float) $service->price_range_min : null,
+                'price_range_max' => $service->price_range_max !== null ? (float) $service->price_range_max : null,
+                'is_package_eligible' => (bool) ($service->is_package_eligible ?? true),
+                'allow_photo_upload' => (bool) ($service->allow_photo_upload ?? false),
+                'deposit_amount' => (float) $service->deposit_amount,
+                'buffer_min' => (int) $service->buffer_min,
+                'is_active' => (bool) $service->is_active,
+                'image_path' => $service->image_path,
+                'image_url' => $service->image_url,
+                'primary_slots' => [],
+                'staffs' => $staffs,
+                'allowed_staffs' => $staffs,
+                'allowed_staff_count' => count($staffs),
+                'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
+                ...$this->mapCategoryFields($service),
+                'questions' => [],
+            ];
+
+            return $payload;
+        }
+
         $primarySlots = $service->relationLoaded('primarySlots')
             ? $service->primarySlots
             : $service->primarySlots()->where('is_active', true)->get();
+
+        $questions = $service->relationLoaded('questions')
+            ? $service->questions->where('is_active', true)->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values()
+            : $service->questions()
+                ->where('is_active', true)
+                ->with(['options' => fn ($q) => $q
+                    ->where('is_active', true)
+                    ->with('linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')])
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
 
         $payload = [
             'id' => (int) $service->id,
@@ -235,16 +282,7 @@ class ServiceController extends Controller
             'allowed_staff_count' => count($staffs),
             'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
             ...$this->mapCategoryFields($service),
-            'questions' => $service->questions()
-                ->where('is_active', true)
-                ->with(['options' => fn ($q) => $q
-                    ->where('is_active', true)
-                    ->with('linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount')
-                    ->orderBy('sort_order')
-                    ->orderBy('id')])
-                ->orderBy('sort_order')
-                ->orderBy('id')
-                ->get()
+            'questions' => $questions
                 ->map(fn ($question) => [
                     'id' => (int) $question->id,
                     'title' => (string) $question->title,

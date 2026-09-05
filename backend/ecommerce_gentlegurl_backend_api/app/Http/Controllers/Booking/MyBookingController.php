@@ -52,60 +52,65 @@ class MyBookingController extends Controller
             ->orderByDesc('start_at')
             ->get();
 
-        $claimsByBooking = $bookings
-            ->mapWithKeys(function (Booking $booking) {
-                $bookingId = (int) $booking->id;
-                $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking($bookingId);
+        $bookingIds = $bookings->pluck('id')->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->values()->all();
 
-                $claims = CustomerServicePackageUsage::query()
-                    ->where(function ($q) use ($bookingId, $posCartItemIds) {
-                        $q->where('booking_id', $bookingId)
-                            ->orWhere(function ($q2) use ($bookingId) {
-                                $q2->where('used_from', 'POS')
-                                    ->where('used_ref_id', $bookingId)
-                                    ->whereNull('booking_id');
-                            });
+        // NEW ENHANCEMENT — booking-shop-query-v1: batch package claims + deposit order items (avoid per-booking N+1)
+        $claimsByBooking = collect();
+        if ($bookingIds !== []) {
+            $claims = CustomerServicePackageUsage::query()
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->where(function ($q) use ($bookingIds) {
+                    $q->whereIn('booking_id', $bookingIds)
+                        ->orWhere(function ($q2) use ($bookingIds) {
+                            $q2->where('used_from', 'POS')
+                                ->whereIn('used_ref_id', $bookingIds)
+                                ->whereNull('booking_id');
+                        });
+                })
+                ->with('customerServicePackage.servicePackage:id,name')
+                ->orderByDesc('id')
+                ->get();
 
-                        if ($posCartItemIds !== []) {
-                            $q->orWhere(function ($q3) use ($posCartItemIds) {
-                                $q3->where('used_from', 'POS')
-                                    ->whereIn('used_ref_id', $posCartItemIds);
-                            })->orWhereIn('booking_id', $posCartItemIds);
-                        }
-                    })
-                    ->whereIn('status', ['reserved', 'consumed'])
-                    ->with('customerServicePackage.servicePackage:id,name')
-                    ->orderByDesc('id')
-                    ->get();
+            $claimsByBooking = $claims->groupBy(function ($claim) {
+                $bookingId = (int) ($claim->booking_id ?? 0);
 
-                return [$bookingId => $claims];
+                return $bookingId > 0 ? $bookingId : (int) ($claim->used_ref_id ?? 0);
             });
+        }
 
         $latestCancellationRequests = BookingCancellationRequest::query()
-            ->whereIn('booking_id', $bookings->pluck('id')->all())
+            ->whereIn('booking_id', $bookingIds)
             ->orderByDesc('id')
             ->get()
             ->groupBy('booking_id')
             ->map(fn ($group) => $group->first());
 
         $latestPaymentsByBooking = BookingPayment::query()
-            ->whereIn('booking_id', $bookings->pluck('id')->all())
+            ->whereIn('booking_id', $bookingIds)
             ->orderByDesc('id')
             ->get()
             ->groupBy('booking_id')
             ->map(fn ($group) => $group->first());
 
-        $payload = $bookings->map(function (Booking $booking) use ($claimsByBooking, $latestCancellationRequests, $latestPaymentsByBooking) {
-            $depositOrderItem = OrderItem::query()
+        $depositOrderItemByBooking = $bookingIds === []
+            ? collect()
+            : OrderItem::query()
                 ->with('order:id,order_number')
                 ->where('line_type', 'booking_deposit')
-                ->where('booking_id', (int) $booking->id)
-                ->latest('id')
-                ->first();
+                ->whereIn('booking_id', $bookingIds)
+                ->orderByDesc('id')
+                ->get()
+                ->groupBy(fn (OrderItem $item) => (int) $item->booking_id)
+                ->map(fn ($group) => $group->first());
+
+        $bookingSettings = BookingSetting::query()->first();
+
+        $payload = $bookings->map(function (Booking $booking) use ($claimsByBooking, $latestCancellationRequests, $latestPaymentsByBooking, $depositOrderItemByBooking, $bookingSettings) {
+            $depositOrderItem = $depositOrderItemByBooking->get((int) $booking->id);
 
             $receiptRows = $this->resolveBookingReceipts((int) $booking->id);
             $refundRows = $this->resolveBookingRefunds((int) $booking->id);
-            $summary = $this->resolveAppointmentFinancialSummary($booking);
+            $summary = $this->resolveAppointmentFinancialSummary($booking, $bookingSettings);
 
             return [
                 'id' => (int) $booking->id,
@@ -312,7 +317,7 @@ class MyBookingController extends Controller
     }
 
 
-    protected function resolveAppointmentFinancialSummary(Booking $booking): array
+    protected function resolveAppointmentFinancialSummary(Booking $booking, ?BookingSetting $prefetchedSettings = null): array
     {
         $settlementItems = collect($booking->addon_items_json ?? []);
         $settledServiceAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;
@@ -389,7 +394,7 @@ class MyBookingController extends Controller
                 ->values()
             : collect();
 
-        $settings = BookingSetting::query()->first();
+        $settings = $prefetchedSettings ?? BookingSetting::query()->first();
         $premiumDeposit = (float) ($settings?->deposit_amount_per_premium ?? 0);
         $standardDeposit = (float) ($settings?->deposit_base_amount_if_only_standard ?? 0);
         $premiumBookings = $linkedBookingRows

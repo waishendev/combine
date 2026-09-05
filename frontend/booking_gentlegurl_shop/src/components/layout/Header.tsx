@@ -89,8 +89,15 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
     };
 
     loadCartCount();
-    // Refresh cart count periodically
-    const interval = setInterval(loadCartCount, 5000);
+    // NEW ENHANCEMENT — booking-shop-query-v1: softer poll; skip static/policy pages
+    const staticPath =
+      typeof window !== "undefined" &&
+      /\/(privacy-policy|shipping-policy|return-refund|contact|flush)(\/|$)/.test(window.location.pathname);
+    const intervalMs = staticPath ? 60_000 : 15_000;
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      void loadCartCount();
+    }, intervalMs);
     
     // Listen for cart update events
     const handleCartUpdate = (event: CustomEvent<number>) => {

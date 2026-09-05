@@ -44,9 +44,10 @@ class BookingAvailabilityService
      *   is_fallback?:bool
      * }>
      */
-    public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15, int $extraDurationMin = 0, bool $applyPrimarySlotPolicy = true, ?int $storeLocationId = null): array
+    public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15, int $extraDurationMin = 0, bool $applyPrimarySlotPolicy = true, ?int $storeLocationId = null, ?array $conflictContext = null): array
     {
-        if ($storeLocationId !== null && ! StoreLocation::query()->whereKey($storeLocationId)->where('is_active', true)->where('is_booking_available', true)->exists()) {
+        // NEW ENHANCEMENT — booking-shop-query-v1: when conflictContext is provided, caller already validated branch.
+        if ($conflictContext === null && $storeLocationId !== null && ! StoreLocation::query()->whereKey($storeLocationId)->where('is_active', true)->where('is_booking_available', true)->exists()) {
             return [];
         }
         $timezone = $this->businessTimezone();
@@ -75,7 +76,13 @@ class BookingAvailabilityService
                 if ($day->isSameDay($now) && $candidateStart->lessThanOrEqualTo($now)) continue;
                 $candidateEnd = $candidateStart->copy()->addMinutes($durationMin);
                 if ($this->hitsBreak($schedule->break_start, $schedule->break_end, $day, $candidateStart, $candidateEnd)) continue;
-                if ($this->hasConflict($staffId, $candidateStart, $candidateEnd, $bufferMin, null, null, self::SCOPE_CUSTOMER, [], [], $storeLocationId)) continue;
+                if ($conflictContext !== null) {
+                    if ((bool) ($this->evaluatePrefetchedStaffConflict($conflictContext, $staffId, $candidateStart, $candidateEnd, $bufferMin)['has_conflict'] ?? false)) {
+                        continue;
+                    }
+                } elseif ($this->hasConflict($staffId, $candidateStart, $candidateEnd, $bufferMin, null, null, self::SCOPE_CUSTOMER, [], [], $storeLocationId)) {
+                    continue;
+                }
                 $slots[$candidateStart->toIso8601String()] = ['start_at'=>$candidateStart->toIso8601String(),'end_at'=>$candidateEnd->toIso8601String(),'is_available'=>true];
             }
         }
@@ -90,11 +97,14 @@ class BookingAvailabilityService
      */
     private function applyPrimarySlotDisplayPolicy(BookingService $service, array $slots): array
     {
-        $primaryTimes = $service->primarySlots()
-            ->where('is_active', true)
-            ->orderBy('sort_order')
-            ->orderBy('start_time')
-            ->pluck('start_time')
+        // NEW ENHANCEMENT — booking-shop-query-v1: reuse eager-loaded primarySlots when present
+        $primaryTimes = ($service->relationLoaded('primarySlots')
+            ? $service->primarySlots->where('is_active', true)->sortBy([['sort_order', 'asc'], ['start_time', 'asc']])->pluck('start_time')
+            : $service->primarySlots()
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('start_time')
+                ->pluck('start_time'))
             ->map(fn ($time) => substr((string) $time, 0, 5))
             ->filter()
             ->values();
@@ -658,7 +668,7 @@ class BookingAvailabilityService
      *   blocks:array<int, array<string,mixed>>
      * }
      */
-    protected function prefetchPosDayAvailabilityContext(array $staffIds, Carbon $day, int $bufferMin, string $conflictScope = self::SCOPE_CRM): array
+    protected function prefetchPosDayAvailabilityContext(array $staffIds, Carbon $day, int $bufferMin, string $conflictScope = self::SCOPE_CRM, ?int $storeLocationId = null): array
     {
         $timezone = $this->businessTimezone();
         $dayStart = $day->copy()->startOfDay();
@@ -670,6 +680,7 @@ class BookingAvailabilityService
         $schedules = BookingStaffSchedule::query()
             ->whereIn('staff_id', $staffIds)
             ->where('day_of_week', $day->dayOfWeek)
+            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
             ->get()
             ->keyBy('staff_id')
             ->all();
@@ -743,8 +754,10 @@ class BookingAvailabilityService
             ];
         }
 
+        // NEW ENHANCEMENT — booking-shop-query-v1: branch-scope timeoff/leave/blocks when store given (parity with getConflictDiagnostics)
         $timeoffRows = BookingStaffTimeoff::query()
             ->whereIn('staff_id', $staffIds)
+            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
             ->where('start_at', '<', $queryEnd->toDateTimeString())
             ->where('end_at', '>', $queryStart->toDateTimeString())
             ->get(['id', 'staff_id', 'start_at', 'end_at']);
@@ -763,6 +776,7 @@ class BookingAvailabilityService
 
         $leaveRows = BookingLeaveRequest::query()
             ->whereIn('staff_id', $staffIds)
+            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
             ->where('status', 'approved')
             ->where(function ($query) use ($requestDates) {
                 foreach ($requestDates as $requestDate) {
@@ -792,6 +806,7 @@ class BookingAvailabilityService
         }
 
         $blockRows = BookingBlock::query()
+            ->when($storeLocationId !== null, fn ($query) => $query->where(fn ($branch) => $branch->where('store_location_id', $storeLocationId)->orWhereNull('store_location_id')))
             ->where(function ($query) use ($staffIds) {
                 $query->where('scope', 'STORE')
                     ->orWhere(function ($nested) use ($staffIds) {
@@ -825,6 +840,23 @@ class BookingAvailabilityService
             'leave_by_staff' => $leaveByStaff,
             'blocks' => $blocks,
         ];
+    }
+
+    /**
+     * NEW ENHANCEMENT — booking-shop-query-v1: shop pooled availability day context (customer cart scope + branch filters).
+     *
+     * @param  list<int>  $staffIds
+     * @return array<string,mixed>
+     */
+    public function prefetchShopDayAvailabilityContext(array $staffIds, Carbon $day, int $bufferMin, int $storeLocationId): array
+    {
+        return $this->prefetchPosDayAvailabilityContext(
+            $staffIds,
+            $day,
+            $bufferMin,
+            self::SCOPE_CUSTOMER,
+            $storeLocationId,
+        );
     }
 
     /**

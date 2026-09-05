@@ -156,9 +156,29 @@ class AvailabilityController extends Controller
             ]);
         }
 
+        // NEW ENHANCEMENT — booking-shop-query-v1: day-prefetch conflicts (SCOPE_CUSTOMER) once per pooled request
+        $storeLocationId = (int) $validated['store_location_id'];
+        $bufferMin = (int) $service->buffer_min;
+        $day = \Carbon\Carbon::parse($validated['date'], (string) config('app.timezone', 'Asia/Kuala_Lumpur'))->startOfDay();
+        $conflictContext = $this->availabilityService->prefetchShopDayAvailabilityContext(
+            $staffIds,
+            $day,
+            $bufferMin,
+            $storeLocationId,
+        );
+
         $mergedByStart = [];
         foreach ($staffIds as $staffId) {
-            $slots = $this->availabilityService->getAvailableSlots($service, $staffId, $validated['date'], 15, $extraDurationMin, true, (int) $validated['store_location_id']);
+            $slots = $this->availabilityService->getAvailableSlots(
+                $service,
+                $staffId,
+                $validated['date'],
+                15,
+                $extraDurationMin,
+                true,
+                $storeLocationId,
+                $conflictContext,
+            );
             foreach ($slots as $slot) {
                 $key = $slot['start_at'];
                 if (! isset($mergedByStart[$key])) {
