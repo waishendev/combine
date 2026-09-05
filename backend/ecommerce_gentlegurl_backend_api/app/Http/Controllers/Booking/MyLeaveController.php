@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingLeaveRequest;
 use App\Services\Booking\BookingLeaveService;
 use App\Services\Booking\LeaveBranchService;
+use App\Services\StoreLocationAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,9 +14,11 @@ use App\Models\Ecommerce\StoreLocation;
 
 class MyLeaveController extends Controller
 {
-    public function __construct(private readonly BookingLeaveService $leaveService, private readonly LeaveBranchService $branches)
-    {
-    }
+    public function __construct(
+        private readonly BookingLeaveService $leaveService,
+        private readonly LeaveBranchService $branches,
+        private readonly StoreLocationAccessService $branchAccess,
+    ) {}
 
     public function indexBalances(Request $request)
     {
@@ -48,16 +51,33 @@ class MyLeaveController extends Controller
             'status' => ['sometimes', 'nullable', 'in:pending,approved,rejected,cancelled'],
             'leave_type' => ['sometimes', 'nullable', 'in:annual,mc,emergency,unpaid,off_day'],
             'date_range' => ['sometimes', 'nullable', 'in:upcoming,past,all'],
+            'branch_store_location_id' => ['sometimes', 'nullable', 'integer', 'exists:store_locations,id'],
         ]);
+
+        $selectedBranchId = (int) ($validated['branch_store_location_id'] ?? 0);
+        $accessibleBranchIds = $this->branchAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
+        if ($selectedBranchId > 0) {
+            $selectedBranchId = (int) $this->branchAccess
+                ->authorizeStoreLocation($request->user(), $selectedBranchId, false)->id;
+        }
 
         $query = BookingLeaveRequest::query()
             ->with([
                 'pendingDateChangeRequest:id,source_leave_request_id,start_date,end_date,status,change_reason,created_at',
+                'storeLocation:id,name',
             ])
             ->where('staff_id', $staffId)
             ->where(function ($builder) {
                 $builder->where('request_kind', 'new')->orWhereNull('request_kind');
-            });
+            })
+            ->when(
+                $selectedBranchId > 0,
+                fn ($builder) => $builder->where('store_location_id', $selectedBranchId),
+                // Legacy NULL rows remain visible only in the authorized ALL overview.
+                fn ($builder) => $builder->where(fn ($scope) => $scope
+                    ->whereIn('store_location_id', $accessibleBranchIds)
+                    ->orWhereNull('store_location_id')),
+            );
 
         if (! empty($validated['status'])) {
             $query->where('status', $validated['status']);

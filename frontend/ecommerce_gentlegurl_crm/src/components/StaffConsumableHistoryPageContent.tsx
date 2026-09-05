@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+import { useBranch } from '@/contexts/BranchContext'
+
 type ClaimHistoryRow = {
   id: number
   claimed_at?: string | null
   product?: string | null
   sku?: string | null
   qty: number
+  store_location_id?: number | null
+  store_location?: { name?: string | null } | null
 }
 
 const extractRows = <T,>(json: unknown): T[] => {
@@ -21,6 +25,7 @@ const extractRows = <T,>(json: unknown): T[] => {
 }
 
 export default function StaffConsumableHistoryPageContent() {
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [rows, setRows] = useState<ClaimHistoryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -29,7 +34,9 @@ export default function StaffConsumableHistoryPageContent() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/proxy/admin/staff-consumables/my-history?limit=50', { cache: 'no-store' })
+      const params = new URLSearchParams({ limit: '50' })
+      if (selectedBranchId !== null) params.set('branch_store_location_id', String(selectedBranchId))
+      const res = await fetch(`/api/proxy/admin/staff-consumables/my-history?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to load your consumable history.')
       setRows(extractRows<ClaimHistoryRow>(json))
@@ -39,7 +46,7 @@ export default function StaffConsumableHistoryPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedBranchId])
 
   useEffect(() => {
     loadHistory()
@@ -64,19 +71,21 @@ export default function StaffConsumableHistoryPageContent() {
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">SKU</th>
                 <th className="px-4 py-3 text-right">Qty</th>
+                {isAllBranches && <th className="px-4 py-3">Branch</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Loading your consumable history...</td></tr>
+                <tr><td colSpan={4 + (isAllBranches ? 1 : 0)} className="px-4 py-8 text-center text-slate-500">Loading your consumable history...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">No consumable claims found for your staff account.</td></tr>
+                <tr><td colSpan={4 + (isAllBranches ? 1 : 0)} className="px-4 py-8 text-center text-slate-500">No consumable claims found for your staff account.</td></tr>
               ) : rows.map((row) => (
                 <tr key={row.id}>
                   <td className="px-4 py-3 text-slate-600">{row.claimed_at ?? '-'}</td>
                   <td className="px-4 py-3 font-medium text-slate-800">{row.product ?? '-'}</td>
                   <td className="px-4 py-3 text-slate-600">{row.sku ?? '-'}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.qty}</td>
+                  {isAllBranches && <td className="px-4 py-3 text-slate-600">{row.store_location?.name ?? (row.store_location_id ? 'Unknown Branch' : 'Unassigned')}</td>}
                 </tr>
               ))}
             </tbody>
