@@ -68,7 +68,8 @@ class BookingAvailabilityService
         foreach ($schedules as $schedule) {
             $startWindow = Carbon::parse($day->toDateString().' '.$schedule->start_time, $timezone);
             $endWindow = Carbon::parse($day->toDateString().' '.$schedule->end_time, $timezone);
-            if ($endWindow->diffInMinutes($startWindow) < $durationMin) continue;
+            // Carbon 3 returns signed diffs by default; use absolute window length.
+            if ($startWindow->diffInMinutes($endWindow, true) < $durationMin) continue;
             $period = CarbonPeriod::create($startWindow, max(1, $stepMin).' minutes', $endWindow->copy()->subMinutes($durationMin));
             foreach ($period as $candidateStart) {
                 if ($day->isSameDay($now) && $candidateStart->lessThanOrEqualTo($now)) continue;
@@ -340,7 +341,11 @@ class BookingAvailabilityService
             ->all();
 
         $timeoffConflicts = BookingStaffTimeoff::where('staff_id', $staffId)
-            ->when($storeLocationId !== null, fn ($query) => $query->where(fn ($branch) => $branch->where('store_location_id', $storeLocationId)->orWhereNull('store_location_id')))
+            // Public booking always supplies an operational Branch. Legacy NULL rows have no
+            // safe Branch attribution and must not make a multi-Branch staff member unavailable
+            // everywhere. They retain their legacy/global meaning only for legacy callers which
+            // do not have Branch context.
+            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
             ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
                 $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
             })
@@ -359,6 +364,7 @@ class BookingAvailabilityService
             ->values();
         $fullDayLeaveConflicts = BookingLeaveRequest::query()
             ->where('staff_id', $staffId)
+            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
             ->where('status', 'approved')
             ->where(function ($query) use ($requestDates) {
                 foreach ($requestDates as $date) {

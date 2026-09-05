@@ -136,6 +136,12 @@ function SlotPageContent() {
 
   useEffect(() => {
     const run = async () => {
+      if (!storeLocationId || !Number.isInteger(Number(storeLocationId)) || Number(storeLocationId) <= 0) {
+        setService(null);
+        setError("Select a Branch before choosing an appointment time.");
+        setLoading(false);
+        return;
+      }
       try {
         const detail = await getBookingServiceDetail(serviceId, Number(storeLocationId));
         setService(detail as ServiceDetail);
@@ -144,7 +150,7 @@ function SlotPageContent() {
       }
     };
     run();
-  }, [serviceId]);
+  }, [serviceId, storeLocationId]);
 
   useEffect(() => {
     const run = async () => {
