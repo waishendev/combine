@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import { useBranch } from '@/contexts/BranchContext'
 
 import TableEmptyState from '../TableEmptyState'
 import TableLoadingRow from '../TableLoadingRow'
@@ -12,7 +13,12 @@ import PaginationControls from '../PaginationControls'
 type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid'
 
 type LeaveItem = { leave_type: LeaveType; entitled_days: number; used_days: number; remaining_days: number }
-type StaffBalance = { staff_id: number; staff_name: string; balances: LeaveItem[] }
+type StaffBalance = {
+  staff_id: number
+  staff_name: string
+  store_locations: Array<{ id: number; name: string }>
+  balances: LeaveItem[]
+}
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
   annual: 'Annual',
@@ -57,6 +63,7 @@ const formatRemainEntitled = (remaining: number, entitled: number): string => {
 }
 
 export default function BookingLeaveBalancesPage() {
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [rows, setRows] = useState<StaffBalance[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -78,10 +85,11 @@ export default function BookingLeaveBalancesPage() {
   })
   const [isSaving, setIsSaving] = useState(false)
 
-  const loadRows = async () => {
+  const loadRows = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/proxy/admin/booking/leave-balances', { cache: 'no-store' })
+      const query = selectedBranchId === null ? '' : `?store_location_id=${selectedBranchId}`
+      const res = await fetch(`/api/proxy/admin/booking/leave-balances${query}`, { cache: 'no-store' })
       if (!res.ok) {
         setError('Failed to load leave balances.')
         setRows([])
@@ -97,12 +105,11 @@ export default function BookingLeaveBalancesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedBranchId])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadRows()
-  }, [])
+  }, [loadRows])
 
   const filteredRows = useMemo(() => {
     const q = filters.query.trim().toLowerCase()
@@ -415,6 +422,7 @@ export default function BookingLeaveBalancesPage() {
           <thead className="bg-slate-300/70">
             <tr>
               <th className="px-4 py-2 font-semibold text-left text-gray-600  tracking-wider">Staff</th>
+              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Assigned Branches</th>}
               {LEAVE_TYPES.map((t) => (
                 <th key={`head-${t}`} className="px-4 py-2 font-semibold text-left text-gray-600  tracking-wider">
                   {LEAVE_LABEL[t]}
@@ -425,7 +433,7 @@ export default function BookingLeaveBalancesPage() {
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={1 + LEAVE_TYPES.length + 1} />
+              <TableLoadingRow colSpan={1 + LEAVE_TYPES.length + 1 + (isAllBranches ? 1 : 0)} />
             ) : pagedRows.length > 0 ? (
               pagedRows.map((row) => {
                 const byType = balanceByStaff.get(row.staff_id) ?? ({} as Record<LeaveType, LeaveItem>)
@@ -434,6 +442,13 @@ export default function BookingLeaveBalancesPage() {
                     <td className="px-4 py-2">
                       <div className="font-medium text-slate-900">{row.staff_name}</div>
                     </td>
+                    {isAllBranches && (
+                      <td className="max-w-xs px-4 py-2 text-slate-600">
+                        <span className="line-clamp-2" title={row.store_locations.map((branch) => branch.name).join(', ')}>
+                          {row.store_locations.map((branch) => branch.name).join(', ')}
+                        </span>
+                      </td>
+                    )}
 
                     {LEAVE_TYPES.map((t) => {
                       const item = byType[t] ?? { leave_type: t, entitled_days: 0, used_days: 0, remaining_days: 0 }
@@ -470,7 +485,7 @@ export default function BookingLeaveBalancesPage() {
                 )
               })
             ) : (
-              <TableEmptyState colSpan={1 + LEAVE_TYPES.length + 1} message="No staff found." />
+              <TableEmptyState colSpan={1 + LEAVE_TYPES.length + 1 + (isAllBranches ? 1 : 0)} message="No staff found." />
             )}
           </tbody>
         </table>

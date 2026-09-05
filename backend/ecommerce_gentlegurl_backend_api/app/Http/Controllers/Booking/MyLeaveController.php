@@ -5,13 +5,15 @@ namespace App\Http\Controllers\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingLeaveRequest;
 use App\Services\Booking\BookingLeaveService;
+use App\Services\Booking\LeaveBranchService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Ecommerce\StoreLocation;
 
 class MyLeaveController extends Controller
 {
-    public function __construct(private readonly BookingLeaveService $leaveService)
+    public function __construct(private readonly BookingLeaveService $leaveService, private readonly LeaveBranchService $branches)
     {
     }
 
@@ -23,6 +25,15 @@ class MyLeaveController extends Controller
         }
 
         return $this->respond($this->leaveService->getBalanceSummaryForStaff($staffId));
+    }
+
+    public function eligibleBranches(Request $request)
+    {
+        $staffId = (int) ($request->user()?->staff_id ?? 0);
+        if ($staffId <= 0) return $this->respondError('This account is not linked to a staff profile.', 403);
+
+        $ids = $this->branches->eligibleBranchIds($request->user(), $staffId);
+        return $this->respond(StoreLocation::query()->whereIn('id', $ids)->orderBy('name')->get(['id', 'name']));
     }
 
     public function indexRequests(Request $request)
@@ -87,7 +98,9 @@ class MyLeaveController extends Controller
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'reason' => ['nullable', 'string', 'max:255'],
+            'store_location_id' => ['nullable', 'integer'],
         ]);
+        $branchId = $this->branches->resolveForCreation($request->user(), $staffId, $data['store_location_id'] ?? null);
 
         $startDate = Carbon::parse($data['start_date'])->startOfDay();
         $endDate = Carbon::parse($data['end_date'])->startOfDay();
@@ -114,13 +127,14 @@ class MyLeaveController extends Controller
             }
         }
 
-        if ($this->leaveService->hasOverlappingRequest($staffId, $startDate, $endDate, (string) $data['day_type'])) {
+        if ($this->leaveService->hasOverlappingRequest($staffId, $startDate, $endDate, (string) $data['day_type'], null, $branchId)) {
             return $this->respondError('There is already an overlapping leave request.', 422);
         }
 
-        $created = DB::transaction(function () use ($staffId, $data, $days, $request) {
+        $created = DB::transaction(function () use ($staffId, $data, $days, $request, $branchId) {
             $created = BookingLeaveRequest::create([
                 'staff_id' => $staffId,
+                'store_location_id' => $branchId,
                 'leave_type' => $data['leave_type'],
                 'day_type' => $data['day_type'],
                 'start_date' => $data['start_date'],

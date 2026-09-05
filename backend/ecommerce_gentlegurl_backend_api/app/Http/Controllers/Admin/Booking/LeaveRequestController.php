@@ -6,13 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingLeaveRequest;
 use App\Models\Booking\BookingStaffTimeoff;
 use App\Services\Booking\BookingLeaveService;
+use App\Services\Booking\LeaveBranchService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class LeaveRequestController extends Controller
 {
-    public function __construct(private readonly BookingLeaveService $leaveService)
+    public function __construct(private readonly BookingLeaveService $leaveService, private readonly LeaveBranchService $branches)
     {
     }
 
@@ -20,10 +21,12 @@ class LeaveRequestController extends Controller
     {
         $query = BookingLeaveRequest::query()->with([
             'staff:id,name',
+            'storeLocation:id,name',
             'reviewer:id,name',
             'creationLog.creator:id,name',
             'sourceLeaveRequest:id,leave_type,start_date,end_date,status,day_type,days,reason',
         ]);
+        $this->branches->scopeVisible($query, $request->user(), $request->input('store_location_id'));
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->input('status'));
@@ -57,16 +60,19 @@ class LeaveRequestController extends Controller
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'reason' => ['nullable', 'string', 'max:255'],
+            'store_location_id' => ['nullable', 'integer'],
         ]);
+
+        $branchId = $this->branches->resolveForCreation($request->user(), (int) $data['staff_id'], $data['store_location_id'] ?? null);
 
         $startDate = Carbon::parse($data['start_date'])->startOfDay();
         $endDate = Carbon::parse($data['end_date'])->startOfDay();
 
-        if ($this->leaveService->hasOverlappingRequest((int) $data['staff_id'], $startDate, $endDate, 'full_day')) {
+        if ($this->leaveService->hasOverlappingRequest((int) $data['staff_id'], $startDate, $endDate, 'full_day', null, $branchId)) {
             return $this->respondError('There is already an overlapping leave/off-day request.', 422);
         }
 
-        $created = DB::transaction(function () use ($data, $request, $startDate, $endDate) {
+        $created = DB::transaction(function () use ($data, $request, $startDate, $endDate, $branchId) {
             return $this->leaveService->createApprovedOffDay(
                 (int) $data['staff_id'],
                 $startDate,
@@ -74,6 +80,7 @@ class LeaveRequestController extends Controller
                 $data['reason'] ?? null,
                 $request->user()?->id,
                 'Off day set by admin'
+                , $branchId
             );
         });
 
@@ -91,9 +98,11 @@ class LeaveRequestController extends Controller
             'target_month' => ['required', 'date_format:Y-m'],
             'days_of_week' => ['required', 'array', 'min:1'],
             'days_of_week.*' => ['integer', 'between:0,6', 'distinct'],
+            'store_location_id' => ['nullable', 'integer'],
         ]);
 
         $staffId = (int) $data['staff_id'];
+        $branchId = $this->branches->resolveForCreation($request->user(), $staffId, $data['store_location_id'] ?? null);
         $monthStart = Carbon::createFromFormat('Y-m', $data['target_month'])->startOfMonth();
         $monthEnd = $monthStart->copy()->endOfMonth();
         $targetWeekdays = array_values(array_unique(array_map('intval', $data['days_of_week'])));
@@ -106,6 +115,7 @@ class LeaveRequestController extends Controller
             $monthEnd,
             $targetWeekdays,
             $request->user()?->id,
+            $branchId,
         ));
 
         return $this->respond([
@@ -127,9 +137,11 @@ class LeaveRequestController extends Controller
             'target_year' => ['required', 'integer', 'min:2000', 'max:2100'],
             'days_of_week' => ['required', 'array', 'min:1'],
             'days_of_week.*' => ['integer', 'between:0,6', 'distinct'],
+            'store_location_id' => ['nullable', 'integer'],
         ]);
 
         $staffId = (int) $data['staff_id'];
+        $branchId = $this->branches->resolveForCreation($request->user(), $staffId, $data['store_location_id'] ?? null);
         $yearStart = Carbon::createFromDate((int) $data['target_year'], 1, 1)->startOfDay();
         $yearEnd = $yearStart->copy()->endOfYear()->startOfDay();
         $targetWeekdays = array_values(array_unique(array_map('intval', $data['days_of_week'])));
@@ -142,6 +154,7 @@ class LeaveRequestController extends Controller
             $yearEnd,
             $targetWeekdays,
             $request->user()?->id,
+            $branchId,
         ));
 
         return $this->respond([
@@ -165,6 +178,7 @@ class LeaveRequestController extends Controller
         Carbon $rangeEnd,
         array $targetWeekdays,
         ?int $userId,
+        int $branchId,
     ): array {
         $weekdayLabels = $this->leaveService->weekdayLabels();
         $createdDates = [];
@@ -190,6 +204,7 @@ class LeaveRequestController extends Controller
                 $reason,
                 $userId,
                 'Off day generated for selected weekday(s)'
+                , $branchId
             );
 
             if ($item) {
@@ -212,6 +227,7 @@ class LeaveRequestController extends Controller
         ]);
 
         $item = BookingLeaveRequest::query()->findOrFail($id);
+        $this->branches->authorizeRecord($request->user(), $item);
 
         if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
             return $this->respondError('Only approved off days can be updated.', 422);
@@ -245,6 +261,7 @@ class LeaveRequestController extends Controller
         ]);
 
         $item = BookingLeaveRequest::query()->findOrFail($id);
+        $this->branches->authorizeRecord($request->user(), $item);
 
         if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
             return $this->respondError('Only approved off days can be cancelled.', 422);
@@ -269,6 +286,7 @@ class LeaveRequestController extends Controller
         ]);
 
         $item = BookingLeaveRequest::query()->findOrFail($id);
+        $this->branches->authorizeRecord($request->user(), $item);
 
         if ($item->status !== 'pending') {
             return $this->respondError('Only pending requests can be reviewed.', 422);
@@ -321,10 +339,12 @@ class LeaveRequestController extends Controller
                     Carbon::parse((string) $item->start_date)->startOfDay(),
                     Carbon::parse((string) $item->end_date)->startOfDay(),
                     (string) ($item->day_type ?: 'full_day')
+                    , $item->store_location_id ? (int) $item->store_location_id : null
                 );
 
                 $timeoff = BookingStaffTimeoff::create([
                     'staff_id' => $item->staff_id,
+                    'store_location_id' => $item->store_location_id,
                     'start_at' => $startAt,
                     'end_at' => $endAt,
                     'reason' => sprintf('Leave request #%d (%s %s)', $item->id, $item->leave_type, $item->day_type ?: 'full_day'),

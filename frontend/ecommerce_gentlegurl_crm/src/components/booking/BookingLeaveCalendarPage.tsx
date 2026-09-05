@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import { useBranch } from '@/contexts/BranchContext'
 
 type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid' | 'off_day'
 type DayType = 'full_day' | 'half_day_am' | 'half_day_pm'
@@ -21,6 +22,8 @@ type LeaveRow = {
   staff?: { id: number; name: string }
   reviewer?: UserRef | null
   creation_log?: { creator?: UserRef | null } | null
+  store_location_id?: number | null
+  store_location?: { id: number; name: string } | null
 }
 
 type LeaveLogEntry = {
@@ -37,7 +40,36 @@ type BookingLeaveCalendarPageProps = {
   permissions?: string[]
 }
 
-type StaffOption = { staff_id: number; staff_name: string }
+type BranchOption = { id: number; name: string }
+type StaffOption = { staff_id: number; staff_name: string; store_locations: BranchOption[] }
+
+function AllBranchesCreationField({ branches, value, onChange, disabled = false }: {
+  branches: BranchOption[]
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  if (branches.length === 0) {
+    return <div className="md:col-span-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">This Staff has no eligible accessible Branch. Creation is unavailable.</div>
+  }
+  if (branches.length === 1) {
+    return (
+      <div className="md:col-span-2">
+        <label className="mb-1 block text-sm font-medium text-gray-700">Branch</label>
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{branches[0].name}</div>
+      </div>
+    )
+  }
+  return (
+    <div className="md:col-span-2">
+      <label className="mb-1 block text-sm font-medium text-gray-700">Branch <span className="text-rose-600">*</span></label>
+      <select className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} required>
+        <option value="">Select Branch</option>
+        {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+      </select>
+    </div>
+  )
+}
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
   annual: 'Annual Leave',
@@ -285,6 +317,7 @@ function LeaveCalendarErrorBanner({ message }: { message: string }) {
 }
 
 export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLeaveCalendarPageProps) {
+  const { selectedBranchId, isAllBranches } = useBranch()
   const canUpdate = permissions.includes('booking.schedules.update')
   const now = new Date()
   const [month, setMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
@@ -297,14 +330,16 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   const [isOffDayModalOpen, setIsOffDayModalOpen] = useState(false)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
   const [isGenerateYearModalOpen, setIsGenerateYearModalOpen] = useState(false)
-  const [offDayForm, setOffDayForm] = useState({ staff_id: '', start_date: '', end_date: '', reason: '' })
+  const [offDayForm, setOffDayForm] = useState({ staff_id: '', store_location_id: '', start_date: '', end_date: '', reason: '' })
   const [generateForm, setGenerateForm] = useState({
     staff_id: '',
+    store_location_id: '',
     target_month: monthToTargetValue(now),
     days_of_week: [] as number[],
   })
   const [generateYearForm, setGenerateYearForm] = useState({
     staff_id: '',
+    store_location_id: '',
     target_year: String(now.getFullYear()),
     days_of_week: [] as number[],
   })
@@ -319,6 +354,19 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   const [logsLoadingId, setLogsLoadingId] = useState<number | null>(null)
   const [expandedLogsId, setExpandedLogsId] = useState<number | null>(null)
 
+  const eligibleBranches = (staffId: string) => staffOptions.find((staff) => String(staff.staff_id) === staffId)?.store_locations ?? []
+  const initialBranch = (staffId: string) => {
+    const branches = eligibleBranches(staffId)
+    return branches.length === 1 ? String(branches[0].id) : ''
+  }
+  const concreteBranchId = (staffId: string, formBranchId: string): number | null => {
+    if (selectedBranchId !== null) return selectedBranchId
+    const branches = eligibleBranches(staffId)
+    if (branches.length === 1) return branches[0].id
+    const selected = Number(formBranchId)
+    return branches.some((branch) => branch.id === selected) ? selected : null
+  }
+
   const dismissPageToast = useCallback((id: string) => {
     setPageToasts((prev) => prev.filter((toast) => toast.id !== id))
   }, [])
@@ -330,7 +378,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   }, [dismissPageToast])
 
   const loadStaffOptions = async () => {
-    const res = await fetch('/api/proxy/admin/booking/leave-balances', { cache: 'no-store' })
+    const res = await fetch(`/api/proxy/admin/booking/leave-balances?${selectedBranchId !== null ? `store_location_id=${selectedBranchId}` : 'accessible_union=1'}`, { cache: 'no-store' })
     if (!res.ok) return
     setStaffOptions(extractArray<StaffOption>(await res.json().catch(() => ({}))))
   }
@@ -346,6 +394,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     qs.set('per_page', '500')
     if (staffFilter) qs.set('staff_id', staffFilter)
     if (leaveTypeFilter) qs.set('leave_type', leaveTypeFilter)
+    if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
 
     const res = await fetch(`/api/proxy/admin/booking/leave-requests?${qs.toString()}`, { cache: 'no-store' })
     if (!res.ok) {
@@ -378,6 +427,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     setGenerateSummary(null)
     setGenerateForm({
       staff_id: staffFilter || '',
+      store_location_id: initialBranch(staffFilter || ''),
       target_month: monthToTargetValue(month),
       days_of_week: [],
     })
@@ -389,6 +439,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     setGenerateSummary(null)
     setGenerateYearForm({
       staff_id: staffFilter || '',
+      store_location_id: initialBranch(staffFilter || ''),
       target_year: String(month.getFullYear()),
       days_of_week: [],
     })
@@ -403,6 +454,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       setError('Please select staff and target month.')
       return
     }
+    const branchId = concreteBranchId(generateForm.staff_id, generateForm.store_location_id)
+    if (branchId === null) { setError('Select an eligible Branch before generating off days.'); return }
 
     if (generateForm.days_of_week.length === 0) {
       setError('Please select at least one weekday.')
@@ -416,6 +469,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staff_id: Number(generateForm.staff_id),
+          store_location_id: branchId,
           target_month: generateForm.target_month,
           days_of_week: generateForm.days_of_week,
         }),
@@ -444,6 +498,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       setError('Please select staff and target year.')
       return
     }
+    const branchId = concreteBranchId(generateYearForm.staff_id, generateYearForm.store_location_id)
+    if (branchId === null) { setError('Select an eligible Branch before generating off days.'); return }
 
     if (generateYearForm.days_of_week.length === 0) {
       setError('Please select at least one weekday.')
@@ -457,6 +513,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staff_id: Number(generateYearForm.staff_id),
+          store_location_id: branchId,
           target_year: Number(generateYearForm.target_year),
           days_of_week: generateYearForm.days_of_week,
         }),
@@ -604,6 +661,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       setError('Please complete staff and date fields for Off Day.')
       return
     }
+    const branchId = concreteBranchId(offDayForm.staff_id, offDayForm.store_location_id)
+    if (branchId === null) { setError('Select an eligible Branch before creating the Off Day.'); return }
 
     const staffName = staffOptions.find((row) => String(row.staff_id) === offDayForm.staff_id)?.staff_name ?? 'Staff'
     const dateRange = formatDateRange(offDayForm.start_date, offDayForm.end_date)
@@ -615,6 +674,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staff_id: Number(offDayForm.staff_id),
+          store_location_id: branchId,
           start_date: offDayForm.start_date,
           end_date: offDayForm.end_date,
           reason: offDayForm.reason || null,
@@ -628,7 +688,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       }
 
       pushPageToast('Off day created', `${staffName} · ${dateRange}`)
-      setOffDayForm({ staff_id: '', start_date: '', end_date: '', reason: '' })
+      setOffDayForm({ staff_id: '', store_location_id: '', start_date: '', end_date: '', reason: '' })
       setIsOffDayModalOpen(false)
       await loadRows()
     } finally {
@@ -638,7 +698,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
   useEffect(() => {
     void loadStaffOptions()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchId])
 
   useEffect(() => {
     void loadRows()
@@ -726,7 +787,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 type="button"
                 className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
                 onClick={createOffDay}
-                disabled={isCreatingOffDay}
+                disabled={isCreatingOffDay || (isAllBranches && concreteBranchId(offDayForm.staff_id, offDayForm.store_location_id) === null)}
               >
                 {isCreatingOffDay ? 'Creating…' : 'Create'}
               </button>
@@ -746,7 +807,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   value={offDayForm.staff_id}
-                  onChange={(e) => setOffDayForm((prev) => ({ ...prev, staff_id: e.target.value }))}
+                  onChange={(e) => setOffDayForm((prev) => ({ ...prev, staff_id: e.target.value, store_location_id: initialBranch(e.target.value) }))}
                 >
                   <option value="">Select Staff</option>
                   {staffOptions.map((row) => (
@@ -756,6 +817,10 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                   ))}
                 </select>
               </div>
+
+              {isAllBranches && offDayForm.staff_id && (
+                <AllBranchesCreationField branches={eligibleBranches(offDayForm.staff_id)} value={offDayForm.store_location_id} onChange={(store_location_id) => setOffDayForm((prev) => ({ ...prev, store_location_id }))} disabled={isCreatingOffDay} />
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
@@ -812,7 +877,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                   type="button"
                   className="px-4 py-2 text-sm text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
                   onClick={generateOffDaysFromWeeklySchedule}
-                  disabled={isGenerating}
+                  disabled={isGenerating || (isAllBranches && concreteBranchId(generateForm.staff_id, generateForm.store_location_id) === null)}
                 >
                   {isGenerating ? 'Generating…' : 'Generate'}
                 </button>
@@ -846,7 +911,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   value={generateForm.staff_id}
-                  onChange={(e) => setGenerateForm((prev) => ({ ...prev, staff_id: e.target.value }))}
+                  onChange={(e) => setGenerateForm((prev) => ({ ...prev, staff_id: e.target.value, store_location_id: initialBranch(e.target.value) }))}
                   disabled={isGenerating}
                 >
                   <option value="">Select Staff</option>
@@ -857,6 +922,10 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                   ))}
                 </select>
               </div>
+
+              {isAllBranches && generateForm.staff_id && (
+                <AllBranchesCreationField branches={eligibleBranches(generateForm.staff_id)} value={generateForm.store_location_id} onChange={(store_location_id) => setGenerateForm((prev) => ({ ...prev, store_location_id }))} disabled={isGenerating} />
+              )}
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Target month</label>
@@ -905,7 +974,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                   type="button"
                   className="px-4 py-2 text-sm text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
                   onClick={generateOffDaysFromYearSchedule}
-                  disabled={isGenerating}
+                  disabled={isGenerating || (isAllBranches && concreteBranchId(generateYearForm.staff_id, generateYearForm.store_location_id) === null)}
                 >
                   {isGenerating ? 'Generating…' : 'Generate'}
                 </button>
@@ -939,7 +1008,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   value={generateYearForm.staff_id}
-                  onChange={(e) => setGenerateYearForm((prev) => ({ ...prev, staff_id: e.target.value }))}
+                  onChange={(e) => setGenerateYearForm((prev) => ({ ...prev, staff_id: e.target.value, store_location_id: initialBranch(e.target.value) }))}
                   disabled={isGenerating}
                 >
                   <option value="">Select Staff</option>
@@ -950,6 +1019,10 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                   ))}
                 </select>
               </div>
+
+              {isAllBranches && generateYearForm.staff_id && (
+                <AllBranchesCreationField branches={eligibleBranches(generateYearForm.staff_id)} value={generateYearForm.store_location_id} onChange={(store_location_id) => setGenerateYearForm((prev) => ({ ...prev, store_location_id }))} disabled={isGenerating} />
+              )}
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Target year</label>
@@ -1124,6 +1197,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                       <div className="truncate text-[10px] font-semibold text-slate-900">
                         {item.staff?.name ?? `Staff #${item.staff_id}`}
                       </div>
+                      {isAllBranches && <div className="truncate text-[9px] font-medium text-slate-600">{item.store_location?.name ?? (item.store_location_id ? 'Unknown Branch' : 'Unassigned')}</div>}
                       <div className="mt-0.5 overflow-hidden">
                         <span
                           className={`block max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-medium ${LEAVE_CLASS[item.leave_type]}`}
@@ -1171,6 +1245,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="text-base font-semibold text-slate-900">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
+                        {isAllBranches && <div className="mt-1 text-xs font-medium text-slate-700"><span className="text-slate-500">Branch</span> {item.store_location?.name ?? (item.store_location_id ? 'Unknown Branch' : 'Unassigned')}</div>}
                         <div className="mt-1 text-xs text-slate-500">
                           {formatDateRange(item.start_date, item.end_date)}
                           {isSingleDayRange(item.start_date, item.end_date) ? ` · ${formatWeekdayLabel(item.start_date)}` : ''}

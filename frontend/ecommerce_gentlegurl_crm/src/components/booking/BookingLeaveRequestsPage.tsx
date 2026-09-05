@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import { useBranch } from '@/contexts/BranchContext'
 
 import TableEmptyState from '../TableEmptyState'
 import TableLoadingRow from '../TableLoadingRow'
@@ -38,6 +39,8 @@ type LeaveRow = {
   change_reason?: string | null
   admin_remark: string | null
   staff?: { id: number; name: string }
+  store_location_id?: number | null
+  store_location?: { id: number; name: string } | null
 }
 
 type StaffOption = { staff_id: number; staff_name: string }
@@ -325,6 +328,7 @@ export default function BookingLeaveRequestsPage({
 }: {
   onDecisionComplete?: () => void
 } = {}) {
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [rows, setRows] = useState<LeaveRow[]>([])
   const [meta, setMeta] = useState<PaginationMeta>({ current_page: 1, last_page: 1, per_page: 50, total: 0 })
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
@@ -351,6 +355,7 @@ export default function BookingLeaveRequestsPage({
       qs.set('per_page', String(pageSize))
       // Default view: pending only (not user-editable in UI)
       qs.set('status', 'pending')
+      if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
       if (filters.staffId) qs.set('staff_id', filters.staffId)
       const res = await fetch(`/api/proxy/admin/booking/leave-requests?${qs.toString()}`, { cache: 'no-store' })
       if (!res.ok) {
@@ -374,7 +379,7 @@ export default function BookingLeaveRequestsPage({
   }
 
   const loadStaffOptions = async () => {
-    const res = await fetch('/api/proxy/admin/booking/leave-balances', { cache: 'no-store' })
+    const res = await fetch(`/api/proxy/admin/booking/leave-balances?${selectedBranchId !== null ? `store_location_id=${selectedBranchId}` : 'accessible_union=1'}`, { cache: 'no-store' })
     if (!res.ok) return
     const list = extractArray<StaffOption>(await res.json().catch(() => ({})))
     setStaffOptions(list)
@@ -383,11 +388,12 @@ export default function BookingLeaveRequestsPage({
   useEffect(() => {
     void loadRows()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, currentPage, pageSize])
+  }, [filters, currentPage, pageSize, selectedBranchId])
 
   useEffect(() => {
     void loadStaffOptions()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchId])
 
   const decide = async (id: number, status: 'approved' | 'rejected') => {
     try {
@@ -800,6 +806,7 @@ export default function BookingLeaveRequestsPage({
           <thead className="bg-slate-300/70">
             <tr>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Staff</th>
+              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Branch</th>}
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Request Type</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Leave Type</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Day Type</th>
@@ -812,13 +819,14 @@ export default function BookingLeaveRequestsPage({
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={9} />
+              <TableLoadingRow colSpan={isAllBranches ? 10 : 9} />
             ) : rows.length > 0 ? (
               rows.map((row) => {
                 const requestKind: RequestKind = row.request_kind === 'date_change' ? 'date_change' : 'new'
                 return (
                 <tr key={row.id} className="border-b border-slate-100 align-top">
                   <td className="px-4 py-2">{row.staff?.name ?? `Staff #${row.staff_id}`}</td>
+                  {isAllBranches && <td className="px-4 py-2">{row.store_location?.name ?? (row.store_location_id ? 'Unknown Branch' : 'Unassigned')}</td>}
                   <td className="px-4 py-2">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${REQUEST_KIND_BADGE[requestKind]}`}

@@ -6,16 +6,34 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingLeaveLog;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use App\Services\Booking\LeaveBranchService;
 
 class LeaveLogController extends Controller
 {
+    public function __construct(private readonly LeaveBranchService $branches) {}
+
     public function index(Request $request)
     {
         $query = BookingLeaveLog::query()
             ->with([
                 'staff:id,name',
                 'creator:id,name',
+                'leaveRequest:id,store_location_id',
+                'leaveRequest.storeLocation:id,name',
             ]);
+
+        if ($request->filled('store_location_id')) {
+            $query->whereHas('leaveRequest', function ($leave) use ($request) {
+                $this->branches->scopeVisible($leave, $request->user(), $request->input('store_location_id'));
+            });
+        } else {
+            // Balance adjustments are global logs and remain visible only in ALL scope.
+            $query->where(function ($logs) use ($request) {
+                $logs->whereNull('leave_request_id')->orWhereHas('leaveRequest', function ($leave) use ($request) {
+                    $this->branches->scopeVisible($leave, $request->user(), null);
+                });
+            });
+        }
 
         if ($request->filled('staff_id')) {
             $query->where('staff_id', (int) $request->input('staff_id'));

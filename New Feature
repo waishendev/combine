@@ -22,8 +22,17 @@ php artisan benefit-branch:backfill --force
 php artisan product-branch:backfill --store-code=PNG  --dry-run
 php artisan product-branch:backfill --store-code=PNG  --force
 
+# Product availability and historical movement ownership are separate concerns.
+# This explicitly attributes only NULL legacy single-store movement rows; it is not a runtime PNG fallback.
+php artisan stock-movement-branch:backfill --store-code=PNG --dry-run
+php artisan stock-movement-branch:backfill --store-code=PNG --force
+
 php artisan branch-inventory:initialize --store-code=PNG --from-global --dry-run
 php artisan branch-inventory:initialize --store-code=PNG --from-global  --force
+
+# Leave balances remain global. Attribute legacy operational leave requests and linked time-offs only.
+php artisan leave-branch:backfill --store-code=PNG --dry-run
+php artisan leave-branch:backfill --store-code=PNG --force
 
 php artisan expense-branch:backfill --store-code=PNG --dry-run
 php artisan expense-branch:backfill --store-code=PNG --force

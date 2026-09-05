@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { useBranch } from '@/contexts/BranchContext'
 
 import TableEmptyState from '../TableEmptyState'
 import PaginationControls from '../PaginationControls'
@@ -21,6 +22,7 @@ type LeaveLogRow = {
   after_value: unknown
   staff?: { id: number; name: string }
   creator?: { id: number; name: string }
+  leave_request?: { store_location_id: number | null; store_location?: { id: number; name: string } | null } | null
 }
 
 type StaffOption = { staff_id: number; staff_name: string }
@@ -124,6 +126,7 @@ const emptyLeaveLogFilters: LeaveLogFilterValues = {
 }
 
 export default function BookingLeaveLogsPage() {
+  const { selectedBranchId, isAllBranches } = useBranch()
   const [rows, setRows] = useState<LeaveLogRow[]>([])
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
@@ -136,7 +139,7 @@ export default function BookingLeaveLogsPage() {
   const [detailsRow, setDetailsRow] = useState<LeaveLogRow | null>(null)
 
   const loadStaffOptions = async () => {
-    const res = await fetch('/api/proxy/admin/booking/leave-balances', { cache: 'no-store' })
+    const res = await fetch(`/api/proxy/admin/booking/leave-balances?${selectedBranchId !== null ? `store_location_id=${selectedBranchId}` : 'accessible_union=1'}`, { cache: 'no-store' })
     if (!res.ok) return
     const payload = await res.json().catch(() => ({}))
     setStaffOptions(extractStaffOptions(payload))
@@ -151,6 +154,7 @@ export default function BookingLeaveLogsPage() {
     if (filters.fromDate) qs.set('from_date', filters.fromDate)
     if (filters.toDate) qs.set('to_date', filters.toDate)
 
+    if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
     const res = await fetch(`/api/proxy/admin/booking/leave-logs?${qs.toString()}`, { cache: 'no-store' })
     if (!res.ok) {
       setError('Failed to load leave logs.')
@@ -166,12 +170,13 @@ export default function BookingLeaveLogsPage() {
 
   useEffect(() => {
     void loadStaffOptions()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchId])
 
   useEffect(() => {
     void loadRows()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, filters])
+  }, [page, pageSize, filters, selectedBranchId])
 
   const prettyJson = (value: unknown) => {
     if (value === null || value === undefined) return '-'
@@ -414,6 +419,7 @@ export default function BookingLeaveLogsPage() {
             <tr>
               <th className="px-4 py-2 font-semibold text-left text-gray-600">Created At</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600">Staff</th>
+              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600">Branch</th>}
               <th className="px-4 py-2 font-semibold text-left text-gray-600">Action</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600">Remark</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600">Created By</th>
@@ -422,12 +428,13 @@ export default function BookingLeaveLogsPage() {
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <TableEmptyState colSpan={6} message="No leave logs found." />
+              <TableEmptyState colSpan={isAllBranches ? 7 : 6} message="No leave logs found." />
             ) : (
               rows.map((row) => (
                 <tr key={row.id} className="border-b border-slate-100 align-top">
                   <td className="px-4 py-2">{formatDateTime12Hour(row.created_at) || '—'}</td>
                   <td className="px-4 py-2">{row.staff?.name ?? `Staff #${row.staff_id}`}</td>
+                  {isAllBranches && <td className="px-4 py-2">{row.leave_request?.store_location?.name ?? (row.leave_request?.store_location_id ? 'Unknown Branch' : 'Unassigned')}</td>}
                   <td className="px-4 py-2">
                     {(() => {
                       const view = getAdjustedLabelAndBadge(row)
