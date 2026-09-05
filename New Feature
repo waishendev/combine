@@ -16,11 +16,28 @@ php artisan pos-branch:backfill --store-code=PNG --force
 php artisan branch-transactions:backfill --store-code=PNG --dry-run
 php artisan branch-transactions:backfill --store-code=PNG --force
 
+# Transaction reconciliation above is deterministic: Orders use a linked Booking Branch or
+# their persisted pickup Branch. It intentionally leaves Product-only and other evidence-free
+# Orders NULL. Production history before Multi-Branch is explicitly single-store PNG.
+# Run this only during that rollout, before normal Multi-Branch operation begins. Future NULL
+# Orders are writer bugs: leave them Unassigned and investigate rather than rerunning this command.
+# Dry-run reports dates, channel/type breakdowns, and Product Profit Order samples.
+php artisan order-branch:legacy-backfill --store-code=PNG --dry-run
+php artisan order-branch:legacy-backfill --store-code=PNG --force
+# Verify idempotence after force (pending legacy NULL Orders must be 0):
+php artisan order-branch:legacy-backfill --store-code=PNG --dry-run
+
 php artisan benefit-branch:backfill --dry-run
 php artisan benefit-branch:backfill --force
 
 php artisan product-branch:backfill --store-code=PNG  --dry-run
 php artisan product-branch:backfill --store-code=PNG  --force
+
+# Command ownership:
+# product-branch:backfill              = current Product <-> Branch availability
+# stock-movement-branch:backfill       = historical Product Stock Movement ownership
+# branch-transactions:backfill         = deterministic Booking/pickup transaction evidence
+# order-branch:legacy-backfill         = explicit remaining single-store NULL Orders to PNG
 
 # Product availability and historical movement ownership are separate concerns.
 # This explicitly attributes only NULL legacy single-store movement rows; it is not a runtime PNG fallback.
