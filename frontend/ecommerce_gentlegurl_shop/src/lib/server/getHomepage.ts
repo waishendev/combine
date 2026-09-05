@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 export type HomepageSlider = {
   id: number;
@@ -205,7 +206,7 @@ export type HomepageFooter = {
   } | null;
 };
 
-export async function getHomepage(): Promise<HomepageData | null> {
+export const getHomepage = cache(async function getHomepage(): Promise<HomepageData | null> {
   try {
     const cookieStore = await cookies();
     const cookieHeader = cookieStore
@@ -309,4 +310,4 @@ export async function getHomepage(): Promise<HomepageData | null> {
     console.error("[getHomepage] Error:", error);
     return null;
   }
-}
+});

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { getCustomerWallet, getWishlistItems } from "@/lib/apiClient";
+import { loadSharedWalletBalance, clearCachedWalletBalance } from "@/lib/walletSharedCache";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 import {
@@ -146,10 +147,24 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   }, [measureNavWrap]);
 
   useEffect(() => {
-    if (!customer) { const id = window.setTimeout(() => setWalletBalance(null), 0); return () => window.clearTimeout(id); }
+    if (!customer) {
+      clearCachedWalletBalance();
+      const id = window.setTimeout(() => setWalletBalance(null), 0);
+      return () => window.clearTimeout(id);
+    }
+    const customerId = Number(customer.profile?.id ?? 0);
+    if (!customerId) return;
     let cancelled = false;
     const loadWallet = async () => {
-      try { const wallet = await getCustomerWallet(); if (!cancelled) setWalletBalance(wallet.wallet_balance ?? wallet.balance ?? "0.00"); } catch { if (!cancelled) setWalletBalance(null); }
+      try {
+        const balance = await loadSharedWalletBalance(customerId, async () => {
+          const wallet = await getCustomerWallet();
+          return wallet.wallet_balance ?? wallet.balance ?? "0.00";
+        });
+        if (!cancelled) setWalletBalance(balance);
+      } catch {
+        if (!cancelled) setWalletBalance(null);
+      }
     };
     void loadWallet();
     window.addEventListener("walletBalanceUpdated", loadWallet);

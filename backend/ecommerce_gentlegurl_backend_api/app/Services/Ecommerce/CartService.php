@@ -50,7 +50,8 @@ class CartService
 
     public function formatCart(Cart $cart): array
     {
-        $cart->load(['items.product.images', 'items.product.variants', 'items.productVariant']);
+        // NEW ENHANCEMENT — ecommerce-shop-query-v1: cover thumb only (formatCart uses cover_image_url)
+        $cart->load(['items.product.coverImage', 'items.product.variants', 'items.productVariant']);
 
         $items = $cart->items->map(function ($item) {
             $product = $item->product;

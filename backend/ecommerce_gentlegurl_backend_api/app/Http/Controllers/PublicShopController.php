@@ -19,7 +19,6 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class PublicShopController extends Controller
 {
@@ -136,19 +135,17 @@ class PublicShopController extends Controller
 
     public function products(Request $request)
     {
+        // NEW ENHANCEMENT — ecommerce-shop-query-v1: coverImage only (list cards); keep variants for pricing
         $productsQuery = Product::with([
             'categories' => function ($query) {
                 $query->select('categories.id', 'categories.name', 'categories.cn_name', 'categories.slug');
             },
-            'images' => function ($query) {
-                $query->orderBy('sort_order')->orderBy('id');
-            },
+            'coverImage',
             'variants' => function ($query) {
                 $query->where('is_active', true)
                     ->orderBy('sort_order')
                     ->orderBy('id');
             },
-            'video',
         ])
             ->where('is_active', true)
             ->where('is_hidden_in_shop', false)
@@ -286,18 +283,15 @@ class PublicShopController extends Controller
                 $dummySoldCount = (int) ($product->dummy_sold_count ?? 0);
                 $soldCount = $realSoldCount + $dummySoldCount;
 
-                $sortedImages = $product->images
-                    ->sortBy([
-                        ['sort_order', 'asc'],
-                        ['id', 'asc'],
+                $cover = $product->coverImage;
+                $sortedImages = $cover
+                    ? collect([
+                        [
+                            'image_path' => $cover->url,
+                            'sort_order' => $cover->sort_order,
+                        ],
                     ])
-                    ->values()
-                    ->map(function ($image) {
-                        return [
-                            'image_path' => $image->url,
-                            'sort_order' => $image->sort_order,
-                        ];
-                    });
+                    : collect();
 
                 $pricingSummary = $this->buildProductPricingSummary($product);
                 $price = $pricingSummary['price_base'];
@@ -679,10 +673,7 @@ class PublicShopController extends Controller
             return $counts;
         }
 
-        if (!Schema::hasColumn('order_items', 'product_variant_id')) {
-            return $counts;
-        }
-
+        // NEW ENHANCEMENT — ecommerce-shop-query-v1: product_variant_id is always present; skip Schema::hasColumn
         $variantProducts->loadMissing('variants');
         $variantIdToProductId = [];
         foreach ($variantProducts as $product) {

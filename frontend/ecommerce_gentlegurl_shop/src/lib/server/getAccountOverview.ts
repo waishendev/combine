@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { AccountOverview } from "../apiClient";
 
-export async function getAccountOverview(): Promise<AccountOverview | null> {
+export const getAccountOverview = cache(async function getAccountOverview(): Promise<AccountOverview | null> {
   try {
     const cookieStore = await cookies();
     const cookieHeader = cookieStore
@@ -42,4 +43,4 @@ export async function getAccountOverview(): Promise<AccountOverview | null> {
     console.error("[getAccountOverview] Error:", error);
     return null;
   }
-}
+});

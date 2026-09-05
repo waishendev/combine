@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getCustomerWallet } from "@/lib/apiClient";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  clearCachedWalletBalance,
+  loadSharedWalletBalance,
+  setCachedWalletBalance,
+} from "@/lib/walletSharedCache";
 import { walletMoney } from "@/lib/walletUi";
 import WalletTopupModal from "@/components/account/WalletTopupModal";
 import WalletSuccessModal, { type WalletSuccessState } from "@/components/account/WalletSuccessModal";
@@ -9,22 +15,38 @@ import WalletSuccessModal, { type WalletSuccessState } from "@/components/accoun
 type Props = { workspaceType: "ecommerce" | "booking" };
 
 export default function WalletBalanceSection({ workspaceType }: Props) {
+  const { customer } = useAuth();
   const [balance, setBalance] = useState("0.00");
   const [topupOpen, setTopupOpen] = useState(false);
   const [success, setSuccess] = useState<WalletSuccessState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    const wallet = await getCustomerWallet();
-    setBalance(wallet.wallet_balance ?? wallet.balance ?? "0.00");
+  const refresh = useCallback(async (force = false) => {
+    const customerId = Number(customer?.profile?.id ?? 0);
+    if (force) {
+      clearCachedWalletBalance();
+    }
+    if (!customerId) {
+      const wallet = await getCustomerWallet();
+      const next = wallet.wallet_balance ?? wallet.balance ?? "0.00";
+      setBalance(next);
+      window.dispatchEvent(new CustomEvent("walletBalanceUpdated"));
+      return;
+    }
+    const next = await loadSharedWalletBalance(customerId, async () => {
+      const wallet = await getCustomerWallet();
+      return wallet.wallet_balance ?? wallet.balance ?? "0.00";
+    });
+    setBalance(next);
+    setCachedWalletBalance(customerId, next);
     window.dispatchEvent(new CustomEvent("walletBalanceUpdated"));
-  }, []);
+  }, [customer?.profile?.id]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    refresh()
+    refresh(false)
       .catch(() => {
         if (!cancelled) setError("Unable to load customer balance. Please try again.");
       })
@@ -79,7 +101,7 @@ export default function WalletBalanceSection({ workspaceType }: Props) {
         onClose={() => setTopupOpen(false)}
         workspaceType={workspaceType}
         balance={balance}
-        onRefresh={refresh}
+        onRefresh={() => refresh(true)}
         onCompleted={(result) => setSuccess(result)}
       />
 

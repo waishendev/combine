@@ -34,13 +34,20 @@ class PublicVoucherController extends Controller
             // ) 
             ->get();
 
-        $vouchers->each(function (CustomerVoucher $voucher) use ($now) {
+        // NEW ENHANCEMENT — ecommerce-shop-query-v1: bulk expire instead of N×save()
+        $expiredIds = [];
+        foreach ($vouchers as $voucher) {
             $endAt = $voucher->end_at ?? $voucher->expires_at ?? $voucher->voucher?->end_at;
             if ($voucher->status === 'active' && $endAt && $endAt->lt($now)) {
                 $voucher->status = 'expired';
-                $voucher->save();
+                $expiredIds[] = $voucher->id;
             }
-        });
+        }
+        if (! empty($expiredIds)) {
+            CustomerVoucher::query()
+                ->whereIn('id', $expiredIds)
+                ->update(['status' => 'expired', 'updated_at' => $now]);
+        }
 
         $data = $vouchers->map(function (CustomerVoucher $customerVoucher) {
             return [

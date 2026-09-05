@@ -17,12 +17,12 @@ import {
   createCustomerAddress,
   deleteCustomerAddress,
   changeCustomerPassword,
-  getAccountOverview,
   getCustomerProfile,
   makeDefaultCustomerAddress,
   updateCustomerAddress,
   updateCustomerProfile,
 } from "@/lib/apiClient";
+import { useAuth } from "@/contexts/AuthContext";
 
 const emptyAddress: AddressPayload = {
   label: "",
@@ -140,8 +140,9 @@ type ApiErrorShape = {
 
 export default function AccountPage() {
   const router = useRouter();
+  const { customer } = useAuth();
   const [profile, setProfile] = useState<CustomerProfileWithAddresses | null>(null);
-  const [loyalty, setLoyalty] = useState<LoyaltySummary | null>(null);
+  const [loyalty, setLoyalty] = useState<LoyaltySummary | null>(customer?.loyalty ?? null);
   const [loading, setLoading] = useState(true);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [changePasswordModalOpen, setChangePasswordModalOpen] = useState(false);
@@ -177,12 +178,16 @@ export default function AccountPage() {
   );
 
   useEffect(() => {
+    if (customer?.loyalty) {
+      setLoyalty(customer.loyalty);
+    }
+  }, [customer?.loyalty]);
+
+  useEffect(() => {
     const loadData = async () => {
       try {
-        const [profileResponse, overview] = await Promise.all([
-          getCustomerProfile(),
-          getAccountOverview(),
-        ]);
+        // NEW ENHANCEMENT — ecommerce-shop-query-v1: profile only; loyalty from AuthContext
+        const profileResponse = await getCustomerProfile();
 
         setProfile(profileResponse.data);
         setProfileForm((prev) => ({
@@ -192,7 +197,9 @@ export default function AccountPage() {
           gender: profileResponse.data.gender ?? "",
           photo: null,
         }));
-        setLoyalty(overview?.loyalty ?? null);
+        if (!customer?.loyalty) {
+          setLoyalty(null);
+        }
       } catch (err) {
         const status = (err as { status?: number })?.status;
         if (status === 401) {
@@ -206,7 +213,7 @@ export default function AccountPage() {
     };
 
     void loadData();
-  }, [router]);
+  }, [router, customer?.loyalty]);
 
   const refreshProfile = async () => {
     try {

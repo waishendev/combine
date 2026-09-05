@@ -940,8 +940,9 @@ export async function getBankAccounts(): Promise<PublicBankAccount[]> {
 }
 
 export async function getPaymentGateways(): Promise<PublicPaymentGateway[]> {
+  // NEW ENHANCEMENT — ecommerce-shop-query-v1: slim endpoint (was full homepage)
   const response = await get<{ data?: { payment_gateways?: PublicPaymentGateway[] } }>(
-    "/public/shop/homepage?type=ecommerce",
+    "/public/shop/payment-gateways?type=ecommerce",
     { includeSessionToken: true, headers: { Accept: "application/json" } },
   );
 

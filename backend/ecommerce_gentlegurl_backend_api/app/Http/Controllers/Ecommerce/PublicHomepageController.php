@@ -28,7 +28,8 @@ class PublicHomepageController extends Controller
     {
         $type = $this->resolveType($request);
 
-        $data = Cache::remember("public_homepage_v2_{$type}", 300, function () use ($type) {
+        // NEW ENHANCEMENT — ecommerce-shop-query-v1: sold-counts inside cache (v3); wishlist still post-cache
+        $data = Cache::remember("public_homepage_v3_{$type}", 300, function () use ($type) {
             $now = Carbon::now();
 
             $sliders = HomeSlider::query()
@@ -118,7 +119,7 @@ class PublicHomepageController extends Controller
             $bestSellerDays = (int) ($bestSellerConfig['days'] ?? 60);
 
             $newProducts = Product::query()
-                ->with(['categories', 'images', 'variants'])
+                ->with(['categories', 'coverImage', 'variants'])
                 ->where('is_active', true)
                 ->where('is_hidden_in_shop', false)
                 ->where('created_at', '>=', $now->copy()->subDays($newProductDays))
@@ -136,7 +137,7 @@ class PublicHomepageController extends Controller
                 ->toArray();
 
             $bestSellersQuery = Product::query()
-                ->with(['categories', 'images', 'variants'])
+                ->with(['categories', 'coverImage', 'variants'])
                 ->whereIn('id', $bestSellerProductIds)
                 ->where('is_active', true)
                 ->where('is_hidden_in_shop', false);
@@ -149,13 +150,33 @@ class PublicHomepageController extends Controller
             $bestSellers = $bestSellersQuery->get();
 
             $featuredProducts = Product::query()
-                ->with(['categories', 'images', 'variants'])
+                ->with(['categories', 'coverImage', 'variants'])
                 ->where('is_active', true)
                 ->where('is_hidden_in_shop', false)
                 ->where('is_featured', true)
                 ->orderByDesc('created_at')
                 ->limit(20)
                 ->get();
+
+            foreach ([$newProducts, $bestSellers, $featuredProducts] as $section) {
+                foreach ($section as $product) {
+                    $product->setRelation(
+                        'images',
+                        $product->coverImage ? collect([$product->coverImage]) : collect()
+                    );
+                }
+            }
+
+            $allProducts = $newProducts->concat($bestSellers)->concat($featuredProducts);
+            $realSoldCounts = $this->calculateRealSoldCountsForProducts($allProducts);
+            $newProducts = $this->mapProductsWithWishlistStatus($newProducts, [], $realSoldCounts);
+            $bestSellers = $this->mapProductsWithWishlistStatus($bestSellers, [], $realSoldCounts);
+            $featuredProducts = $this->mapProductsWithWishlistStatus($featuredProducts, [], $realSoldCounts);
+
+            // Cache plain arrays so warm hits skip Eloquent + variant derived_* N+1
+            $newProducts = $this->productsForHomepageCache($newProducts);
+            $bestSellers = $this->productsForHomepageCache($bestSellers);
+            $featuredProducts = $this->productsForHomepageCache($featuredProducts);
 
             $seoGlobal = SeoGlobal::query()->where('type', $type)->first();
 
@@ -246,14 +267,9 @@ class PublicHomepageController extends Controller
         $wishlistIds = $this->resolveWishlistProductIds($request);
         $wishlistLookup = array_flip($wishlistIds);
 
-        $allProducts = collect($data['new_products'])
-            ->merge($data['best_sellers'])
-            ->merge($data['featured_products']);
-        $realSoldCounts = $this->calculateRealSoldCountsForProducts($allProducts);
-
-        $data['new_products'] = $this->mapProductsWithWishlistStatus($data['new_products'], $wishlistLookup, $realSoldCounts);
-        $data['best_sellers'] = $this->mapProductsWithWishlistStatus($data['best_sellers'], $wishlistLookup, $realSoldCounts);
-        $data['featured_products'] = $this->mapProductsWithWishlistStatus($data['featured_products'], $wishlistLookup, $realSoldCounts);
+        $data['new_products'] = $this->applyWishlistFlagsOnly($data['new_products'], $wishlistLookup);
+        $data['best_sellers'] = $this->applyWishlistFlagsOnly($data['best_sellers'], $wishlistLookup);
+        $data['featured_products'] = $this->applyWishlistFlagsOnly($data['featured_products'], $wishlistLookup);
 
         // Wallet eligibility is customer-specific, so it must be applied after the shared homepage cache.
         $customer = $this->currentCustomer();
@@ -268,6 +284,59 @@ class PublicHomepageController extends Controller
 
         return response()->json([
             'data' => $data,
+            'success' => true,
+            'message' => null,
+        ]);
+    }
+
+    /**
+     * NEW ENHANCEMENT — ecommerce-shop-query-v1: slim checkout gateways (no full homepage).
+     */
+    public function paymentGateways(Request $request)
+    {
+        $type = $this->resolveType($request);
+        $customer = $this->currentCustomer();
+
+        $gateways = PaymentGateway::query()
+            ->where('type', $type)
+            ->where('is_active', true)
+            ->where('allow_checkout', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get([
+                'id',
+                'key',
+                'category',
+                'name',
+                'is_active',
+                'allow_checkout',
+                'is_default',
+            ]);
+
+        $gateways = $gateways
+            ->reject(fn ($gateway) => $gateway->category === 'internal_wallet' && (! $customer || ! $customer->is_active))
+            ->map(function ($gateway) use ($customer) {
+                $row = [
+                    'id' => $gateway->id,
+                    'key' => $gateway->key,
+                    'category' => $gateway->category,
+                    'name' => $gateway->name,
+                    'is_active' => (bool) $gateway->is_active,
+                    'allow_checkout' => (bool) $gateway->allow_checkout,
+                    'is_default' => (bool) $gateway->is_default,
+                ];
+                if ($gateway->category === 'internal_wallet') {
+                    $row['wallet_balance'] = $customer?->wallet_balance ?? '0.00';
+                }
+
+                return $row;
+            })
+            ->values();
+
+        return response()->json([
+            'data' => [
+                'payment_gateways' => $gateways,
+            ],
             'success' => true,
             'message' => null,
         ]);
@@ -408,13 +477,22 @@ class PublicHomepageController extends Controller
             $clearedKeys = [];
 
             if ($isScopedType) {
-                $cacheKey = "public_homepage_v2_{$type}";
+                $cacheKey = "public_homepage_v3_{$type}";
                 Cache::forget($cacheKey);
+                Cache::forget("public_homepage_v2_{$type}");
                 $clearedKeys[] = $cacheKey;
+                $clearedKeys[] = "public_homepage_v2_{$type}";
             } else {
+                Cache::forget('public_homepage_v3_ecommerce');
+                Cache::forget('public_homepage_v3_booking');
                 Cache::forget('public_homepage_v2_ecommerce');
                 Cache::forget('public_homepage_v2_booking');
-                $clearedKeys = ['public_homepage_v2_ecommerce', 'public_homepage_v2_booking'];
+                $clearedKeys = [
+                    'public_homepage_v3_ecommerce',
+                    'public_homepage_v3_booking',
+                    'public_homepage_v2_ecommerce',
+                    'public_homepage_v2_booking',
+                ];
             }
 
             Cache::forget('public_homepage_v1');
@@ -451,6 +529,38 @@ class PublicHomepageController extends Controller
             : DB::table('guest_wishlist_items')->where('session_token', $sessionToken);
 
         return $query->pluck('product_id')->all();
+    }
+
+    protected function productsForHomepageCache($products): array
+    {
+        return collect($products)->map(function (Product $product) {
+            if ($product->relationLoaded('variants')) {
+                $product->variants->each(function ($variant) {
+                    // Avoid derived_available_qty / derived_cost_price → bundleItems N+1 on serialize
+                    $variant->setAppends(['image_url']);
+                });
+            }
+
+            return $product->toArray();
+        })->values()->all();
+    }
+
+    protected function applyWishlistFlagsOnly($products, array $wishlistLookup)
+    {
+        return collect($products)->map(function ($product) use ($wishlistLookup) {
+            if ($product instanceof Product) {
+                $product->setAttribute('is_in_wishlist', isset($wishlistLookup[$product->id]));
+
+                return $product;
+            }
+
+            if (is_array($product)) {
+                $id = (int) ($product['id'] ?? 0);
+                $product['is_in_wishlist'] = $id > 0 && isset($wishlistLookup[$id]);
+            }
+
+            return $product;
+        })->values()->all();
     }
 
     protected function mapProductsWithWishlistStatus($products, array $wishlistLookup, array $realSoldCounts = [])

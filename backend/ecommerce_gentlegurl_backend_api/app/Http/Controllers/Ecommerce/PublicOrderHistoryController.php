@@ -48,7 +48,8 @@ class PublicOrderHistoryController extends Controller
 
         $ordersQuery = Order::query()
             ->where('customer_id', $customer->id)
-            ->with(['items.product.images', 'items.productVariant', 'items.review', 'items.bookingService:id,name,cn_name,image_path,deposit_amount', 'items.booking:id,addon_items_json,service_id', 'items.booking.service:id,image_path', 'items.booking.servicePhotos:id,booking_id,image_path,sort_order', 'payments'])
+            // NEW ENHANCEMENT — ecommerce-shop-query-v1: coverImage for list thumbs (resolveOrderItemThumbnail)
+            ->with(['items.product.coverImage', 'items.productVariant', 'items.review', 'items.bookingService:id,name,cn_name,image_path,deposit_amount', 'items.booking:id,addon_items_json,service_id', 'items.booking.service:id,image_path', 'items.booking.servicePhotos:id,booking_id,image_path,sort_order', 'payments'])
             ->orderByDesc('created_at');
 
         if ($scope === 'booking_related' || $workspace === 'booking') {

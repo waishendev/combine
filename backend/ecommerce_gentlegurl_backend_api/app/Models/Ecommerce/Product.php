@@ -84,6 +84,15 @@ class Product extends Model
             ->orderBy('id');
     }
 
+    /** First product image by sort_order — for list/cart/thumb eager loads. */
+    public function coverImage()
+    {
+        return $this->hasOne(ProductMedia::class)
+            ->where('type', 'image')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
     public function video()
     {
         return $this->hasOne(ProductMedia::class)
@@ -116,6 +125,10 @@ class Product extends Model
 
     public function getCoverImageUrlAttribute(): ?string
     {
+        if ($this->relationLoaded('coverImage')) {
+            return $this->coverImage?->url;
+        }
+
         $images = $this->relationLoaded('images')
             ? $this->images
             : $this->images()->get();

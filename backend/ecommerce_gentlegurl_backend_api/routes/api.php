@@ -168,7 +168,7 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/menu/{slug}', [PublicShopController::class, 'menuDetail']);
     Route::get('/categories', [PublicShopController::class, 'categories']);
     Route::get('/products', [PublicShopController::class, 'products'])
-        ->middleware('api.session');
+        ->middleware('api.session'); // NEW ENHANCEMENT — ecommerce-shop-query-v1 (coverImage + index)
     Route::get('/products/{slug}', [PublicShopController::class, 'showProduct'])
         ->middleware('api.session');
     Route::get('/products/{slug}/reviews', [PublicProductReviewController::class, 'index']);
@@ -182,7 +182,9 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/marquees', [PublicMarqueeController::class, 'index']);
     Route::get('/sliders', [PublicHomeSliderController::class, 'index']);
     Route::get('/homepage', [PublicHomepageController::class, 'show'])
-        ->middleware('api.session');
+        ->middleware('api.session'); // NEW ENHANCEMENT — ecommerce-shop-query-v1 (sold-count in cache + coverImage)
+    Route::get('/payment-gateways', [PublicHomepageController::class, 'paymentGateways'])
+        ->middleware('api.session'); // NEW ENHANCEMENT — ecommerce-shop-query-v1 (slim checkout gateways)
     Route::get('/landing-page', [\App\Http\Controllers\Ecommerce\LandingPageController::class, 'show']);
     Route::post('/homepage/flush-cache', [PublicHomepageController::class, 'flushCache']);
     Route::get('/loyalty/rewards', [PublicLoyaltyController::class, 'rewards'])
@@ -242,7 +244,7 @@ Route::prefix('/public/shop')->group(function () {
         // Order History
         Route::get('/bookings', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
 
-        Route::get('/orders', [PublicOrderHistoryController::class, 'index']);
+        Route::get('/orders', [PublicOrderHistoryController::class, 'index']); // NEW ENHANCEMENT — ecommerce-shop-query-v1 (coverImage thumbs)
         Route::get('/orders/{id}', [PublicOrderHistoryController::class, 
         'showById']);
         Route::post('/orders/{order}/cancel', [PublicOrderHistoryController::class, 'cancel']);
@@ -263,7 +265,7 @@ Route::prefix('/public/shop')->group(function () {
         Route::get('/loyalty/history', [PublicLoyaltyController::class, 'history']);
         Route::post('/loyalty/redeem', [PublicLoyaltyController::class, 'redeem']);
 
-        Route::get('/vouchers', [PublicVoucherController::class, 'index']);
+        Route::get('/vouchers', [PublicVoucherController::class, 'index']); // NEW ENHANCEMENT — ecommerce-shop-query-v1 (bulk expire)
         Route::get('/vouchers/{voucher}', [PublicVoucherController::class, 'show']);
     });
 });
