@@ -5,12 +5,16 @@ namespace App\Http\Controllers;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\StoreLocationAccessService;
+use App\Services\StaffBranchAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
 {
-    public function __construct(private StoreLocationAccessService $storeLocationAccess)
+    public function __construct(
+        private StoreLocationAccessService $storeLocationAccess,
+        private StaffBranchAccessService $staffBranchAccess,
+    )
     {
     }
 
@@ -85,6 +89,9 @@ class AdminController extends Controller
         ]);
 
         $this->syncStoreLocations($request, $user, $validated['store_location_ids'] ?? null);
+        if ($user->staff) {
+            $this->staffBranchAccess->synchronize($user->staff, $user);
+        }
         $this->syncRoles($user, $roleIds, $validated['store_location_ids'] ?? []);
 
         if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
@@ -143,6 +150,9 @@ class AdminController extends Controller
         }
 
         $this->syncStoreLocations($request, $admin, $validated['store_location_ids'] ?? null);
+        if ($admin->staff) {
+            $this->staffBranchAccess->synchronize($admin->staff, $admin);
+        }
 
         if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
             return $this->respond($admin->load(['roles', 'storeLocations']), __('Admin updated successfully.'));

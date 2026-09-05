@@ -19,6 +19,8 @@ type LeaveBalance = {
 
 type LeaveRequest = {
   id: number
+  store_location_id?: number | null
+  store_location?: { name?: string | null } | null
   leave_type: LeaveType | 'off_day'
   request_kind?: RequestKind
   source_leave_request_id?: number | null
@@ -84,12 +86,14 @@ function buildMyLeaveRequestsQueryString(
   dateRange: DateRangePreset,
   status: LeaveStatus | 'all',
   leaveType: LeaveRequest['leave_type'] | 'all',
+  selectedBranchId: number | null,
 ): string {
   const qs = new URLSearchParams()
   qs.set('per_page', '100')
   qs.set('date_range', dateRange)
   if (status !== 'all') qs.set('status', status)
   if (leaveType !== 'all') qs.set('leave_type', leaveType)
+  if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
   return qs.toString()
 }
 
@@ -436,7 +440,7 @@ export default function BookingMyLeavePage() {
   const loadRequests = useCallback(async () => {
     setHistoryLoading(true)
     try {
-      const qs = buildMyLeaveRequestsQueryString(dateRangeFilter, statusFilter, leaveTypeFilter)
+      const qs = buildMyLeaveRequestsQueryString(dateRangeFilter, statusFilter, leaveTypeFilter, selectedBranchId)
       const requestRes = await fetch(`/api/proxy/booking/my-leave/requests?${qs}`, { cache: 'no-store' })
       if (!requestRes.ok) {
         setError('Failed to load leave requests.')
@@ -451,7 +455,7 @@ export default function BookingMyLeavePage() {
     } finally {
       setHistoryLoading(false)
     }
-  }, [dateRangeFilter, statusFilter, leaveTypeFilter])
+  }, [dateRangeFilter, statusFilter, leaveTypeFilter, selectedBranchId])
 
   useEffect(() => {
     void loadBalances()
@@ -1368,6 +1372,7 @@ export default function BookingMyLeavePage() {
                 <th className="px-2 py-2">Date Range</th>
                 <th className="px-2 py-2">Days</th>
                 <th className="px-2 py-2">Status</th>
+                {isAllBranches && <th className="px-2 py-2">Branch</th>}
                 <th className="px-2 py-2">Admin Remark</th>
                 <th className="px-2 py-2 min-w-[9rem]">Action</th>
               </tr>
@@ -1375,14 +1380,14 @@ export default function BookingMyLeavePage() {
             <tbody>
               {historyLoading && (
                 <tr>
-                  <td colSpan={8} className="px-2 py-6 text-center text-slate-500">
+                  <td colSpan={8 + (isAllBranches ? 1 : 0)} className="px-2 py-6 text-center text-slate-500">
                     Loading leave requests…
                   </td>
                 </tr>
               )}
               {!historyLoading && displayRequests.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-2 py-6 text-center text-slate-500">
+                  <td colSpan={8 + (isAllBranches ? 1 : 0)} className="px-2 py-6 text-center text-slate-500">
                     No leave requests match the current filters (or none submitted yet). Open{' '}
                     <span className="font-medium">Filter</span> to try Past or All dates.
                   </td>
@@ -1399,6 +1404,7 @@ export default function BookingMyLeavePage() {
                     <td className="px-2 py-2 whitespace-nowrap">{renderDateRangeCell(row)}</td>
                     <td className="px-2 py-2">{row.days.toFixed(2)}</td>
                     <td className="px-2 py-2">{renderStatusCell(row)}</td>
+                    {isAllBranches && <td className="px-2 py-2">{row.store_location?.name ?? (row.store_location_id ? 'Unknown Branch' : 'Unassigned')}</td>}
                     <td className="px-2 py-2">{row.admin_remark || '-'}</td>
                     <td className="px-2 py-2">{renderRowActions(row, true)}</td>
                   </tr>
@@ -1432,6 +1438,12 @@ export default function BookingMyLeavePage() {
                   </span>
                 </div>
                 <div className="space-y-3 p-4">
+                  {isAllBranches && (
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Branch</div>
+                      <div className="mt-0.5 text-sm font-medium text-slate-800">{row.store_location?.name ?? (row.store_location_id ? 'Unknown Branch' : 'Unassigned')}</div>
+                    </div>
+                  )}
                   <div>
                     <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Leave type</div>
                     <div className="mt-0.5 text-base font-semibold text-slate-900">{LEAVE_LABEL[row.leave_type]}</div>

@@ -6133,12 +6133,24 @@ class PosController extends Controller
 
         $limit = max(1, min(50, (int) $request->query('limit', 20)));
 
+        $access = app(StoreLocationAccessService::class);
+        $selectedBranchId = $request->integer('branch_store_location_id');
+        $accessibleBranchIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+        if ($selectedBranchId > 0) {
+            $selectedBranchId = (int) $access->authorizeStoreLocation($request->user(), $selectedBranchId, false)->id;
+        }
+
         $items = $this->staffConsumableClaimQuery()
             ->where(function ($query) use ($staffId) {
                 $query
                     ->where('order_items.staff_id', $staffId)
                     ->orWhereHas('order.creator', fn ($creatorQuery) => $creatorQuery->where('staff_id', $staffId));
             })
+            ->whereHas('order', fn ($orders) => $selectedBranchId > 0
+                ? $orders->where('store_location_id', $selectedBranchId)
+                : $orders->where(fn ($scope) => $scope
+                    ->whereIn('store_location_id', $accessibleBranchIds)
+                    ->orWhereNull('store_location_id')))
             ->latest('order_items.id')
             ->limit($limit)
             ->get()
