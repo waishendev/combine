@@ -59,6 +59,13 @@ export default function CustomerServicePackagesPage() {
   const [packages, setPackages] = useState<CustomerPackage[]>([])
   const [balances, setBalances] = useState<CustomerPackageBalance[]>([])
   const [usages, setUsages] = useState<CustomerPackageUsage[]>([])
+  const [usagePage, setUsagePage] = useState(1)
+  const [usagePagination, setUsagePagination] = useState({
+    current_page: 1,
+    last_page: 1,
+    per_page: 50,
+    total: 0,
+  })
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-'
@@ -93,12 +100,16 @@ export default function CustomerServicePackagesPage() {
   const loadCustomers = async () => {
     setLoadingCustomers(true)
     try {
-      const res = await fetch('/api/proxy/customers?per_page=100', { cache: 'no-store' })
+      const res = await fetch('/api/proxy/customers/options/query?per_page=500&is_active=true', { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
-      const rows = parseRows<unknown>(json?.data)
+      const rows = Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json?.data?.data)
+          ? json.data.data
+          : []
 
       const mapped = rows
-        .map((row): CustomerOption | null => {
+        .map((row: unknown): CustomerOption | null => {
           if (!row || typeof row !== 'object') return null
           const maybe = row as Record<string, unknown>
           const id = Number(maybe.id)
@@ -110,7 +121,7 @@ export default function CustomerServicePackagesPage() {
             email: typeof maybe.email === 'string' ? maybe.email : null,
           }
         })
-        .filter((row): row is CustomerOption => Boolean(row))
+        .filter((row: CustomerOption | null): row is CustomerOption => Boolean(row))
 
       setCustomerOptions(mapped)
       if (!customerId && mapped.length > 0) {
@@ -123,20 +134,22 @@ export default function CustomerServicePackagesPage() {
     }
   }
 
-  const load = async (idArg?: string) => {
+  const load = async (idArg?: string, pageArg?: number) => {
     const id = (idArg ?? customerId).trim()
     if (!id) {
       setMessage('Please select customer first.')
       return
     }
 
+    const page = pageArg ?? usagePage
     setLoading(true)
     setMessage(null)
     try {
+      const usageQs = new URLSearchParams({ page: String(page), per_page: '50' })
       const [pkgRes, balRes, usageRes] = await Promise.all([
         fetch(`/api/proxy/customers/${id}/service-packages`, { cache: 'no-store' }),
         fetch(`/api/proxy/customers/${id}/service-package-balances`, { cache: 'no-store' }),
-        fetch(`/api/proxy/customers/${id}/service-package-usages`, { cache: 'no-store' }),
+        fetch(`/api/proxy/customers/${id}/service-package-usages?${usageQs.toString()}`, { cache: 'no-store' }),
       ])
 
       if (!pkgRes.ok || !balRes.ok || !usageRes.ok) {
@@ -150,7 +163,17 @@ export default function CustomerServicePackagesPage() {
 
       setPackages(parseRows<CustomerPackage>(pkgJson?.data))
       setBalances(parseRows<CustomerPackageBalance>(balJson?.data))
-      setUsages(parseRows<CustomerPackageUsage>(usageJson?.data))
+
+      const usagePayload = usageJson?.data
+      const usageRows = parseRows<CustomerPackageUsage>(usagePayload)
+      setUsages(usageRows)
+      setUsagePagination({
+        current_page: Number(usagePayload?.current_page ?? page) || page,
+        last_page: Number(usagePayload?.last_page ?? 1) || 1,
+        per_page: Number(usagePayload?.per_page ?? 50) || 50,
+        total: Number(usagePayload?.total ?? usageRows.length) || 0,
+      })
+      setUsagePage(Number(usagePayload?.current_page ?? page) || page)
     } catch (error) {
       console.error('Failed to load data:', error)
       setMessage('Failed to load customer service package data.')
@@ -165,7 +188,8 @@ export default function CustomerServicePackagesPage() {
 
   useEffect(() => {
     if (customerId) {
-      void load(customerId)
+      setUsagePage(1)
+      void load(customerId, 1)
     }
   }, [customerId])
 
@@ -392,9 +416,9 @@ export default function CustomerServicePackagesPage() {
           <div className="flex items-center gap-2">
             <i className="fa-solid fa-clock-rotate-left text-slate-600" />
             <h4 className="text-lg font-semibold text-slate-900">Usage Logs</h4>
-            {usages.length > 0 && (
+            {usagePagination.total > 0 && (
               <span className="ml-2 inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800">
-                {usages.length}
+                {usagePagination.total}
               </span>
             )}
           </div>
@@ -446,6 +470,39 @@ export default function CustomerServicePackagesPage() {
             </tbody>
           </table>
         </div>
+        {usagePagination.last_page > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-200 px-6 py-3 text-sm text-slate-600">
+            <span>
+              Page {usagePagination.current_page} of {usagePagination.last_page}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-3 py-1 disabled:opacity-50"
+                disabled={loading || usagePagination.current_page <= 1}
+                onClick={() => {
+                  const next = Math.max(1, usagePagination.current_page - 1)
+                  setUsagePage(next)
+                  void load(customerId, next)
+                }}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border px-3 py-1 disabled:opacity-50"
+                disabled={loading || usagePagination.current_page >= usagePagination.last_page}
+                onClick={() => {
+                  const next = Math.min(usagePagination.last_page, usagePagination.current_page + 1)
+                  setUsagePage(next)
+                  void load(customerId, next)
+                }}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

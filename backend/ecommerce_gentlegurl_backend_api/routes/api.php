@@ -321,8 +321,10 @@ $protectedRoutes = function () {
         ->middleware('permission:activity-logs.view')
         ->whereNumber('id');
     // END NEW ENHANCEMENT
+    // NEW ENHANCEMENT — appt-activity-logs-csp-query-v1 (model_type+created_at indexes, slim appointment list select)
     Route::get('/admin/appointment-activity-logs', [ActivityLogController::class, 'appointmentIndex'])
         ->middleware('permission:appointment_activity_logs.view');
+    // END NEW ENHANCEMENT
 
     Route::get('/admin/daily-bookings', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'daily'])
         ->middleware('permission:booking.appointments.view|pos.checkout');
@@ -515,6 +517,11 @@ $protectedRoutes = function () {
         ->middleware('permission:customers.view|customers.create|pos.checkout|pos.appointments.manage');
     // END NEW ENHANCEMENT
 
+    // NEW ENHANCEMENT — appt-activity-logs-csp-query-v1 (slim customer dropdown for CSP page)
+    Route::get('/customers/options/query', [CustomerController::class, 'options'])
+        ->middleware('permission:customers.view|customers.create|pos.checkout|pos.appointments.manage|customer-service-packages.view');
+    // END NEW ENHANCEMENT
+
     Route::get('/customers/export', [CustomerController::class, 'exportCsv'])
         ->middleware('permission:customers.view');
 
@@ -602,10 +609,12 @@ $protectedRoutes = function () {
 
     Route::get('/customers/{id}/service-packages', [CustomerServicePackageController::class, 'index'])
         ->middleware('permission:customer-service-packages.view');
+    // NEW ENHANCEMENT — appt-activity-logs-csp-query-v1 (slim relations, balances join fold, paginated usages)
     Route::get('/customers/{id}/service-package-balances', [CustomerServicePackageController::class, 'balances'])
         ->middleware('permission:customer-service-packages.view');
     Route::get('/customers/{id}/service-package-usages', [CustomerServicePackageController::class, 'usages'])
         ->middleware('permission:customer-service-packages.view');
+    // END NEW ENHANCEMENT
     Route::get('/customers/{id}/service-package-available-for/{serviceId}', [CustomerServicePackageController::class, 'availableFor'])
         ->middleware('permission:customer-service-packages.view|pos.checkout');
     Route::post('/service-packages/redeem', [ServicePackageRedeemController::class, 'redeem'])

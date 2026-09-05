@@ -141,9 +141,22 @@ class ActivityLogController extends Controller
         $page = max(1, (int) $request->integer('page', 1));
         $actions = array_keys(AppointmentActivityLogService::ACTIONS);
 
+        // Appointment CRM list only needs identity + action + actor (not full jsonb payloads).
+        $listColumns = [
+            'id',
+            'user_id',
+            'user_name',
+            'action',
+            'model_type',
+            'model_id',
+            'model_label',
+            'new_values',
+            'created_at',
+        ];
+
         $scope = \App\Services\Reports\ReportBranchScope::current();
         $query = ActivityLog::query()
-            ->select(self::LIST_COLUMNS)
+            ->select($listColumns)
             ->where('model_type', 'Booking')
             ->whereExists(fn ($bookings) => $scope->apply($bookings->selectRaw('1')->from('bookings')
                 ->whereColumn('bookings.id', 'activity_logs.model_id'), 'bookings.store_location_id'))

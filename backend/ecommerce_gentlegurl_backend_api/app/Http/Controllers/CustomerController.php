@@ -79,6 +79,34 @@ class CustomerController extends Controller
         return $this->respond($customers);
     }
 
+    /**
+     * Slim customer options for dropdowns (id/name/phone/email only — no loyalty aggregates).
+     */
+    public function options(Request $request)
+    {
+        $perPage = min(500, max(1, $request->integer('per_page', 200)));
+        $search = trim((string) $request->string('search')->toString());
+
+        $customers = Customer::query()
+            ->select(['id', 'name', 'phone', 'email'])
+            ->when($request->has('is_active'), function ($query) use ($request) {
+                $query->where('is_active', $request->boolean('is_active'));
+            }, function ($query) {
+                $query->where('is_active', true);
+            })
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('name')
+            ->paginate($perPage);
+
+        return $this->respond($customers);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
