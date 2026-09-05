@@ -653,8 +653,12 @@ $protectedRoutes = function () {
     Route::get('/admin/staff-consumables/my-history', [PosController::class, 'myStaffConsumableClaims']);
     Route::get('/admin/staff-consumables/my-claims', [PosController::class, 'myStaffConsumableClaims'])
         ->middleware('permission:pos.staff_consumables.access');
+    // NEW ENHANCEMENT — leave-history-myleave-consumable-logs-query-v1
+    // Pages: CRM /staff-consumables/history, /logs/staff-consumables (+ my-leave routes below)
+    // Fold branch into claim whereHas; one summary aggregate + LengthAwarePaginator; search groups unchanged semantically
     Route::get('/admin/staff-consumables/logs', [PosController::class, 'adminStaffConsumableLogs'])
         ->middleware('permission:pos.staff_consumables.view_logs');
+    // END NEW ENHANCEMENT
     Route::get('/admin/staff-consumables/catalog', [PosController::class, 'staffConsumableProducts'])
         ->middleware('permission:pos.staff_consumables.access');
     Route::post('/admin/staff-consumables/checkout', [PosController::class, 'staffConsumableCheckout'])
@@ -1616,9 +1620,12 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
 });
 
 Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/booking/my-leave')->group(function () {
+    // NEW ENHANCEMENT — leave-history-myleave-consumable-logs-query-v1
+    // Page: CRM /booking/my-leave — sargable end_date + (staff_id, created_at DESC) index; FE pager uses existing paginate
     Route::get('/balances', [\App\Http\Controllers\Booking\MyLeaveController::class, 'indexBalances']);
     Route::get('/eligible-branches', [\App\Http\Controllers\Booking\MyLeaveController::class, 'eligibleBranches']);
     Route::get('/requests', [\App\Http\Controllers\Booking\MyLeaveController::class, 'indexRequests']);
+    // END NEW ENHANCEMENT
     Route::post('/requests', [\App\Http\Controllers\Booking\MyLeaveController::class, 'store']);
     Route::post('/requests/{id}/date-change', [\App\Http\Controllers\Booking\MyLeaveController::class, 'requestDateChange']);
     Route::patch('/requests/{id}/cancel-date-change', [\App\Http\Controllers\Booking\MyLeaveController::class, 'cancelDateChange']);

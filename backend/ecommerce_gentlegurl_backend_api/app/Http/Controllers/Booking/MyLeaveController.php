@@ -90,10 +90,11 @@ class MyLeaveController extends Controller
         $dateRange = $validated['date_range'] ?? 'all';
         $today = Carbon::today()->toDateString();
 
+        // leave-history-myleave-consumable-logs-query-v1: sargable date compare (end_date is a date column)
         if ($dateRange === 'upcoming') {
-            $query->whereDate('end_date', '>=', $today);
+            $query->where('end_date', '>=', $today);
         } elseif ($dateRange === 'past') {
-            $query->whereDate('end_date', '<', $today);
+            $query->where('end_date', '<', $today);
         }
 
         $perPage = (int) ($validated['per_page'] ?? 100);

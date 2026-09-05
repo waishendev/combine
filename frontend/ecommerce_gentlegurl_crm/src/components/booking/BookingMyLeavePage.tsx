@@ -3,6 +3,7 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import PaginationControls from '@/components/PaginationControls'
 import { useBranch } from '@/contexts/BranchContext'
 
 type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid'
@@ -87,9 +88,11 @@ function buildMyLeaveRequestsQueryString(
   status: LeaveStatus | 'all',
   leaveType: LeaveRequest['leave_type'] | 'all',
   selectedBranchId: number | null,
+  page = 1,
 ): string {
   const qs = new URLSearchParams()
   qs.set('per_page', '100')
+  qs.set('page', String(page))
   qs.set('date_range', dateRange)
   if (status !== 'all') qs.set('status', status)
   if (leaveType !== 'all') qs.set('leave_type', leaveType)
@@ -142,6 +145,43 @@ const extractArray = <T,>(payload: unknown): T[] => {
     if (Array.isArray(nested)) return nested as T[]
   }
   return []
+}
+
+type RequestsMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+const extractRequestsPage = <T,>(payload: unknown): { rows: T[]; meta: RequestsMeta } => {
+  const empty: RequestsMeta = { current_page: 1, last_page: 1, per_page: 100, total: 0 }
+  if (!payload || typeof payload !== 'object') return { rows: [], meta: empty }
+  const root = payload as { data?: unknown }
+  const page = root.data
+  if (page && typeof page === 'object' && !Array.isArray(page)) {
+    const nested = page as {
+      data?: unknown
+      current_page?: number
+      last_page?: number
+      per_page?: number
+      total?: number
+    }
+    const rows = Array.isArray(nested.data) ? (nested.data as T[]) : []
+    return {
+      rows,
+      meta: {
+        current_page: Number(nested.current_page ?? 1) || 1,
+        last_page: Number(nested.last_page ?? 1) || 1,
+        per_page: Number(nested.per_page ?? 100) || 100,
+        total: Number(nested.total ?? rows.length) || 0,
+      },
+    }
+  }
+  if (Array.isArray(page)) {
+    return { rows: page as T[], meta: { ...empty, total: page.length } }
+  }
+  return { rows: [], meta: empty }
 }
 
 const formatNumber = (value: number): string => {
@@ -318,6 +358,13 @@ export default function BookingMyLeavePage() {
   const [eligibleBranches, setEligibleBranches] = useState<Array<{ id: number; name: string }>>([])
   const [balances, setBalances] = useState<LeaveBalance[]>([])
   const [requests, setRequests] = useState<LeaveRequest[]>([])
+  const [requestsPage, setRequestsPage] = useState(1)
+  const [requestsMeta, setRequestsMeta] = useState<RequestsMeta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 100,
+    total: 0,
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
@@ -369,6 +416,7 @@ export default function BookingMyLeavePage() {
     setDateRangeFilter(draftDateRange)
     setStatusFilter(draftStatus)
     setLeaveTypeFilter(draftLeaveType)
+    setRequestsPage(1)
     setIsHistoryFilterOpen(false)
   }
 
@@ -379,6 +427,7 @@ export default function BookingMyLeavePage() {
     setDateRangeFilter('upcoming')
     setStatusFilter('all')
     setLeaveTypeFilter('all')
+    setRequestsPage(1)
     setIsHistoryFilterOpen(false)
   }
 
@@ -440,28 +489,42 @@ export default function BookingMyLeavePage() {
   const loadRequests = useCallback(async () => {
     setHistoryLoading(true)
     try {
-      const qs = buildMyLeaveRequestsQueryString(dateRangeFilter, statusFilter, leaveTypeFilter, selectedBranchId)
+      const qs = buildMyLeaveRequestsQueryString(
+        dateRangeFilter,
+        statusFilter,
+        leaveTypeFilter,
+        selectedBranchId,
+        requestsPage,
+      )
       const requestRes = await fetch(`/api/proxy/booking/my-leave/requests?${qs}`, { cache: 'no-store' })
       if (!requestRes.ok) {
         setError('Failed to load leave requests.')
         setRequests([])
+        setRequestsMeta({ current_page: 1, last_page: 1, per_page: 100, total: 0 })
         return
       }
-      setRequests(extractArray<LeaveRequest>(await requestRes.json().catch(() => ({}))))
+      const parsed = extractRequestsPage<LeaveRequest>(await requestRes.json().catch(() => ({})))
+      setRequests(parsed.rows)
+      setRequestsMeta(parsed.meta)
       setError(null)
     } catch {
       setError('Failed to load leave requests.')
       setRequests([])
+      setRequestsMeta({ current_page: 1, last_page: 1, per_page: 100, total: 0 })
     } finally {
       setHistoryLoading(false)
     }
-  }, [dateRangeFilter, statusFilter, leaveTypeFilter, selectedBranchId])
+  }, [dateRangeFilter, statusFilter, leaveTypeFilter, selectedBranchId, requestsPage])
 
   useEffect(() => {
     void loadBalances()
   }, [loadBalances])
 
   useEffect(() => { void loadEligibleBranches() }, [loadEligibleBranches])
+
+  useEffect(() => {
+    setRequestsPage(1)
+  }, [selectedBranchId])
 
   useEffect(() => {
     void loadRequests()
@@ -1479,6 +1542,18 @@ export default function BookingMyLeavePage() {
               </div>
             ))}
         </div>
+
+        {requestsMeta.last_page > 1 && (
+          <div className="mt-4">
+            <PaginationControls
+              currentPage={requestsMeta.current_page}
+              totalPages={requestsMeta.last_page}
+              pageSize={requestsMeta.per_page}
+              onPageChange={setRequestsPage}
+              disabled={historyLoading}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

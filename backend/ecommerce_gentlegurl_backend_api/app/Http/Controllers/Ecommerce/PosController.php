@@ -80,6 +80,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class PosController extends Controller
 {
@@ -6140,17 +6141,21 @@ class PosController extends Controller
             $selectedBranchId = (int) $access->authorizeStoreLocation($request->user(), $selectedBranchId, false)->id;
         }
 
-        $items = $this->staffConsumableClaimQuery()
+        // leave-history-myleave-consumable-logs-query-v1: fold branch into claim whereHas (single EXISTS)
+        $items = $this->staffConsumableClaimQuery(null, null, function ($orders) use ($selectedBranchId, $accessibleBranchIds) {
+            if ($selectedBranchId > 0) {
+                $orders->where('store_location_id', $selectedBranchId);
+            } else {
+                $orders->where(fn ($scope) => $scope
+                    ->whereIn('store_location_id', $accessibleBranchIds)
+                    ->orWhereNull('store_location_id'));
+            }
+        })
             ->where(function ($query) use ($staffId) {
                 $query
                     ->where('order_items.staff_id', $staffId)
                     ->orWhereHas('order.creator', fn ($creatorQuery) => $creatorQuery->where('staff_id', $staffId));
             })
-            ->whereHas('order', fn ($orders) => $selectedBranchId > 0
-                ? $orders->where('store_location_id', $selectedBranchId)
-                : $orders->where(fn ($scope) => $scope
-                    ->whereIn('store_location_id', $accessibleBranchIds)
-                    ->orWhereNull('store_location_id')))
             ->latest('order_items.id')
             ->limit($limit)
             ->get()
@@ -6163,31 +6168,52 @@ class PosController extends Controller
     public function adminStaffConsumableLogs(Request $request)
     {
         $perPage = max(1, min(200, (int) $request->query('per_page', 50)));
+        $page = max(1, (int) $request->query('page', 1));
         $dateFrom = trim((string) ($request->query('from_date', $request->query('date_from', ''))));
         $dateTo = trim((string) ($request->query('to_date', $request->query('date_to', ''))));
+        $access = app(StoreLocationAccessService::class);
+        $accessibleIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
+        $selectedBranchId = 0;
+        if ($request->integer('store_location_id') > 0) {
+            $selectedBranchId = (int) $access
+                ->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false)
+                ->id;
+        }
+
+        // leave-history-myleave-consumable-logs-query-v1: one claim+branch whereHas; one summary aggregate
         $query = $this->staffConsumableClaimQuery(
             $dateFrom !== '' ? $dateFrom : null,
             $dateTo !== '' ? $dateTo : null,
+            function ($orders) use ($selectedBranchId, $accessibleIds) {
+                if ($selectedBranchId > 0) {
+                    $orders->where('store_location_id', $selectedBranchId);
+                } else {
+                    $orders->whereIn('store_location_id', $accessibleIds);
+                }
+            },
         );
-        $access = app(StoreLocationAccessService::class);
-        $accessibleIds = $access->accessibleStoreLocations($request->user(), false)->pluck('id');
-        $query->whereHas('order', fn ($orders) => $orders->whereIn('store_location_id', $accessibleIds));
-        if ($request->integer('store_location_id') > 0) {
-            $branch = $access->authorizeStoreLocation($request->user(), $request->integer('store_location_id'), false);
-            $query->whereHas('order', fn ($orders) => $orders->where('store_location_id', $branch->id));
-        }
         $this->applyStaffConsumableLogFilters($query, $request);
 
-        $summary = [
-            'total_qty' => (int) (clone $query)->sum('order_items.quantity'),
-            'total_price' => (float) (clone $query)->sum(DB::raw(
-                'COALESCE(NULLIF(order_items.line_total_snapshot, 0), COALESCE(order_items.unit_price_snapshot, order_items.price_snapshot, 0) * order_items.quantity)'
-            )),
-        ];
+        $priceExpr = 'COALESCE(NULLIF(order_items.line_total_snapshot, 0), COALESCE(order_items.unit_price_snapshot, order_items.price_snapshot, 0) * order_items.quantity)';
+        $summaryRow = (clone $query)
+            ->toBase()
+            ->reorder()
+            ->selectRaw('COUNT(*) as total_logs, COALESCE(SUM(order_items.quantity), 0) as total_qty, COALESCE(SUM('.$priceExpr.'), 0) as total_price')
+            ->first();
 
-        $logs = $query
+        $total = (int) ($summaryRow->total_logs ?? 0);
+        $items = $query
             ->latest('order_items.id')
-            ->paginate($perPage);
+            ->forPage($page, $perPage)
+            ->get();
+
+        $logs = new LengthAwarePaginator(
+            $items,
+            $total,
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
 
         return $this->respond([
             'data' => collect($logs->items())->map(fn (OrderItem $item) => $this->serializeStaffConsumableClaim($item))->values(),
@@ -6196,9 +6222,9 @@ class PosController extends Controller
             'per_page' => $logs->perPage(),
             'total' => $logs->total(),
             'summary' => [
-                'total_logs' => (int) $logs->total(),
-                'total_qty' => $summary['total_qty'],
-                'total_price' => $summary['total_price'],
+                'total_logs' => $total,
+                'total_qty' => (int) ($summaryRow->total_qty ?? 0),
+                'total_price' => (float) ($summaryRow->total_price ?? 0),
             ],
         ]);
     }
@@ -6222,7 +6248,10 @@ class PosController extends Controller
         return $this->respond(['data' => $items]);
     }
 
-    protected function staffConsumableClaimQuery(?string $dateFrom = null, ?string $dateTo = null)
+    /**
+     * @param  callable(\Illuminate\Database\Eloquent\Builder): void|null  $orderScope
+     */
+    protected function staffConsumableClaimQuery(?string $dateFrom = null, ?string $dateTo = null, ?callable $orderScope = null)
     {
         return OrderItem::query()
             ->with([
@@ -6233,7 +6262,7 @@ class PosController extends Controller
                 'productVariant:id,title,cn_name,sku',
             ])
             ->where('is_staff_free_applied', true)
-            ->whereHas('order', function ($builder) use ($dateFrom, $dateTo) {
+            ->whereHas('order', function ($builder) use ($dateFrom, $dateTo, $orderScope) {
                 $builder->where(function ($orderQuery) {
                     $orderQuery
                         ->where('notes', 'like', '%staff_free_consumable_claim%')
@@ -6246,6 +6275,10 @@ class PosController extends Controller
 
                 if ($dateTo !== null && $dateTo !== '') {
                     $builder->where('created_at', '<', Carbon::parse($dateTo)->addDay()->startOfDay());
+                }
+
+                if ($orderScope !== null) {
+                    $orderScope($builder);
                 }
             });
     }
@@ -6264,27 +6297,32 @@ class PosController extends Controller
         }
 
         if ($search !== '') {
-            // Snapshots + order_number cover the CRM search box for claim rows in practice;
-            // keep relation OR branches for identical match semantics.
+            // Snapshots + order_number first (cheap columns); relation ORs keep identical match semantics.
             $query->where(function ($searchQuery) use ($search) {
                 $searchQuery
-                    ->where('product_name_snapshot', 'like', "%{$search}%")
-                    ->orWhere('display_name_snapshot', 'like', "%{$search}%")
-                    ->orWhere('variant_name_snapshot', 'like', "%{$search}%")
-                    ->orWhere('sku_snapshot', 'like', "%{$search}%")
-                    ->orWhere('variant_sku_snapshot', 'like', "%{$search}%")
-                    ->orWhereHas('order', fn ($orderQuery) => $orderQuery->where('order_number', 'like', "%{$search}%"))
-                    ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('product', fn ($productQuery) => $productQuery
-                        ->where('name', 'like', "%{$search}%")
-                        ->orWhere('cn_name', 'like', "%{$search}%"))
-                    ->orWhereHas('productVariant', fn ($variantQuery) => $variantQuery
-                        ->where('title', 'like', "%{$search}%")
-                        ->orWhere('cn_name', 'like', "%{$search}%"))
-                    ->orWhereHas('order.creator', function ($creatorQuery) use ($search) {
-                        $creatorQuery
-                            ->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
+                    ->where(function ($snapshotQuery) use ($search) {
+                        $snapshotQuery
+                            ->where('product_name_snapshot', 'like', "%{$search}%")
+                            ->orWhere('display_name_snapshot', 'like', "%{$search}%")
+                            ->orWhere('variant_name_snapshot', 'like', "%{$search}%")
+                            ->orWhere('sku_snapshot', 'like', "%{$search}%")
+                            ->orWhere('variant_sku_snapshot', 'like', "%{$search}%")
+                            ->orWhereHas('order', fn ($orderQuery) => $orderQuery->where('order_number', 'like', "%{$search}%"));
+                    })
+                    ->orWhere(function ($relationQuery) use ($search) {
+                        $relationQuery
+                            ->whereHas('staff', fn ($staffQuery) => $staffQuery->where('name', 'like', "%{$search}%"))
+                            ->orWhereHas('product', fn ($productQuery) => $productQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('cn_name', 'like', "%{$search}%"))
+                            ->orWhereHas('productVariant', fn ($variantQuery) => $variantQuery
+                                ->where('title', 'like', "%{$search}%")
+                                ->orWhere('cn_name', 'like', "%{$search}%"))
+                            ->orWhereHas('order.creator', function ($creatorQuery) use ($search) {
+                                $creatorQuery
+                                    ->where('name', 'like', "%{$search}%")
+                                    ->orWhere('email', 'like', "%{$search}%");
+                            });
                     });
             });
         }
