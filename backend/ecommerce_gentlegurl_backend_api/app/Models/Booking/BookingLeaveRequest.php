@@ -4,6 +4,7 @@ namespace App\Models\Booking;
 
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\Ecommerce\StoreLocation;
 use Illuminate\Database\Eloquent\Model;
 use DateTimeInterface;
 
@@ -11,6 +12,7 @@ class BookingLeaveRequest extends Model
 {
     protected $fillable = [
         'staff_id',
+        'store_location_id',
         'leave_type',
         'request_kind',
         'source_leave_request_id',
@@ -40,6 +42,8 @@ class BookingLeaveRequest extends Model
     {
         return $this->belongsTo(Staff::class, 'staff_id');
     }
+
+    public function storeLocation() { return $this->belongsTo(StoreLocation::class); }
 
     public function reviewer()
     {

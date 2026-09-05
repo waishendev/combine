@@ -15,9 +15,16 @@ class LeaveBalanceController extends Controller
     {
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $staffRows = Staff::query()->select(['id', 'name'])->orderBy('name')->get();
+        $staffQuery = Staff::query()->select(['id', 'name'])->orderBy('name');
+        if ($request->filled('store_location_id')) {
+            $staffQuery->whereHas('storeLocations', fn ($query) => $query->whereKey((int) $request->input('store_location_id')));
+        } elseif ($request->boolean('accessible_union')) {
+            $ids = app(\App\Services\StoreLocationAccessService::class)->accessibleStoreLocations($request->user(), false)->pluck('store_locations.id');
+            $staffQuery->whereHas('storeLocations', fn ($query) => $query->whereIn('store_locations.id', $ids));
+        }
+        $staffRows = $staffQuery->get();
 
         $data = $staffRows->map(function (Staff $staff) {
             return [

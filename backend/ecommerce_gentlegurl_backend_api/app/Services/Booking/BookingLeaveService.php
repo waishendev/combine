@@ -72,13 +72,15 @@ class BookingLeaveService
         Carbon $startDate,
         Carbon $endDate,
         string $dayType,
-        ?int $ignoreRequestId = null
+        ?int $ignoreRequestId = null,
+        ?int $storeLocationId = null
     ): bool {
         $query = BookingLeaveRequest::query()
             ->where('staff_id', $staffId)
             ->whereIn('status', ['pending', 'approved'])
             ->whereDate('start_date', '<=', $endDate->toDateString())
             ->whereDate('end_date', '>=', $startDate->toDateString());
+        if ($storeLocationId) $query->where('store_location_id', $storeLocationId);
 
         if ($ignoreRequestId) {
             $query->where('id', '!=', $ignoreRequestId);
@@ -121,7 +123,7 @@ class BookingLeaveService
     /**
      * @return array{0: Carbon, 1: Carbon}
      */
-    public function resolveTimeoffWindow(int $staffId, Carbon $startDate, Carbon $endDate, string $dayType): array
+    public function resolveTimeoffWindow(int $staffId, Carbon $startDate, Carbon $endDate, string $dayType, ?int $storeLocationId = null): array
     {
         if (! $startDate->isSameDay($endDate)) {
             return [$startDate->copy()->startOfDay(), $endDate->copy()->endOfDay()];
@@ -129,6 +131,7 @@ class BookingLeaveService
 
         $schedule = BookingStaffSchedule::query()
             ->where('staff_id', $staffId)
+            ->when($storeLocationId, fn ($query) => $query->where('store_location_id', $storeLocationId))
             ->where('day_of_week', $startDate->dayOfWeek)
             ->first();
 
@@ -215,9 +218,10 @@ class BookingLeaveService
         Carbon $endDate,
         ?string $reason,
         ?int $actorUserId,
-        ?string $adminRemark = 'Off day set by admin'
+        ?string $adminRemark,
+        int $storeLocationId
     ): ?BookingLeaveRequest {
-        if ($this->hasOverlappingRequest($staffId, $startDate, $endDate, 'full_day')) {
+        if ($this->hasOverlappingRequest($staffId, $startDate, $endDate, 'full_day', null, $storeLocationId)) {
             return null;
         }
 
@@ -225,6 +229,7 @@ class BookingLeaveService
 
         $item = BookingLeaveRequest::query()->create([
             'staff_id' => $staffId,
+            'store_location_id' => $storeLocationId,
             'leave_type' => 'off_day',
             'day_type' => 'full_day',
             'start_date' => $startDate->toDateString(),
@@ -237,10 +242,11 @@ class BookingLeaveService
             'reviewed_at' => now(),
         ]);
 
-        [$startAt, $endAt] = $this->resolveTimeoffWindow($staffId, $startDate, $endDate, 'full_day');
+        [$startAt, $endAt] = $this->resolveTimeoffWindow($staffId, $startDate, $endDate, 'full_day', $storeLocationId);
 
         $timeoff = \App\Models\Booking\BookingStaffTimeoff::create([
             'staff_id' => $item->staff_id,
+            'store_location_id' => $storeLocationId,
             'start_at' => $startAt,
             'end_at' => $endAt,
             'reason' => sprintf('Off day #%d', $item->id),
@@ -344,13 +350,13 @@ class BookingLeaveService
         $dayType = (string) ($item->day_type ?: 'full_day');
         $ignoreId = $ignoreOverlapRequestId ?? (int) $item->id;
 
-        if ($this->hasOverlappingRequest((int) $item->staff_id, $startDate, $endDate, $dayType, $ignoreId)) {
+        if ($this->hasOverlappingRequest((int) $item->staff_id, $startDate, $endDate, $dayType, $ignoreId, $item->store_location_id)) {
             return null;
         }
 
         $before = $this->snapshotLeaveRequest($item);
         $days = $this->calculateRequestedDays($startDate, $endDate, $dayType);
-        [$startAt, $endAt] = $this->resolveTimeoffWindow((int) $item->staff_id, $startDate, $endDate, $dayType);
+        [$startAt, $endAt] = $this->resolveTimeoffWindow((int) $item->staff_id, $startDate, $endDate, $dayType, $item->store_location_id ? (int) $item->store_location_id : null);
 
         $timeoffReason = match ($item->leave_type) {
             'off_day' => sprintf('Off day #%d', $item->id),
@@ -366,6 +372,7 @@ class BookingLeaveService
         } else {
             $timeoff = \App\Models\Booking\BookingStaffTimeoff::create([
                 'staff_id' => $item->staff_id,
+                'store_location_id' => $item->store_location_id,
                 'start_at' => $startAt,
                 'end_at' => $endAt,
                 'reason' => $timeoffReason,
@@ -447,7 +454,7 @@ class BookingLeaveService
 
         $dayType = (string) ($source->day_type ?: 'full_day');
 
-        return ! $this->hasOverlappingRequest((int) $source->staff_id, $newStart, $newEnd, $dayType, (int) $item->id);
+        return ! $this->hasOverlappingRequest((int) $source->staff_id, $newStart, $newEnd, $dayType, (int) $item->id, $source->store_location_id);
     }
 
     public function createDateChangeRequest(
@@ -477,7 +484,7 @@ class BookingLeaveService
             return null;
         }
 
-        if ($this->hasOverlappingRequest((int) $source->staff_id, $newStart, $newEnd, $dayType, (int) $source->id)) {
+        if ($this->hasOverlappingRequest((int) $source->staff_id, $newStart, $newEnd, $dayType, (int) $source->id, $source->store_location_id)) {
             return null;
         }
 
@@ -485,6 +492,7 @@ class BookingLeaveService
 
         $created = BookingLeaveRequest::create([
             'staff_id' => $source->staff_id,
+            'store_location_id' => $source->store_location_id,
             'leave_type' => $source->leave_type,
             'request_kind' => 'date_change',
             'source_leave_request_id' => $source->id,

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import { useBranch } from '@/contexts/BranchContext'
 
 type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid' | 'off_day'
 type DayType = 'full_day' | 'half_day_am' | 'half_day_pm'
@@ -21,6 +22,8 @@ type LeaveRow = {
   staff?: { id: number; name: string }
   reviewer?: UserRef | null
   creation_log?: { creator?: UserRef | null } | null
+  store_location_id?: number | null
+  store_location?: { id: number; name: string } | null
 }
 
 type LeaveLogEntry = {
@@ -285,6 +288,7 @@ function LeaveCalendarErrorBanner({ message }: { message: string }) {
 }
 
 export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLeaveCalendarPageProps) {
+  const { selectedBranchId, isAllBranches } = useBranch()
   const canUpdate = permissions.includes('booking.schedules.update')
   const now = new Date()
   const [month, setMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
@@ -330,7 +334,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   }, [dismissPageToast])
 
   const loadStaffOptions = async () => {
-    const res = await fetch('/api/proxy/admin/booking/leave-balances', { cache: 'no-store' })
+    const res = await fetch(`/api/proxy/admin/booking/leave-balances?${selectedBranchId !== null ? `store_location_id=${selectedBranchId}` : 'accessible_union=1'}`, { cache: 'no-store' })
     if (!res.ok) return
     setStaffOptions(extractArray<StaffOption>(await res.json().catch(() => ({}))))
   }
@@ -346,6 +350,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     qs.set('per_page', '500')
     if (staffFilter) qs.set('staff_id', staffFilter)
     if (leaveTypeFilter) qs.set('leave_type', leaveTypeFilter)
+    if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
 
     const res = await fetch(`/api/proxy/admin/booking/leave-requests?${qs.toString()}`, { cache: 'no-store' })
     if (!res.ok) {
@@ -416,6 +421,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staff_id: Number(generateForm.staff_id),
+          store_location_id: selectedBranchId,
           target_month: generateForm.target_month,
           days_of_week: generateForm.days_of_week,
         }),
@@ -457,6 +463,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staff_id: Number(generateYearForm.staff_id),
+          store_location_id: selectedBranchId,
           target_year: Number(generateYearForm.target_year),
           days_of_week: generateYearForm.days_of_week,
         }),
@@ -615,6 +622,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staff_id: Number(offDayForm.staff_id),
+          store_location_id: selectedBranchId,
           start_date: offDayForm.start_date,
           end_date: offDayForm.end_date,
           reason: offDayForm.reason || null,
@@ -638,7 +646,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
   useEffect(() => {
     void loadStaffOptions()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchId])
 
   useEffect(() => {
     void loadRows()
@@ -1124,6 +1133,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                       <div className="truncate text-[10px] font-semibold text-slate-900">
                         {item.staff?.name ?? `Staff #${item.staff_id}`}
                       </div>
+                      {isAllBranches && <div className="truncate text-[9px] font-medium text-slate-600">{item.store_location?.name ?? (item.store_location_id ? 'Unknown Branch' : 'Unassigned')}</div>}
                       <div className="mt-0.5 overflow-hidden">
                         <span
                           className={`block max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-medium ${LEAVE_CLASS[item.leave_type]}`}
@@ -1171,6 +1181,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="text-base font-semibold text-slate-900">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
+                        {isAllBranches && <div className="mt-1 text-xs font-medium text-slate-700"><span className="text-slate-500">Branch</span> {item.store_location?.name ?? (item.store_location_id ? 'Unknown Branch' : 'Unassigned')}</div>}
                         <div className="mt-1 text-xs text-slate-500">
                           {formatDateRange(item.start_date, item.end_date)}
                           {isSingleDayRange(item.start_date, item.end_date) ? ` · ${formatWeekdayLabel(item.start_date)}` : ''}
