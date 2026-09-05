@@ -9,6 +9,7 @@ use App\Services\Booking\LeaveBranchService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Ecommerce\StoreLocation;
 
 class MyLeaveController extends Controller
 {
@@ -24,6 +25,15 @@ class MyLeaveController extends Controller
         }
 
         return $this->respond($this->leaveService->getBalanceSummaryForStaff($staffId));
+    }
+
+    public function eligibleBranches(Request $request)
+    {
+        $staffId = (int) ($request->user()?->staff_id ?? 0);
+        if ($staffId <= 0) return $this->respondError('This account is not linked to a staff profile.', 403);
+
+        $ids = $this->branches->eligibleBranchIds($request->user(), $staffId);
+        return $this->respond(StoreLocation::query()->whereIn('id', $ids)->orderBy('name')->get(['id', 'name']));
     }
 
     public function indexRequests(Request $request)

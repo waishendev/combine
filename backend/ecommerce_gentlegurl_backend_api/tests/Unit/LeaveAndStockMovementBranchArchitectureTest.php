@@ -39,4 +39,30 @@ class LeaveAndStockMovementBranchArchitectureTest extends TestCase
         $this->assertStringContainsString("orWhereNull('store_location_id')", $service);
         $this->assertStringNotContainsString("PNG", $service);
     }
+
+    #[Test]
+    public function leave_balance_view_is_assignment_scoped_bulk_loaded_and_not_branch_owned(): void
+    {
+        $controller = file_get_contents(app_path('Http/Controllers/Admin/Booking/LeaveBalanceController.php'));
+        $migration = file_get_contents(database_path('migrations/2026_04_07_000010_create_booking_leave_management_tables.php'));
+        $this->assertStringContainsString('accessibleStoreLocations', $controller);
+        $this->assertStringContainsString("whereHas('storeLocations'", $controller);
+        $this->assertStringContainsString("with(['storeLocations'", $controller);
+        $this->assertStringContainsString("whereIn('staff_id', \$staffIds)", $controller);
+        $this->assertStringNotContainsString('store_location_id', explode("Schema::create('booking_leave_requests'", $migration)[0]);
+    }
+
+    #[Test]
+    public function all_creation_ui_resolves_a_concrete_eligible_branch_before_submit(): void
+    {
+        $calendar = file_get_contents(base_path('../../frontend/ecommerce_gentlegurl_crm/src/components/booking/BookingLeaveCalendarPage.tsx'));
+        $myLeave = file_get_contents(base_path('../../frontend/ecommerce_gentlegurl_crm/src/components/booking/BookingMyLeavePage.tsx'));
+        $balances = file_get_contents(base_path('../../frontend/ecommerce_gentlegurl_crm/src/components/booking/BookingLeaveBalancesPage.tsx'));
+        $this->assertStringContainsString('AllBranchesCreationField', $calendar);
+        $this->assertStringContainsString('concreteBranchId', $calendar);
+        $this->assertStringContainsString('store_location_id: branchId', $calendar);
+        $this->assertStringContainsString('eligible-branches', $myLeave);
+        $this->assertStringContainsString('Assigned Branches', $balances);
+        $this->assertStringContainsString('isAllBranches', $balances);
+    }
 }

@@ -3,6 +3,7 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import { useBranch } from '@/contexts/BranchContext'
 
 type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid'
 type DayType = 'full_day' | 'half_day_am' | 'half_day_pm'
@@ -309,12 +310,14 @@ function canRequestDateChange(row: LeaveRequest, allRequests: LeaveRequest[]) {
 }
 
 export default function BookingMyLeavePage() {
+  const { selectedBranchId, isAllBranches } = useBranch()
+  const [eligibleBranches, setEligibleBranches] = useState<Array<{ id: number; name: string }>>([])
   const [balances, setBalances] = useState<LeaveBalance[]>([])
   const [requests, setRequests] = useState<LeaveRequest[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
-  const [form, setForm] = useState({ leave_type: 'annual' as LeaveType, day_type: 'full_day' as DayType, start_date: '', end_date: '', reason: '' })
+  const [form, setForm] = useState({ leave_type: 'annual' as LeaveType, day_type: 'full_day' as DayType, store_location_id: '', start_date: '', end_date: '', reason: '' })
 
   const [isHistoryFilterOpen, setIsHistoryFilterOpen] = useState(false)
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangePreset>('upcoming')
@@ -417,6 +420,19 @@ export default function BookingMyLeavePage() {
     }
   }, [])
 
+  const loadEligibleBranches = useCallback(async () => {
+    const response = await fetch('/api/proxy/booking/my-leave/eligible-branches', { cache: 'no-store' })
+    if (!response.ok) { setEligibleBranches([]); return }
+    const branches = extractArray<{ id: number; name: string }>(await response.json().catch(() => ({})))
+    setEligibleBranches(branches)
+    setForm((previous) => ({
+      ...previous,
+      store_location_id: selectedBranchId !== null
+        ? String(selectedBranchId)
+        : branches.length === 1 ? String(branches[0].id) : '',
+    }))
+  }, [selectedBranchId])
+
   const loadRequests = useCallback(async () => {
     setHistoryLoading(true)
     try {
@@ -441,6 +457,8 @@ export default function BookingMyLeavePage() {
     void loadBalances()
   }, [loadBalances])
 
+  useEffect(() => { void loadEligibleBranches() }, [loadEligibleBranches])
+
   useEffect(() => {
     void loadRequests()
   }, [loadRequests])
@@ -458,6 +476,11 @@ export default function BookingMyLeavePage() {
   const applyLeave = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
+    const branchId = selectedBranchId ?? Number(form.store_location_id)
+    if (!branchId || !eligibleBranches.some((branch) => branch.id === branchId)) {
+      setError(eligibleBranches.length === 0 ? 'You have no eligible accessible Branch for leave.' : 'Please select a Branch for this leave request.')
+      return
+    }
 
     if (form.start_date && form.end_date && form.end_date < form.start_date) {
       setError('End date cannot be earlier than start date.')
@@ -469,7 +492,7 @@ export default function BookingMyLeavePage() {
       const res = await fetch('/api/proxy/booking/my-leave/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, store_location_id: branchId }),
       })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({})) as { message?: string }
@@ -477,7 +500,7 @@ export default function BookingMyLeavePage() {
         return
       }
 
-      setForm({ leave_type: 'annual', day_type: 'full_day', start_date: '', end_date: '', reason: '' })
+      setForm({ leave_type: 'annual', day_type: 'full_day', store_location_id: selectedBranchId !== null ? String(selectedBranchId) : eligibleBranches.length === 1 ? String(eligibleBranches[0].id) : '', start_date: '', end_date: '', reason: '' })
       setIsApplyModalOpen(false)
       await loadAll()
     } finally {
@@ -740,6 +763,21 @@ export default function BookingMyLeavePage() {
               {error && <p className="mb-3 text-sm text-rose-600">{error}</p>}
 
               <form className="grid grid-cols-1 md:grid-cols-2 gap-3" onSubmit={applyLeave}>
+                {isAllBranches && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                    {eligibleBranches.length === 0 ? (
+                      <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">No eligible accessible Branch is assigned to your Staff profile.</div>
+                    ) : eligibleBranches.length === 1 ? (
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">{eligibleBranches[0].name}</div>
+                    ) : (
+                      <select className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={form.store_location_id} onChange={(event) => setForm((previous) => ({ ...previous, store_location_id: event.target.value }))} required>
+                        <option value="">Select Branch</option>
+                        {eligibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Leave Type</label>
                   <select
@@ -821,7 +859,7 @@ export default function BookingMyLeavePage() {
                   
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={saving || eligibleBranches.length === 0 || (isAllBranches && eligibleBranches.length > 1 && !form.store_location_id)}
                     className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                   >
                     {saving ? 'Submitting...' : 'Submit Request'}

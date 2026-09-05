@@ -1614,6 +1614,7 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
 
 Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/booking/my-leave')->group(function () {
     Route::get('/balances', [\App\Http\Controllers\Booking\MyLeaveController::class, 'indexBalances']);
+    Route::get('/eligible-branches', [\App\Http\Controllers\Booking\MyLeaveController::class, 'eligibleBranches']);
     Route::get('/requests', [\App\Http\Controllers\Booking\MyLeaveController::class, 'indexRequests']);
     Route::post('/requests', [\App\Http\Controllers\Booking\MyLeaveController::class, 'store']);
     Route::post('/requests/{id}/date-change', [\App\Http\Controllers\Booking\MyLeaveController::class, 'requestDateChange']);
