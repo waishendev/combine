@@ -381,6 +381,12 @@ export type PublicAccountOrder = {
   created_at?: string | null;
   reserve_expires_at?: string | null;
   receipt_public_url?: string | null;
+  store_location_id?: number | null;
+  store_location?: {
+    id: number;
+    name: string;
+    code?: string | null;
+  } | null;
   refunds?: Array<{
     id: number;
     refund_no: string;

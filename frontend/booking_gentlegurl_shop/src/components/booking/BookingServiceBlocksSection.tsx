@@ -27,11 +27,15 @@ function ServiceBlockCard({
   compact = false,
   packageName,
   packageClaims,
+  showBranch = false,
+  branchName,
 }: {
   block: BookingServiceBlock;
   compact?: boolean;
   packageName?: string | null;
   packageClaims?: PackageClaim[];
+  showBranch?: boolean;
+  branchName?: string | null;
 }) {
   const addOns = block.add_ons ?? [];
   const priceText = formatServicePrice(block, formatCurrency);
@@ -56,6 +60,12 @@ function ServiceBlockCard({
               </span>
             ) : null}
           </div>
+          {showBranch && branchName ? (
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-[var(--text-muted)]">
+              <i className="fa-solid fa-location-dot text-[9px] text-[var(--accent-strong)]" aria-hidden />
+              <span>{branchName}</span>
+            </p>
+          ) : null}
           {!compact && Number(block.duration_min ?? 0) > 0 ? (
             <p className="mt-1 text-xs text-[var(--text-muted)]">{block.duration_min} mins</p>
           ) : null}
@@ -114,16 +124,19 @@ type BookingServiceBlocksSectionProps = {
   booking: BookingRecord;
   compact?: boolean;
   className?: string;
+  showBranch?: boolean;
 };
 
 export default function BookingServiceBlocksSection({
   booking,
   compact = false,
   className,
+  showBranch = false,
 }: BookingServiceBlocksSectionProps) {
   const blocks = serviceBlocksForBooking(booking);
   const multiService = blocks.length > 1;
   const packageClaims = booking.package_claims ?? [];
+  const branchName = booking.store_location?.name ?? null;
 
   return (
     <section className={className}>
@@ -149,6 +162,8 @@ export default function BookingServiceBlocksSection({
               compact={compact}
               packageName={claim?.package_name ?? null}
               packageClaims={packageClaims}
+              showBranch={showBranch}
+              branchName={branchName}
             />
           );
         })}

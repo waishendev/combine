@@ -15,6 +15,7 @@ import {
   getBookingPaymentGateways,
   getBillplzPaymentGatewayOptions,
   getMyServicePackages,
+  getPublicBookingStoreLocations,
   payBooking,
   payPublicOrder,
   redeemServicePackage,
@@ -160,6 +161,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [paymentSummaryOpen, setPaymentSummaryOpen] = useState(false);
   const [unavailableSlotItemIds, setUnavailableSlotItemIds] = useState<number[]>([]);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [showBranchOnItems, setShowBranchOnItems] = useState(false);
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const cartItemRefs = useRef<Record<number, HTMLElement | null>>({});
@@ -218,8 +220,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         getBillplzPaymentGatewayOptions({ type: "booking", gateway_group: "online_banking" }),
         getBillplzPaymentGatewayOptions({ type: "booking", gateway_group: "credit_card" }),
         getBookingDepositTncSettings(),
+        getPublicBookingStoreLocations(),
       ])
-        .then(([gatewayData, bankData, onlineOptions, cardOptions, depositTncSettings]) => {
+        .then(([gatewayData, bankData, onlineOptions, cardOptions, depositTncSettings, bookingBranches]) => {
+          setShowBranchOnItems(bookingBranches.length > 1);
           const activeGateways = gatewayData.filter((g) => g.is_active !== false);
           const normalizedGateways = activeGateways
             .map((gateway) => ({
@@ -247,6 +251,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           setDepositTncImage(depositTncSettings.booking_deposit_tnc_image);
         })
         .catch(() => {
+          setShowBranchOnItems(false);
           setGateways([]);
           setBankAccounts([]);
           setDepositTncEnabled(false);
@@ -1002,6 +1007,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         ) : null} */}
                       </div>
                       <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{item.staff_name}</p>
+                      {showBranchOnItems && cart?.store_location?.name ? (
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-[var(--text-muted)]">
+                          <i className="fa-solid fa-location-dot text-[9px] text-[var(--accent-strong)]" aria-hidden />
+                          <span>{cart.store_location.name}</span>
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-[11px] leading-snug text-[var(--foreground)]">
                         <span className="font-medium tabular-nums">{timeRange}</span>
                         <span className="text-[var(--text-muted)]"> · {dateShort}</span>

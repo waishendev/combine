@@ -6,6 +6,7 @@ import {
   cancelOrder,
   getMyBookings,
   getMyOrders,
+  getPublicBookingStoreLocations,
   payPublicOrder,
   PublicAccountOrder,
 } from "@/lib/apiClient";
@@ -150,6 +151,7 @@ export function BookingTransactionsClient() {
   const [slipModal, setSlipModal] = useState<SlipModalState | null>(null);
   const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [showBranch, setShowBranch] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -159,12 +161,14 @@ export function BookingTransactionsClient() {
       try {
         setLoading(true);
         setError(null);
-        const [rows, bookings] = await Promise.all([
+        const [rows, bookings, branches] = await Promise.all([
           getMyOrders(),
           getMyBookings().catch(() => []),
+          getPublicBookingStoreLocations().catch(() => []),
         ]);
         if (!cancelled) {
           setOrders(rows ?? []);
+          setShowBranch((branches?.length ?? 0) > 1);
           const refundById = new Map<number, RefundEntry>();
 
           for (const booking of bookings ?? []) {
@@ -617,6 +621,12 @@ export function BookingTransactionsClient() {
                               </div>
                               <div className="min-w-0 flex-1 overflow-hidden">
                                 <LineNameStack name={resolveLineLabel(item)} cnName={item.cn_name} />
+                                {showBranch && order.store_location?.name ? (
+                                  <p className="mt-0.5 flex items-center gap-1 text-[11px] text-[var(--foreground)]/70">
+                                    <i className="fa-solid fa-location-dot text-[9px] text-[var(--accent-strong)]" aria-hidden />
+                                    <span>{order.store_location.name}</span>
+                                  </p>
+                                ) : null}
                                 {(item.product_type === "variant" || item.product_variant_id) && (
                                   <div className="mt-1">
                                     <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--foreground)]/50">Variant</p>

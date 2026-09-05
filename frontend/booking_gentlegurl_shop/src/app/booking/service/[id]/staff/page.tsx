@@ -8,7 +8,7 @@ import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
 import { addCartItem, ApiError, getAvailabilityPooled, getBookingServiceDetail, getPublicBookingStoreLocations, uploadBookingCartItemPhotos } from "@/lib/apiClient";
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
 import { clearBookingPhotoDraft, loadBookingPhotoDraft } from "@/lib/bookingPhotoDraft";
-import { Service, Staff } from "@/lib/types";
+import { PublicBookingStoreLocation, Service, Staff } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
 
@@ -75,6 +75,7 @@ export default function ServiceStaffPage() {
 
   const [service, setService] = useState<ServiceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bookingBranches, setBookingBranches] = useState<PublicBookingStoreLocation[]>([]);
   const [verifiedAvailableStaffIds, setVerifiedAvailableStaffIds] = useState<number[] | null>(null);
   const [verifyingAvailability, setVerifyingAvailability] = useState(false);
   const [confirmStaff, setConfirmStaff] = useState<Staff | null>(null);
@@ -93,7 +94,28 @@ export default function ServiceStaffPage() {
       }
     };
     run();
-  }, [id]);
+  }, [id, storeLocationId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPublicBookingStoreLocations()
+      .then((locations) => {
+        if (!cancelled) setBookingBranches(locations);
+      })
+      .catch(() => {
+        if (!cancelled) setBookingBranches([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const showBranchInConfirm = bookingBranches.length > 1;
+  const selectedBranchName = useMemo(() => {
+    const idNum = Number(storeLocationId);
+    if (!Number.isFinite(idNum) || idNum <= 0) return null;
+    return bookingBranches.find((branch) => branch.id === idNum)?.name ?? null;
+  }, [bookingBranches, storeLocationId]);
 
   const staffs = service?.staffs ?? [];
 
@@ -555,6 +577,17 @@ export default function ServiceStaffPage() {
               </div>
 
               <ul className="mt-5 space-y-0 divide-y divide-[var(--card-border)] rounded-2xl border border-[var(--card-border)] bg-[var(--background)]/60 px-1">
+                {showBranchInConfirm && selectedBranchName ? (
+                  <li className="flex flex-col gap-2 px-4 py-4 text-base">
+                    <span className="flex items-center gap-2 text-[var(--text-muted)]">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
+                        <i className="fa-solid fa-location-dot text-xs" />
+                      </span>
+                      Branch
+                    </span>
+                    <p className="min-w-0 pl-10 font-medium leading-snug text-[var(--foreground)]">{selectedBranchName}</p>
+                  </li>
+                ) : null}
                 <li className="flex flex-col gap-2 px-4 py-4 text-base">
                   <span className="flex items-center gap-2 text-[var(--text-muted)]">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">

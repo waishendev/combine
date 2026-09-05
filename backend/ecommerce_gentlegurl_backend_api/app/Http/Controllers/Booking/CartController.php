@@ -1097,10 +1097,12 @@ class CartController extends Controller
             'items.staff:id,name',
             'items.photos',
             'packageItems' => fn ($q) => $q->where('status', 'active')->orderByDesc('id'),
+            'storeLocation:id,name,code',
         ]);
 
         $activeItems = $cart->items;
         $activePackageItems = $cart->packageItems;
+        $storeLocation = $cart->storeLocation;
 
         $nextExpiry = $activeItems->min('expires_at');
         $packageClaimsByItem = $this->packageClaimsByCartItem($cart->customer_id, $activeItems->pluck('id')->all());
@@ -1124,6 +1126,11 @@ class CartController extends Controller
         return [
             'id' => $cart->id,
             'store_location_id' => $cart->store_location_id ? (int) $cart->store_location_id : null,
+            'store_location' => $storeLocation ? [
+                'id' => (int) $storeLocation->id,
+                'name' => (string) $storeLocation->name,
+                'code' => (string) ($storeLocation->code ?? ''),
+            ] : null,
             'status' => $cart->status,
             'items' => $activeItems->map(fn (BookingCartItem $item) => [
                 'id' => (int) $item->id,

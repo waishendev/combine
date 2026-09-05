@@ -168,6 +168,11 @@ export type BookingCartPackageClaim = {
 export type BookingCart = {
   id: string | null;
   store_location_id?: number | null;
+  store_location?: {
+    id: number;
+    name: string;
+    code?: string | null;
+  } | null;
   status: string;
   items: BookingCartItem[];
   package_items: BookingCartPackageItem[];
@@ -259,6 +264,12 @@ export type BookingRecord = {
   has_pending_range_pricing?: boolean | null;
   estimated_duration_min?: number | null;
   staff_name?: string | null;
+  store_location_id?: number | null;
+  store_location?: {
+    id: number;
+    name: string;
+    code?: string | null;
+  } | null;
   starts_at: string;
   end_at?: string | null;
   ends_at?: string | null;

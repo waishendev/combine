@@ -49,7 +49,7 @@ class PublicOrderHistoryController extends Controller
         $ordersQuery = Order::query()
             ->where('customer_id', $customer->id)
             // NEW ENHANCEMENT — ecommerce-shop-query-v1: coverImage for list thumbs (resolveOrderItemThumbnail)
-            ->with(['items.product.coverImage', 'items.productVariant', 'items.review', 'items.bookingService:id,name,cn_name,image_path,deposit_amount', 'items.booking:id,addon_items_json,service_id', 'items.booking.service:id,image_path', 'items.booking.servicePhotos:id,booking_id,image_path,sort_order', 'payments'])
+            ->with(['items.product.coverImage', 'items.productVariant', 'items.review', 'items.bookingService:id,name,cn_name,image_path,deposit_amount', 'items.booking:id,addon_items_json,service_id', 'items.booking.service:id,image_path', 'items.booking.servicePhotos:id,booking_id,image_path,sort_order', 'payments', 'storeLocation:id,name,code'])
             ->orderByDesc('created_at');
 
         if ($scope === 'booking_related' || $workspace === 'booking') {
@@ -120,6 +120,12 @@ class PublicOrderHistoryController extends Controller
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'receipt_public_url' => $this->resolveReceiptUrl($order, $request),
+                'store_location_id' => $order->store_location_id ? (int) $order->store_location_id : null,
+                'store_location' => $order->storeLocation ? [
+                    'id' => (int) $order->storeLocation->id,
+                    'name' => (string) $order->storeLocation->name,
+                    'code' => (string) ($order->storeLocation->code ?? ''),
+                ] : null,
                 'refunds' => $refundsByOrderId[(int) $order->id] ?? [],
                 'items' => $order->items
                     ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))

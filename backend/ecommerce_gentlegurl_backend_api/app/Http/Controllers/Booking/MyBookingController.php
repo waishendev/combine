@@ -44,6 +44,7 @@ class MyBookingController extends Controller
             ->with([
                 'service:id,name,cn_name,duration_min,deposit_amount,buffer_min,allow_photo_upload,service_price,price,service_type,price_mode,price_range_min,price_range_max',
                 'staff:id,name',
+                'storeLocation:id,name,code',
                 'itemPhotos',
                 'servicePhotos',
             ])
@@ -166,6 +167,12 @@ class MyBookingController extends Controller
                 'has_pending_range_pricing' => (bool) ($summary['has_pending_range_pricing'] ?? false),
                 'estimated_duration_min' => (int) $summary['estimated_duration_min'],
                 'staff_name' => $booking->staff?->name,
+                'store_location_id' => $booking->store_location_id ? (int) $booking->store_location_id : null,
+                'store_location' => $booking->storeLocation ? [
+                    'id' => (int) $booking->storeLocation->id,
+                    'name' => (string) $booking->storeLocation->name,
+                    'code' => (string) ($booking->storeLocation->code ?? ''),
+                ] : null,
                 'customer_remarks' => BookingNotes::customerRemarksForDisplay($booking->notes),
                 'service' => $booking->service ? [
                     'id' => (int) $booking->service->id,

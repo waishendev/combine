@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   getBookingPolicySettings,
   getMyBookings,
+  getPublicBookingStoreLocations,
   payBooking,
   removeMyBookingItemPhoto,
   requestBookingCancellation,
@@ -139,6 +140,7 @@ export default function BookingDetailPage() {
   const [policy, setPolicy] = useState<BookingPolicy>(defaultPolicy);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showBranch, setShowBranch] = useState(false);
   const [modalBooking, setModalBooking] = useState<BookingRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelFeedback, setCancelFeedback] = useState<string | null>(null);
@@ -172,10 +174,15 @@ export default function BookingDetailPage() {
 
   const reload = useCallback(async () => {
     setError(null);
-    const [myBookings, bookingPolicy] = await Promise.all([getMyBookings(), getBookingPolicySettings()]);
+    const [myBookings, bookingPolicy, branches] = await Promise.all([
+      getMyBookings(),
+      getBookingPolicySettings(),
+      getPublicBookingStoreLocations().catch(() => []),
+    ]);
     const matchedBooking = myBookings.find((item) => item.id === bookingId);
     setBookings(matchedBooking ? [matchedBooking] : []);
     setPolicy(bookingPolicy);
+    setShowBranch((branches?.length ?? 0) > 1);
     if (!matchedBooking) {
       setError("Booking not found.");
     }
@@ -495,10 +502,16 @@ export default function BookingDetailPage() {
                         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Booking Product</p>
                         <div className="mt-1">
                           <ServiceNameStack name={booking.service_name} cnName={booking.service_cn_name ?? booking.service?.cn_name} />
+                          {showBranch && booking.store_location?.name ? (
+                            <p className="mt-0.5 flex items-center gap-1 text-xs text-[var(--text-muted)]">
+                              <i className="fa-solid fa-location-dot text-[9px] text-[var(--accent-strong)]" aria-hidden />
+                              <span>{booking.store_location.name}</span>
+                            </p>
+                          ) : null}
                         </div>
                       </>
                     ) : (
-                      <BookingServiceBlocksSection booking={booking} />
+                      <BookingServiceBlocksSection booking={booking} showBranch={showBranch} />
                     )}
                   </div>
 
