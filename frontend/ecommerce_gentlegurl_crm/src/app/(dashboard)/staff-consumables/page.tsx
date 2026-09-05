@@ -18,9 +18,11 @@ export default async function StaffConsumablesPage() {
   }
 
   return (
-    <StaffConsumablesPageContent
-      canCheckout={user.permissions.includes('pos.staff_consumables.checkout')}
-      canViewLogs={user.permissions.includes('pos.staff_consumables.view_logs')}
-    />
+    <div className="crm-page-shell pos-checkout-page min-h-0 px-3 py-3 sm:px-4 sm:py-4 md:px-5 lg:px-6">
+      <StaffConsumablesPageContent
+        canCheckout={user.permissions.includes('pos.staff_consumables.checkout')}
+        canViewLogs={user.permissions.includes('pos.staff_consumables.view_logs')}
+      />
+    </div>
   )
 }
