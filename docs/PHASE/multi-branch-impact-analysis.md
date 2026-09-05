@@ -599,3 +599,6 @@ Branches** history, and POS non-regression boundary are recorded in
 ## Staff Sales Report roster visibility (2027-03-05)
 
 Staff report visibility is a global `staffs.show_in_sales_report` preference, separate from active status. The three Sales Report Staff summaries use configured-visible assigned Staff union selected-period activity Staff. Specific-Branch zero rows require current Branch assignment, while persisted Order Branch attribution can force historical rows even after assignment changes. ALL remains limited to authenticated accessible Branches. The flag never filters raw transactions, details, receipts, or raw exports. See [staff-sales-report-visibility.md](staff-sales-report-visibility.md).
+# CRM table display and scoping addendum (2026-09-05)
+
+The commission-log, staff-consumable, stock-movement revoke, and booking-log tables now expose a Branch column only in `ALL BRANCHES`, using persisted transaction/ledger/Booking attribution and accessible-location backend scopes. A selected location hides the redundant column and is authorized and filtered by the backend. Leave requests, balances, and logs remain intentionally global per Staff because their existing schema has no branch ownership. See [CRM branch-attributed tables](./crm-branch-attributed-tables.md) for the source and NULL-policy matrix.

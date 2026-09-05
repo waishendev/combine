@@ -10,6 +10,7 @@ import TableLoadingRow from './TableLoadingRow'
 import { NameStack, VariantNameStack } from './NameStack'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { useBranch } from '@/contexts/BranchContext'
+import { branchName, shouldShowBranchColumn, type BranchAttribution } from '@/lib/branchTable'
 
 type ProductOption = {
   id: number
@@ -24,7 +25,7 @@ type MovementSummary = {
   created_at: string
 }
 
-type MovementRow = {
+type MovementRow = BranchAttribution & {
   id: number
   type: 'stock_in' | 'stock_out' | 'reversal'
   quantity_before: number
@@ -117,6 +118,7 @@ export default function ProductStockMovementLogsPage({
   const router = useRouter()
   const searchParams = useSearchParams()
   const { selectedBranchId } = useBranch()
+  const showBranch = shouldShowBranchColumn(selectedBranchId)
 
   const [products, setProducts] = useState<ProductOption[]>([])
   const [rows, setRows] = useState<MovementRow[]>([])
@@ -184,8 +186,7 @@ export default function ProductStockMovementLogsPage({
         if (dateFrom) params.set('date_from', dateFrom)
         if (dateTo) params.set('date_to', dateTo)
         if (revokableOnly) params.set('revokable_only', '1')
-        if (selectedBranchId === null) params.set('branch_scope', 'all')
-        else params.set('branch_store_location_id', String(selectedBranchId))
+        if (selectedBranchId !== null) params.set('store_location_id', String(selectedBranchId))
 
         const res = await fetch(
           `/api/proxy/ecommerce/product-stock-movements?${params.toString()}`,
@@ -331,7 +332,7 @@ export default function ProductStockMovementLogsPage({
     }
   }
 
-  const colCount = 8
+  const colCount = 8 + (showBranch ? 1 : 0)
   const totalPages = meta.last_page || 1
 
   return (
@@ -476,6 +477,7 @@ export default function ProductStockMovementLogsPage({
           <thead className="bg-slate-300/70">
             <tr>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Date / Time</th>
+              {showBranch ? <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Branch</th> : null}
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Product</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Variant</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Type</th>
@@ -498,6 +500,7 @@ export default function ProductStockMovementLogsPage({
                     <td className="px-4 py-2 border border-gray-200 whitespace-nowrap">
                       {toDateTime(row.created_at)}
                     </td>
+                    {showBranch ? <td className="px-4 py-2 border border-gray-200 whitespace-nowrap">{branchName(row)}</td> : null}
                     <td className="px-4 py-2 border border-gray-200">
                       <NameStack name={row.product?.name} cnName={row.product?.cn_name} fallback="-" />
                       <p className="mt-0.5 text-xs text-gray-500">{row.product?.sku ?? '-'}</p>

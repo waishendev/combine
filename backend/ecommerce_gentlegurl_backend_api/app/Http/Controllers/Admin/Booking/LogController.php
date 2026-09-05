@@ -9,6 +9,8 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use App\Services\ExpenseBranchScope;
+use App\Services\StoreLocationAccessService;
 
 /**
  * Booking audit logs.
@@ -16,6 +18,8 @@ use Illuminate\Support\Collection;
  */
 class LogController extends Controller
 {
+    public function __construct(private readonly StoreLocationAccessService $branchAccess) {}
+
     public function index(Request $request)
     {
         $paginator = $this->filteredQuery($request)
@@ -24,6 +28,7 @@ class LogController extends Controller
             ->paginate($request->integer('per_page', 50));
 
         $this->attachActorNames($paginator->getCollection());
+        $this->attachBranchAttribution($paginator->getCollection());
 
         return $this->respond($paginator);
     }
@@ -57,7 +62,16 @@ class LogController extends Controller
 
     private function filteredQuery(Request $request): Builder
     {
-        $query = BookingLog::query();
+        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
+        $query = BookingLog::query()->with('booking.storeLocation:id,name');
+        $query->where(function (Builder $branchQuery) use ($scope) {
+            $branchQuery->whereHas('booking', fn (Builder $bookingQuery) =>
+                $bookingQuery->whereIn('store_location_id', $scope->storeLocationIds)
+            );
+            if ($scope->includeUnassigned) {
+                $branchQuery->orWhereNull('booking_id');
+            }
+        });
 
         if ($request->filled('from')) {
             $query->where('created_at', '>=', Carbon::parse($request->query('from'))->startOfDay());
@@ -103,6 +117,15 @@ class LogController extends Controller
                 }
             }
             $log->actor_name = $actorName;
+        }
+    }
+
+    private function attachBranchAttribution(Collection $logs): void
+    {
+        foreach ($logs as $log) {
+            $log->store_location_id = $log->booking?->store_location_id;
+            $log->store_location = $log->booking?->storeLocation;
+            $log->unsetRelation('booking');
         }
     }
 }

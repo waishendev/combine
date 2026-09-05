@@ -9,11 +9,12 @@ import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { useBranch } from '@/contexts/BranchContext'
+import { branchName, shouldShowBranchColumn, type BranchAttribution } from '@/lib/branchTable'
 
 type CommissionType = 'BOOKING' | 'ECOMMERCE'
 type LogAction = 'FREEZE' | 'REOPEN' | 'OVERRIDE' | 'RECALCULATE'
 
-type CommissionLogRow = {
+type CommissionLogRow = BranchAttribution & {
   id: number
   staff_monthly_sale_id: number | null
   staff_id: number
@@ -83,6 +84,7 @@ const ACTION_BADGE_CLASS: Record<string, string> = {
 
 export default function CommissionLogsPage() {
   const { selectedBranchId } = useBranch()
+  const showBranch = shouldShowBranchColumn(selectedBranchId)
   const [rows, setRows] = useState<CommissionLogRow[]>([])
   const [staffs, setStaffs] = useState<StaffOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -387,6 +389,7 @@ export default function CommissionLogsPage() {
               <tr>
                 <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700">Time</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700">Type</th>
+                {showBranch ? <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700">Branch</th> : null}
                 <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700">Staff</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700">Year-Month</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700">Action</th>
@@ -397,14 +400,15 @@ export default function CommissionLogsPage() {
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
               {loading ? (
-                <TableLoadingRow colSpan={8} />
+                <TableLoadingRow colSpan={8 + (showBranch ? 1 : 0)} />
               ) : rows.length === 0 ? (
-                <TableEmptyState colSpan={8} message="No commission logs found." />
+                <TableEmptyState colSpan={8 + (showBranch ? 1 : 0)} message="No commission logs found." />
               ) : (
                 rows.map((row) => (
                   <tr key={row.id} className="transition-colors hover:bg-slate-50/50">
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-600">{formatDateTime(row.created_at)}</td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">{row.type}</td>
+                    {showBranch ? <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">{branchName(row)}</td> : null}
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
                       {row.staff_name ?? `#${row.staff_id}`}
                     </td>

@@ -6305,7 +6305,9 @@ class PosController extends Controller
             'created_by' => $creator?->name ?? $creator?->email ?? 'System',
             'created_by_user_id' => $creator?->id ? (int) $creator->id : null,
             'store_location_id' => $order?->store_location_id ? (int) $order->store_location_id : null,
-            'branch' => $order?->storeLocation?->name,
+            'store_location' => $order?->storeLocation ? [
+                'name' => $order->storeLocation->name,
+            ] : null,
             'order_number' => (string) ($order?->order_number ?? '-'),
             'reference_no' => (string) ($order?->order_number ?? '-'),
             'product' => (string) ($item->product_name_snapshot ?: $item->product?->name ?: 'Product'),
