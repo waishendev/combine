@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { NameStack, VariantNameStack } from '@/components/NameStack'
 import PaginationControls from '@/components/PaginationControls'
+import { useBranch } from '@/contexts/BranchContext'
+import { branchName, shouldShowBranchColumn, type BranchAttribution } from '@/lib/branchTable'
 
-type LogRow = {
+type LogRow = BranchAttribution & {
   id: number
   claimed_at?: string | null
   staff?: string | null
@@ -100,6 +102,8 @@ const extractSummary = (json: unknown, totalLogs: number): LogSummary => {
 }
 
 export default function StaffConsumableLogsPageContent({ initialFilters = {} }: { initialFilters?: StaffConsumableLogInitialFilters }) {
+  const { selectedBranchId } = useBranch()
+  const showBranch = shouldShowBranchColumn(selectedBranchId)
   const [rows, setRows] = useState<LogRow[]>([])
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom ?? '')
@@ -139,6 +143,7 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
       if (appliedFilters.dateTo) params.set('to_date', appliedFilters.dateTo)
       if (appliedFilters.staffId) params.set('staff_id', appliedFilters.staffId)
       if (appliedFilters.search.trim()) params.set('search', appliedFilters.search.trim())
+      if (selectedBranchId !== null) params.set('store_location_id', String(selectedBranchId))
       const res = await fetch(`/api/proxy/admin/staff-consumables/logs?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to load staff consumable logs.')
@@ -154,7 +159,7 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters, page, pageSize])
+  }, [appliedFilters, page, pageSize, selectedBranchId])
 
   useEffect(() => {
     loadStaff()
@@ -163,6 +168,10 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
   useEffect(() => {
     loadLogs()
   }, [loadLogs])
+
+  useEffect(() => {
+    setPage(1)
+  }, [selectedBranchId])
 
   const applyFilters = () => {
     setPage(1)
@@ -267,6 +276,7 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
               <tr>
                 <th className="px-4 py-3">Date/time</th>
                 <th className="px-4 py-3">Staff</th>
+                {showBranch ? <th className="px-4 py-3">Branch</th> : null}
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3 text-right">Qty</th>
                 <th className="px-4 py-3 text-right">Total price</th>
@@ -274,13 +284,14 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Loading logs...</td></tr>
+                <tr><td colSpan={5 + (showBranch ? 1 : 0)} className="px-4 py-8 text-center text-slate-500">Loading logs...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">No staff consumable logs found.</td></tr>
+                <tr><td colSpan={5 + (showBranch ? 1 : 0)} className="px-4 py-8 text-center text-slate-500">No staff consumable logs found.</td></tr>
               ) : rows.map((row) => (
                 <tr key={row.id} className="align-top">
                   <td className="px-4 py-3 text-slate-600">{row.claimed_at ?? '-'}</td>
                   <td className="px-4 py-3 font-medium text-slate-800">{row.staff ?? '-'}</td>
+                  {showBranch ? <td className="px-4 py-3 text-slate-700">{branchName(row)}</td> : null}
                   <td className="px-4 py-3">
                     <NameStack
                       name={row.product}

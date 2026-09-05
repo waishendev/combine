@@ -11,8 +11,10 @@ import PaginationControls from '../PaginationControls'
 import TableLoadingRow from '../TableLoadingRow'
 import TableEmptyState from '../TableEmptyState'
 import { useI18n } from '@/lib/i18n'
+import { useBranch } from '@/contexts/BranchContext'
+import { branchName, shouldShowBranchColumn, type BranchAttribution } from '@/lib/branchTable'
 
-type LogRow = {
+type LogRow = BranchAttribution & {
   id: number
   booking_id: number | null
   actor_type: string
@@ -47,6 +49,8 @@ type BookingLogApiResponse = {
 
 export default function BookingLogsPage() {
   const { t } = useI18n()
+  const { selectedBranchId } = useBranch()
+  const showBranch = shouldShowBranchColumn(selectedBranchId)
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [inputs, setInputs] = useState<BookingLogsFilterValues>({ ...emptyBookingLogsFilters })
   const [filters, setFilters] = useState<BookingLogsFilterValues>({ ...emptyBookingLogsFilters })
@@ -67,6 +71,7 @@ export default function BookingLogsPage() {
     qs.set('page', String(currentPage))
     qs.set('per_page', String(pageSize))
     if (filters.action) qs.set('action', filters.action)
+    if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
     return qs
   }
 
@@ -136,7 +141,11 @@ export default function BookingLogsPage() {
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, currentPage, pageSize])
+  }, [filters, currentPage, pageSize, selectedBranchId])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedBranchId])
 
   const formatDate = (dateString: string) => {
     try {
@@ -203,7 +212,7 @@ export default function BookingLogsPage() {
   }
 
   const totalPages = meta.last_page || 1
-  const colCount = 6
+  const colCount = 6 + (showBranch ? 1 : 0)
 
   const activeFilters = useMemo(() => {
     return (Object.entries(filters) as [keyof BookingLogsFilterValues, string][]) 
@@ -324,6 +333,7 @@ export default function BookingLogsPage() {
                     <span>Time</span>
                   </div>
                 </th>
+                {showBranch ? <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700">Branch</th> : null}
                 <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700">
                   <div className="flex items-center gap-2">
                     <i className="fa-solid fa-calendar-check text-slate-500" />
@@ -372,6 +382,7 @@ export default function BookingLogsPage() {
                         <span className="font-medium">{formatDate(row.created_at)}</span>
                       </div>
                     </td>
+                    {showBranch ? <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">{branchName(row)}</td> : null}
                     <td className="whitespace-nowrap px-6 py-4 text-sm">
                       {row.booking_id ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
