@@ -13,7 +13,8 @@ class ReportBranchVisibilityContractTest extends TestCase
         $this->assertStringContainsString("'storeLocation:id,name,code'", $controller);
         $this->assertStringContainsString("'store_location_id' => \$shift->store_location_id", $controller);
         $this->assertStringContainsString("'store_location' => \$shift->storeLocation", $controller);
-        $this->assertStringContainsString("->whereIn('store_location_id', \$accessibleIds)->orWhereNull('store_location_id')", $controller);
+        $this->assertStringContainsString("->whereIn('store_location_id', \$accessibleIds)", $controller);
+        $this->assertStringNotContainsString("->whereIn('store_location_id', \$accessibleIds)->orWhereNull('store_location_id')", $controller);
     }
 
     public function test_product_profit_all_grain_uses_order_branch_and_preserves_scope_summary(): void
