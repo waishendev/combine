@@ -28,4 +28,15 @@ class MigrationOrderCompatibilityTest extends TestCase
             'Deferred indexes must sort after the migration adding orders.store_location_id.'
         );
     }
+
+    public function test_leave_branch_index_is_created_with_its_dependent_column(): void
+    {
+        $early = file_get_contents(__DIR__.'/../../database/migrations/2026_09_05_000400_add_leave_pages_query_indexes.php');
+        $branch = file_get_contents(__DIR__.'/../../database/migrations/2027_03_05_000001_add_branch_to_booking_leave_requests.php');
+
+        $this->assertStringNotContainsString('leave_requests_branch_status_created_at_desc_idx', $early);
+        $this->assertStringContainsString("foreignId('store_location_id')", $branch);
+        $this->assertStringContainsString('leave_requests_branch_status_created_at_desc_idx', $branch);
+        $this->assertStringContainsString('(store_location_id, status, created_at DESC)', $branch);
+    }
 }
