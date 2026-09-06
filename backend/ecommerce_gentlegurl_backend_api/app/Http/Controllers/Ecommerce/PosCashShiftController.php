@@ -180,11 +180,10 @@ class PosCashShiftController extends Controller
                     'total_initial_cash' => round((float) $rows->sum('total_initial_cash'), 2),
                     'total_withdraw' => round((float) $rows->sum('total_withdraw'), 2),
                 ])->values(),
-                'unassigned_cash_shifts_count' => PosCashShift::query()->whereNull('store_location_id')->count(),
                 'scope' => 'all_accessible_branches',
             ]);
         }
-        $branch = $this->operationalBranch($request);
+        $branch = $this->reportingBranch($request, 'store_location_id');
         $openShift = $this->openShiftQuery($branch->id)->first();
 
         return $this->respond([
@@ -206,9 +205,11 @@ class PosCashShiftController extends Controller
             'branch_store_location_id' => ['nullable', 'integer'],
         ]);
 
-        $branchId = isset($validated['branch_store_location_id']) ? (int) $validated['branch_store_location_id'] : null;
-        if ($branchId) {
-            $this->branchAccess->authorizeStoreLocation($request->user(), $branchId, true);
+        $branchId = array_key_exists('branch_store_location_id', $validated)
+            ? (int) $validated['branch_store_location_id']
+            : null;
+        if ($branchId !== null) {
+            $this->reportingBranch($request, 'branch_store_location_id');
         }
         $accessibleIds = $this->branchAccess->accessibleStoreLocations($request->user(), true)->pluck('id');
         $query = PosCashShift::query()
@@ -222,8 +223,7 @@ class PosCashShiftController extends Controller
                 'linkedOpenShift.opener:id,name,email',
             ])
             ->when($branchId, fn (Builder $q) => $q->where('store_location_id', $branchId))
-            ->when(! $branchId, fn (Builder $q) => $q->where(fn (Builder $scope) => $scope
-                ->whereIn('store_location_id', $accessibleIds)->orWhereNull('store_location_id')))
+            ->when(! $branchId, fn (Builder $q) => $q->whereIn('store_location_id', $accessibleIds))
             ->when(! empty($validated['status']), fn (Builder $q) => $q->where('event_type', $validated['status']))
             ->when(! empty($validated['user_id']), function (Builder $q) use ($validated) {
                 $q->where(function (Builder $inner) use ($validated) {
@@ -445,5 +445,19 @@ class PosCashShiftController extends Controller
             throw ValidationException::withMessages(['store_location_id' => [__('The selected Branch is not available for POS.')]]);
         }
         return $branch;
+    }
+
+    /**
+     * Authorize a persisted Branch for historical reporting without applying
+     * current operational POS or Booking availability flags.
+     */
+    private function reportingBranch(Request $request, string $parameter): StoreLocation
+    {
+        $id = (int) $request->input($parameter, $request->query($parameter, 0));
+        if ($id <= 0) {
+            throw ValidationException::withMessages([$parameter => [__('A valid Branch is required for this report.')]]);
+        }
+
+        return $this->branchAccess->authorizeStoreLocation($request->user(), $id, true);
     }
 }
