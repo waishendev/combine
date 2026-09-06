@@ -10,8 +10,6 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
-    private const REQUESTS_BRANCH_STATUS_CREATED = 'leave_requests_branch_status_created_at_desc_idx';
-
     private const REQUESTS_STAFF_STATUS_TYPE = 'leave_requests_staff_status_leave_type_idx';
 
     private const LOGS_STAFF_ACTION_CREATED = 'leave_logs_staff_action_created_at_desc_idx';
@@ -23,21 +21,11 @@ return new class extends Migration
         if (Schema::hasTable('booking_leave_requests')) {
             if ($pgsql) {
                 DB::statement(
-                    'CREATE INDEX IF NOT EXISTS '.self::REQUESTS_BRANCH_STATUS_CREATED
-                    .' ON booking_leave_requests (store_location_id, status, created_at DESC)'
-                );
-                DB::statement(
                     'CREATE INDEX IF NOT EXISTS '.self::REQUESTS_STAFF_STATUS_TYPE
                     .' ON booking_leave_requests (staff_id, status, leave_type) INCLUDE (days)'
                 );
             } else {
                 Schema::table('booking_leave_requests', function (Blueprint $table) {
-                    if (! $this->indexExists('booking_leave_requests', self::REQUESTS_BRANCH_STATUS_CREATED)) {
-                        $table->index(
-                            ['store_location_id', 'status', 'created_at'],
-                            self::REQUESTS_BRANCH_STATUS_CREATED
-                        );
-                    }
                     if (! $this->indexExists('booking_leave_requests', self::REQUESTS_STAFF_STATUS_TYPE)) {
                         $table->index(
                             ['staff_id', 'status', 'leave_type'],
@@ -73,13 +61,9 @@ return new class extends Migration
 
         if (Schema::hasTable('booking_leave_requests')) {
             if ($pgsql) {
-                DB::statement('DROP INDEX IF EXISTS '.self::REQUESTS_BRANCH_STATUS_CREATED);
                 DB::statement('DROP INDEX IF EXISTS '.self::REQUESTS_STAFF_STATUS_TYPE);
             } else {
                 Schema::table('booking_leave_requests', function (Blueprint $table) {
-                    if ($this->indexExists('booking_leave_requests', self::REQUESTS_BRANCH_STATUS_CREATED)) {
-                        $table->dropIndex(self::REQUESTS_BRANCH_STATUS_CREATED);
-                    }
                     if ($this->indexExists('booking_leave_requests', self::REQUESTS_STAFF_STATUS_TYPE)) {
                         $table->dropIndex(self::REQUESTS_STAFF_STATUS_TYPE);
                     }
