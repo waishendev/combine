@@ -6824,12 +6824,23 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
   useEffect(() => {
     if (!checkoutConfirmationOpen) return
+    const defaultPayMethod =
+      visiblePosPaymentMethods.find((row) => row.method === 'qrpay')?.method
+      ?? visiblePosPaymentMethods[0]?.method
+      ?? 'cash'
     setSplitPaymentAmounts((prev) => {
       if (isSplitManuallyLocked(prev)) return prev
-      return buildDefaultSplitForTotal(cartTotal)
+      if (cartTotal <= 0.0001) return buildDefaultSplitForTotal(0)
+      return {
+        cash: '',
+        qrpay: '',
+        credit_card: '',
+        customer_balance: '',
+        [defaultPayMethod]: cartTotal.toFixed(2),
+      }
     })
-    setPaymentMethod('qrpay')
-  }, [checkoutConfirmationOpen, cartTotal])
+    setPaymentMethod(defaultPayMethod === 'credit_card' ? 'billplz_credit_card' : defaultPayMethod)
+  }, [checkoutConfirmationOpen, cartTotal, visiblePosPaymentMethods])
 
   const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((settlement) => settlementCartItemHasUnsettledRangePricing(settlement))
   const cashShiftBlocksCheckout = cashShiftLoading || !hasOpenShift
@@ -8649,6 +8660,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     const guestLine = cartServiceItems.find(
       (row) => !row.customer_id && (row.guest_email?.trim() || row.guest_name?.trim()),
     )
+    const guestSettlement = cartAppointmentSettlementItems.find(
+      (row) => !row.customer_id && (row.guest_name?.trim() || row.guest_phone?.trim() || row.guest_email?.trim()),
+    )
+    const guestOnlySettlementCart =
+      hasCartAppointmentSettlements && hasCartGuestSettlement && !settlementLockedCustomerId
+
     if (guestLine) {
       setGuestContactCache({
         name: String(guestLine.guest_name ?? '').trim(),
@@ -8657,13 +8674,29 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       })
       // Ensure stale member selection doesn't override guest checkout UI.
       setSelectedMember(null)
+    } else if (guestSettlement) {
+      setGuestContactCache((prev) => ({
+        name: prev.name.trim() ? prev.name : String(guestSettlement.guest_name ?? '').trim(),
+        phone: prev.phone.trim() ? prev.phone : String(guestSettlement.guest_phone ?? '').trim(),
+        email: prev.email.trim() ? prev.email : String(guestSettlement.guest_email ?? '').trim(),
+      }))
+      setSelectedMember(null)
+    } else if (guestOnlySettlementCart) {
+      // Walk-in settlement with no guest fields — allow Confirm via UNKNOWN identity.
+      setGuestContactCache((prev) => ({
+        name: prev.name.trim() ? prev.name : 'UNKNOWN',
+        phone: prev.phone,
+        email: prev.email,
+      }))
+      setSelectedMember(null)
     }
 
     if (checkoutRequiresMemberOnly) {
       setCheckoutIdentityMode('member')
     } else if (checkoutAllowsGuestToggle || !checkoutRequiresCustomerValidation) {
-      // If cart already has guest booking lines, default checkout to guest (avoid stale member selection).
-      if (guestLine) {
+      // Guest booking lines / guest-only settlements default to guest checkout.
+      // Do not force Member mode for settlement-only carts (Confirm stays disabled without a member).
+      if (guestLine || guestOnlySettlementCart || guestSettlement) {
         setCheckoutIdentityMode('guest')
       } else if (selectedMember?.id) {
         setCheckoutIdentityMode('member')
@@ -8688,8 +8721,22 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       return next
     })
 
-    setSplitPaymentAmounts(buildDefaultSplitForTotal(cartTotal))
-    setPaymentMethod('qrpay')
+    const defaultPayMethod =
+      visiblePosPaymentMethods.find((row) => row.method === 'qrpay')?.method
+      ?? visiblePosPaymentMethods[0]?.method
+      ?? 'cash'
+    setSplitPaymentAmounts(
+      cartTotal > 0.0001
+        ? {
+            cash: '',
+            qrpay: '',
+            credit_card: '',
+            customer_balance: '',
+            [defaultPayMethod]: cartTotal.toFixed(2),
+          }
+        : buildDefaultSplitForTotal(0),
+    )
+    setPaymentMethod(defaultPayMethod === 'credit_card' ? 'billplz_credit_card' : defaultPayMethod)
     setAutoPrint(
       thermalPrinterSettings.auto_print_receipt && getThermalPrinterAvailability(thermalPrinterSettings).available,
     )
