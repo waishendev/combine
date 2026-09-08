@@ -52,23 +52,19 @@ class OrderController extends Controller
     }
 
     /**
-     * Slim CRM list — simplePaginate (no COUNT), same row shape as index.
-     * Enhancement: orders-shop-returns-query-v2
+     * Slim CRM list — same row shape as index, with full LengthAware pagination
+     * so page numbers / ellipsis work. COUNT cost is acceptable for CRM after
+     * booking-flag + list indexes (orders-shop-returns-query-v2 select path kept).
      */
     public function queryIndex(Request $request)
     {
         $perPage = max(1, min(100, $request->integer('per_page', 15)));
 
         $orders = $this->buildShopOrdersListQuery($request)
-            ->simplePaginate($perPage)
+            ->paginate($perPage)
             ->through(fn (Order $order) => $this->mapShopOrderListRow($order));
 
         $payload = $orders->toArray();
-        $hasMore = ! empty($payload['next_page_url']);
-        $currentPage = (int) ($payload['current_page'] ?? 1);
-        $payload['last_page'] = $hasMore ? $currentPage + 1 : $currentPage;
-        $payload['total'] = null;
-        $payload['has_more'] = $hasMore;
         $payload['enhancement'] = 'orders-shop-returns-query-v2';
 
         return $this->respond($payload);

@@ -334,7 +334,7 @@ class StaffCommissionService
                 ->whereNotNull('order_items.booking_id')
                 ->where('orders.created_at', '>=', $start)
                 ->where('orders.created_at', '<', $nextMonthStart)
-                ->when($storeLocationId, fn ($query) => $query->whereExists(fn ($bookingQuery) => $bookingQuery->selectRaw('1')->from('bookings')->whereColumn('bookings.id', 'order_items.booking_id')->where('bookings.store_location_id', $storeLocationId)))
+                ->when($storeLocationId, fn ($query) => $this->constrainBookingCommissionLinesToStore($query, (int) $storeLocationId))
                 ->whereNotExists(function ($sub) {
                     $sub->selectRaw('1')
                         ->from('order_item_staff_splits')
@@ -477,13 +477,39 @@ class StaffCommissionService
     private function recalculateBookingForMonthAll(int $year, int $month, bool $force = false, ?array $storeLocationIds = null): array
     {
         [$start, $nextMonthStart] = $this->monthWindow($year, $month);
-        $branchIds = DB::table('bookings')->join('order_items', 'order_items.booking_id', '=', 'bookings.id')
+        $branchIdsFromBookings = DB::table('bookings')
+            ->join('order_items', 'order_items.booking_id', '=', 'bookings.id')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereIn('order_items.line_type', self::BOOKING_COMMISSION_LINE_TYPES)
-            ->where('orders.created_at', '>=', $start)->where('orders.created_at', '<', $nextMonthStart)->whereNotNull('bookings.store_location_id')
-            ->pluck('bookings.store_location_id')->concat(StaffMonthlySale::query()->where('type', self::TYPE_BOOKING)
-                ->where('year', $year)->where('month', $month)->whereNotNull('store_location_id')->pluck('store_location_id'))->unique()
-            ->when($storeLocationIds !== null, fn ($ids) => $ids->intersect($storeLocationIds));
+            ->where('orders.created_at', '>=', $start)
+            ->where('orders.created_at', '<', $nextMonthStart)
+            ->whereNotNull('bookings.store_location_id')
+            ->pluck('bookings.store_location_id');
+        // booking_product (and similar) lines may have null booking_id — attribute via order branch.
+        $branchIdsFromOrders = DB::table('orders')
+            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+            ->whereIn('order_items.line_type', self::BOOKING_COMMISSION_LINE_TYPES)
+            ->where('orders.created_at', '>=', $start)
+            ->where('orders.created_at', '<', $nextMonthStart)
+            ->whereNotNull('orders.store_location_id')
+            ->pluck('orders.store_location_id');
+        $branchIds = $branchIdsFromBookings
+            ->concat($branchIdsFromOrders)
+            ->concat(
+                StaffMonthlySale::query()
+                    ->where('type', self::TYPE_BOOKING)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->whereNotNull('store_location_id')
+                    ->pluck('store_location_id')
+            )
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->when(
+                $storeLocationIds !== null,
+                fn ($ids) => $ids->intersect(collect($storeLocationIds)->map(fn ($id) => (int) $id)->all())
+            );
         $result = [];
         foreach ($branchIds as $branchId) {
             $staffIds = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart, (int) $branchId)
@@ -599,7 +625,10 @@ class StaffCommissionService
             ->whereIn('order_items.line_type', self::BOOKING_COMMISSION_LINE_TYPES)
             ->where('orders.created_at', '>=', $start)
             ->where('orders.created_at', '<', $nextMonthStart)
-            ->when($storeLocationId, fn ($query) => $query->whereExists(fn ($bookingQuery) => $bookingQuery->selectRaw('1')->from('bookings')->whereColumn('bookings.id', 'order_items.booking_id')->where('bookings.store_location_id', $storeLocationId)))
+            ->when(
+                $storeLocationId,
+                fn ($query) => $this->constrainBookingCommissionLinesToStore($query, (int) $storeLocationId)
+            )
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -612,6 +641,31 @@ class StaffCommissionService
             ->whereNull('orders.refunded_at');
 
         return $this->excludePackageRefundedBookingDeposits($query);
+    }
+
+    /**
+     * Branch scope for booking commission lines:
+     * - lines linked to a booking → booking.store_location_id
+     * - lines without booking_id (common for booking_product) → orders.store_location_id
+     *
+     * Using only the booking exists() filter drops product sales and undercounts Total Sales.
+     */
+    private function constrainBookingCommissionLinesToStore($query, int $storeLocationId)
+    {
+        return $query->where(function ($scoped) use ($storeLocationId) {
+            $scoped
+                ->whereExists(function ($bookingQuery) use ($storeLocationId) {
+                    $bookingQuery->selectRaw('1')
+                        ->from('bookings')
+                        ->whereColumn('bookings.id', 'order_items.booking_id')
+                        ->where('bookings.store_location_id', $storeLocationId);
+                })
+                ->orWhere(function ($orderScoped) use ($storeLocationId) {
+                    $orderScoped
+                        ->whereNull('order_items.booking_id')
+                        ->where('orders.store_location_id', $storeLocationId);
+                });
+        });
     }
 
     private function baseEcommerceProductSplitQuery(Carbon $start, Carbon $nextMonthStart, ?int $storeLocationId = null)

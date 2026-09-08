@@ -9558,12 +9558,68 @@ class PosController extends Controller
         }
 
         $ids = $serviceIds->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        // Store as Support Collection (id-keyed). Eloquent Collection::only() reindexes to 0..n and breaks get($id).
         $this->appointmentSearchBookingServicesById = $ids === []
             ? collect()
-            : BookingService::query()
-                ->whereIn('id', $ids)
-                ->get(['id', 'price_mode', 'price_range_min', 'price_range_max', 'service_type', 'deposit_amount'])
-                ->keyBy(fn (BookingService $service) => (int) $service->id);
+            : collect(
+                BookingService::query()
+                    ->whereIn('id', $ids)
+                    ->get(['id', 'price_mode', 'price_range_min', 'price_range_max', 'service_type', 'deposit_amount'])
+                    ->all()
+            )->keyBy(fn (BookingService $service) => (int) $service->id);
+    }
+
+    /**
+     * Resolve booking_services rows for financial price_mode / range meta.
+     * Prefer the request-local preload map; fetch any missing IDs in one query.
+     *
+     * @param  list<int|string>  $serviceIds
+     * @return \Illuminate\Support\Collection<int, BookingService>
+     */
+    protected function resolveBookingServicesForPriceMeta(array $serviceIds): \Illuminate\Support\Collection
+    {
+        $wanted = collect($serviceIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($wanted->isEmpty()) {
+            return collect();
+        }
+
+        $result = collect();
+        $missing = [];
+
+        if ($this->appointmentSearchBookingServicesById !== null) {
+            foreach ($wanted as $serviceId) {
+                $service = $this->appointmentSearchBookingServicesById->get($serviceId)
+                    ?? $this->appointmentSearchBookingServicesById->get((string) $serviceId)
+                    ?? $this->appointmentSearchBookingServicesById->firstWhere('id', $serviceId);
+                if ($service) {
+                    $result->put($serviceId, $service);
+                } else {
+                    $missing[] = $serviceId;
+                }
+            }
+        } else {
+            $missing = $wanted->all();
+        }
+
+        if ($missing !== []) {
+            $fetched = BookingService::query()
+                ->whereIn('id', array_values(array_unique($missing)))
+                ->get(['id', 'price_mode', 'price_range_min', 'price_range_max', 'service_type', 'deposit_amount']);
+            foreach ($fetched as $service) {
+                $serviceId = (int) $service->id;
+                $result->put($serviceId, $service);
+                if ($this->appointmentSearchBookingServicesById !== null) {
+                    $this->appointmentSearchBookingServicesById->put($serviceId, $service);
+                }
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -13299,18 +13355,16 @@ class PosController extends Controller
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
+        // IMPORTANT: do NOT use Eloquent Collection::only($ids) here.
+        // Eloquent's only() looks up by model key then reindexes to 0..n via array_values,
+        // so later get($serviceId) misses (or hits the wrong row) and range price meta collapses.
         $linkedServicesForPriceMeta = $linkedServiceIdsForPriceMeta->isNotEmpty()
-            ? (
-                $this->appointmentSearchBookingServicesById !== null
-                    ? $this->appointmentSearchBookingServicesById->only($linkedServiceIdsForPriceMeta->all())
-                    : BookingService::query()
-                        ->whereIn('id', $linkedServiceIdsForPriceMeta->all())
-                        ->get(['id', 'price_mode', 'price_range_min', 'price_range_max'])
-                        ->keyBy('id')
-            )
+            ? $this->resolveBookingServicesForPriceMeta($linkedServiceIdsForPriceMeta->all())
             : collect();
         $priceMetaForServiceId = function ($serviceId) use ($linkedServicesForPriceMeta): array {
-            $service = $linkedServicesForPriceMeta->get((int) $serviceId);
+            $serviceId = (int) $serviceId;
+            $service = $linkedServicesForPriceMeta->get($serviceId)
+                ?? $linkedServicesForPriceMeta->get((string) $serviceId);
             return [
                 'price_mode' => $service ? (string) ($service->price_mode ?? 'fixed') : null,
                 'price_range_min' => $service && $service->price_range_min !== null ? (float) $service->price_range_min : null,
@@ -13344,6 +13398,18 @@ class PosController extends Controller
             ?: ($booking->service_id ?? 0)
         );
         $mainPriceMeta = $priceMetaForServiceId($originalMainPriceServiceId);
+        // If preload/meta miss, fall back to the already-loaded booking.service relation for the original main line.
+        if (
+            ($mainPriceMeta['price_mode'] ?? null) === null
+            && (int) ($booking->service_id ?? 0) === $originalMainPriceServiceId
+            && $booking->service
+        ) {
+            $mainPriceMeta = [
+                'price_mode' => (string) ($booking->service->price_mode ?? 'fixed'),
+                'price_range_min' => $booking->service->price_range_min !== null ? (float) $booking->service->price_range_min : null,
+                'price_range_max' => $booking->service->price_range_max !== null ? (float) $booking->service->price_range_max : null,
+            ];
+        }
         $isMainRangePriced = ($mainPriceMeta['price_mode'] ?? 'fixed') === 'range';
         $isRangePriced = $isMainRangePriced || (($booking->service?->price_mode ?? 'fixed') === 'range');
         $originalServiceAmount = $settledServiceAmount !== null

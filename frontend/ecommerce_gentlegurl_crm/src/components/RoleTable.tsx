@@ -90,6 +90,12 @@ export default function RoleTable({
   const canUpdate = permissions.includes('roles.update')
   const canDelete = permissions.includes('roles.delete')
   const canView = permissions.includes('roles.view')
+  // Backend ExpenseBranchScope::forRoles includes Global/Unassigned on a selected branch
+  // when actor has roles.view-all or admins.manage-system (infra_core_x1 needs the latter).
+  const canViewGlobalRoles =
+    permissions.includes('roles.view-all') ||
+    permissions.includes('admins.manage-system')
+  const showBranchColumn = isAllBranches || canViewGlobalRoles
   const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
@@ -358,7 +364,7 @@ export default function RoleTable({
     setCurrentPage(1)
   }
 
-  const colCount = (showActions ? 5 : 4) + (isAllBranches ? 1 : 0)
+  const colCount = (showActions ? 5 : 4) + (showBranchColumn ? 1 : 0)
 
   const totalPages = meta.last_page || 1
 
@@ -533,7 +539,7 @@ export default function RoleTable({
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
-              {isAllBranches && <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Branch</th>}
+              {showBranchColumn && <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">Branch</th>}
               {(
                 [
                   { key: 'name', label: t('common.name') },
@@ -574,7 +580,7 @@ export default function RoleTable({
                 <RoleRow
                   key={role.id}
                   role={role}
-                  showBranch={isAllBranches}
+                  showBranch={showBranchColumn}
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}

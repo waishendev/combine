@@ -50,6 +50,35 @@ final class ExpenseBranchScope
         return $scope;
     }
 
+    /**
+     * Roles list: when a specific Branch is selected, still include Global / Unassigned
+     * (store_location_id IS NULL) for actors with roles.view-all or admins.manage-system.
+     * Platform system roles (e.g. infra_core_x1) remain gated separately by canManageSystemAdmins().
+     */
+    public static function forRoles(Request $request, StoreLocationAccessService $access): self
+    {
+        $scope = self::fromRequest($request, $access);
+        /** @var User|null $user */
+        $user = $request->user();
+        if (! $user) {
+            return $scope;
+        }
+
+        $canViewGlobal = $user->canManageSystemAdmins()
+            || $user->getAllPermissions()->contains('roles.view-all');
+
+        return $canViewGlobal ? $scope->includingUnassigned() : $scope;
+    }
+
+    public function includingUnassigned(): self
+    {
+        if ($this->includeUnassigned) {
+            return $this;
+        }
+
+        return new self($this->storeLocationIds, $this->selectedStoreLocationId, true);
+    }
+
     public function apply(Builder $query, string $column = 'store_location_id'): Builder
     {
         return $query->where(function (Builder $branchQuery) use ($column) {

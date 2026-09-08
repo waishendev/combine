@@ -23,8 +23,8 @@ class BookingProductCategoryController extends Controller
             : null;
         $query = BookingProductCategory::query()
             ->select(['id', 'name', 'cn_name', 'sort_order', 'is_active', 'show_in_pos_filter'])
-            ->whereHas('products.linkedBookingService.storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
-            ->when($branchId, fn ($query) => $query->whereHas('products.linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
+            // Global master list: keep empty / newly created categories visible.
+            // Branch only scopes store_locations annotation below.
             ->orderBy('sort_order')
             ->orderBy('id');
 
@@ -43,11 +43,15 @@ class BookingProductCategoryController extends Controller
             );
         }
 
+        $branchIdsForAnnotation = $branchId
+            ? [$branchId]
+            : $accessibleIds->map(fn ($id) => (int) $id)->all();
+
         if ($request->filled('page') || $request->filled('per_page')) {
             $paginator = $query->paginate($request->integer('per_page', 50));
             $storeLocationsByCategory = $this->loadStoreLocationsForProductCategories(
                 $paginator->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all(),
-                $accessibleIds->map(fn ($id) => (int) $id)->all(),
+                $branchIdsForAnnotation,
             );
             $paginator->setCollection(
                 $paginator->getCollection()->map(function (BookingProductCategory $category) use ($storeLocationsByCategory) {
@@ -66,7 +70,7 @@ class BookingProductCategoryController extends Controller
         $categories = $query->get();
         $storeLocationsByCategory = $this->loadStoreLocationsForProductCategories(
             $categories->pluck('id')->map(fn ($id) => (int) $id)->all(),
-            $accessibleIds->map(fn ($id) => (int) $id)->all(),
+            $branchIdsForAnnotation,
         );
 
         return $this->respond(

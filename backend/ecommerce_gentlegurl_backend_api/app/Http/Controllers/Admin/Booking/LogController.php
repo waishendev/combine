@@ -64,13 +64,21 @@ class LogController extends Controller
     {
         $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
         $query = BookingLog::query()->with('booking.storeLocation:id,name');
+
+        // Branch-scoped via booking.store_location_id. Logs with no booking_id are
+        // unattributed audit rows (legacy / system) — keep them visible on every branch
+        // so CRM totals match pre-enhancement (old list had no branch filter).
         $query->where(function (Builder $branchQuery) use ($scope) {
-            $branchQuery->whereHas('booking', fn (Builder $bookingQuery) =>
-                $bookingQuery->whereIn('store_location_id', $scope->storeLocationIds)
-            );
-            if ($scope->includeUnassigned) {
-                $branchQuery->orWhereNull('booking_id');
-            }
+            $branchQuery
+                ->whereHas('booking', function (Builder $bookingQuery) use ($scope) {
+                    $bookingQuery->where(function (Builder $inner) use ($scope) {
+                        $inner->whereIn('store_location_id', $scope->storeLocationIds);
+                        if ($scope->includeUnassigned) {
+                            $inner->orWhereNull('store_location_id');
+                        }
+                    });
+                })
+                ->orWhereNull('booking_id');
         });
 
         if ($request->filled('from')) {

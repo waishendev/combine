@@ -186,7 +186,7 @@ class AdminManagementQueryEnhancementController extends Controller
      */
     public function buildRolesDropdownPayload(Request $request)
     {
-        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
+        $scope = ExpenseBranchScope::forRoles($request, $this->branchAccess);
         $query = Role::query()->select(['id', 'name', 'is_system', 'is_default', 'is_active', 'store_location_id']);
         $scope->apply($query);
         if (! $request->user()?->canManageSystemAdmins()) {
@@ -202,7 +202,7 @@ class AdminManagementQueryEnhancementController extends Controller
      */
     public function buildRolesPayload(Request $request, bool $withPermissions)
     {
-        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
+        $scope = ExpenseBranchScope::forRoles($request, $this->branchAccess);
         $query = Role::query()->with('storeLocation:id,name');
         $scope->apply($query);
         if (! $request->user()?->canManageSystemAdmins()) {

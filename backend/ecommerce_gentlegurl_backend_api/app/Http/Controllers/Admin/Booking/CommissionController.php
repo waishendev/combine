@@ -8,6 +8,7 @@ use App\Services\Booking\StaffCommissionService;
 use App\Services\ExpenseBranchScope;
 use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CommissionController extends Controller
 {
@@ -38,7 +39,27 @@ class CommissionController extends Controller
             $query->where('staff_id', (int) $request->query('staff_id'));
         }
 
-        return $this->respond($query->orderByDesc('year')->orderByDesc('month')->paginate($perPage));
+        // Filter-wide summary (not just the current page) so CRM cards match Monthly Calculation totals.
+        $summaryQuery = (clone $query)->toBase();
+        $summary = [
+            'total_sales' => round((float) (clone $summaryQuery)->sum('total_sales'), 2),
+            'booking_count' => (int) (clone $summaryQuery)->sum('booking_count'),
+            'commission_amount' => round((float) (clone $summaryQuery)->sum(DB::raw(
+                'CASE WHEN is_overridden THEN COALESCE(override_amount, 0) ELSE COALESCE(commission_amount, 0) END'
+            )), 2),
+            'overridden_count' => (int) (clone $summaryQuery)->where('is_overridden', true)->count(),
+        ];
+
+        $page = $query
+            ->orderByDesc('year')
+            ->orderByDesc('month')
+            ->orderBy('staff_id')
+            ->paginate($perPage);
+
+        return $this->respond([
+            ...$page->toArray(),
+            'summary' => $summary,
+        ]);
     }
 
     public function override(Request $request, int $id)

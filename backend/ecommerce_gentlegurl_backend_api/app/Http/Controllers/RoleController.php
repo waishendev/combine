@@ -18,7 +18,7 @@ class RoleController extends Controller
 
     public function index(Request $request)
     {
-        $scope = ExpenseBranchScope::fromRequest($request, $this->branchAccess);
+        $scope = ExpenseBranchScope::forRoles($request, $this->branchAccess);
         $query = Role::query()->with('storeLocation');
         $scope->apply($query);
         if (! $request->user()?->canManageSystemAdmins()) {

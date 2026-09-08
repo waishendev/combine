@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { NameStack, VariantNameStack } from '@/components/NameStack'
 import PaginationControls from '@/components/PaginationControls'
@@ -77,6 +77,28 @@ const extractRows = <T,>(json: unknown): T[] => {
 
 const PAGE_SIZE_OPTIONS = [50, 100, 150, 200] as const
 
+const formatYmd = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** Default query window when from/to are omitted: current calendar month. */
+const defaultMonthRange = () => {
+  const today = new Date()
+  const from = new Date(today.getFullYear(), today.getMonth(), 1)
+  const to = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+  return { from: formatYmd(from), to: formatYmd(to) }
+}
+
+const formatDisplayDay = (ymd: string) => {
+  if (!ymd) return '—'
+  const date = new Date(`${ymd}T12:00:00`)
+  if (Number.isNaN(date.getTime())) return ymd
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(date)
+}
+
 const extractMeta = (json: unknown): Meta => {
   const fallback = { current_page: 1, last_page: 1, per_page: 50, total: 0 }
   if (!json || typeof json !== 'object') return fallback
@@ -104,15 +126,18 @@ const extractSummary = (json: unknown, totalLogs: number): LogSummary => {
 export default function StaffConsumableLogsPageContent({ initialFilters = {} }: { initialFilters?: StaffConsumableLogInitialFilters }) {
   const { selectedBranchId } = useBranch()
   const showBranch = shouldShowBranchColumn(selectedBranchId)
+  const defaults = useMemo(() => defaultMonthRange(), [])
+  const initialDateFrom = initialFilters.dateFrom?.trim() || defaults.from
+  const initialDateTo = initialFilters.dateTo?.trim() || defaults.to
   const [rows, setRows] = useState<LogRow[]>([])
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
-  const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom ?? '')
-  const [dateTo, setDateTo] = useState(initialFilters.dateTo ?? '')
+  const [dateFrom, setDateFrom] = useState(initialDateFrom)
+  const [dateTo, setDateTo] = useState(initialDateTo)
   const [staffId, setStaffId] = useState(initialFilters.staffId ?? '')
   const [search, setSearch] = useState(initialFilters.search ?? '')
   const [appliedFilters, setAppliedFilters] = useState({
-    dateFrom: initialFilters.dateFrom ?? '',
-    dateTo: initialFilters.dateTo ?? '',
+    dateFrom: initialDateFrom,
+    dateTo: initialDateTo,
     staffId: initialFilters.staffId ?? '',
     search: initialFilters.search ?? '',
   })
@@ -122,6 +147,15 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
   const [summary, setSummary] = useState<LogSummary>(EMPTY_SUMMARY)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const periodLabel =
+    appliedFilters.dateFrom && appliedFilters.dateTo
+      ? `${formatDisplayDay(appliedFilters.dateFrom)} – ${formatDisplayDay(appliedFilters.dateTo)}`
+      : appliedFilters.dateFrom
+        ? `From ${formatDisplayDay(appliedFilters.dateFrom)}`
+        : appliedFilters.dateTo
+          ? `Until ${formatDisplayDay(appliedFilters.dateTo)}`
+          : 'All dates'
 
   const loadStaff = useCallback(async () => {
     try {
@@ -179,12 +213,13 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
   }
 
   const resetFilters = () => {
-    setDateFrom('')
-    setDateTo('')
+    const month = defaultMonthRange()
+    setDateFrom(month.from)
+    setDateTo(month.to)
     setStaffId('')
     setSearch('')
     setPage(1)
-    setAppliedFilters({ dateFrom: '', dateTo: '', staffId: '', search: '' })
+    setAppliedFilters({ dateFrom: month.from, dateTo: month.to, staffId: '', search: '' })
   }
 
   const clearStaffFilter = () => {
@@ -216,6 +251,12 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
       </div>
 
       <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-slate-800">Filters</p>
+          <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+            Showing period: {periodLabel}
+          </p>
+        </div>
         <div className="grid gap-3 md:grid-cols-5">
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-500">Date from</label>

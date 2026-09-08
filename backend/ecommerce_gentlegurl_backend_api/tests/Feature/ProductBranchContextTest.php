@@ -67,12 +67,14 @@ class ProductBranchContextTest extends TestCase
         StoreLocationProductInventory::create(['store_location_id' => $png->id, 'product_id' => $unassigned->id, 'quantity' => 99]);
 
         $pngRows = $this->categoryRows($png->id); $bRows = $this->categoryRows($b->id); $allRows = $this->categoryRows(null);
-        $this->assertSame([$category->id], collect($pngRows)->pluck('id')->all());
-        $this->assertEqualsCanonicalizing([$category->id, $bOnly->id], collect($bRows)->pluck('id')->all());
-        $this->assertEqualsCanonicalizing([$category->id, $bOnly->id, $inventoryOnly->id, $empty->id], collect($allRows)->pluck('id')->all());
+        $expectedIds = [$category->id, $bOnly->id, $inventoryOnly->id, $empty->id];
+        $this->assertEqualsCanonicalizing($expectedIds, collect($pngRows)->pluck('id')->all());
+        $this->assertEqualsCanonicalizing($expectedIds, collect($bRows)->pluck('id')->all());
+        $this->assertEqualsCanonicalizing($expectedIds, collect($allRows)->pluck('id')->all());
         $public = app(PublicShopController::class)->categories(Request::create('/public/categories', 'GET'));
-        $this->assertEqualsCanonicalizing([$category->id, $bOnly->id, $inventoryOnly->id, $empty->id], collect($public->getData(true)['data'])->pluck('id')->all());
+        $this->assertEqualsCanonicalizing($expectedIds, collect($public->getData(true)['data'])->pluck('id')->all());
         $this->assertSame(1, $this->countFor($pngRows, $category->id));
+        $this->assertSame(0, $this->countFor($pngRows, $bOnly->id));
         $this->assertSame(1, $this->countFor($bRows, $category->id));
         $this->assertSame(2, $this->countFor($allRows, $category->id));
         $this->assertFalse(\Schema::hasTable('category_store_location'));

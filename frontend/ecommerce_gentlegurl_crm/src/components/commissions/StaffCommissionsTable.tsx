@@ -51,6 +51,12 @@ type CommissionApiResponse = {
     last_page?: number
     per_page?: number
     total?: number
+    summary?: {
+      total_sales?: number
+      booking_count?: number
+      commission_amount?: number
+      overridden_count?: number
+    }
   }
 }
 
@@ -108,6 +114,12 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     month: resolvedParams.month,
   })
   const [rows, setRows] = useState<CommissionRow[]>([])
+  const [filterSummary, setFilterSummary] = useState<{
+    total_sales: number
+    booking_count: number
+    commission_amount: number
+    overridden_count: number
+  } | null>(null)
   const [staffs, setStaffs] = useState<StaffOption[]>([])
   const [pagination, setPagination] = useState<Pagination>({
     total: 0,
@@ -225,6 +237,14 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
           current_page: responseData.current_page ?? resolvedParams.page,
           last_page: responseData.last_page ?? 1,
         },
+        summary: responseData.summary
+          ? {
+              total_sales: Number(responseData.summary.total_sales ?? 0),
+              booking_count: Number(responseData.summary.booking_count ?? 0),
+              commission_amount: Number(responseData.summary.commission_amount ?? 0),
+              overridden_count: Number(responseData.summary.overridden_count ?? 0),
+            }
+          : null,
       }
     } catch {
       if (signal?.aborted) return null
@@ -245,11 +265,13 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       if (!snapshot) {
         if (!silent) {
           setRows([])
+          setFilterSummary(null)
           setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
         }
         return null
       }
       setRows(snapshot.rows)
+      setFilterSummary(snapshot.summary)
       setPagination(snapshot.pagination)
       return snapshot
     } finally {
@@ -504,15 +526,23 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
   }
 
   const summaryCards = useMemo(() => {
-    const totalSales = rows.reduce((sum, row) => sum + Number(row.total_sales || 0), 0)
-    const totalCount = rows.reduce((sum, row) => sum + (row.booking_count || 0), 0)
-    const totalCommission = rows.reduce((sum, row) => {
-      const amount = row.is_overridden && row.override_amount
-        ? Number(row.override_amount)
-        : Number(row.commission_amount || 0)
-      return sum + amount
-    }, 0)
-    const overriddenCount = rows.filter((row) => row.is_overridden).length
+    const totalSales = filterSummary
+      ? filterSummary.total_sales
+      : rows.reduce((sum, row) => sum + Number(row.total_sales || 0), 0)
+    const totalCount = filterSummary
+      ? filterSummary.booking_count
+      : rows.reduce((sum, row) => sum + (row.booking_count || 0), 0)
+    const totalCommission = filterSummary
+      ? filterSummary.commission_amount
+      : rows.reduce((sum, row) => {
+          const amount = row.is_overridden && row.override_amount
+            ? Number(row.override_amount)
+            : Number(row.commission_amount || 0)
+          return sum + amount
+        }, 0)
+    const overriddenCount = filterSummary
+      ? filterSummary.overridden_count
+      : rows.filter((row) => row.is_overridden).length
 
     return [
       { label: 'Total Sales', value: totalSales, isMoney: true },
@@ -520,7 +550,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       { label: 'Total Commission', value: totalCommission, isMoney: true },
       { label: 'Overridden', value: overriddenCount, isMoney: false },
     ]
-  }, [countLabel, rows])
+  }, [countLabel, filterSummary, rows])
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)

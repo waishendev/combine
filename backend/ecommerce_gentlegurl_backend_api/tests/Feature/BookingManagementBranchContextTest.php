@@ -28,27 +28,43 @@ class BookingManagementBranchContextTest extends TestCase
         $serviceHidden = $this->service('Service Hidden', [$hidden]);
         $serviceCategory = BookingServiceCategory::create(['name' => 'Service Category', 'slug' => 'service-category', 'is_active' => true]);
         $serviceCategory->services()->sync([$serviceA->id, $serviceHidden->id]);
+        BookingServiceCategory::create(['name' => 'Empty Service Category', 'slug' => 'empty-service-category', 'is_active' => true]);
 
         $productA = BookingProduct::create(['name' => 'Product A', 'price' => 10, 'is_active' => true]);
         $productB = BookingProduct::create(['name' => 'Product B', 'price' => 10, 'is_active' => true]);
+        $orphanProduct = BookingProduct::create(['name' => 'Orphan Product', 'price' => 10, 'is_active' => true]);
         $serviceA->update(['linked_booking_product_id' => $productA->id]);
         $serviceB->update(['linked_booking_product_id' => $productB->id]);
         $productCategory = BookingProductCategory::create(['name' => 'Product Category', 'sort_order' => 1, 'is_active' => true]);
         $productCategory->products()->sync([$productA->id]);
+        BookingProductCategory::create(['name' => 'Empty Product Category', 'sort_order' => 2, 'is_active' => true]);
 
         $this->actingAs($user)->getJson('/api/admin/booking/services?branch_store_location_id='.$a->id)
             ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.name', 'Service A');
-        $this->actingAs($user)->getJson('/api/admin/booking/products?branch_store_location_id='.$b->id)
-            ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.name', 'Product B');
+        $branchBProducts = $this->actingAs($user)->getJson('/api/admin/booking/products?branch_store_location_id='.$b->id)
+            ->assertOk()
+            ->json('data.data');
+        $this->assertEqualsCanonicalizing(
+            ['Product B', 'Orphan Product'],
+            collect($branchBProducts)->pluck('name')->all()
+        );
         $this->actingAs($user)->getJson('/api/admin/booking/categories?branch_store_location_id='.$a->id)
-            ->assertOk()->assertJsonCount(1, 'data.data');
+            ->assertOk()
+            ->assertJsonCount(2, 'data.data');
         $this->actingAs($user)->getJson('/api/admin/booking/product-categories?branch_store_location_id='.$a->id.'&page=1')
-            ->assertOk()->assertJsonCount(1, 'data.data');
+            ->assertOk()
+            ->assertJsonCount(2, 'data.data');
 
         $all = $this->actingAs($user)->getJson('/api/admin/booking/services?branch_scope=all')->assertOk();
         $this->assertEqualsCanonicalizing(['Service A', 'Service B'], collect($all->json('data.data'))->pluck('name')->all());
         $serviceARow = collect($all->json('data.data'))->firstWhere('name', 'Service A');
         $this->assertEqualsCanonicalizing(['Branch A'], collect($serviceARow['store_locations'])->pluck('name')->all());
+
+        $allProducts = $this->actingAs($user)->getJson('/api/admin/booking/products')->assertOk();
+        $this->assertEqualsCanonicalizing(
+            ['Product A', 'Product B', 'Orphan Product'],
+            collect($allProducts->json('data.data'))->pluck('name')->all()
+        );
 
         $this->actingAs($user)->getJson('/api/admin/booking/services?branch_store_location_id='.$hidden->id)->assertForbidden();
     }

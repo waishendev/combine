@@ -34,11 +34,11 @@ class CategoryController extends Controller
             : null;
 
         // NEW ENHANCEMENT — booking-categories-crm-query-v1: all=1 dropdown-slim; list uses join for branches
+        // Categories are global CRM master data: always list them (incl. newly created with 0 services).
+        // Branch only scopes the store_locations annotation on each row.
         $all = $request->boolean('all');
 
         $query = BookingServiceCategory::query()
-            ->whereHas('services.storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
-            ->when($branchId, fn ($query) => $query->whereHas('services.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
             ->when($request->filled('name'), fn ($inner) => $inner->where('name', 'like', '%' . $request->string('name') . '%'))
             ->orderBy('sort_order')
             ->orderBy('name');
@@ -57,9 +57,12 @@ class CategoryController extends Controller
 
         $categories = $query->paginate($request->integer('per_page', 20));
         $this->preloadLinkedProductCategories($categories->getCollection());
+        $branchIdsForAnnotation = $branchId
+            ? [$branchId]
+            : $accessibleIds->map(fn ($id) => (int) $id)->all();
         $storeLocationsByCategory = $this->loadStoreLocationsForCategories(
             $categories->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all(),
-            $accessibleIds->map(fn ($id) => (int) $id)->all(),
+            $branchIdsForAnnotation,
         );
 
         $categories->getCollection()->transform(function (BookingServiceCategory $category) use ($storeLocationsByCategory) {

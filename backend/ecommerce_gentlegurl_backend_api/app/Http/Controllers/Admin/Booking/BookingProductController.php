@@ -47,8 +47,24 @@ class BookingProductController extends Controller
                     ->whereIn('store_locations.id', $accessibleIds)
                     ->select('store_locations.id', 'name', 'code'),
             ])
-            ->whereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds))
-            ->when($branchId, fn ($query) => $query->whereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branchId)))
+            // Keep newly created / unlinked products visible in CRM.
+            // Branch only scopes products that already have a linked service.
+            ->where(function ($scope) use ($accessibleIds, $branchId) {
+                $scope->whereDoesntHave('linkedBookingService')
+                    ->orWhereHas('linkedBookingService', fn ($service) => $service->whereDoesntHave('storeLocations'));
+
+                if ($branchId) {
+                    $scope->orWhereHas(
+                        'linkedBookingService.storeLocations',
+                        fn ($locations) => $locations->whereKey($branchId)
+                    );
+                } else {
+                    $scope->orWhereHas(
+                        'linkedBookingService.storeLocations',
+                        fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)
+                    );
+                }
+            })
             ->orderByRaw("COALESCE(booking_products.name, '') asc")
             ->orderBy('booking_products.id');
 

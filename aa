@@ -1,0 +1,55 @@
+对照新版代码，说明没有 order_item_staff_splits 时销售额怎么归到员工。
+
+可以。分成两步看就清楚了：谁进重算名单，以及进名单后怎么算钱。
+
+1. 两套「分账」数据
+表	含义
+order_item_staff_splits
+订单行上的员工拆分（POS 结账时写的）
+booking_service_staff_splits
+预约上的员工拆分（预约/服务层面）
+网上订金等场景，常常只有预约拆分，没有订单行拆分。Vera 的 booking #220 就是这样：订金 RM 30，order_item_staff_splits 为空，但预约上有 Vera 100%。
+
+2. 新版没有 item split 时怎么算（算钱逻辑）
+对某个员工月结，新版是两步：
+
+Step 1（主路径）
+从 order_item_staff_splits 加销售额。Vera 7 月这里 = 0。
+
+Step 2（Fallback）
+找当月、已付款、且没有任何 order_item_staff_splits 的：
+
+booking_deposit / booking_settlement / booking_addon
+找到后，用预约拆分归账：
+
+先看 booking_service_staff_splits（Vera：100%）
+→ 30 × 100% = RM 30
+若没有预约拆分，再看 bookings.staff_id 是否等于该员工 → 给 100%
+然后按阶梯算佣金：30 × 2% = RM 0.60。
+
+所以：没有 item split 不等于不算；新版会改用预约上的 staff split。
+
+booking_count 仍是 0，因为那笔还没进「已 settled」的计数规则——只加了销售额。
+
+3. 和旧版的真正差别：谁会被拿来算
+两边的 Fallback 算钱逻辑其实差不多（旧版也有 booking splits fallback）。
+
+差在 整月重算时找哪些员工：
+
+旧版	新版
+从 item split 找员工
+✅
+✅
+本月已有月结行的员工
+✅
+✅
+从 bookings.staff_id
+❌
+✅
+从 booking_service_staff_splits
+❌
+✅
+Vera 7 月只有订金、没有 item split，旧版名单里 根本没有她 → 不会跑她的月结 → 也就不会走到 Fallback。
+新版从预约 staff / 预约拆分发现她 → 会跑月结 → Fallback 算出 RM 30。
+
+一句话：钱怎么分（Fallback）两边类似；新版多了「把只有预约拆分的人拉进重算」，所以多出这一笔。

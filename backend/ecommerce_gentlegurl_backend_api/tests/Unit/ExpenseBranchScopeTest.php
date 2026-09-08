@@ -35,4 +35,13 @@ class ExpenseBranchScopeTest extends TestCase
         $this->assertStringNotContainsString('is null', $query->toSql());
         $this->assertSame([7], $query->getBindings());
     }
+
+    public function test_including_unassigned_keeps_selected_branch_and_ors_null(): void
+    {
+        $query = (new ExpenseBranchScope([12], 12, false))->includingUnassigned()->apply(Expense::query());
+        $sql = $query->toSql();
+
+        $this->assertStringContainsString('is null', $sql);
+        $this->assertSame([12], $query->getBindings());
+    }
 }

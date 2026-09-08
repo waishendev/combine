@@ -263,19 +263,16 @@ export default function OrdersTable({
               has_more?: boolean
             }
             orderItems = Array.isArray(nestedData.data) ? nestedData.data : []
-            const hasMore =
-              typeof nestedData.has_more === 'boolean'
-                ? nestedData.has_more
-                : Boolean(nestedData.next_page_url)
             const current = Number(nestedData.current_page ?? currentPage) || 1
+            const lastPage =
+              nestedData.last_page != null
+                ? Number(nestedData.last_page) || 1
+                : nestedData.has_more || nestedData.next_page_url
+                  ? current + 1
+                  : current
             paginationData = {
               current_page: current,
-              last_page:
-                nestedData.last_page != null
-                  ? Number(nestedData.last_page)
-                  : hasMore
-                    ? current + 1
-                    : current,
+              last_page: lastPage,
               per_page: nestedData.per_page,
               total:
                 nestedData.total == null

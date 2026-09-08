@@ -20,14 +20,14 @@ type ProductOption = {
 
 type MovementSummary = {
   id: number
-  type: 'stock_in' | 'stock_out' | 'reversal'
+  type: 'stock_in' | 'stock_out' | 'reversal' | 'initialization' | string
   quantity_change: number
   created_at: string
 }
 
 type MovementRow = BranchAttribution & {
   id: number
-  type: 'stock_in' | 'stock_out' | 'reversal'
+  type: 'stock_in' | 'stock_out' | 'reversal' | 'initialization' | string
   quantity_before: number
   quantity_change: number
   quantity_after: number
@@ -96,13 +96,17 @@ const toDateTime = (value?: string | null) => formatDateTime12Hour(value) || '-'
 const movementTypeLabel = (movementType: MovementRow['type']) => {
   if (movementType === 'stock_in') return 'Add Stock'
   if (movementType === 'stock_out') return 'Reduce Stock'
-  return 'Reversal'
+  if (movementType === 'initialization') return 'Initialization'
+  if (movementType === 'reversal') return 'Reversal'
+  return String(movementType || 'Unknown')
 }
 
 const movementTypeClass = (movementType: MovementRow['type']) => {
   if (movementType === 'stock_in') return 'bg-emerald-100 text-emerald-700'
   if (movementType === 'stock_out') return 'bg-rose-100 text-rose-700'
-  return 'bg-amber-100 text-amber-700'
+  if (movementType === 'initialization') return 'bg-sky-100 text-sky-700'
+  if (movementType === 'reversal') return 'bg-amber-100 text-amber-700'
+  return 'bg-slate-100 text-slate-700'
 }
 
 const canRevokeMovement = (row: MovementRow) => {
@@ -410,6 +414,7 @@ export default function ProductStockMovementLogsPage({
                 <option value="">All</option>
                 <option value="stock_in">Add Stock</option>
                 <option value="stock_out">Reduce Stock</option>
+                <option value="initialization">Initialization</option>
                 <option value="reversal">Reversal</option>
               </select>
             </div>

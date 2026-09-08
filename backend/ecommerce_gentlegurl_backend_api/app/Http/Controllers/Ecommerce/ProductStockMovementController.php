@@ -23,7 +23,7 @@ class ProductStockMovementController extends Controller
         $validated = $request->validate([
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
             'store_location_id' => ['nullable', 'integer', 'exists:store_locations,id'],
-            'type' => ['nullable', Rule::in(['stock_in', 'stock_out', 'reversal'])],
+            'type' => ['nullable', Rule::in(['stock_in', 'stock_out', 'reversal', 'initialization'])],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
             'page' => ['nullable', 'integer', 'min:1'],

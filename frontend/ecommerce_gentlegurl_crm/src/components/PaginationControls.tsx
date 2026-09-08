@@ -9,6 +9,42 @@ interface PaginationControlsProps {
   disabled?: boolean
 }
 
+type PageItem = number | 'ellipsis'
+
+/**
+ * Sliding window of consecutive pages (default 5). Trailing/leading … means
+ * there are more pages — does not pin the last/first page number after ….
+ */
+function buildPageItems(currentPage: number, totalPages: number, windowSize = 5): PageItem[] {
+  if (totalPages <= 0) return []
+
+  const current = Math.min(Math.max(currentPage, 1), totalPages)
+
+  if (totalPages <= windowSize) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1)
+  }
+
+  let start = Math.max(1, current - Math.floor((windowSize - 1) / 2))
+  let end = start + windowSize - 1
+  if (end > totalPages) {
+    end = totalPages
+    start = end - windowSize + 1
+  }
+
+  const items: PageItem[] = []
+  if (start > 1) {
+    items.push('ellipsis')
+  }
+  for (let page = start; page <= end; page += 1) {
+    items.push(page)
+  }
+  if (end < totalPages) {
+    items.push('ellipsis')
+  }
+
+  return items
+}
+
 export default function PaginationControls({
   currentPage,
   totalPages,
@@ -18,19 +54,10 @@ export default function PaginationControls({
 }: PaginationControlsProps) {
   const { t } = useI18n()
   void pageSize
-  const { pages, hasPrevGroup, hasNextGroup, start, end } = useMemo(() => {
-    const MAX_VISIBLE = 10
-    const currentGroup = Math.floor((currentPage - 1) / MAX_VISIBLE)
-    const s = currentGroup * MAX_VISIBLE + 1
-    const e = Math.min(s + MAX_VISIBLE - 1, totalPages)
-    return {
-      pages: Array.from({ length: e - s + 1 }, (_, i) => s + i),
-      hasPrevGroup: s > 1,
-      hasNextGroup: e < totalPages,
-      start: s,
-      end: e,
-    }
-  }, [currentPage, totalPages])
+  const items = useMemo(
+    () => buildPageItems(currentPage, totalPages),
+    [currentPage, totalPages],
+  )
 
   const touchBtn =
     'touch-manipulation select-none inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-md border text-sm font-medium shadow-sm transition-colors disabled:pointer-events-none disabled:opacity-50'
@@ -54,41 +81,27 @@ export default function PaginationControls({
       >
         {t('previous')}
       </button>
-      {hasPrevGroup && (
-        <button
-          type="button"
-          key="prev-ellipsis"
-          onClick={() => onPageChange(start - 1)}
-          className={navBtn}
-          disabled={disabled}
-          aria-label="Show previous pages"
-        >
-          …
-        </button>
-      )}
-      {pages.map((page) => (
-        <button
-          type="button"
-          key={page}
-          onClick={() => onPageChange(page)}
-          className={page === currentPage ? pageActive : pageIdle}
-          disabled={disabled}
-          aria-current={page === currentPage ? 'page' : undefined}
-        >
-          {page}
-        </button>
-      ))}
-      {hasNextGroup && (
-        <button
-          type="button"
-          key="next-ellipsis"
-          onClick={() => onPageChange(end + 1)}
-          className={navBtn}
-          disabled={disabled}
-          aria-label="Show more pages"
-        >
-          …
-        </button>
+      {items.map((item, index) =>
+        item === 'ellipsis' ? (
+          <span
+            key={`ellipsis-${index}`}
+            className={`${touchBtn} min-w-[44px] cursor-default border-transparent bg-transparent text-gray-500 shadow-none`}
+            aria-hidden="true"
+          >
+            …
+          </span>
+        ) : (
+          <button
+            type="button"
+            key={item}
+            onClick={() => onPageChange(item)}
+            className={item === currentPage ? pageActive : pageIdle}
+            disabled={disabled}
+            aria-current={item === currentPage ? 'page' : undefined}
+          >
+            {item}
+          </button>
+        ),
       )}
       <button
         type="button"
@@ -101,4 +114,3 @@ export default function PaginationControls({
     </nav>
   )
 }
-

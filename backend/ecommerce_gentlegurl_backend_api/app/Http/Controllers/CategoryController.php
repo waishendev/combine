@@ -24,7 +24,8 @@ class CategoryController extends Controller
         $accessibleIds = $allBranchScope
             ? app(StoreLocationAccessService::class)->accessibleStoreLocations($request->user())->pluck('id')->map(fn ($id) => (int) $id)->all()
             : [];
-        // Slim menus (no unused parent) — keep multi-branch count/filter from remote.
+        // Categories stay global CRM master data (incl. empty / no-menu / newly created).
+        // Branch only scopes products_count + available_branches — never hide the row.
         $categories = Category::with(['shopMenus:id,name,slug'])
             ->withCount(['products as products_count' => function ($query) use ($branchId, $allBranchScope, $accessibleIds) {
                 if ($branchId) {
@@ -37,12 +38,6 @@ class CategoryController extends Controller
                         ->where('store_location_product.is_available', true));
                 }
             }])
-            ->when($branchId, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
-                ->where('store_locations.id', $branchId)
-                ->where('store_location_product.is_available', true)))
-            ->when($allBranchScope, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
-                ->whereIn('store_locations.id', $accessibleIds)
-                ->where('store_location_product.is_available', true)))
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
             })
@@ -132,12 +127,7 @@ class CategoryController extends Controller
                         ->where('store_location_product.is_available', true));
                 }
             }])
-            ->when($branchId, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
-                ->where('store_locations.id', $branchId)
-                ->where('store_location_product.is_available', true)))
-            ->when($allBranchScope, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
-                ->whereIn('store_locations.id', $accessibleIds)
-                ->where('store_location_product.is_available', true)))
+            // Same as index: do not hide empty / no-menu categories from CRM table.
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
             })
@@ -249,9 +239,6 @@ class CategoryController extends Controller
             app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
         }
         $categories = Category::with(['shopMenus'])
-            ->when($branchId, fn ($query) => $query->whereHas('products.storeLocations', fn ($branches) => $branches
-                ->where('store_locations.id', $branchId)
-                ->where('store_location_product.is_available', true)))
             ->withCount(['products as products_count' => fn ($query) => $branchId
                 ? $query->whereHas('storeLocations', fn ($branches) => $branches
                     ->where('store_locations.id', $branchId)
