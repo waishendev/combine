@@ -21,6 +21,23 @@ class StoreLocation extends Model
                 ['total_initial_cash' => 0, 'total_withdraw' => 0]
             );
             StoreLocationPosSetting::query()->firstOrCreate(['store_location_id' => $location->id]);
+
+            // After inventory cutover is live, new Branches join as ACTIVE so Create Product /
+            // Add Stock use Branch inventory without another activate script.
+            if (BranchInventoryCutoverState::query()->where('status', BranchInventoryCutoverState::ACTIVE)->exists()) {
+                BranchInventoryCutoverState::query()->updateOrCreate(
+                    ['store_location_id' => $location->id],
+                    [
+                        'status' => BranchInventoryCutoverState::ACTIVE,
+                        'reconciled_at' => now(),
+                        'activated_at' => now(),
+                        'reconciliation_summary' => [
+                            'source' => 'store_location_created',
+                            'joined_active_cutover' => true,
+                        ],
+                    ]
+                );
+            }
         });
         static::updating(function (StoreLocation $location): void {
             if ($location->isDirty('code')) {

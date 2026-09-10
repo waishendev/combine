@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useRef, useState } from 'react'
 
 import type { StoreRowData } from './StoreRow'
 import { mapStoreApiItemToRow, type StoreApiItem } from './storeUtils'
+import { getApiErrorMessage } from '@/lib/api-errors'
 import { useI18n } from '@/lib/i18n'
 import CrmFormModalShell from './CrmFormModalShell'
 import { IMAGE_ACCEPT } from './mediaAccept'
@@ -251,26 +252,7 @@ export default function StoreCreateModal({
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        let message = 'Failed to create branch'
-        if (data && typeof data === 'object') {
-          if (typeof (data as { message?: unknown }).message === 'string') {
-            message = (data as { message: string }).message
-          } else if (data && 'errors' in data) {
-            const errors = (data as { errors?: unknown }).errors
-            if (errors && typeof errors === 'object') {
-              const firstKey = Object.keys(errors)[0]
-              const firstValue = firstKey
-                ? (errors as Record<string, unknown>)[firstKey]
-                : null
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                message = firstValue[0]
-              } else if (typeof firstValue === 'string') {
-                message = firstValue
-              }
-            }
-          }
-        }
-        setError(message)
+        setError(getApiErrorMessage(data, 'Failed to create branch'))
         return
       }
 
@@ -712,7 +694,7 @@ export default function StoreCreateModal({
           </div>
 
           {error && (
-            <div className="text-sm text-red-600" role="alert">
+            <div className="text-sm text-red-600 whitespace-pre-line" role="alert">
               {error}
             </div>
           )}

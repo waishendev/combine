@@ -57,18 +57,14 @@ class BranchInventoryMutationService
 
             $rows = collect();
             foreach ($normalized as $item) {
-                $row = StoreLocationProductInventory::query()
-                    ->where('store_location_id', $storeLocationId)
-                    ->where('product_id', $item['product_id'])
-                    ->when(
-                        $item['product_variant_id'],
-                        fn ($query, $variantId) => $query->where('product_variant_id', $variantId),
-                        fn ($query) => $query->whereNull('product_variant_id')
-                    )
-                    ->lockForUpdate()->first();
-                if (! $row) {
-                    throw ValidationException::withMessages(['inventory' => 'Branch inventory is unresolved for one or more items.']);
-                }
+                $identity = [
+                    'store_location_id' => $storeLocationId,
+                    'product_id' => $item['product_id'],
+                    'product_variant_id' => $item['product_variant_id'],
+                ];
+                // New Branch / newly assigned Product may not have a row yet — seed qty 0 then mutate.
+                $row = StoreLocationProductInventory::query()->firstOrCreate($identity, ['quantity' => 0]);
+                $row = StoreLocationProductInventory::query()->whereKey($row->id)->lockForUpdate()->firstOrFail();
                 $rows->put($this->identity($item), $row);
             }
 

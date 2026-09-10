@@ -416,7 +416,15 @@ export default function ProductForm({
 }: ProductFormProps) {
   const { t } = useI18n()
   const router = useRouter()
-  const { accessibleBranches } = useBranch()
+  const { accessibleBranches, selectedBranchId } = useBranch()
+  const branchInventoryLive = useMemo(
+    () =>
+      accessibleBranches.some(
+        (branch) =>
+          branch.inventory_cutover_status === 'active' || branch.inventory_is_authoritative === true,
+      ),
+    [accessibleBranches],
+  )
   const isCopyFromTemplate = mode === 'create' && Boolean(copyTemplate)
   const [form, setForm] = useState<ProductFormValues>(() => {
     const seed = mode === 'edit' && product ? product : mode === 'create' && copyTemplate ? copyTemplate : null
@@ -470,10 +478,83 @@ export default function ProductForm({
     return seed?.storeLocationIds ?? []
   })
   useEffect(() => {
-    if (mode === 'create' && storeLocationIds.length === 0 && accessibleBranches.length > 0) {
-      setStoreLocationIds(accessibleBranches.map((branch) => branch.id))
+    // Create defaults: only the current Branch context — never auto-check every accessible Branch.
+    if (mode !== 'create' || storeLocationIds.length > 0 || accessibleBranches.length === 0) return
+    if (selectedBranchId == null) return
+    if (!accessibleBranches.some((branch) => branch.id === selectedBranchId)) return
+    setStoreLocationIds([selectedBranchId])
+  }, [accessibleBranches, mode, selectedBranchId, storeLocationIds.length])
+  const [branchInitialStocks, setBranchInitialStocks] = useState<Record<number, string>>({})
+  const [branchInitialCosts, setBranchInitialCosts] = useState<Record<number, string>>({})
+  const [variantBranchInitialStocks, setVariantBranchInitialStocks] = useState<
+    Record<number, Record<number, string>>
+  >({})
+  const [variantBranchInitialCosts, setVariantBranchInitialCosts] = useState<
+    Record<number, Record<number, string>>
+  >({})
+  const [lockedBranchIds] = useState<number[]>(() =>
+    mode === 'edit' ? (product?.storeLocationIds ?? []) : [],
+  )
+  const selectedBranchesForStock = useMemo(
+    () => accessibleBranches.filter((branch) => storeLocationIds.includes(branch.id)),
+    [accessibleBranches, storeLocationIds],
+  )
+  const productBranchStockById = useMemo(() => {
+    const map: Record<number, number> = {}
+    for (const row of product?.branchInventoryBreakdown ?? []) {
+      if (row.productVariantId) continue
+      map[row.storeLocationId] = row.quantity
     }
-  }, [accessibleBranches, mode, storeLocationIds.length])
+    return map
+  }, [product?.branchInventoryBreakdown])
+  const variantBranchStockByVariantId = useMemo(() => {
+    const map: Record<number, Record<number, number>> = {}
+    for (const row of product?.branchInventoryBreakdown ?? []) {
+      if (!row.productVariantId) continue
+      if (!map[row.productVariantId]) map[row.productVariantId] = {}
+      map[row.productVariantId][row.storeLocationId] = row.quantity
+    }
+    return map
+  }, [product?.branchInventoryBreakdown])
+  const isBranchInventoryLocked = (branchId: number) =>
+    mode === 'edit' && lockedBranchIds.includes(branchId)
+  useEffect(() => {
+    if (!branchInventoryLive) return
+    setBranchInitialStocks((prev) => {
+      const next: Record<number, string> = {}
+      for (const branch of accessibleBranches) {
+        if (!storeLocationIds.includes(branch.id)) continue
+        if (isBranchInventoryLocked(branch.id)) {
+          next[branch.id] = String(productBranchStockById[branch.id] ?? 0)
+          continue
+        }
+        next[branch.id] = prev[branch.id] ?? '0'
+      }
+      return next
+    })
+    setBranchInitialCosts((prev) => {
+      const next: Record<number, string> = {}
+      const defaultCost = form.costPrice || (product?.costPrice != null ? String(product.costPrice) : '0')
+      for (const branch of accessibleBranches) {
+        if (!storeLocationIds.includes(branch.id)) continue
+        if (isBranchInventoryLocked(branch.id)) {
+          next[branch.id] = defaultCost
+          continue
+        }
+        next[branch.id] = prev[branch.id] ?? (mode === 'create' ? defaultCost || '0' : '0')
+      }
+      return next
+    })
+  }, [
+    accessibleBranches,
+    branchInventoryLive,
+    form.costPrice,
+    lockedBranchIds,
+    mode,
+    product?.costPrice,
+    productBranchStockById,
+    storeLocationIds,
+  ])
   const [rewardForm, setRewardForm] = useState<RewardFormValues>({ ...emptyRewardForm })
   const [rewardId, setRewardId] = useState<number | null>(null)
   const [existingImages, setExistingImages] = useState<ProductImage[]>(() => {
@@ -530,6 +611,49 @@ export default function ProductForm({
         bundleItems: [],
       }))
   })
+  useEffect(() => {
+    if (!branchInventoryLive) return
+    setVariantBranchInitialStocks((prev) => {
+      const next: Record<number, Record<number, string>> = {}
+      for (let index = 0; index < variants.length; index += 1) {
+        const variant = variants[index]
+        const row: Record<number, string> = {}
+        for (const branch of selectedBranchesForStock) {
+          if (mode === 'edit' && lockedBranchIds.includes(branch.id) && variant?.id) {
+            row[branch.id] = String(variantBranchStockByVariantId[variant.id]?.[branch.id] ?? 0)
+            continue
+          }
+          row[branch.id] = prev[index]?.[branch.id] ?? '0'
+        }
+        next[index] = row
+      }
+      return next
+    })
+    setVariantBranchInitialCosts((prev) => {
+      const next: Record<number, Record<number, string>> = {}
+      for (let index = 0; index < variants.length; index += 1) {
+        const variant = variants[index]
+        const defaultCost = variant?.costPrice || '0'
+        const row: Record<number, string> = {}
+        for (const branch of selectedBranchesForStock) {
+          if (mode === 'edit' && lockedBranchIds.includes(branch.id)) {
+            row[branch.id] = defaultCost
+            continue
+          }
+          row[branch.id] = prev[index]?.[branch.id] ?? defaultCost
+        }
+        next[index] = row
+      }
+      return next
+    })
+  }, [
+    branchInventoryLive,
+    lockedBranchIds,
+    mode,
+    selectedBranchesForStock,
+    variantBranchStockByVariantId,
+    variants.length,
+  ])
   const [variantDiscountPercentInputs, setVariantDiscountPercentInputs] = useState<string[]>(
     () => Array.from({ length: variants.length }, () => ''),
   )
@@ -2390,8 +2514,24 @@ export default function ProductForm({
       if (price === null || form.price.trim() === '') fields.push('price')
     }
 
-    if (resolvedType !== 'variant' && mode === 'create' && form.stock === '') {
+    if (resolvedType !== 'variant' && mode === 'create' && !branchInventoryLive && form.stock === '') {
       fields.push('stock')
+    }
+
+    if (
+      resolvedType !== 'variant' &&
+      branchInventoryLive &&
+      selectedBranchesForStock.length > 0
+    ) {
+      for (const branch of selectedBranchesForStock) {
+        if (mode === 'edit' && lockedBranchIds.includes(branch.id)) continue
+        if ((branchInitialStocks[branch.id] ?? '') === '') {
+          fields.push(`branch-stock-${branch.id}`)
+        }
+        if ((branchInitialCosts[branch.id] ?? '') === '') {
+          fields.push(`branch-cost-${branch.id}`)
+        }
+      }
     }
 
     if (resolvedType === 'variant') {
@@ -2404,8 +2544,21 @@ export default function ProductForm({
         if (!variant.sku.trim()) fields.push(`variant-${index}-sku`)
         if (!variant.price.trim()) fields.push(`variant-${index}-price`)
         if (variant.trackStock) {
-          if (!isPersistedVariantCostStockLocked(variant) && variant.stock === '') {
-            fields.push(`variant-${index}-stock`)
+          if (!isPersistedVariantCostStockLocked(variant)) {
+            if (branchInventoryLive) {
+              for (const branch of selectedBranchesForStock) {
+                const branchLocked = mode === 'edit' && lockedBranchIds.includes(branch.id) && Boolean(variant.id)
+                if (branchLocked) continue
+                if ((variantBranchInitialStocks[index]?.[branch.id] ?? '') === '') {
+                  fields.push(`variant-${index}-branch-stock-${branch.id}`)
+                }
+                if ((variantBranchInitialCosts[index]?.[branch.id] ?? '') === '') {
+                  fields.push(`variant-${index}-branch-cost-${branch.id}`)
+                }
+              }
+            } else if (variant.stock === '') {
+              fields.push(`variant-${index}-stock`)
+            }
           }
           if (variant.lowStockThreshold === '') {
             fields.push(`variant-${index}-lowStockThreshold`)
@@ -2520,6 +2673,19 @@ export default function ProductForm({
       return
     }
     storeLocationIds.forEach((id) => formData.append('store_location_ids[]', String(id)))
+    if (branchInventoryLive && resolvedType !== 'variant') {
+      selectedBranchesForStock.forEach((branch) => {
+        if (mode === 'edit' && lockedBranchIds.includes(branch.id)) return
+        formData.append(
+          `branch_initial_stocks[${branch.id}]`,
+          branchInitialStocks[branch.id] || '0',
+        )
+        formData.append(
+          `branch_initial_costs[${branch.id}]`,
+          branchInitialCosts[branch.id] || '0',
+        )
+      })
+    }
     const resolvedPrice =
       resolvedType === 'variant' ? '1' : rewardOnly ? '1' : form.price || '0'
     formData.append('name', form.name.trim())
@@ -2542,8 +2708,14 @@ export default function ProductForm({
     formData.append('sale_price_start_at', form.salePriceStartAt || '')
     formData.append('sale_price_end_at', form.salePriceEndAt || '')
     if (mode === 'create') {
-      formData.append('cost_price', form.costPrice || '0')
-      formData.append('stock', form.stock || '0')
+      formData.append(
+        'cost_price',
+        branchInventoryLive && resolvedType !== 'variant' ? '0' : form.costPrice || '0',
+      )
+      formData.append(
+        'stock',
+        branchInventoryLive && resolvedType !== 'variant' ? '0' : form.stock || '0',
+      )
     }
     formData.append('low_stock_threshold', form.lowStockThreshold || '0')
     formData.append('dummy_sold_count', rewardOnly ? '0' : form.dummySoldCount || '0')
@@ -2587,10 +2759,27 @@ export default function ProductForm({
         formData.append(`variants[${index}][sale_price_end_at]`, variant.salePriceEndAt || '')
         formData.append(`variants[${index}][cost_price]`, variant.costPrice || '0')
         formData.append(`variants[${index}][is_bundle]`, variant.isBundle ? '1' : '0')
+        const useVariantBranchStock =
+          branchInventoryLive && !variant.isBundle && variant.trackStock
         formData.append(
           `variants[${index}][stock]`,
-          variant.isBundle ? '0' : variant.stock || '0',
+          variant.isBundle ? '0' : useVariantBranchStock ? '0' : variant.stock || '0',
         )
+        if (useVariantBranchStock) {
+          selectedBranchesForStock.forEach((branch) => {
+            const branchLocked =
+              mode === 'edit' && lockedBranchIds.includes(branch.id) && Boolean(variant.id)
+            if (branchLocked) return
+            formData.append(
+              `variants[${index}][branch_initial_stocks][${branch.id}]`,
+              variantBranchInitialStocks[index]?.[branch.id] || '0',
+            )
+            formData.append(
+              `variants[${index}][branch_initial_costs][${branch.id}]`,
+              variantBranchInitialCosts[index]?.[branch.id] || variant.costPrice || '0',
+            )
+          })
+        }
         formData.append(
           `variants[${index}][low_stock_threshold]`,
           variant.isBundle ? '0' : variant.lowStockThreshold || '0',
@@ -2813,7 +3002,12 @@ export default function ProductForm({
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <BranchAssignmentChecklist label="Available at" value={storeLocationIds} onChange={setStoreLocationIds} disabled={submitting} />
-        <p className="mt-2 text-xs text-gray-500">Branch availability controls POS eligibility only. Stock shown below remains global until Phase 6B.</p>
+        <p className="mt-2 text-xs text-gray-500">
+          Branch availability controls where this Product can be sold
+          {branchInventoryLive
+            ? '. Cost Price and Stock Quantity below are set per selected Branch.'
+            : '. Stock remains global until Branch Inventory is activated.'}
+        </p>
       </section>
 
       {/* Reward Details Section */}
@@ -3834,47 +4028,136 @@ export default function ProductForm({
                   </div>
                 </>
               )}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="costPrice">
-                  {t('product.costPrice')}
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                  <input
-                    id="costPrice"
-                    name="costPrice"
-                    type="number"
-                    step="0.01"
-                    value={form.costPrice}
-                    onChange={handleChange}
-                    disabled={mode === 'edit'}
-                    className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
-                    placeholder="0.00"
-                  />
-                  {mode === 'edit' && (
-                    <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
+              {branchInventoryLive && !rewardOnly ? (
+                <div className="space-y-2 md:col-span-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-sm font-medium text-gray-700">
+                      {t('product.costPrice')} / {t('product.stockQuantity')}{' '}
+                      <span className="text-red-500">*</span>
+                    </p>
+                    {mode === 'edit' ? (
+                      <p className="text-xs text-gray-500">
+                        Existing Branches are read-only — use Stock Adjustment. Newly checked Branches can set cost and stock here.
+                      </p>
+                    ) : null}
+                  </div>
+                  {selectedBranchesForStock.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                      Select at least one Branch under Available at.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 rounded-md border border-gray-200 p-3">
+                      <div className="hidden items-center gap-3 text-xs font-medium text-gray-500 sm:flex">
+                        <span className="min-w-0 flex-1">Branch</span>
+                        <span className="w-28 shrink-0 text-right">Cost</span>
+                        <span className="w-28 shrink-0 text-right">Stock</span>
+                      </div>
+                      {selectedBranchesForStock.map((branch) => {
+                        const locked = isBranchInventoryLocked(branch.id)
+                        return (
+                          <div key={branch.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                            <label className="min-w-0 flex-1 truncate text-sm text-gray-800">
+                              {branch.name}
+                              {locked ? (
+                                <span className="ml-2 text-xs font-normal text-gray-500">(existing)</span>
+                              ) : mode === 'edit' ? (
+                                <span className="ml-2 text-xs font-normal text-blue-600">(new)</span>
+                              ) : null}
+                            </label>
+                            <div className="relative w-full sm:w-28 sm:shrink-0">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">RM</span>
+                              <input
+                                id={`cost-price-branch-${branch.id}`}
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={branchInitialCosts[branch.id] ?? '0'}
+                                onChange={(event) =>
+                                  setBranchInitialCosts((prev) => ({
+                                    ...prev,
+                                    [branch.id]: event.target.value,
+                                  }))
+                                }
+                                disabled={submitting || locked}
+                                data-field-key={`branch-cost-${branch.id}`}
+                                className={fieldInputClass(
+                                  `branch-cost-${branch.id}`,
+                                  `pl-8 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
+                                )}
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <input
+                              id={`stock-quantity-branch-${branch.id}`}
+                              type="number"
+                              min={0}
+                              value={branchInitialStocks[branch.id] ?? '0'}
+                              onChange={(event) =>
+                                setBranchInitialStocks((prev) => ({
+                                  ...prev,
+                                  [branch.id]: event.target.value,
+                                }))
+                              }
+                              disabled={submitting || locked}
+                              data-field-key={`branch-stock-${branch.id}`}
+                              className={fieldInputClass(
+                                `branch-stock-${branch.id}`,
+                                `w-full sm:!w-28 sm:shrink-0 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
+                              )}
+                              placeholder="0"
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
                   )}
                 </div>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="stock">
-                  {t('product.stockQuantity')} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="stock"
-                  name="stock"
-                  type="number"
-                  value={form.stock}
-                  onChange={handleChange}
-                  data-field-key="stock"
-                  disabled={mode === 'edit'}
-                  className={fieldInputClass('stock', mode === 'edit' ? 'disabled:bg-gray-100 disabled:text-gray-500' : '')}
-                  placeholder="0"
-                />
-                {mode === 'edit' && (
-                  <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
-                )}
-              </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="costPrice">
+                      {t('product.costPrice')}
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                      <input
+                        id="costPrice"
+                        name="costPrice"
+                        type="number"
+                        step="0.01"
+                        value={form.costPrice}
+                        onChange={handleChange}
+                        disabled={mode === 'edit'}
+                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
+                        placeholder="0.00"
+                      />
+                      {mode === 'edit' && (
+                        <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="stock">
+                      {t('product.stockQuantity')}{' '}
+                      {mode === 'create' ? <span className="text-red-500">*</span> : null}
+                    </label>
+                    <input
+                      id="stock"
+                      name="stock"
+                      type="number"
+                      value={form.stock}
+                      onChange={handleChange}
+                      data-field-key="stock"
+                      disabled={mode === 'edit'}
+                      className={fieldInputClass('stock', mode === 'edit' ? 'disabled:bg-gray-100 disabled:text-gray-500' : '')}
+                      placeholder="0"
+                    />
+                    {mode === 'edit' && (
+                      <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
+                    )}
+                  </div>
+                </>
+              )}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="lowStockThreshold">
                   {t('product.lowStockThreshold')}
@@ -4221,20 +4504,28 @@ export default function ProductForm({
                   </div>
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">Cost Price</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={variant.costPrice}
-                        onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
-                        disabled={isPersistedVariantCostStockLocked(variant)}
-                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    {isPersistedVariantCostStockLocked(variant) && (
-                      <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
+                    {branchInventoryLive ? (
+                      <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                        Set per Branch with Stock below.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">RM</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={variant.costPrice}
+                            onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
+                            disabled={isPersistedVariantCostStockLocked(variant)}
+                            className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
+                            placeholder="0.00"
+                          />
+                        </div>
+                        {isPersistedVariantCostStockLocked(variant) && (
+                          <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
+                        )}
+                      </>
                     )}
                   </div>
                   <div className="space-y-2">
@@ -4301,24 +4592,123 @@ export default function ProductForm({
                   </div>
                   {variant.trackStock && (
                     <>
-                      <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">Stock <span className="text-red-500">*</span></label>
-                        <input
-                          type="number"
-                          value={variant.stock}
-                          onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
-                          data-field-key={`variant-${index}-stock`}
-                          disabled={isPersistedVariantCostStockLocked(variant)}
-                          className={fieldInputClass(
-                            `variant-${index}-stock`,
-                            isPersistedVariantCostStockLocked(variant)
-                              ? 'disabled:bg-gray-100 disabled:text-gray-500'
-                              : '',
-                          )}
-                          placeholder="0"
-                        />
-                        {isPersistedVariantCostStockLocked(variant) && (
-                          <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
+                      <div className="space-y-2 md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          {branchInventoryLive ? 'Cost Price / Stock' : 'Stock'}{' '}
+                          {mode === 'create' || !isPersistedVariantCostStockLocked(variant) ? (
+                            <span className="text-red-500">*</span>
+                          ) : null}
+                        </label>
+                        {branchInventoryLive ? (
+                          selectedBranchesForStock.length === 0 ? (
+                            <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                              Select at least one Branch under Available at.
+                            </p>
+                          ) : (
+                            <div className="space-y-2 rounded-md border border-gray-200 p-3">
+                              <div className="hidden items-center gap-3 text-xs font-medium text-gray-500 sm:flex">
+                                <span className="min-w-0 flex-1">Branch</span>
+                                <span className="w-28 shrink-0 text-right">Cost</span>
+                                <span className="w-28 shrink-0 text-right">Stock</span>
+                              </div>
+                              {selectedBranchesForStock.map((branch) => {
+                                const locked =
+                                  mode === 'edit' &&
+                                  lockedBranchIds.includes(branch.id) &&
+                                  Boolean(variant.id)
+                                return (
+                                  <div
+                                    key={branch.id}
+                                    className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
+                                  >
+                                    <label className="min-w-0 flex-1 truncate text-sm text-gray-800">
+                                      {branch.name}
+                                      {locked ? (
+                                        <span className="ml-2 text-xs font-normal text-gray-500">(existing)</span>
+                                      ) : mode === 'edit' ? (
+                                        <span className="ml-2 text-xs font-normal text-blue-600">(new)</span>
+                                      ) : null}
+                                    </label>
+                                    <div className="relative w-full sm:w-28 sm:shrink-0">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+                                        RM
+                                      </span>
+                                      <input
+                                        id={`variant-${index}-cost-branch-${branch.id}`}
+                                        type="number"
+                                        min={0}
+                                        step="0.01"
+                                        value={variantBranchInitialCosts[index]?.[branch.id] ?? '0'}
+                                        onChange={(event) =>
+                                          setVariantBranchInitialCosts((prev) => ({
+                                            ...prev,
+                                            [index]: {
+                                              ...(prev[index] ?? {}),
+                                              [branch.id]: event.target.value,
+                                            },
+                                          }))
+                                        }
+                                        disabled={submitting || locked}
+                                        data-field-key={`variant-${index}-branch-cost-${branch.id}`}
+                                        className={fieldInputClass(
+                                          `variant-${index}-branch-cost-${branch.id}`,
+                                          `pl-8 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
+                                        )}
+                                        placeholder="0.00"
+                                      />
+                                    </div>
+                                    <input
+                                      id={`variant-${index}-stock-branch-${branch.id}`}
+                                      type="number"
+                                      min={0}
+                                      value={variantBranchInitialStocks[index]?.[branch.id] ?? '0'}
+                                      onChange={(event) =>
+                                        setVariantBranchInitialStocks((prev) => ({
+                                          ...prev,
+                                          [index]: {
+                                            ...(prev[index] ?? {}),
+                                            [branch.id]: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                      disabled={submitting || locked}
+                                      data-field-key={`variant-${index}-branch-stock-${branch.id}`}
+                                      className={fieldInputClass(
+                                        `variant-${index}-branch-stock-${branch.id}`,
+                                        `w-full sm:!w-28 sm:shrink-0 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
+                                      )}
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                )
+                              })}
+                              {mode === 'edit' ? (
+                                <p className="text-xs text-gray-500">
+                                  Existing Branches are read-only — use Stock Adjustment. Newly checked Branches can set cost and stock here.
+                                </p>
+                              ) : null}
+                            </div>
+                          )
+                        ) : (
+                          <>
+                            <input
+                              type="number"
+                              value={variant.stock}
+                              onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
+                              data-field-key={`variant-${index}-stock`}
+                              disabled={isPersistedVariantCostStockLocked(variant)}
+                              className={fieldInputClass(
+                                `variant-${index}-stock`,
+                                isPersistedVariantCostStockLocked(variant)
+                                  ? 'disabled:bg-gray-100 disabled:text-gray-500'
+                                  : '',
+                              )}
+                              placeholder="0"
+                            />
+                            {isPersistedVariantCostStockLocked(variant) && (
+                              <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
+                            )}
+                          </>
                         )}
                       </div>
                       <div className="space-y-2">

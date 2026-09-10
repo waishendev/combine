@@ -47,6 +47,10 @@ php artisan stock-movement-branch:backfill --store-code=PNG --force
 php artisan branch-inventory:initialize --store-code=PNG --from-global --dry-run
 php artisan branch-inventory:initialize --store-code=PNG --from-global  --force
 
+php artisan branch-inventory:activate --dry-run   # ready 必须 true
+php artisan branch-inventory:activate --force --confirm=ACTIVATE_BRANCH_INVENTORY
+
+
 # Leave balances remain global. Attribute legacy operational leave requests and linked time-offs only.
 php artisan leave-branch:backfill --store-code=PNG --dry-run
 php artisan leave-branch:backfill --store-code=PNG --force
@@ -75,11 +79,13 @@ php artisan pos-payment-methods:initialize --store-code=PNG --force
 php artisan role-branch:replicate --store-codes=PNG --dry-run
 php artisan role-branch:replicate --store-codes=PNG --force
 
-
-
 php artisan role-branch:cleanup-legacy-global --dry-run
 
 php artisan role-branch:cleanup-legacy-global --force --confirm=CLEANUP_LEGACY_GLOBAL_ROLES
+
+
+
+
 
 
 php artisan role-branch:replicate --store-codes=PNG,asdsadas --dry-run

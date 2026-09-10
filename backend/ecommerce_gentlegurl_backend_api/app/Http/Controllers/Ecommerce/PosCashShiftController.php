@@ -15,6 +15,7 @@ use Illuminate\Validation\ValidationException;
 use App\Services\StoreLocationAccessService;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\Ecommerce\PosCashPoolAccount;
+use App\Models\Staff;
 
 class PosCashShiftController extends Controller
 {
@@ -45,6 +46,7 @@ class PosCashShiftController extends Controller
             'opening_atm' => ['nullable', 'numeric', 'min:0'],
         ]);
         $branch = $this->operationalBranch($request);
+        $this->assertStaffAssignedToBranch((int) $validated['opened_staff_id'], (int) $branch->id, 'opened_staff_id');
 
         $openingAmount = round((float) $validated['opening_amount'], 2);
         $refillPacket = round((float) ($validated['opening_refill_packet'] ?? 0), 2);
@@ -102,6 +104,7 @@ class PosCashShiftController extends Controller
             'remark' => ['nullable', 'string'],
         ]);
         $branch = $this->operationalBranch($request);
+        $this->assertStaffAssignedToBranch((int) $validated['closed_staff_id'], (int) $branch->id, 'closed_staff_id');
 
         $shift = DB::transaction(function () use ($request, $validated, $branch) {
             $openShift = $this->openShiftQuery($branch->id)->lockForUpdate()->first();
@@ -432,6 +435,16 @@ class PosCashShiftController extends Controller
             $end,
             $openShift->store_location_id ? (int) $openShift->store_location_id : null,
         );
+    }
+
+    private function assertStaffAssignedToBranch(int $staffId, int $storeLocationId, string $field): void
+    {
+        $staff = Staff::query()->find($staffId);
+        if (! $staff || ! $staff->worksAt($storeLocationId)) {
+            throw ValidationException::withMessages([
+                $field => [__('The selected Staff is not assigned to this Branch.')],
+            ]);
+        }
     }
 
     private function operationalBranch(Request $request): StoreLocation

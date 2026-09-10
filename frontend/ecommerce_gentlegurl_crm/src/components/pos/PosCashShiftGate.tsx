@@ -160,21 +160,48 @@ export default function PosCashShiftGate({
   const currentShiftInFlightBranch = useRef<number | null>(null)
 
   const loadStaffOptions = useCallback(async () => {
+    if (!selectedBranchId) {
+      setStaffOptions([])
+      setOpenedStaffId('')
+      setClosedStaffId('')
+      setStaffLoading(false)
+      return
+    }
     setStaffLoading(true)
     try {
-      const res = await fetch('/api/proxy/staffs?page=1&per_page=100', { cache: 'no-store' })
+      const params = new URLSearchParams({
+        page: '1',
+        per_page: '100',
+        is_active: '1',
+        branch_store_location_id: String(selectedBranchId),
+      })
+      const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to load staff list.')
       const options = normalizeStaffOptions(json?.data?.data ?? json?.data ?? [])
       setStaffOptions(options)
-      setOpenedStaffId((current) => current || (defaultStaffId ? String(defaultStaffId) : ''))
-      setClosedStaffId((current) => current || (defaultStaffId ? String(defaultStaffId) : ''))
+      const preferred = defaultStaffId && options.some((staff) => staff.id === defaultStaffId)
+        ? String(defaultStaffId)
+        : options[0]
+          ? String(options[0].id)
+          : ''
+      setOpenedStaffId((current) => {
+        const currentId = Number(current)
+        if (currentId > 0 && options.some((staff) => staff.id === currentId)) return current
+        return preferred
+      })
+      setClosedStaffId((current) => {
+        const currentId = Number(current)
+        if (currentId > 0 && options.some((staff) => staff.id === currentId)) return current
+        return preferred
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load staff list.')
+      setStaffOptions([])
     } finally {
       setStaffLoading(false)
     }
-  }, [defaultStaffId])
+  }, [defaultStaffId, selectedBranchId])
 
   const loadCurrentShift = useCallback(async () => {
     if (selectedBranchId && currentShiftInFlightBranch.current === selectedBranchId) return null
@@ -225,6 +252,20 @@ export default function PosCashShiftGate({
       void loadStaffOptions()
     }
   }, [canManageCashShift, cashShiftRequired, loadCurrentShift, loadStaffOptions])
+
+  useEffect(() => {
+    if (!canManageCashShift) return
+    setOpenedStaffId((current) => {
+      const currentId = Number(current)
+      if (currentId > 0 && staffOptions.some((staff) => staff.id === currentId)) return current
+      return staffOptions[0] ? String(staffOptions[0].id) : ''
+    })
+    setClosedStaffId((current) => {
+      const currentId = Number(current)
+      if (currentId > 0 && staffOptions.some((staff) => staff.id === currentId)) return current
+      return staffOptions[0] ? String(staffOptions[0].id) : ''
+    })
+  }, [canManageCashShift, staffOptions])
 
   useEffect(() => {
     if (!cashShiftRequired || !shift) return

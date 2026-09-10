@@ -46,13 +46,54 @@ export default function ShippingFulfillmentPriorityCard({ canEdit }: { canEdit: 
         {selected.map((id, index) => {
           const branch = byId.get(id)
           if (!branch) return null
-          return <div key={id} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
-            <span className="w-6 text-sm font-semibold text-slate-500">{index + 1}</span>
-            <span className="flex-1 text-sm font-medium text-slate-800">{branch.name}{!branch.is_active ? ' (inactive — skipped)' : ''}</span>
-            <button type="button" disabled={!canEdit || index === 0} onClick={() => move(index, -1)} className="rounded border px-2 py-1 text-xs disabled:opacity-30">Up</button>
-            <button type="button" disabled={!canEdit || index === selected.length - 1} onClick={() => move(index, 1)} className="rounded border px-2 py-1 text-xs disabled:opacity-30">Down</button>
-            <button type="button" disabled={!canEdit} onClick={() => setSelected((ids) => ids.filter((value) => value !== id))} className="text-xs font-medium text-red-600 disabled:opacity-30">Remove</button>
-          </div>
+          return (
+            <div key={id} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
+              <span className="flex-1 text-sm font-medium text-slate-800">
+                {branch.name}
+                {!branch.is_active ? ' (inactive — skipped)' : ''}
+              </span>
+              {canEdit ? (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-30 transition-colors"
+                    onClick={() => move(index, -1)}
+                    disabled={index === 0}
+                    aria-label="Move up"
+                    title="Move up"
+                  >
+                    <i className="fa-solid fa-chevron-up text-xs" />
+                  </button>
+                  <span className="min-w-[2rem] text-center text-sm font-medium text-gray-700">
+                    {index + 1}
+                  </span>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-30 transition-colors"
+                    onClick={() => move(index, 1)}
+                    disabled={index === selected.length - 1}
+                    aria-label="Move down"
+                    title="Move down"
+                  >
+                    <i className="fa-solid fa-chevron-down text-xs" />
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
+                    onClick={() => setSelected((ids) => ids.filter((value) => value !== id))}
+                    aria-label="Remove"
+                    title="Remove"
+                  >
+                    <i className="fa-solid fa-trash" />
+                  </button>
+                </div>
+              ) : (
+                <span className="min-w-[2rem] text-center text-sm font-medium text-gray-700">
+                  {index + 1}
+                </span>
+              )}
+            </div>
+          )
         })}
       </div>
       <div className="mt-4 flex flex-wrap gap-2">

@@ -24,7 +24,7 @@ class StaffController extends Controller
 
     public function index(Request $request)
     {
-        $perPage = min(50, max(1, $request->integer('per_page', 15)));
+        $perPage = min(200, max(1, $request->integer('per_page', 15)));
         $search = trim((string) $request->input('search', ''));
         $storeLocationId = $request->integer('branch_store_location_id');
         if ($storeLocationId > 0) {
@@ -38,10 +38,13 @@ class StaffController extends Controller
                 'storeLocations',
                 fn ($locations) => $locations->where('store_locations.id', $storeLocationId),
             ))
-            ->when($storeLocationId <= 0 && ! $this->storeLocationAccess->hasPlatformBypass($request->user()), fn ($query) => $query->whereHas(
-                'storeLocations',
-                fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds),
-            ))
+            ->when(
+                $storeLocationId <= 0 && ($request->boolean('require_store_location') || ! $this->storeLocationAccess->hasPlatformBypass($request->user())),
+                fn ($query) => $query->whereHas(
+                    'storeLocations',
+                    fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds),
+                ),
+            )
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'ilike', "%{$search}%")

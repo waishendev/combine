@@ -184,7 +184,7 @@ function cashShiftDifference(row: Pick<CashShiftRow, 'event_type' | 'cash_sales'
 }
 
 export default function CashShiftReportPage() {
-  const { selectedBranchId } = useBranch()
+  const { selectedBranchId, loading: branchLoading } = useBranch()
   const isAllBranches = selectedBranchId === null
   const tableHeadings = useMemo(
     () => isAllBranches
@@ -199,13 +199,14 @@ export default function CashShiftReportPage() {
   const [poolBalances, setPoolBalances] = useState<PoolBalances | null>(null)
   const [periodSummary, setPeriodSummary] = useState<PeriodSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(true)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [selectedRow, setSelectedRow] = useState<CashShiftRow | null>(null)
   const requestSequence = useRef(0)
+  const summaryRequestSequence = useRef(0)
 
   const periodLabel = useMemo(
     () => formatFilterPeriodLabel(appliedFilters.date_from, appliedFilters.date_to),
@@ -213,22 +214,26 @@ export default function CashShiftReportPage() {
   )
 
   const loadSummary = useCallback(async () => {
+    const requestId = ++summaryRequestSequence.current
     setSummaryLoading(true)
+    setPoolBalances(null)
     try {
       const suffix = selectedBranchId ? `?store_location_id=${selectedBranchId}` : ''
       const res = await fetch(`/api/proxy/ecommerce/reports/cash-shifts/summary${suffix}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to load cash shift summary.')
+      if (requestId !== summaryRequestSequence.current) return
       const payload = json?.data ?? {}
       setPoolBalances({
         total_initial_cash: Number(payload.pool_balances?.total_initial_cash ?? 0),
         total_withdraw: Number(payload.pool_balances?.total_withdraw ?? 0),
       })
     } catch (err) {
+      if (requestId !== summaryRequestSequence.current) return
       setError(err instanceof Error ? err.message : 'Unable to load cash shift summary.')
       setPoolBalances(null)
     } finally {
-      setSummaryLoading(false)
+      if (requestId === summaryRequestSequence.current) setSummaryLoading(false)
     }
   }, [selectedBranchId])
 
@@ -237,6 +242,7 @@ export default function CashShiftReportPage() {
     setLoading(true)
     setError(null)
     setRows([])
+    setPeriodSummary(null)
     try {
       const qs = new URLSearchParams({ page: String(targetPage), per_page: '20' })
       if (nextFilters.date_from) qs.set('date_from', nextFilters.date_from)
@@ -275,12 +281,20 @@ export default function CashShiftReportPage() {
   }, [filters, loadSummary, selectedBranchId])
 
   useEffect(() => {
+    // Wait for Header Branch to hydrate from localStorage — otherwise null briefly
+    // means "all branches" and flashes the summed Total Initial Cash.
+    if (branchLoading) return
     void loadData(1)
-    return () => { requestSequence.current += 1 }
+    return () => {
+      requestSequence.current += 1
+      summaryRequestSequence.current += 1
+    }
     // Header Branch is the request identity. Draft filters refetch only on Apply.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBranchId])
+  }, [branchLoading, selectedBranchId])
 
+  const poolCardsLoading = branchLoading || summaryLoading || poolBalances == null
+  const periodCardsLoading = branchLoading || loading || periodSummary == null
   const differenceValue = periodSummary?.difference ?? 0
   const differenceAccent = differenceValue < 0 ? 'amber' : 'emerald'
   const differenceValueClass = differenceValue < 0
@@ -295,28 +309,28 @@ export default function CashShiftReportPage() {
         <SummaryStatCard
           eyebrow="Current Pool · Live now"
           label="Total Initial Cash"
-          value={summaryLoading ? '…' : currency(poolBalances?.total_initial_cash)}
+          value={poolCardsLoading ? '…' : currency(poolBalances.total_initial_cash)}
           accent="blue"
           footer="Date filter does not change this."
         />
         <SummaryStatCard
           eyebrow="Current Pool · Live now"
           label="Total Withdraw"
-          value={summaryLoading ? '…' : currency(poolBalances?.total_withdraw)}
+          value={poolCardsLoading ? '…' : currency(poolBalances.total_withdraw)}
           accent="violet"
           footer="Date filter does not change this."
         />
         <SummaryStatCard
           eyebrow="Filtered Period"
           label="Total Cash Sales"
-          value={loading && !periodSummary ? '…' : currency(periodSummary?.cash_sales)}
+          value={periodCardsLoading ? '…' : currency(periodSummary.cash_sales)}
           accent="emerald"
           footer={`Sum of cash sales from CLOSE shifts · ${periodLabel}`}
         />
         <SummaryStatCard
           eyebrow="Filtered Period"
           label="Difference"
-          value={loading && !periodSummary ? '…' : currency(periodSummary?.difference)}
+          value={periodCardsLoading ? '…' : currency(periodSummary.difference)}
           accent={differenceAccent}
           footer={`Sum of (Cash Sales − Withdraw) · ${periodLabel}`}
           valueClassName={differenceValueClass}

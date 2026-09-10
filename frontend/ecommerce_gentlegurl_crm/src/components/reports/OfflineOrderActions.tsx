@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import { useBranch } from '@/contexts/BranchContext'
+
 type StaffOption = { id: number; name: string }
 type PaymentMethodKey = 'cash' | 'qrpay' | 'credit_card' | 'customer_balance'
 type PaymentBreakdownRow = { method?: string | null; payment_method?: string | null; amount?: number | string | null }
@@ -128,6 +130,17 @@ const createSplitRow = (seed?: Partial<SplitRow>): SplitRow => ({
   open: seed?.open ?? false,
 })
 
+/** Keep primary row at 100% − others when Auto Balance is on. */
+function rebalanceSplitRows(rows: SplitRow[], autoBalance: boolean): SplitRow[] {
+  if (!autoBalance || rows.length === 0) return rows
+  if (rows.length === 1) {
+    return [{ ...rows[0], share_percent: 100 }]
+  }
+  const othersTotal = rows.slice(1).reduce((sum, row) => sum + Number(row.share_percent || 0), 0)
+  const primaryShare = Math.max(0, 100 - othersTotal)
+  return rows.map((row, index) => (index === 0 ? { ...row, share_percent: primaryShare } : row))
+}
+
 const normalizeType = (value?: string | null) => String(value ?? '').trim().toLowerCase()
 const isFinalSettlementType = (value?: string | null) => {
   const t = normalizeType(value)
@@ -144,6 +157,7 @@ const staffSplitItemKindLabel = (value?: string | null) => {
 }
 
 export default function OfflineOrderActions({ orderId, channel, billDate, currentPaymentMethod, orderAmount, paymentBreakdown, staffActionLabel = 'sales_person', hideStaffAction = false, canEditStaffSplit, canVoid = true, onDone }: OfflineOrderActionsProps) {
+  const { selectedBranchId } = useBranch()
   const [menuOpen, setMenuOpen] = useState(false)
   const [modal, setModal] = useState<'sales_person' | 'payment_method' | 'bill_date' | 'void' | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -165,6 +179,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   const [voidRefundToBalance, setVoidRefundToBalance] = useState(false)
   const [voidRefundAmount, setVoidRefundAmount] = useState('')
   const [autoBalanceByItem, setAutoBalanceByItem] = useState<Record<string, boolean>>({})
+  const [itemSplitError, setItemSplitError] = useState<string | null>(null)
 
 
   const orderTotalCents = useMemo(() => Math.round(Number(orderAmount || 0) * 100), [orderAmount])
@@ -327,21 +342,36 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     }
     void loadSalesDraft()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modal, orderId, staffActionLabel, canEditStaffSplit])
+  }, [modal, orderId, staffActionLabel, canEditStaffSplit, selectedBranchId])
 
   const loadSalesDraft = async () => {
     setError(null)
     const staffEndpoint = staffActionLabel === 'worker'
       ? `/api/proxy/ecommerce/orders/${orderId}/offline-actions/booking-worker`
       : `/api/proxy/ecommerce/orders/${orderId}/offline-actions/sales-person`
+    const staffParams = new URLSearchParams({
+      page: '1',
+      per_page: '200',
+      is_active: '1',
+    })
+    if (selectedBranchId) {
+      staffParams.set('branch_store_location_id', String(selectedBranchId))
+    } else {
+      // All Branches: only Staff assigned to Branches this user can access.
+      staffParams.set('require_store_location', '1')
+    }
     const [staffRes, draftRes] = await Promise.all([
-      fetch('/api/proxy/staffs?page=1&per_page=200', { cache: 'no-store' }),
+      fetch(`/api/proxy/staffs?${staffParams.toString()}`, { cache: 'no-store' }),
       fetch(staffEndpoint, { cache: 'no-store' }),
     ])
 
     if (staffRes.ok) {
       const staffJson = await staffRes.json().catch(() => ({}))
-      const rows: unknown[] = Array.isArray(staffJson?.data?.data) ? staffJson.data.data : []
+      const rows: unknown[] = Array.isArray(staffJson?.data?.data)
+        ? staffJson.data.data
+        : Array.isArray(staffJson?.data)
+          ? staffJson.data
+          : []
       type StaffApiRow = { id?: number; name?: string }
       setStaffOptions(
         rows
@@ -349,8 +379,10 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
             const row = item as StaffApiRow
             return { id: Number(row.id), name: row.name ?? `Staff #${row.id}` }
           })
-          .filter((item) => Number.isFinite(item.id)),
+          .filter((item) => Number.isFinite(item.id) && item.id > 0),
       )
+    } else {
+      setStaffOptions([])
     }
 
     if (!draftRes.ok) {
@@ -447,6 +479,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     setEditingDraftKey(null)
     setRemark('')
     setError(null)
+    setItemSplitError(null)
     setSubmitting(false)
     setVoidPreview(null)
     setVoidScope('order_and_appointment')
@@ -463,11 +496,11 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     const seen = new Set<number>()
     const total = item.rows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)
     for (const row of item.rows) {
-      if (!row.staff_id) return `${item.name}: please select staff for all rows.`
-      if (seen.has(row.staff_id)) return `${item.name}: duplicate staff is not allowed.`
+      if (!row.staff_id) return 'Please select staff for all rows.'
+      if (seen.has(row.staff_id)) return 'Duplicate staff is not allowed.'
       seen.add(row.staff_id)
     }
-    if (total !== 100) return `${item.name}: total split must be 100%.`
+    if (total !== 100) return 'Total split must be 100%.'
     return null
   }
 
@@ -487,7 +520,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
         for (const item of draftItems) {
           const validationError = validateItem(item)
           if (validationError) {
-            setError(validationError)
+            setError(`${item.name}: ${validationError.charAt(0).toLowerCase()}${validationError.slice(1)}`)
             setSubmitting(false)
             return
           }
@@ -709,7 +742,14 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                         </div>
                         <div>
                           <p className="text-sm text-slate-700">{detail}</p>
-                          <button type="button" className="mt-2 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => setEditingDraftKey(item.draft_key)}>
+                          <button
+                            type="button"
+                            className="mt-2 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"
+                            onClick={() => {
+                              setItemSplitError(null)
+                              setEditingDraftKey(item.draft_key)
+                            }}
+                          >
                             <i className="fa-solid fa-plus" /> {rowActionLabel}
                           </button>
                         </div>
@@ -969,12 +1009,44 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                   {editingItem.name}
                 </p>
               </div>
-              <button type="button" onClick={() => setEditingDraftKey(null)} className="text-2xl leading-none text-gray-500">×</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setItemSplitError(null)
+                  setEditingDraftKey(null)
+                }}
+                className="text-2xl leading-none text-gray-500"
+              >
+                ×
+              </button>
             </div>
 
             <div className="space-y-3 p-5">
+              {itemSplitError ? (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                  {itemSplitError}
+                </p>
+              ) : null}
+
               <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input type="checkbox" checked={autoBalanceByItem[editingItem.draft_key] ?? true} onChange={(event) => setAutoBalanceByItem((prev) => ({ ...prev, [editingItem.draft_key]: event.target.checked }))} className="h-4 w-4" />
+                <input
+                  type="checkbox"
+                  checked={autoBalanceByItem[editingItem.draft_key] ?? true}
+                  onChange={(event) => {
+                    const enabled = event.target.checked
+                    setAutoBalanceByItem((prev) => ({ ...prev, [editingItem.draft_key]: enabled }))
+                    if (enabled) {
+                      setDraftItems((prev) =>
+                        prev.map((item) =>
+                          item.draft_key !== editingItem.draft_key
+                            ? item
+                            : { ...item, rows: rebalanceSplitRows(item.rows, true) },
+                        ),
+                      )
+                    }
+                  }}
+                  className="h-4 w-4"
+                />
                 Auto Balance
               </label>
 
@@ -1030,7 +1102,21 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                         />
                       </div>
 
-                      <button type="button" onClick={() => setDraftItems((prev) => prev.map((item) => item.draft_key !== editingItem.draft_key ? item : { ...item, rows: item.rows.filter((r) => r.id !== row.id) }))} className="mt-6 h-10 rounded-lg border border-red-300 px-3 text-red-700 hover:bg-red-50">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setItemSplitError(null)
+                          setDraftItems((prev) =>
+                            prev.map((item) => {
+                              if (item.draft_key !== editingItem.draft_key) return item
+                              const autoBalance = autoBalanceByItem[item.draft_key] ?? true
+                              const nextRows = item.rows.filter((r) => r.id !== row.id)
+                              return { ...item, rows: rebalanceSplitRows(nextRows, autoBalance) }
+                            }),
+                          )
+                        }}
+                        className="mt-6 h-10 rounded-lg border border-red-300 px-3 text-red-700 hover:bg-red-50"
+                      >
                         <i className="fa-solid fa-trash" />
                       </button>
                     </div>
@@ -1038,7 +1124,21 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                 })}
               </div>
 
-              <button type="button" onClick={() => setDraftItems((prev) => prev.map((item) => item.draft_key !== editingItem.draft_key ? item : { ...item, rows: [...item.rows, createSplitRow()] }))} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">
+              <button
+                type="button"
+                onClick={() => {
+                  setItemSplitError(null)
+                  setDraftItems((prev) =>
+                    prev.map((item) => {
+                      if (item.draft_key !== editingItem.draft_key) return item
+                      const autoBalance = autoBalanceByItem[item.draft_key] ?? true
+                      const nextRows = [...item.rows, createSplitRow()]
+                      return { ...item, rows: rebalanceSplitRows(nextRows, autoBalance) }
+                    }),
+                  )
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"
+              >
                 <i className="fa-solid fa-plus" /> Add Staff
               </button>
 
@@ -1048,17 +1148,26 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
               </div>
 
               <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => setEditingDraftKey(null)} className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700">Cancel</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setItemSplitError(null)
+                    setEditingDraftKey(null)
+                  }}
+                  className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700"
+                >
+                  Cancel
+                </button>
                 <button
                   type="button"
                   onClick={() => {
                     const current = draftItems.find((item) => item.draft_key === editingItem.draft_key)
                     const validation = current ? validateItem(current) : null
                     if (validation) {
-                      setError(validation)
+                      setItemSplitError(validation)
                       return
                     }
-                    setError(null)
+                    setItemSplitError(null)
                     setEditingDraftKey(null)
                   }}
                   className="flex-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white"

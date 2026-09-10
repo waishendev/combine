@@ -21,6 +21,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use App\Services\StoreLocationAccessService;
 use App\Models\Ecommerce\BranchInventoryCutoverState;
+use App\Models\Ecommerce\StoreLocationProductInventory;
 use App\Services\Ecommerce\BranchInventoryMutationService;
 
 class ProductController extends Controller
@@ -521,6 +522,10 @@ class ProductController extends Controller
             'category_ids.*' => ['integer', 'exists:categories,id'],
             'store_location_ids' => ['required', 'array', 'min:1'],
             'store_location_ids.*' => ['integer', 'exists:store_locations,id'],
+            'branch_initial_stocks' => ['nullable', 'array'],
+            'branch_initial_stocks.*' => ['integer', 'min:0'],
+            'branch_initial_costs' => ['nullable', 'array'],
+            'branch_initial_costs.*' => ['numeric', 'gte:0'],
             'images' => ['nullable', 'array'],
             'images.*' => ['image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
@@ -535,6 +540,10 @@ class ProductController extends Controller
             'variants.*.sale_price_end_at' => ['nullable', 'date'],
             'variants.*.cost_price' => ['nullable', 'numeric'],
             'variants.*.stock' => ['nullable', 'integer'],
+            'variants.*.branch_initial_stocks' => ['nullable', 'array'],
+            'variants.*.branch_initial_stocks.*' => ['integer', 'min:0'],
+            'variants.*.branch_initial_costs' => ['nullable', 'array'],
+            'variants.*.branch_initial_costs.*' => ['numeric', 'gte:0'],
             'variants.*.low_stock_threshold' => ['nullable', 'integer'],
             'variants.*.track_stock' => ['nullable', 'boolean'],
             'variants.*.is_bundle' => ['nullable', 'boolean'],
@@ -552,16 +561,234 @@ class ProductController extends Controller
         $this->validateSalePrice($validated, $request);
         $this->validateVariantSkus($request);
 
-        if (BranchInventoryCutoverState::query()->where('status', BranchInventoryCutoverState::ACTIVE)->exists()
-            && ((int) ($validated['stock'] ?? 0) !== 0
-                || collect($validated['variants'] ?? [])->contains(fn ($variant) => (int) ($variant['stock'] ?? 0) !== 0))) {
-            throw ValidationException::withMessages([
-                'stock' => [__('Initial stock must be recorded through a specific Branch stock adjustment after Branch Inventory activation.')],
-            ]);
+        $assignedIds = collect($validated['store_location_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $variantsInput = is_array($request->input('variants'))
+            ? $request->input('variants')
+            : (is_array($validated['variants'] ?? null) ? $validated['variants'] : []);
+
+        /** @var array<string, array{branches: array<int, array{quantity:int, cost_price:float}>}> $pendingVariantBranchStocksBySku */
+        $pendingVariantBranchStocksBySku = [];
+        foreach ($variantsInput as $variantData) {
+            if (! is_array($variantData)) {
+                continue;
+            }
+            if (filter_var($variantData['is_bundle'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                continue;
+            }
+            $sku = trim((string) ($variantData['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $fallbackCost = max(0, (float) ($variantData['cost_price'] ?? 0));
+            $branchRows = [];
+            $rawVariantBranchStocks = is_array($variantData['branch_initial_stocks'] ?? null)
+                ? $variantData['branch_initial_stocks']
+                : [];
+            $rawVariantBranchCosts = is_array($variantData['branch_initial_costs'] ?? null)
+                ? $variantData['branch_initial_costs']
+                : [];
+            if ($rawVariantBranchStocks !== []) {
+                foreach ($rawVariantBranchStocks as $branchId => $qty) {
+                    $branchId = (int) $branchId;
+                    if ($branchId <= 0) {
+                        continue;
+                    }
+                    $branchRows[$branchId] = [
+                        'quantity' => max(0, (int) $qty),
+                        'cost_price' => max(0, (float) ($rawVariantBranchCosts[$branchId] ?? $fallbackCost)),
+                    ];
+                }
+            } else {
+                $legacyQty = max(0, (int) ($variantData['stock'] ?? 0));
+                if ($legacyQty > 0) {
+                    $branchRows['_legacy'] = [
+                        'quantity' => $legacyQty,
+                        'cost_price' => $fallbackCost,
+                    ];
+                }
+            }
+            if ($branchRows === []) {
+                continue;
+            }
+            $pendingVariantBranchStocksBySku[$sku] = [
+                'branches' => $branchRows,
+            ];
         }
 
-        $initialStock = max(0, (int) ($validated['stock'] ?? 0));
-        $initialCost = max(0, (float) ($validated['cost_price'] ?? 0));
+        $branchInventoryLive = BranchInventoryCutoverState::query()
+            ->where('status', BranchInventoryCutoverState::ACTIVE)
+            ->exists();
+
+        /** @var array<int, int> $pendingBranchStocks store_location_id => qty */
+        $pendingBranchStocks = [];
+        /** @var array<int, float> $pendingBranchCosts store_location_id => cost */
+        $pendingBranchCosts = [];
+        $applyBranchInitialStock = false;
+
+        if ($branchInventoryLive) {
+            $rawBranchStocks = is_array($request->input('branch_initial_stocks'))
+                ? $request->input('branch_initial_stocks')
+                : [];
+            $rawBranchCosts = is_array($request->input('branch_initial_costs'))
+                ? $request->input('branch_initial_costs')
+                : [];
+
+            if ($rawBranchStocks !== []) {
+                foreach ($rawBranchStocks as $branchId => $qty) {
+                    $branchId = (int) $branchId;
+                    if ($branchId <= 0) {
+                        continue;
+                    }
+                    if (! in_array($branchId, $assignedIds, true)) {
+                        throw ValidationException::withMessages([
+                            'branch_initial_stocks' => [__('Stock Quantity can only be set for Branches selected under Available at.')],
+                        ]);
+                    }
+                    $pendingBranchStocks[$branchId] = max(0, (int) $qty);
+                    $pendingBranchCosts[$branchId] = max(0, (float) ($rawBranchCosts[$branchId] ?? 0));
+                }
+            } elseif (($validated['type'] ?? 'single') !== 'variant') {
+                // Backward compatible: single global stock/cost + one Available-at Branch.
+                $legacyStock = max(0, (int) ($validated['stock'] ?? 0));
+                $legacyCost = max(0, (float) ($validated['cost_price'] ?? 0));
+                if ($legacyStock > 0 || $legacyCost > 0) {
+                    if (count($assignedIds) !== 1) {
+                        throw ValidationException::withMessages([
+                            'branch_initial_stocks' => [__('Provide Cost Price and Stock Quantity for each selected Branch after Branch Inventory activation.')],
+                        ]);
+                    }
+                    $pendingBranchStocks[$assignedIds[0]] = $legacyStock;
+                    $pendingBranchCosts[$assignedIds[0]] = $legacyCost;
+                }
+            }
+
+            foreach ($assignedIds as $branchId) {
+                $pendingBranchStocks[$branchId] = $pendingBranchStocks[$branchId] ?? 0;
+                $pendingBranchCosts[$branchId] = $pendingBranchCosts[$branchId] ?? 0.0;
+            }
+
+            $activeAssignedIds = BranchInventoryCutoverState::query()
+                ->whereIn('store_location_id', $assignedIds)
+                ->where('status', BranchInventoryCutoverState::ACTIVE)
+                ->pluck('store_location_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            $activeAssignedLookup = array_fill_keys($activeAssignedIds, true);
+
+            foreach ($pendingBranchStocks as $branchId => $qty) {
+                if ($qty <= 0) {
+                    continue;
+                }
+                if (! isset($activeAssignedLookup[$branchId])) {
+                    throw ValidationException::withMessages([
+                        'branch_initial_stocks' => [__('Stock Quantity requires Branches with active Branch Inventory.')],
+                    ]);
+                }
+            }
+
+            /** @var array<string, array{branches: array<int, array{quantity:int, cost_price:float}>}> $normalizedVariantBranchStocks */
+            $normalizedVariantBranchStocks = [];
+            foreach ($pendingVariantBranchStocksBySku as $sku => $pending) {
+                $branches = $pending['branches'];
+                if (isset($branches['_legacy'])) {
+                    $legacy = $branches['_legacy'];
+                    $legacyQty = (int) ($legacy['quantity'] ?? 0);
+                    if ($legacyQty > 0 && count($assignedIds) !== 1) {
+                        throw ValidationException::withMessages([
+                            'variants' => [__('Provide Stock for each selected Branch on variants after Branch Inventory activation.')],
+                        ]);
+                    }
+                    $branches = count($assignedIds) === 1
+                        ? [$assignedIds[0] => [
+                            'quantity' => $legacyQty,
+                            'cost_price' => max(0, (float) ($legacy['cost_price'] ?? 0)),
+                        ]]
+                        : [];
+                }
+
+                $normalized = [];
+                foreach ($branches as $branchId => $row) {
+                    $branchId = (int) $branchId;
+                    if ($branchId <= 0 || ! is_array($row)) {
+                        continue;
+                    }
+                    $qty = max(0, (int) ($row['quantity'] ?? 0));
+                    $cost = max(0, (float) ($row['cost_price'] ?? 0));
+                    if (! in_array($branchId, $assignedIds, true)) {
+                        throw ValidationException::withMessages([
+                            'variants' => [__('Variant stock can only be set for Branches selected under Available at.')],
+                        ]);
+                    }
+                    if ($qty > 0 && ! isset($activeAssignedLookup[$branchId])) {
+                        throw ValidationException::withMessages([
+                            'variants' => [__('Variant stock requires Branches with active Branch Inventory.')],
+                        ]);
+                    }
+                    $normalized[$branchId] = [
+                        'quantity' => $qty,
+                        'cost_price' => $cost,
+                    ];
+                }
+                foreach ($assignedIds as $branchId) {
+                    $normalized[$branchId] = $normalized[$branchId] ?? ['quantity' => 0, 'cost_price' => 0.0];
+                }
+                if (! collect($normalized)->contains(fn ($row) => (int) ($row['quantity'] ?? 0) > 0)) {
+                    continue;
+                }
+                $normalizedVariantBranchStocks[$sku] = [
+                    'branches' => $normalized,
+                ];
+            }
+            $pendingVariantBranchStocksBySku = $normalizedVariantBranchStocks;
+
+            $wantsVariantStock = $pendingVariantBranchStocksBySku !== [];
+            $wantsProductBranchStock = collect($pendingBranchStocks)->contains(fn ($qty) => (int) $qty > 0);
+            $applyBranchInitialStock = $wantsProductBranchStock || $wantsVariantStock;
+
+            // Persist product/variant rows at qty 0; apply stock via Branch mutation below.
+            $validated['stock'] = 0;
+            if ($variantsInput !== []) {
+                $zeroedVariants = [];
+                foreach ($variantsInput as $index => $variantData) {
+                    if (! is_array($variantData)) {
+                        $zeroedVariants[$index] = $variantData;
+                        continue;
+                    }
+                    $zeroedVariants[$index] = array_merge($variantData, ['stock' => 0]);
+                }
+                $request->merge(['variants' => $zeroedVariants]);
+                $validated['variants'] = $zeroedVariants;
+            }
+        }
+
+        $pendingProductStock = $branchInventoryLive
+            ? 0
+            : max(0, (int) ($validated['stock'] ?? 0));
+        $initialStock = $pendingProductStock;
+
+        if ($branchInventoryLive && ($validated['type'] ?? 'single') !== 'variant') {
+            $weightedQty = 0;
+            $weightedValue = 0.0;
+            foreach ($pendingBranchStocks as $branchId => $qty) {
+                $qty = (int) $qty;
+                if ($qty <= 0) {
+                    continue;
+                }
+                $weightedQty += $qty;
+                $weightedValue += $qty * (float) ($pendingBranchCosts[$branchId] ?? 0);
+            }
+            $initialCost = $weightedQty > 0
+                ? round($weightedValue / $weightedQty, 2)
+                : max(0, (float) (collect($pendingBranchCosts)->first() ?? ($validated['cost_price'] ?? 0)));
+        } else {
+            $initialCost = max(0, (float) ($validated['cost_price'] ?? 0));
+        }
         $initialInventoryValue = round($initialStock * $initialCost, 2);
 
         $product = Product::create($validated + [
@@ -593,12 +820,52 @@ class ProductController extends Controller
 
         $this->syncVariants($product, $request, true);
 
-        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren', 'storeLocations']), __('Product created successfully.'));
+        if ($applyBranchInitialStock) {
+            $fresh = $product->fresh(['variants']);
+            $this->ensureActiveBranchInventoryPlaceholders($fresh, $assignedIds);
+            $this->applyInitialBranchStocks(
+                $fresh,
+                $pendingBranchStocks,
+                $pendingBranchCosts,
+                $pendingVariantBranchStocksBySku,
+                (int) $request->user()->id
+            );
+        }
+
+        return $this->respond($product->fresh()->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren', 'storeLocations']), __('Product created successfully.'));
     }
 
     public function show(Product $product)
     {
-        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct', 'storeLocations']));
+        $product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct', 'storeLocations']);
+
+        $activeInventoryBranchIds = BranchInventoryCutoverState::query()
+            ->where('status', BranchInventoryCutoverState::ACTIVE)
+            ->pluck('store_location_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if ($activeInventoryBranchIds !== []) {
+            $product->load(['branchInventories' => fn ($inventory) => $inventory
+                ->whereIn('store_location_id', $activeInventoryBranchIds)
+                ->with('storeLocation:id,name,code')]);
+
+            $inventory = $product->branchInventories->groupBy(fn ($row) => (int) ($row->product_variant_id ?? 0));
+            $product->setAttribute('stock', (int) ($inventory->get(0)?->sum('quantity') ?? 0));
+            $product->setAttribute('stock_quantity', (int) ($inventory->get(0)?->sum('quantity') ?? 0));
+            $product->variants->each(fn (ProductVariant $variant) => ! $variant->is_bundle
+                ? $variant->setAttribute('stock', (int) ($inventory->get((int) $variant->id)?->sum('quantity') ?? 0))
+                : null);
+            $product->setAttribute('branch_inventory_breakdown', $product->branchInventories->map(fn ($row) => [
+                'store_location_id' => (int) $row->store_location_id,
+                'branch_name' => $row->storeLocation?->name,
+                'branch_code' => $row->storeLocation?->code,
+                'product_variant_id' => $row->product_variant_id ? (int) $row->product_variant_id : null,
+                'quantity' => (int) $row->quantity,
+            ])->values());
+        }
+
+        return $this->respond($product);
     }
 
     public function update(Request $request, Product $product)
@@ -652,6 +919,10 @@ class ProductController extends Controller
             'category_ids.*' => ['integer', 'exists:categories,id'],
             'store_location_ids' => ['sometimes', 'array', 'min:1'],
             'store_location_ids.*' => ['integer', 'exists:store_locations,id'],
+            'branch_initial_stocks' => ['nullable', 'array'],
+            'branch_initial_stocks.*' => ['integer', 'min:0'],
+            'branch_initial_costs' => ['nullable', 'array'],
+            'branch_initial_costs.*' => ['numeric', 'gte:0'],
             'images' => ['sometimes', 'array'],
             'images.*' => ['image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
@@ -669,6 +940,10 @@ class ProductController extends Controller
             'variants.*.sale_price_end_at' => ['nullable', 'date'],
             'variants.*.cost_price' => ['nullable', 'numeric'],
             'variants.*.stock' => ['nullable', 'integer'],
+            'variants.*.branch_initial_stocks' => ['nullable', 'array'],
+            'variants.*.branch_initial_stocks.*' => ['integer', 'min:0'],
+            'variants.*.branch_initial_costs' => ['nullable', 'array'],
+            'variants.*.branch_initial_costs.*' => ['numeric', 'gte:0'],
             'variants.*.low_stock_threshold' => ['nullable', 'integer'],
             'variants.*.track_stock' => ['nullable', 'boolean'],
             'variants.*.is_bundle' => ['nullable', 'boolean'],
@@ -687,6 +962,8 @@ class ProductController extends Controller
         $this->validateVariantSkus($request, $product);
 
         unset($validated['cost_price'], $validated['stock'], $validated['stock_quantity'], $validated['inventory_value']);
+
+        $previousBranchIds = $product->storeLocations()->pluck('store_locations.id')->map(fn ($id) => (int) $id)->all();
 
         $product->fill($validated);
         $product->dummy_sold_count = $request->has('dummy_sold_count')
@@ -717,16 +994,264 @@ class ProductController extends Controller
 
         $this->syncVariants($product, $request, false);
 
-        return $this->respond($product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct', 'storeLocations']), __('Product updated successfully.'));
+        if (BranchInventoryCutoverState::query()->where('status', BranchInventoryCutoverState::ACTIVE)->exists()) {
+            $assignedIds = collect($request->input('store_location_ids', $previousBranchIds))
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+
+            $activeAssignedIds = BranchInventoryCutoverState::query()
+                ->whereIn('store_location_id', $assignedIds)
+                ->where('status', BranchInventoryCutoverState::ACTIVE)
+                ->pluck('store_location_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $pendingBranchStocks = [];
+            $pendingBranchCosts = [];
+            $rawBranchStocks = is_array($request->input('branch_initial_stocks')) ? $request->input('branch_initial_stocks') : [];
+            $rawBranchCosts = is_array($request->input('branch_initial_costs')) ? $request->input('branch_initial_costs') : [];
+
+            foreach ($activeAssignedIds as $branchId) {
+                $qty = max(0, (int) ($rawBranchStocks[$branchId] ?? 0));
+                if ($qty <= 0) {
+                    continue;
+                }
+                $existingQty = (int) StoreLocationProductInventory::query()
+                    ->where('store_location_id', $branchId)
+                    ->where('product_id', $product->id)
+                    ->whereNull('product_variant_id')
+                    ->value('quantity');
+                if ($existingQty > 0) {
+                    continue;
+                }
+                $pendingBranchStocks[$branchId] = $qty;
+                $pendingBranchCosts[$branchId] = max(0, (float) ($rawBranchCosts[$branchId] ?? 0));
+            }
+
+            $pendingVariantBranchStocksBySku = [];
+            $variantsInput = is_array($request->input('variants')) ? $request->input('variants') : [];
+            $freshVariants = $product->fresh(['variants'])?->variants ?? collect();
+            foreach ($variantsInput as $variantData) {
+                if (! is_array($variantData) || filter_var($variantData['is_bundle'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    continue;
+                }
+                $sku = trim((string) ($variantData['sku'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                $variantModel = $freshVariants->first(fn ($variant) => (string) $variant->sku === $sku);
+                if (! $variantModel) {
+                    continue;
+                }
+                $fallbackCost = max(0, (float) ($variantData['cost_price'] ?? $variantModel->cost_price ?? 0));
+                $rawVariantStocks = is_array($variantData['branch_initial_stocks'] ?? null) ? $variantData['branch_initial_stocks'] : [];
+                $rawVariantCosts = is_array($variantData['branch_initial_costs'] ?? null) ? $variantData['branch_initial_costs'] : [];
+                $normalized = [];
+                foreach ($activeAssignedIds as $branchId) {
+                    $qty = max(0, (int) ($rawVariantStocks[$branchId] ?? 0));
+                    if ($qty <= 0) {
+                        continue;
+                    }
+                    $existingQty = (int) StoreLocationProductInventory::query()
+                        ->where('store_location_id', $branchId)
+                        ->where('product_id', $product->id)
+                        ->where('product_variant_id', $variantModel->id)
+                        ->value('quantity');
+                    if ($existingQty > 0) {
+                        continue;
+                    }
+                    $normalized[$branchId] = [
+                        'quantity' => $qty,
+                        'cost_price' => max(0, (float) ($rawVariantCosts[$branchId] ?? $fallbackCost)),
+                    ];
+                }
+                if ($normalized === []) {
+                    continue;
+                }
+                $pendingVariantBranchStocksBySku[$sku] = ['branches' => $normalized];
+            }
+
+            if ($pendingBranchStocks !== [] || $pendingVariantBranchStocksBySku !== []) {
+                $fresh = $product->fresh(['variants']);
+                $this->ensureActiveBranchInventoryPlaceholders($fresh, $activeAssignedIds);
+                $this->applyInitialBranchStocks(
+                    $fresh,
+                    $pendingBranchStocks,
+                    $pendingBranchCosts,
+                    $pendingVariantBranchStocksBySku,
+                    (int) $request->user()->id,
+                    'Initial stock for Branch assignment'
+                );
+            }
+        }
+
+        return $this->respond($product->fresh()->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct', 'storeLocations']), __('Product updated successfully.'));
     }
 
     private function syncStoreLocations(Request $request, Product $product, array $ids): void
     {
         $authorized = app(StoreLocationAccessService::class)->assertCanAssign($request->user(), $ids);
         $product->storeLocations()->sync(collect($authorized)->mapWithKeys(fn ($id) => [$id => ['is_available' => true]])->all());
+        $this->ensureActiveBranchInventoryPlaceholders($product, $authorized);
     }
 
+    /**
+     * @param  list<int>  $branchIds
+     */
+    private function ensureActiveBranchInventoryPlaceholders(Product $product, array $branchIds): void
+    {
+        if ($branchIds === []) {
+            return;
+        }
 
+        $activeBranchIds = BranchInventoryCutoverState::query()
+            ->whereIn('store_location_id', $branchIds)
+            ->where('status', BranchInventoryCutoverState::ACTIVE)
+            ->pluck('store_location_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if ($activeBranchIds === []) {
+            return;
+        }
+
+        $product->loadMissing(['variants' => fn ($query) => $query->where('is_bundle', false)->select(['id', 'product_id'])]);
+        $variantIds = $product->variants->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        foreach ($activeBranchIds as $branchId) {
+            if ($variantIds === []) {
+                StoreLocationProductInventory::query()->firstOrCreate(
+                    [
+                        'store_location_id' => $branchId,
+                        'product_id' => (int) $product->id,
+                        'product_variant_id' => null,
+                    ],
+                    ['quantity' => 0]
+                );
+                continue;
+            }
+
+            foreach ($variantIds as $variantId) {
+                StoreLocationProductInventory::query()->firstOrCreate(
+                    [
+                        'store_location_id' => $branchId,
+                        'product_id' => (int) $product->id,
+                        'product_variant_id' => $variantId,
+                    ],
+                    ['quantity' => 0]
+                );
+            }
+        }
+    }
+
+    /**
+     * Apply create/edit initial stock as Branch stock_in after Branch Inventory is live.
+     *
+     * @param  array<int, int>  $pendingBranchStocks  store_location_id => quantity (simple / package)
+     * @param  array<int, float>  $pendingBranchCosts  store_location_id => cost
+     * @param  array<string, array{branches: array<int, array{quantity:int, cost_price:float}>}>  $pendingVariantBranchStocksBySku
+     */
+    private function applyInitialBranchStocks(
+        Product $product,
+        array $pendingBranchStocks,
+        array $pendingBranchCosts,
+        array $pendingVariantBranchStocksBySku,
+        int $actorUserId,
+        string $remark = 'Initial stock on product create',
+    ): void {
+        $isVariant = ($product->type ?? 'single') === 'variant';
+
+        if ($isVariant) {
+            if ($pendingVariantBranchStocksBySku === []) {
+                return;
+            }
+            $branchIds = collect($pendingVariantBranchStocksBySku)
+                ->flatMap(fn (array $pending) => array_keys($pending['branches'] ?? []))
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+        } else {
+            $branchIds = collect($pendingBranchStocks)
+                ->filter(fn ($qty) => (int) $qty > 0)
+                ->keys()
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        if ($branchIds === []) {
+            return;
+        }
+
+        foreach ($branchIds as $storeLocationId) {
+            $mutations = [];
+            $costsByKey = [];
+
+            if ($isVariant) {
+                foreach ($product->variants as $variant) {
+                    if ($variant->is_bundle) {
+                        continue;
+                    }
+                    $pending = $pendingVariantBranchStocksBySku[(string) $variant->sku] ?? null;
+                    if ($pending === null) {
+                        continue;
+                    }
+                    $row = $pending['branches'][$storeLocationId] ?? null;
+                    $qty = (int) (is_array($row) ? ($row['quantity'] ?? 0) : 0);
+                    if ($qty <= 0) {
+                        continue;
+                    }
+                    $key = 'crm-create:'.$product->id.':'.$storeLocationId.':'.$variant->id.':'.(string) Str::uuid();
+                    $mutations[] = [
+                        'product_id' => (int) $product->id,
+                        'product_variant_id' => (int) $variant->id,
+                        'delta' => $qty,
+                        'type' => 'stock_in',
+                        'remark' => $remark,
+                        'idempotency_key' => $key,
+                    ];
+                    $costsByKey[$key] = max(0, (float) (is_array($row) ? ($row['cost_price'] ?? 0) : 0));
+                }
+            } else {
+                $qty = (int) ($pendingBranchStocks[$storeLocationId] ?? 0);
+                if ($qty <= 0) {
+                    continue;
+                }
+                $key = 'crm-create:'.$product->id.':'.$storeLocationId.':'.(string) Str::uuid();
+                $mutations[] = [
+                    'product_id' => (int) $product->id,
+                    'product_variant_id' => null,
+                    'delta' => $qty,
+                    'type' => 'stock_in',
+                    'remark' => $remark,
+                    'idempotency_key' => $key,
+                ];
+                $costsByKey[$key] = max(0, (float) ($pendingBranchCosts[$storeLocationId] ?? 0));
+            }
+
+            if ($mutations === []) {
+                continue;
+            }
+
+            $movements = app(BranchInventoryMutationService::class)->mutateMany(
+                (int) $storeLocationId,
+                $mutations,
+                $actorUserId
+            );
+
+            foreach ($movements as $movement) {
+                $cost = $costsByKey[$movement->idempotency_key] ?? null;
+                if ($cost === null) {
+                    continue;
+                }
+                $movement->forceFill(['input_cost_price_per_unit' => $cost])->save();
+            }
+        }
+    }
 
     public function adjustStock(Request $request, Product $product)
     {

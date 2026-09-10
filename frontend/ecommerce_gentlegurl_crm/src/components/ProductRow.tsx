@@ -91,6 +91,13 @@ export interface ProductRowData {
   variants?: ProductVariant[]
   storeLocationIds?: number[]
   storeLocations?: Array<{ id: number; name: string; code?: string }>
+  branchInventoryBreakdown?: Array<{
+    storeLocationId: number
+    branchName?: string | null
+    branchCode?: string | null
+    productVariantId?: number | null
+    quantity: number
+  }>
 }
 
 interface ProductRowProps {

@@ -2724,22 +2724,40 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [])
 
   const fetchActiveStaffs = useCallback(async () => {
-    const params = new URLSearchParams({ page: '1', per_page: '50', is_active: '1' })
+    if (!selectedBranchId) {
+      setActiveStaffs([])
+      return
+    }
+    const params = new URLSearchParams({
+      page: '1',
+      per_page: '100',
+      is_active: '1',
+      branch_store_location_id: String(selectedBranchId),
+    })
     const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
-    if (!res.ok) return
+    if (!res.ok) {
+      setActiveStaffs([])
+      return
+    }
 
     const json = await res.json().catch(() => null)
     setActiveStaffs(mapStaffOptions(json))
-  }, [mapStaffOptions])
+  }, [mapStaffOptions, selectedBranchId])
 
   const fetchStaffOptions = useCallback(async (search: string) => {
-    const params = new URLSearchParams({ page: '1', per_page: '20', is_active: '1' })
+    if (!selectedBranchId) return [] as StaffOption[]
+    const params = new URLSearchParams({
+      page: '1',
+      per_page: '50',
+      is_active: '1',
+      branch_store_location_id: String(selectedBranchId),
+    })
     if (search.trim()) params.set('search', search.trim())
     const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
     if (!res.ok) return [] as StaffOption[]
     const json = await res.json().catch(() => null)
     return mapStaffOptions(json)
-  }, [mapStaffOptions])
+  }, [mapStaffOptions, selectedBranchId])
 
   const fetchVouchers = useCallback(async (memberId?: number | null) => {
     setVoucherLoading(true)

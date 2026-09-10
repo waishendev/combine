@@ -132,6 +132,13 @@ export type ProductApiItem = {
     }> | null
   }> | null
   store_locations?: Array<{ id?: number | string | null; name?: string | null; code?: string | null }> | null
+  branch_inventory_breakdown?: Array<{
+    store_location_id?: number | string | null
+    branch_name?: string | null
+    branch_code?: string | null
+    product_variant_id?: number | string | null
+    quantity?: number | string | null
+  }> | null
 }
 
 const normalizeOptionalProductCode = (value: unknown): string => {
@@ -441,5 +448,25 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     variants: normalizedVariants,
     storeLocations,
     storeLocationIds: storeLocations.map((branch) => branch.id),
+    branchInventoryBreakdown: Array.isArray(item.branch_inventory_breakdown)
+      ? item.branch_inventory_breakdown.map((row) => ({
+          storeLocationId:
+            typeof row.store_location_id === 'number'
+              ? row.store_location_id
+              : Number(row.store_location_id) || 0,
+          branchName: row.branch_name ?? null,
+          branchCode: row.branch_code ?? null,
+          productVariantId:
+            row.product_variant_id === null || row.product_variant_id === undefined
+              ? null
+              : typeof row.product_variant_id === 'number'
+                ? row.product_variant_id
+                : Number(row.product_variant_id) || null,
+          quantity:
+            typeof row.quantity === 'number'
+              ? row.quantity
+              : Number.parseInt(String(row.quantity ?? '0'), 10) || 0,
+        }))
+      : undefined,
   }
 }

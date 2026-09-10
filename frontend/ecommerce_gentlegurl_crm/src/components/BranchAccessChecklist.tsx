@@ -34,7 +34,6 @@ export default function BranchAccessChecklist({
             />
             <span>
               <span className="font-medium text-gray-800">{location.name}</span>
-              {location.code ? <span className="text-gray-500"> ({location.code})</span> : null}
               {location.is_active === false ? <span className="text-amber-700"> — inactive</span> : null}
             </span>
           </label>

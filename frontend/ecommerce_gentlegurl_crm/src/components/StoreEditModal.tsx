@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { StoreRowData } from './StoreRow'
 import { mapStoreApiItemToRow, type StoreApiItem } from './storeUtils'
+import { getApiErrorMessage } from '@/lib/api-errors'
 import { useI18n } from '@/lib/i18n'
 import CrmFormModalShell from './CrmFormModalShell'
 import { IMAGE_ACCEPT } from './mediaAccept'
@@ -422,28 +423,7 @@ export default function StoreEditModal({
       }
 
       if (!res.ok) {
-        if (data && typeof data === 'object') {
-          if ('message' in data && typeof data.message === 'string') {
-            setError(data.message)
-            return
-          }
-          if ('errors' in data && typeof data.errors === 'object') {
-            const errors = data.errors as Record<string, unknown>
-            const firstKey = Object.keys(errors)[0]
-            if (firstKey) {
-              const firstValue = errors[firstKey]
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                setError(firstValue[0])
-                return
-              }
-              if (typeof firstValue === 'string') {
-                setError(firstValue)
-                return
-              }
-            }
-          }
-        }
-        setError('Failed to update branch')
+        setError(getApiErrorMessage(data, 'Failed to update branch'))
         return
       }
 
@@ -909,7 +889,7 @@ export default function StoreEditModal({
           )}
 
           {error && (
-            <div className="text-sm text-red-600" role="alert">
+            <div className="text-sm text-red-600 whitespace-pre-line" role="alert">
               {error}
             </div>
           )}
