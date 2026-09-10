@@ -16,7 +16,9 @@ export default function ShippingFulfillmentPriorityCard({ canEdit }: { canEdit: 
     ]).then(([priority, branches]) => {
       setSelected(priority?.data?.store_location_ids ?? [])
       const rows = branches?.data?.data ?? branches?.data ?? []
-      setAll(Array.isArray(rows) ? rows : [])
+      const configured = priority?.data?.branches ?? []
+      const merged = [...(Array.isArray(configured) ? configured : []), ...(Array.isArray(rows) ? rows : [])]
+      setAll(Array.from(new Map(merged.map((branch: Branch) => [branch.id, branch])).values()))
     }).catch(() => setMessage('Unable to load shipping fulfilment priority.'))
   }, [])
 

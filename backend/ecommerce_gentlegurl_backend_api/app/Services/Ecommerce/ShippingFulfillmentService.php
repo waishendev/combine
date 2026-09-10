@@ -3,7 +3,6 @@
 namespace App\Services\Ecommerce;
 
 use App\Models\Ecommerce\StoreLocation;
-use App\Services\SettingService;
 use Illuminate\Validation\ValidationException;
 
 class ShippingFulfillmentService
@@ -15,8 +14,7 @@ class ShippingFulfillmentService
     /** @param array<int, array<string, mixed>> $items */
     public function selectBranch(array $items, bool $lockInventory = false): StoreLocation
     {
-        $priority = collect(SettingService::get(self::SETTING_KEY, [], 'ecommerce'))
-            ->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        $priority = app(ShippingFulfillmentPriorityService::class)->current();
 
         $branches = StoreLocation::query()
             ->whereIn('id', $priority)
