@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Http\Requests\StoreLocation\StoreStoreLocationRequest;
 use App\Http\Requests\StoreLocation\UpdateStoreLocationRequest;
 use App\Services\BranchCapacityService;
+use App\Services\Ecommerce\ShippingFulfillmentPriorityService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -77,7 +78,7 @@ class StoreLocationController extends Controller
                 ]);
             }
 
-            return StoreLocation::create($validated + [
+            $location = StoreLocation::create($validated + [
                 'is_active' => $validated['is_active'] ?? true,
                 'is_pickup_available' => $validated['is_pickup_available'] ?? true,
                 'is_review_available' => $validated['is_review_available'] ?? true,
@@ -85,6 +86,10 @@ class StoreLocationController extends Controller
                 'is_pos_available' => $validated['is_pos_available'] ?? false,
                 'sort_order' => $validated['sort_order'] ?? 0,
             ]);
+
+            app(ShippingFulfillmentPriorityService::class)->append($location);
+
+            return $location;
         });
 
         if ($request->hasFile('images')) {

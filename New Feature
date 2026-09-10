@@ -1,5 +1,12 @@
 php artisan migrate --force
 
+# Initialize/reconcile Ecommerce shipping fulfilment priority. Dry-run performs
+# zero writes and reports current, missing, and proposed Branch order. Force is
+# idempotent, preserves every existing Admin-ordered entry, and only appends
+# missing Branches (PNG is first only when the configuration is empty).
+php artisan ecommerce-fulfilment-priority:initialize --store-code=PNG --dry-run
+php artisan ecommerce-fulfilment-priority:initialize --store-code=PNG --force
+
 
 php artisan db:seed --class=BranchLimitSettingSeeder 
 
