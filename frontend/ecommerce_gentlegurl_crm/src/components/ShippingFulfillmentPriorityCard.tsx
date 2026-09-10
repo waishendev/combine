@@ -4,9 +4,20 @@ import { useEffect, useState } from 'react'
 
 type Branch = { id: number; name: string; code: string; is_active: boolean }
 
-export default function ShippingFulfillmentPriorityCard({ canEdit }: { canEdit: boolean }) {
+type Props = {
+  canEdit: boolean
+  hideLoadingUi?: boolean
+  onReady?: () => void
+}
+
+export default function ShippingFulfillmentPriorityCard({
+  canEdit,
+  hideLoadingUi = false,
+  onReady,
+}: Props) {
   const [all, setAll] = useState<Branch[]>([])
   const [selected, setSelected] = useState<number[]>([])
+  const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -20,7 +31,11 @@ export default function ShippingFulfillmentPriorityCard({ canEdit }: { canEdit: 
       const merged = [...(Array.isArray(configured) ? configured : []), ...(Array.isArray(rows) ? rows : [])]
       setAll(Array.from(new Map(merged.map((branch: Branch) => [branch.id, branch])).values()))
     }).catch(() => setMessage('Unable to load shipping fulfilment priority.'))
-  }, [])
+      .finally(() => {
+        setLoading(false)
+        onReady?.()
+      })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- onReady is a stable parent callback
 
   const move = (index: number, offset: number) => {
     const next = [...selected]
@@ -37,6 +52,15 @@ export default function ShippingFulfillmentPriorityCard({ canEdit }: { canEdit: 
       body: JSON.stringify({ store_location_ids: selected }),
     })
     setMessage(response.ok ? 'Shipping fulfilment priority saved.' : 'Unable to save shipping fulfilment priority.')
+  }
+
+  if (loading) {
+    if (hideLoadingUi) return null
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+        Loading shipping fulfilment priority...
+      </div>
+    )
   }
 
   const byId = new Map(all.map((branch) => [branch.id, branch]))
@@ -79,6 +103,7 @@ export default function ShippingFulfillmentPriorityCard({ canEdit }: { canEdit: 
                   >
                     <i className="fa-solid fa-chevron-down text-xs" />
                   </button>
+                  {/* Delete temporarily disabled
                   <button
                     type="button"
                     className="inline-flex h-8 w-8 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
@@ -88,6 +113,7 @@ export default function ShippingFulfillmentPriorityCard({ canEdit }: { canEdit: 
                   >
                     <i className="fa-solid fa-trash" />
                   </button>
+                  */}
                 </div>
               ) : (
                 <span className="min-w-[2rem] text-center text-sm font-medium text-gray-700">

@@ -8,6 +8,8 @@ type Props = {
   settingType: 'booking' | 'ecommerce'
   title: string
   description: string
+  hideLoadingUi?: boolean
+  onReady?: () => void
 }
 
 type NotificationSetting = {
@@ -26,6 +28,8 @@ export default function PaymentProofNotificationSettingsCard({
   settingType,
   title,
   description,
+  hideLoadingUi = false,
+  onReady,
 }: Props) {
   const [setting, setSetting] = useState<NotificationSetting>(defaultSetting)
   const [loading, setLoading] = useState(true)
@@ -52,11 +56,12 @@ export default function PaymentProofNotificationSettingsCard({
         setError('Unable to load notification settings.')
       } finally {
         setLoading(false)
+        onReady?.()
       }
     }
 
     run()
-  }, [settingKey, settingType])
+  }, [settingKey, settingType]) // eslint-disable-line react-hooks/exhaustive-deps -- onReady is a stable parent callback
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -93,6 +98,7 @@ export default function PaymentProofNotificationSettingsCard({
   }
 
   if (loading) {
+    if (hideLoadingUi) return null
     return <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">Loading notification settings...</div>
   }
 

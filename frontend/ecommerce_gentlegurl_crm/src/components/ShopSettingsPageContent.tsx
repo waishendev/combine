@@ -248,9 +248,16 @@ const defaultBookingHoldSettings = {
 type ShopSettingsPageContentProps = {
   canEdit: boolean
   forcedWorkspace?: Workspace
+  hideLoadingUi?: boolean
+  onReady?: () => void
 }
 
-export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: ShopSettingsPageContentProps) {
+export default function ShopSettingsPageContent({
+  canEdit,
+  forcedWorkspace,
+  hideLoadingUi = false,
+  onReady,
+}: ShopSettingsPageContentProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -489,6 +496,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false)
+          onReady?.()
         }
       }
     }
@@ -496,7 +504,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
     fetchSettings()
 
     return () => controller.abort()
-  }, [withType])
+  }, [withType]) // eslint-disable-line react-hooks/exhaustive-deps -- onReady is a stable parent callback
 
   const handleContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1067,6 +1075,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   }
 
   if (loading) {
+    if (hideLoadingUi) return null
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
         Loading shop settings...
