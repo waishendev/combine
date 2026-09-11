@@ -8,7 +8,8 @@ php artisan ecommerce-fulfilment-priority:initialize --store-code=PNG --dry-run
 php artisan ecommerce-fulfilment-priority:initialize --store-code=PNG --force
 
 
-php artisan db:seed --class=BranchLimitSettingSeeder 
+php artisan db:seed --class=BranchLimitSettingSeeder
+php artisan db:seed --class=BranchLimitPermissionSeeder
 
 php artisan branch-access:backfill --store-code=PNG --dry-run
 

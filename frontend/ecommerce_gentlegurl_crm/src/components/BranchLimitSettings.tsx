@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from 'react'
 type Usage = { count: number; limit: number; can_create: boolean }
 type Response = { data?: Usage; message?: string | null }
 
-export default function BranchLimitSettings() {
+export default function BranchLimitSettings({ canUpdate = false }: { canUpdate?: boolean }) {
   const [usage, setUsage] = useState<Usage | null>(null)
   const [limit, setLimit] = useState('')
   const [saving, setSaving] = useState(false)
@@ -25,6 +25,7 @@ export default function BranchLimitSettings() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (!canUpdate) return
     setSaving(true)
     setError(null)
     setMessage(null)
@@ -57,12 +58,26 @@ export default function BranchLimitSettings() {
       </div>
       <form onSubmit={submit}>
         <label htmlFor="branch-limit" className="mb-1 block text-sm font-medium text-slate-700">Branch Limit</label>
-        <input id="branch-limit" type="number" min="1" max="10000" required value={limit} onChange={(event) => setLimit(event.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2" />
+        <input
+          id="branch-limit"
+          type="number"
+          min="1"
+          max="10000"
+          required
+          value={limit}
+          onChange={(event) => setLimit(event.target.value)}
+          disabled={!canUpdate}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-500"
+        />
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         {message && <p className="mt-3 text-sm text-green-600">{message}</p>}
-        <button type="submit" disabled={saving || !usage} className="mt-5 rounded bg-blue-500 px-4 py-2 text-sm text-white hover:bg-blue-600 disabled:opacity-50">
-          {saving ? 'Saving...' : 'Save Branch Limit'}
-        </button>
+        {canUpdate ? (
+          <button type="submit" disabled={saving || !usage} className="mt-5 rounded bg-blue-500 px-4 py-2 text-sm text-white hover:bg-blue-600 disabled:opacity-50">
+            {saving ? 'Saving...' : 'Save Branch Limit'}
+          </button>
+        ) : (
+          <p className="mt-5 text-sm text-slate-500">You can view this setting, but update permission is required to save changes.</p>
+        )}
       </form>
     </div>
   )

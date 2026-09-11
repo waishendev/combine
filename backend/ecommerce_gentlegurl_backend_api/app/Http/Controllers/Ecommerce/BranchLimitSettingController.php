@@ -12,19 +12,11 @@ class BranchLimitSettingController extends Controller
 {
     public function show(Request $request, BranchCapacityService $capacity): JsonResponse
     {
-        if (! $request->user()?->isSuperAdmin()) {
-            return $this->respondError(__('Only the Platform Super Admin can manage the branch limit.'), 403);
-        }
-
         return $this->respond($capacity->usage());
     }
 
     public function update(Request $request, BranchCapacityService $capacity): JsonResponse
     {
-        if (! $request->user()?->isSuperAdmin()) {
-            return $this->respondError(__('Only the Platform Super Admin can manage the branch limit.'), 403);
-        }
-
         $validated = $request->validate([
             'limit' => ['required', 'integer', 'min:1', 'max:10000'],
         ]);

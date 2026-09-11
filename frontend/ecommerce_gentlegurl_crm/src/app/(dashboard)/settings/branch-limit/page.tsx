@@ -8,8 +8,10 @@ export default async function BranchLimitPage() {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
 
-  const roleNames = user.roles.map((role) => typeof role === 'string' ? role : role.name)
-  if (!roleNames.includes('infra_core_x1')) redirect('/dashboard')
+  const canView =
+    user.permissions.includes('ecommerce.branch-limit.view') ||
+    user.permissions.includes('ecommerce.branch-limit.update')
+  if (!canView) redirect('/dashboard')
 
   return (
     <div className="crm-page-shell px-10 py-6">
@@ -21,7 +23,7 @@ export default async function BranchLimitPage() {
         <h1 className="text-3xl font-semibold leading-tight text-slate-900">Branch Limit Settings</h1>
         <p className="mt-2 text-sm text-slate-500">Set the maximum number of branches that can be created on the platform.</p>
       </div>
-      <BranchLimitSettings />
+      <BranchLimitSettings canUpdate={user.permissions.includes('ecommerce.branch-limit.update')} />
     </div>
   )
 }

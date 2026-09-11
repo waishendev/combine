@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
             StaffSalesReportPermissionSeeder::class,
             ActivityLogPermissionSeeder::class,
             ThermalPrinterPermissionSeeder::class,
+            BranchLimitPermissionSeeder::class,
             ExpensePermissionSeeder::class,
             AddBookingPermissionsSeeder::class,
             SuperAdminRoleSeeder::class,

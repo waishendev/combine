@@ -89,20 +89,22 @@ class BranchFoundationTest extends TestCase
             ->assertJsonPath('data.0.id', $reviewOnly->id);
     }
 
-    public function test_only_platform_super_admin_can_manage_branch_limit(): void
+    public function test_only_users_with_branch_limit_update_permission_can_manage_branch_limit(): void
     {
         $regularUser = User::factory()->create();
         $this->actingAs($regularUser)->putJson('/api/ecommerce/branch-limit', ['limit' => 5])
             ->assertForbidden();
 
-        // The production Platform Super Admin role must remain authorized even
-        // when an older deployment overrides SUPER_ADMIN_ROLE differently.
-        config(['auth.super_admin_role' => 'legacy_super_admin']);
-        $role = Role::create(['name' => 'infra_core_x1', 'is_active' => true]);
-        $superAdmin = User::factory()->create();
-        $superAdmin->roles()->attach($role);
+        $permission = \App\Models\Permission::query()->updateOrCreate(
+            ['slug' => 'ecommerce.branch-limit.update'],
+            ['name' => 'Branch Limit Update', 'description' => 'Update branch limit']
+        );
+        $role = Role::create(['name' => 'branch-limit-manager', 'is_active' => true]);
+        $role->permissions()->syncWithoutDetaching([$permission->id]);
+        $manager = User::factory()->create();
+        $manager->roles()->attach($role);
 
-        $this->actingAs($superAdmin)->putJson('/api/ecommerce/branch-limit', ['limit' => 5])
+        $this->actingAs($manager)->putJson('/api/ecommerce/branch-limit', ['limit' => 5])
             ->assertOk()
             ->assertJsonPath('data.limit', 5);
     }

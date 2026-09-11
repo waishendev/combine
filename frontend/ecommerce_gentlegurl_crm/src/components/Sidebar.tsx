@@ -591,7 +591,10 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             key: 'branch-limit-settings',
             label: 'Branch Limit',
             href: '/settings/branch-limit',
-            requiredPermission: 'ecommerce.settings.view',
+            requiredAnyPermissions: [
+              'ecommerce.branch-limit.view',
+              'ecommerce.branch-limit.update',
+            ],
           },
         ],
       },

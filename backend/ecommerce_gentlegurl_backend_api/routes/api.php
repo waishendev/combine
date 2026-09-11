@@ -1304,8 +1304,10 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.settings.update');
 
         // NEW ENHANCEMENT — crm-logo-thermal-branch-limit-query-v1 (SettingService request memo; FE branding dedupe; bypass authorize shortcut)
-        Route::get('/branch-limit', [BranchLimitSettingController::class, 'show']);
-        Route::put('/branch-limit', [BranchLimitSettingController::class, 'update']);
+        Route::get('/branch-limit', [BranchLimitSettingController::class, 'show'])
+            ->middleware('permission:ecommerce.branch-limit.view|ecommerce.branch-limit.update');
+        Route::put('/branch-limit', [BranchLimitSettingController::class, 'update'])
+            ->middleware('permission:ecommerce.branch-limit.update');
 
         Route::get('/thermal-printer-settings', [ThermalPrinterSettingController::class, 'show'])
             ->middleware('permission:ecommerce.thermal-printer-settings.view|ecommerce.thermal-printer-settings.update|pos.checkout|pos.appointments.manage|pos.appointments.checkout');
