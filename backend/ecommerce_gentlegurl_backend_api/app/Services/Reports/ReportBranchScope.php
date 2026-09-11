@@ -4,6 +4,8 @@ namespace App\Services\Reports;
 
 use App\Models\User;
 use App\Services\StoreLocationAccessService;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\Request;
 
 final class ReportBranchScope
@@ -78,17 +80,32 @@ final class ReportBranchScope
         return self::current()->apply($query, $column);
     }
 
-    public function apply($query, string $column = 'store_location_id'): mixed
+    /**
+     * Apply a Branch boundary to either an Eloquent or base query builder.
+     *
+     * @template T of EloquentBuilder|QueryBuilder
+     * @param T $query
+     * @return T
+     */
+    public function apply(EloquentBuilder|QueryBuilder $query, string $column = 'store_location_id'): EloquentBuilder|QueryBuilder
     {
         return $query->where(function ($builder) use ($column) {
             $builder->whereIn($column, $this->storeLocationIds);
             // Ecommerce delivery ownership is persisted per line. This OR keeps
             // legacy single-Branch orders while making mixed orders visible once
             // (EXISTS never multiplies order rows) to every participating Branch.
-            if ($column === 'orders.store_location_id') {
-                $builder->orWhereHas('items', fn ($items) =>
-                    $items->whereIn('fulfillment_store_location_id', $this->storeLocationIds)
-                );
+            $orderQualifier = match ($column) {
+                'orders.store_location_id' => 'orders',
+                'o.store_location_id' => 'o',
+                default => null,
+            };
+            if ($orderQualifier !== null) {
+                $builder->orWhereExists(function (QueryBuilder $items) use ($orderQualifier) {
+                    $items->selectRaw('1')
+                        ->from('order_items as fulfillment_items')
+                        ->whereColumn('fulfillment_items.order_id', "{$orderQualifier}.id")
+                        ->whereIn('fulfillment_items.fulfillment_store_location_id', $this->storeLocationIds);
+                });
             }
             if ($this->includeUnassigned) {
                 $builder->orWhereNull($column);
