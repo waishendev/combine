@@ -50,9 +50,15 @@ export default function StaffCreateModal({
   onSuccess,
 }: StaffCreateModalProps) {
   const { t } = useI18n()
-  const { accessibleBranches } = useBranch()
+  const { accessibleBranches, selectedBranchId } = useBranch()
   const [storeLocationIds, setStoreLocationIds] = useState<number[]>([])
-  useEffect(() => { if (storeLocationIds.length === 0) setStoreLocationIds(accessibleBranches.map((b) => b.id)) }, [accessibleBranches, storeLocationIds.length])
+  useEffect(() => {
+    // Create defaults: only the current Branch context — never auto-check every accessible Branch.
+    if (storeLocationIds.length > 0 || accessibleBranches.length === 0) return
+    if (selectedBranchId == null) return
+    if (!accessibleBranches.some((branch) => branch.id === selectedBranchId)) return
+    setStoreLocationIds([selectedBranchId])
+  }, [accessibleBranches, selectedBranchId, storeLocationIds.length])
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)

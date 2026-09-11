@@ -13,7 +13,7 @@ type BranchContextValue = {
   loading: boolean
   error: string | null
   setSelectedBranch: (branchId: number | null) => void
-  refreshBranches: () => Promise<void>
+  refreshBranches: (options?: { silent?: boolean }) => Promise<void>
   resetBranch: () => void
 }
 
@@ -37,9 +37,11 @@ export function BranchProvider({ userId, children }: { userId: number; children:
     setLoading(false)
   }, [])
 
-  const refreshBranches = useCallback(async () => {
+  const refreshBranches = useCallback(async (options?: { silent?: boolean }) => {
     const request = ++requestNumber.current
-    setLoading(true)
+    if (!options?.silent) {
+      setLoading(true)
+    }
     setError(null)
 
     try {

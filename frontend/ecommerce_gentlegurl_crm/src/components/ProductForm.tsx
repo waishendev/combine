@@ -4029,7 +4029,7 @@ export default function ProductForm({
                 </>
               )}
               {branchInventoryLive && !rewardOnly ? (
-                <div className="space-y-2 md:col-span-2">
+                <div className="space-y-3 md:col-span-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <p className="text-sm font-medium text-gray-700">
                       {t('product.costPrice')} / {t('product.stockQuantity')}{' '}
@@ -4046,66 +4046,84 @@ export default function ProductForm({
                       Select at least one Branch under Available at.
                     </p>
                   ) : (
-                    <div className="space-y-2 rounded-md border border-gray-200 p-3">
-                      <div className="hidden items-center gap-3 text-xs font-medium text-gray-500 sm:flex">
-                        <span className="min-w-0 flex-1">Branch</span>
-                        <span className="w-28 shrink-0 text-right">Cost</span>
-                        <span className="w-28 shrink-0 text-right">Stock</span>
-                      </div>
+                    <div className="space-y-4">
                       {selectedBranchesForStock.map((branch) => {
                         const locked = isBranchInventoryLocked(branch.id)
                         return (
-                          <div key={branch.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                            <label className="min-w-0 flex-1 truncate text-sm text-gray-800">
+                          <div
+                            key={branch.id}
+                            className="space-y-3 rounded-lg border border-gray-200 bg-white p-4"
+                          >
+                            <p className="text-sm font-medium text-gray-900">
                               {branch.name}
                               {locked ? (
                                 <span className="ml-2 text-xs font-normal text-gray-500">(existing)</span>
                               ) : mode === 'edit' ? (
                                 <span className="ml-2 text-xs font-normal text-blue-600">(new)</span>
                               ) : null}
-                            </label>
-                            <div className="relative w-full sm:w-28 sm:shrink-0">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">RM</span>
-                              <input
-                                id={`cost-price-branch-${branch.id}`}
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={branchInitialCosts[branch.id] ?? '0'}
-                                onChange={(event) =>
-                                  setBranchInitialCosts((prev) => ({
-                                    ...prev,
-                                    [branch.id]: event.target.value,
-                                  }))
-                                }
-                                disabled={submitting || locked}
-                                data-field-key={`branch-cost-${branch.id}`}
-                                className={fieldInputClass(
-                                  `branch-cost-${branch.id}`,
-                                  `pl-8 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
-                                )}
-                                placeholder="0.00"
-                              />
+                            </p>
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                              <div className="space-y-2">
+                                <label
+                                  className="block text-sm font-medium text-gray-700"
+                                  htmlFor={`cost-price-branch-${branch.id}`}
+                                >
+                                  Cost
+                                </label>
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+                                    RM
+                                  </span>
+                                  <input
+                                    id={`cost-price-branch-${branch.id}`}
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={branchInitialCosts[branch.id] ?? '0'}
+                                    onChange={(event) =>
+                                      setBranchInitialCosts((prev) => ({
+                                        ...prev,
+                                        [branch.id]: event.target.value,
+                                      }))
+                                    }
+                                    disabled={submitting || locked}
+                                    data-field-key={`branch-cost-${branch.id}`}
+                                    className={fieldInputClass(
+                                      `branch-cost-${branch.id}`,
+                                      `pl-10 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
+                                    )}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <label
+                                  className="block text-sm font-medium text-gray-700"
+                                  htmlFor={`stock-quantity-branch-${branch.id}`}
+                                >
+                                  Stock
+                                </label>
+                                <input
+                                  id={`stock-quantity-branch-${branch.id}`}
+                                  type="number"
+                                  min={0}
+                                  value={branchInitialStocks[branch.id] ?? '0'}
+                                  onChange={(event) =>
+                                    setBranchInitialStocks((prev) => ({
+                                      ...prev,
+                                      [branch.id]: event.target.value,
+                                    }))
+                                  }
+                                  disabled={submitting || locked}
+                                  data-field-key={`branch-stock-${branch.id}`}
+                                  className={fieldInputClass(
+                                    `branch-stock-${branch.id}`,
+                                    locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : '',
+                                  )}
+                                  placeholder="0"
+                                />
+                              </div>
                             </div>
-                            <input
-                              id={`stock-quantity-branch-${branch.id}`}
-                              type="number"
-                              min={0}
-                              value={branchInitialStocks[branch.id] ?? '0'}
-                              onChange={(event) =>
-                                setBranchInitialStocks((prev) => ({
-                                  ...prev,
-                                  [branch.id]: event.target.value,
-                                }))
-                              }
-                              disabled={submitting || locked}
-                              data-field-key={`branch-stock-${branch.id}`}
-                              className={fieldInputClass(
-                                `branch-stock-${branch.id}`,
-                                `w-full sm:!w-28 sm:shrink-0 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
-                              )}
-                              placeholder="0"
-                            />
                           </div>
                         )
                       })}
@@ -4605,12 +4623,7 @@ export default function ProductForm({
                               Select at least one Branch under Available at.
                             </p>
                           ) : (
-                            <div className="space-y-2 rounded-md border border-gray-200 p-3">
-                              <div className="hidden items-center gap-3 text-xs font-medium text-gray-500 sm:flex">
-                                <span className="min-w-0 flex-1">Branch</span>
-                                <span className="w-28 shrink-0 text-right">Cost</span>
-                                <span className="w-28 shrink-0 text-right">Stock</span>
-                              </div>
+                            <div className="space-y-4">
                               {selectedBranchesForStock.map((branch) => {
                                 const locked =
                                   mode === 'edit' &&
@@ -4619,66 +4632,84 @@ export default function ProductForm({
                                 return (
                                   <div
                                     key={branch.id}
-                                    className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
+                                    className="space-y-3 rounded-lg border border-gray-200 bg-white p-4"
                                   >
-                                    <label className="min-w-0 flex-1 truncate text-sm text-gray-800">
+                                    <p className="text-sm font-medium text-gray-900">
                                       {branch.name}
                                       {locked ? (
                                         <span className="ml-2 text-xs font-normal text-gray-500">(existing)</span>
                                       ) : mode === 'edit' ? (
                                         <span className="ml-2 text-xs font-normal text-blue-600">(new)</span>
                                       ) : null}
-                                    </label>
-                                    <div className="relative w-full sm:w-28 sm:shrink-0">
-                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
-                                        RM
-                                      </span>
-                                      <input
-                                        id={`variant-${index}-cost-branch-${branch.id}`}
-                                        type="number"
-                                        min={0}
-                                        step="0.01"
-                                        value={variantBranchInitialCosts[index]?.[branch.id] ?? '0'}
-                                        onChange={(event) =>
-                                          setVariantBranchInitialCosts((prev) => ({
-                                            ...prev,
-                                            [index]: {
-                                              ...(prev[index] ?? {}),
-                                              [branch.id]: event.target.value,
-                                            },
-                                          }))
-                                        }
-                                        disabled={submitting || locked}
-                                        data-field-key={`variant-${index}-branch-cost-${branch.id}`}
-                                        className={fieldInputClass(
-                                          `variant-${index}-branch-cost-${branch.id}`,
-                                          `pl-8 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
-                                        )}
-                                        placeholder="0.00"
-                                      />
+                                    </p>
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                      <div className="space-y-2">
+                                        <label
+                                          className="block text-sm font-medium text-gray-700"
+                                          htmlFor={`variant-${index}-cost-branch-${branch.id}`}
+                                        >
+                                          Cost
+                                        </label>
+                                        <div className="relative">
+                                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+                                            RM
+                                          </span>
+                                          <input
+                                            id={`variant-${index}-cost-branch-${branch.id}`}
+                                            type="number"
+                                            min={0}
+                                            step="0.01"
+                                            value={variantBranchInitialCosts[index]?.[branch.id] ?? '0'}
+                                            onChange={(event) =>
+                                              setVariantBranchInitialCosts((prev) => ({
+                                                ...prev,
+                                                [index]: {
+                                                  ...(prev[index] ?? {}),
+                                                  [branch.id]: event.target.value,
+                                                },
+                                              }))
+                                            }
+                                            disabled={submitting || locked}
+                                            data-field-key={`variant-${index}-branch-cost-${branch.id}`}
+                                            className={fieldInputClass(
+                                              `variant-${index}-branch-cost-${branch.id}`,
+                                              `pl-10 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
+                                            )}
+                                            placeholder="0.00"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="space-y-2">
+                                        <label
+                                          className="block text-sm font-medium text-gray-700"
+                                          htmlFor={`variant-${index}-stock-branch-${branch.id}`}
+                                        >
+                                          Stock
+                                        </label>
+                                        <input
+                                          id={`variant-${index}-stock-branch-${branch.id}`}
+                                          type="number"
+                                          min={0}
+                                          value={variantBranchInitialStocks[index]?.[branch.id] ?? '0'}
+                                          onChange={(event) =>
+                                            setVariantBranchInitialStocks((prev) => ({
+                                              ...prev,
+                                              [index]: {
+                                                ...(prev[index] ?? {}),
+                                                [branch.id]: event.target.value,
+                                              },
+                                            }))
+                                          }
+                                          disabled={submitting || locked}
+                                          data-field-key={`variant-${index}-branch-stock-${branch.id}`}
+                                          className={fieldInputClass(
+                                            `variant-${index}-branch-stock-${branch.id}`,
+                                            locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : '',
+                                          )}
+                                          placeholder="0"
+                                        />
+                                      </div>
                                     </div>
-                                    <input
-                                      id={`variant-${index}-stock-branch-${branch.id}`}
-                                      type="number"
-                                      min={0}
-                                      value={variantBranchInitialStocks[index]?.[branch.id] ?? '0'}
-                                      onChange={(event) =>
-                                        setVariantBranchInitialStocks((prev) => ({
-                                          ...prev,
-                                          [index]: {
-                                            ...(prev[index] ?? {}),
-                                            [branch.id]: event.target.value,
-                                          },
-                                        }))
-                                      }
-                                      disabled={submitting || locked}
-                                      data-field-key={`variant-${index}-branch-stock-${branch.id}`}
-                                      className={fieldInputClass(
-                                        `variant-${index}-branch-stock-${branch.id}`,
-                                        `w-full sm:!w-28 sm:shrink-0 ${locked ? 'disabled:bg-gray-100 disabled:text-gray-500' : ''}`,
-                                      )}
-                                      placeholder="0"
-                                    />
                                   </div>
                                 )
                               })}

@@ -17,6 +17,7 @@ import {
   type StoreApiItem,
   mapStoreApiItemToRow,
 } from './storeUtils'
+import { useBranch } from '@/contexts/BranchContext'
 import { useI18n } from '@/lib/i18n'
 
 interface StoreTableProps {
@@ -51,6 +52,7 @@ export default function StoreTable({
   permissions,
 }: StoreTableProps) {
   const { t } = useI18n()
+  const { refreshBranches } = useBranch()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inputs, setInputs] = useState<StoreFilterValues>({ ...emptyStoreFilters })
@@ -328,6 +330,10 @@ export default function StoreTable({
         last_page,
       }
     })
+
+    // BranchProvider lives in the dashboard layout, so client navigations keep a stale
+    // accessibleBranches list until we explicitly reload it for the sidebar selector.
+    void refreshBranches({ silent: true })
   }
 
   const handleStoreUpdated = (store: StoreRowData) => {
@@ -338,6 +344,9 @@ export default function StoreTable({
       next[index] = store
       return next
     })
+
+    // Active/inactive (and other branch flags) affect what the sidebar selector shows.
+    void refreshBranches({ silent: true })
   }
 
   const handleStoreDeleted = (storeId: number) => {

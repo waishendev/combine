@@ -196,6 +196,17 @@ class ProductController extends Controller
         $branchAuthorityActive = $branchId && in_array($branchId, $activeInventoryBranchIds, true);
         $branchInventoryReporting = $branchAuthorityActive || ($allBranchScope && $activeInventoryBranchIds !== []);
 
+        $with = [
+            'categories:id,name',
+        ];
+        if ($allBranchScope || $request->boolean('include_store_locations')) {
+            $with['storeLocations'] = fn ($branches) => $branches
+                ->select('store_locations.id', 'store_locations.name', 'store_locations.code', 'store_locations.is_active', 'store_locations.is_pos_available')
+                ->when($allBranchScope && $accessibleIds !== [], fn ($q) => $q->whereIn('store_locations.id', $accessibleIds))
+                ->where('store_location_product.is_available', true)
+                ->orderBy('store_locations.name');
+        }
+
         $products = Product::query()
             ->select([
                 'id',
@@ -223,12 +234,7 @@ class ProductController extends Controller
                 'created_at',
                 'updated_at',
             ])
-            ->with([
-                'categories:id,name',
-            ])
-            ->when($request->boolean('include_store_locations'), fn ($query) => $query->with([
-                'storeLocations:id,name,code,is_active,is_pos_available',
-            ]))
+            ->with($with)
             ->when($request->boolean('include_variants'), fn ($query) => $query->with([
                 'variants' => fn ($q) => $q->select([
                     'id',
@@ -791,7 +797,7 @@ class ProductController extends Controller
         }
         $initialInventoryValue = round($initialStock * $initialCost, 2);
 
-        $product = Product::create($validated + [
+        $product = Product::create(array_merge($validated, [
             'type' => $validated['type'] ?? 'single',
             'is_active' => $validated['is_active'] ?? true,
             'is_featured' => $validated['is_featured'] ?? false,
@@ -804,7 +810,7 @@ class ProductController extends Controller
             'inventory_value' => $initialInventoryValue,
             'low_stock_threshold' => $validated['low_stock_threshold'] ?? 0,
             'dummy_sold_count' => $validated['dummy_sold_count'] ?? 0,
-        ]);
+        ]));
 
         $this->syncStoreLocations($request, $product, $validated['store_location_ids']);
 
@@ -1244,11 +1250,45 @@ class ProductController extends Controller
             );
 
             foreach ($movements as $movement) {
-                $cost = $costsByKey[$movement->idempotency_key] ?? null;
-                if ($cost === null) {
+                $inputCost = $costsByKey[$movement->idempotency_key] ?? null;
+                if ($inputCost === null) {
                     continue;
                 }
-                $movement->forceFill(['input_cost_price_per_unit' => $cost])->save();
+
+                $beforeQty = (int) $movement->quantity_before;
+                $afterQty = (int) $movement->quantity_after;
+                $qtyAdded = (int) $movement->quantity_change;
+                $beforeCost = 0.0;
+                $afterCost = $inputCost;
+
+                if ($movement->product_variant_id) {
+                    $lockedVariant = ProductVariant::query()->whereKey($movement->product_variant_id)->lockForUpdate()->first();
+                    if ($lockedVariant) {
+                        $beforeCost = (float) ($lockedVariant->cost_price ?? 0);
+                        $afterInventory = round(($beforeQty * $beforeCost) + ($qtyAdded * $inputCost), 2);
+                        $afterCost = $afterQty > 0 ? round($afterInventory / $afterQty, 2) : 0.0;
+                        $lockedVariant->forceFill(['cost_price' => $afterCost])->save();
+                    }
+                } else {
+                    $lockedProduct = Product::query()->whereKey($movement->product_id)->lockForUpdate()->first();
+                    if ($lockedProduct) {
+                        $beforeCost = (float) ($lockedProduct->cost_price ?? 0);
+                        $afterInventory = round(($beforeQty * $beforeCost) + ($qtyAdded * $inputCost), 2);
+                        $afterCost = $afterQty > 0 ? round($afterInventory / $afterQty, 2) : 0.0;
+                        $lockedProduct->forceFill([
+                            'cost_price' => $afterCost,
+                            'inventory_value' => $afterInventory,
+                        ])->save();
+                    }
+                }
+
+                $movement->forceFill([
+                    'input_cost_price_per_unit' => $inputCost,
+                    'cost_price_before' => $beforeCost,
+                    'cost_price_after' => $afterCost,
+                    'inventory_value_before' => round($beforeQty * $beforeCost, 2),
+                    'inventory_value_after' => round($afterQty * $afterCost, 2),
+                ])->save();
             }
         }
     }
@@ -1315,7 +1355,30 @@ class ProductController extends Controller
                     'idempotency_key' => 'crm-adjustment:'.(string) \Illuminate\Support\Str::uuid(),
                 ]], (int) $request->user()->id)->first();
                 if ($validated['adjustment_type'] === 'stock_in') {
-                    $movement->forceFill(['input_cost_price_per_unit' => (float) $validated['cost_price_per_unit']])->save();
+                    $inputCost = max(0, (float) $validated['cost_price_per_unit']);
+                    $beforeQty = (int) $movement->quantity_before;
+                    $afterQty = (int) $movement->quantity_after;
+                    $qtyAdded = (int) $movement->quantity_change;
+                    $beforeCost = $lockedVariant
+                        ? (float) ($lockedVariant->cost_price ?? 0)
+                        : (float) ($lockedProduct->cost_price ?? 0);
+                    $afterInventory = round(($beforeQty * $beforeCost) + ($qtyAdded * $inputCost), 2);
+                    $afterCost = $afterQty > 0 ? round($afterInventory / $afterQty, 2) : 0.0;
+                    if ($lockedVariant) {
+                        $lockedVariant->forceFill(['cost_price' => $afterCost])->save();
+                    } else {
+                        $lockedProduct->forceFill([
+                            'cost_price' => $afterCost,
+                            'inventory_value' => $afterInventory,
+                        ])->save();
+                    }
+                    $movement->forceFill([
+                        'input_cost_price_per_unit' => $inputCost,
+                        'cost_price_before' => $beforeCost,
+                        'cost_price_after' => $afterCost,
+                        'inventory_value_before' => round($beforeQty * $beforeCost, 2),
+                        'inventory_value_after' => $afterInventory,
+                    ])->save();
                 }
                 return $lockedProduct->fresh();
             }
