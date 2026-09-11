@@ -141,7 +141,7 @@ class AdminManagementQueryEnhancementController extends Controller
         $roleId = $request->integer('role_id');
 
         $query = User::query()
-            ->with(['roles', 'staff', 'storeLocations'])
+            ->with(['roles', 'branchRoles', 'staff', 'storeLocations'])
             ->when(! $request->user()?->canManageSystemAdmins(), function ($builder) {
                 $builder->whereDoesntHave('roles', fn ($roleQuery) => $roleQuery->where('is_system', true));
             })
@@ -168,7 +168,10 @@ class AdminManagementQueryEnhancementController extends Controller
             $query->where('email', 'like', "%{$email}%");
         }
         if ($roleId > 0) {
-            $query->whereHas('roles', fn ($roles) => $roles->where('roles.id', $roleId));
+            $query->where(function ($scope) use ($roleId) {
+                $scope->whereHas('roles', fn ($roles) => $roles->where('roles.id', $roleId))
+                    ->orWhereHas('branchRoles', fn ($roles) => $roles->where('roles.id', $roleId));
+            });
         }
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -178,7 +181,10 @@ class AdminManagementQueryEnhancementController extends Controller
             });
         }
 
-        return $query->orderBy('id')->paginate($perPage)->withQueryString();
+        $paginator = $query->orderBy('id')->paginate($perPage)->withQueryString();
+        $paginator->getCollection()->each(fn (User $admin) => $admin->mergeAssignedRolesForDisplay());
+
+        return $paginator;
     }
 
     /**

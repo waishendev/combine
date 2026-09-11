@@ -81,6 +81,26 @@ class User extends Authenticatable
             ->withPivot('store_location_id')->withTimestamps();
     }
 
+    /**
+     * Merge legacy global roles + Branch-owned assignments for CRM Admin list/edit display.
+     * After role-branch:replicate, operational Roles live on role_user_store_location only.
+     */
+    public function mergeAssignedRolesForDisplay(): void
+    {
+        if (! $this->relationLoaded('roles')) {
+            $this->load('roles');
+        }
+        if (! $this->relationLoaded('branchRoles')) {
+            $this->load('branchRoles');
+        }
+
+        $this->setRelation(
+            'roles',
+            $this->roles->concat($this->branchRoles)->unique('id')->values()
+        );
+        $this->unsetRelation('branchRoles');
+    }
+
     public function getAllPermissions(): Collection
     {
         $cacheKey = 'user_all_permission_slugs_'.$this->getKey();

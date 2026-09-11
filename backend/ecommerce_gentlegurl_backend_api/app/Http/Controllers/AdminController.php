@@ -28,7 +28,7 @@ class AdminController extends Controller
         }
         $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
 
-        $admins = User::with(['roles', 'staff', 'storeLocations'])
+        $admins = User::with(['roles', 'branchRoles', 'staff', 'storeLocations'])
             ->when(! $request->user()?->canManageSystemAdmins(), function ($query) {
                 $query->whereDoesntHave('roles', function ($roleQuery) {
                     $roleQuery->where('is_system', true);
@@ -54,6 +54,8 @@ class AdminController extends Controller
                 });
             })
             ->paginate($perPage);
+
+        $admins->getCollection()->each(fn (User $admin) => $admin->mergeAssignedRolesForDisplay());
 
         return $this->respond($admins);
     }
@@ -95,10 +97,16 @@ class AdminController extends Controller
         $this->syncRoles($user, $roleIds, $validated['store_location_ids'] ?? []);
 
         if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
-            return $this->respond($user->load(['roles', 'storeLocations']), __('Admin created successfully.'));
+            $user->load(['roles', 'branchRoles', 'storeLocations']);
+            $user->mergeAssignedRolesForDisplay();
+
+            return $this->respond($user, __('Admin created successfully.'));
         }
 
-        return $this->respond($user->load(['roles', 'staff', 'storeLocations']), __('Admin created successfully.'));
+        $user->load(['roles', 'branchRoles', 'staff', 'storeLocations']);
+        $user->mergeAssignedRolesForDisplay();
+
+        return $this->respond($user, __('Admin created successfully.'));
     }
 
     public function show(Request $request, User $admin)
@@ -106,10 +114,16 @@ class AdminController extends Controller
         $this->ensureSystemAdminAllowed($request->user(), $admin);
 
         if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
-            return $this->respond($admin->load(['roles', 'storeLocations']));
+            $admin->load(['roles', 'branchRoles', 'storeLocations']);
+            $admin->mergeAssignedRolesForDisplay();
+
+            return $this->respond($admin);
         }
 
-        return $this->respond($admin->load(['roles', 'staff', 'storeLocations']));
+        $admin->load(['roles', 'branchRoles', 'staff', 'storeLocations']);
+        $admin->mergeAssignedRolesForDisplay();
+
+        return $this->respond($admin);
     }
 
     public function update(Request $request, User $admin)
@@ -155,10 +169,16 @@ class AdminController extends Controller
         }
 
         if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
-            return $this->respond($admin->load(['roles', 'storeLocations']), __('Admin updated successfully.'));
+            $admin->load(['roles', 'branchRoles', 'storeLocations']);
+            $admin->mergeAssignedRolesForDisplay();
+
+            return $this->respond($admin, __('Admin updated successfully.'));
         }
 
-        return $this->respond($admin->load(['roles', 'staff', 'storeLocations']), __('Admin updated successfully.'));
+        $admin->load(['roles', 'branchRoles', 'staff', 'storeLocations']);
+        $admin->mergeAssignedRolesForDisplay();
+
+        return $this->respond($admin, __('Admin updated successfully.'));
     }
 
     public function destroy(Request $request, User $admin)
