@@ -595,6 +595,7 @@ export default function PosRequestCenter({
   const [summaryTotal, setSummaryTotal] = useState<number | null>(null)
   const [viewingBalanceTopup, setViewingBalanceTopup] = useState<BalanceTopupRow | null>(null)
   const [loading, setLoading] = useState(false)
+  const [panelReady, setPanelReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bookingConfirm, setBookingConfirm] = useState<BookingConfirmState>(null)
   const [adminNote, setAdminNote] = useState('')
@@ -748,6 +749,7 @@ export default function PosRequestCenter({
       )
 
       // Don't read ecommerceRows into this callback — that re-creates load every render.
+      let nextEcommerceRowsResult: EcommerceRequestRow[] = []
       if (loadEcommerceFanOut) {
         const orderPayloads = await Promise.all(orderResponses.map((res) => res.json().catch(() => null)))
         const orders = orderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
@@ -785,14 +787,9 @@ export default function PosRequestCenter({
           const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
           return bTime - aTime
         })
-        if (generation === loadGenerationRef.current) {
-          setEcommerceRows(nextEcommerceRows)
-        }
+        nextEcommerceRowsResult = nextEcommerceRows
       }
 
-      if (generation !== loadGenerationRef.current) return
-
-      setBookingRows(nextBookingRows)
       const balancePayload = await balanceTopupPromise
       const balanceEnvelope = balancePayload?.data?.topups ?? balancePayload?.data ?? balancePayload
       const topups = Array.isArray(balanceEnvelope)
@@ -803,12 +800,22 @@ export default function PosRequestCenter({
             ? balanceEnvelope.topups as BalanceTopupRow[]
             : []
       console.debug('[RequestCenter] Balance top-ups loaded', { endpoint: '/api/proxy/admin/customer-wallet/topups/pending?per_page=50', count: topups.length })
+
+      if (generation !== loadGenerationRef.current) return
+
+      // Commit all tabs together so counts don't flash 0 → partial → final.
+      setBookingRows(nextBookingRows)
+      if (loadEcommerceFanOut) {
+        setEcommerceRows(nextEcommerceRowsResult)
+      }
       setBalanceRows(topups)
       hasLoadedRef.current = true
+      setPanelReady(true)
       void refreshSummary()
     } catch (err) {
       if (generation !== loadGenerationRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to load requests.')
+      setPanelReady(true)
     } finally {
       if (generation === loadGenerationRef.current) {
         setLoading(false)
@@ -822,10 +829,17 @@ export default function PosRequestCenter({
   }, [refreshSummary])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setPanelReady(false)
+      return
+    }
+    setError(null)
+    setPanelReady(false)
+    setBookingRows([])
+    setEcommerceRows([])
+    setBalanceRows([])
     void load({ force: true })
   }, [open, load])
-
 
 
   const reviewBalanceTopup = async (row: BalanceTopupRow, action: 'approve' | 'reject') => {
@@ -859,6 +873,15 @@ export default function PosRequestCenter({
     { label: 'Balance Top Ups', value: balanceRows.length, className: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
     { label: 'Total pending', value: totalCount, className: 'border-slate-200 bg-slate-50 text-slate-900' },
   ], [bookingRows.length, ecommerceRows.length, balanceRows.length, totalCount])
+
+  const showPanelLoading = open && !panelReady
+  const tabCountLabel = (count: number) => (showPanelLoading ? '…' : String(count))
+  const summaryValueLabel = (value: number) =>
+    showPanelLoading ? (
+      <span className="inline-block h-7 w-10 animate-pulse rounded bg-black/10 sm:h-8" aria-hidden />
+    ) : (
+      value
+    )
 
   const openBookingRowDetail = (row: BookingRequestRow) => {
     if (row.bookingId <= 0 && row.orderId) {
@@ -1011,7 +1034,7 @@ export default function PosRequestCenter({
                 {summaryCards.map((card) => (
                   <div key={card.label} className={`rounded-xl border px-3 py-2.5 shadow-sm sm:px-4 sm:py-3 ${card.className}`}>
                     <p className="truncate text-[10px] font-semibold uppercase tracking-wide opacity-75 sm:text-xs">{card.label}</p>
-                    <p className="mt-0.5 text-xl font-bold sm:mt-1 sm:text-2xl">{card.value}</p>
+                    <p className="mt-0.5 text-xl font-bold sm:mt-1 sm:text-2xl">{summaryValueLabel(card.value)}</p>
                   </div>
                 ))}
               </div>
@@ -1031,7 +1054,7 @@ export default function PosRequestCenter({
                           : 'text-slate-500 hover:bg-white/70 hover:text-slate-800 sm:border-transparent sm:hover:bg-slate-50'
                       }`}
                     >
-                      {key === 'booking' ? `Booking (${bookingRows.length})` : key === 'ecommerce' ? `Ecommerce (${ecommerceRows.length})` : `Balance Top Ups (${balanceRows.length})`}
+                      {key === 'booking' ? `Booking (${tabCountLabel(bookingRows.length)})` : key === 'ecommerce' ? `Ecommerce (${tabCountLabel(ecommerceRows.length)})` : `Balance Top Ups (${tabCountLabel(balanceRows.length)})`}
                     </button>
                   ))}
                 </div>
@@ -1050,8 +1073,13 @@ export default function PosRequestCenter({
 
             <div key={tab} className="min-h-0 flex-1 overflow-y-auto bg-slate-50/80 p-3 sm:p-6">
               {error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div> : null}
-              {loading && totalCount === 0 ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">Loading requests…</div>
+              {showPanelLoading ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">
+                  <span className="inline-flex items-center gap-2">
+                    <RefreshIcon className="h-4 w-4 animate-spin text-slate-400" />
+                    Loading requests…
+                  </span>
+                </div>
               ) : tab === 'balance' ? (
                 balanceRows.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No pending balance top-ups.</div>
