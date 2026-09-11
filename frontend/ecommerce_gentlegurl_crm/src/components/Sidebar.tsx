@@ -88,13 +88,17 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
               icon: 'fa-solid fa-chart-line',
               href: '/my-sales',
             },
-            {
-              key: 'staff-consumables',
-              label: 'Staff Consumables',
-              icon: 'fa-solid fa-hand-holding-heart',
-              href: '/staff-consumables',
-              requiredPermission: 'pos.staff_consumables.access',
-            },
+          ] as MenuItem[])
+        : []),
+      {
+        key: 'staff-consumables',
+        label: 'Staff Consumables',
+        icon: 'fa-solid fa-hand-holding-heart',
+        href: '/staff-consumables',
+        requiredPermission: 'pos.staff_consumables.access',
+      },
+      ...(staffId
+        ? ([
             {
               key: 'staff-consumables-history',
               label: 'My Consumable History',

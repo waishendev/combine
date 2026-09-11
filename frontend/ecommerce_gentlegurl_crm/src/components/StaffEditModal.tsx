@@ -194,45 +194,75 @@ export default function StaffEditModal({
       const commissionRate = Number(form.commissionPercent || 0) / 100
       const serviceCommissionRate = Number(form.serviceCommissionPercent || 0) / 100
       const normalizedPhone = normalizeInternationalPhone(form.phone)
-      const fd = new FormData()
-      fd.append('_method', 'PUT')
-      fd.append('code', form.code.trim())
-      fd.append('name', form.name.trim())
-      if (normalizedPhone || phoneTouched) {
-        fd.append('phone', normalizedPhone)
-      }
-      fd.append('email', form.email.trim())
-      fd.append('position', form.position.trim())
-      fd.append('description', form.description.trim())
-      fd.append(
-        'commission_rate',
-        String(Number.isFinite(commissionRate) ? commissionRate : 0),
-      )
-      fd.append(
-        'service_commission_rate',
-        String(Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0),
-      )
-      fd.append('is_active', form.isActive === 'true' ? '1' : '0')
-      fd.append('show_in_sales_report', form.showInSalesReport === 'true' ? '1' : '0')
-      storeLocationIds.forEach((id) => fd.append('store_location_ids[]', String(id)))
-
       const trimmedPassword = form.password.trim()
-      if (trimmedPassword) {
-        fd.append('password', trimmedPassword)
-      }
 
+      let res: Response
       if (form.avatarFile) {
+        const fd = new FormData()
+        fd.append('_method', 'PUT')
+        fd.append('code', form.code.trim())
+        fd.append('name', form.name.trim())
+        if (normalizedPhone || phoneTouched) {
+          fd.append('phone', normalizedPhone)
+        }
+        fd.append('email', form.email.trim())
+        fd.append('position', form.position.trim())
+        fd.append('description', form.description.trim())
+        fd.append(
+          'commission_rate',
+          String(Number.isFinite(commissionRate) ? commissionRate : 0),
+        )
+        fd.append(
+          'service_commission_rate',
+          String(Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0),
+        )
+        fd.append('is_active', form.isActive === 'true' ? '1' : '0')
+        fd.append('show_in_sales_report', form.showInSalesReport === 'true' ? '1' : '0')
+        storeLocationIds.forEach((id) => fd.append('store_location_ids[]', String(id)))
+        if (trimmedPassword) {
+          fd.append('password', trimmedPassword)
+        }
         fd.append('avatar', form.avatarFile)
-      }
 
-      const res = await fetch(`/api/proxy/staffs/${staffId}`, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Accept-Language': 'en',
-        },
-        body: fd,
-      })
+        res = await fetch(`/api/proxy/staffs/${staffId}`, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-Language': 'en',
+          },
+          body: fd,
+        })
+      } else {
+        // JSON PUT keeps password/fields reliable (FormData+_method via proxy can drop fields).
+        const payload: Record<string, unknown> = {
+          code: form.code.trim() || null,
+          name: form.name.trim(),
+          email: form.email.trim(),
+          position: form.position.trim() || null,
+          description: form.description.trim() || null,
+          commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
+          service_commission_rate: Number.isFinite(serviceCommissionRate) ? serviceCommissionRate : 0,
+          is_active: form.isActive === 'true',
+          show_in_sales_report: form.showInSalesReport === 'true',
+          store_location_ids: storeLocationIds,
+        }
+        if (normalizedPhone || phoneTouched) {
+          payload.phone = normalizedPhone || null
+        }
+        if (trimmedPassword) {
+          payload.password = trimmedPassword
+        }
+
+        res = await fetch(`/api/proxy/staffs/${staffId}`, {
+          method: 'PUT',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'Accept-Language': 'en',
+          },
+          body: JSON.stringify(payload),
+        })
+      }
 
       const data = await res.json().catch(() => null)
       if (data && typeof data === 'object') {

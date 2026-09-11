@@ -189,10 +189,12 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
         {showStaffConsumablesLink ? (
           <Link
             href="/staff-consumables"
-            className="hidden shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 sm:inline-flex"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs font-bold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 sm:gap-2 sm:px-3"
+            title="Consumables"
+            aria-label="Consumables"
           >
             <i className="fa-solid fa-hand-holding-heart" />
-            <span>Consumables</span>
+            <span className="max-sm:sr-only">Consumables</span>
           </Link>
         ) : null}
 
