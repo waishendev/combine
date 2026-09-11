@@ -521,13 +521,7 @@ class PosController extends Controller
         $perPage = max(1, min(200, $request->integer('per_page', 200)));
         $builder = BookingProduct::query()
             ->with(['categories', 'questions.options'])
-            ->where(function ($availability) use ($branch) {
-                $availability->where(function ($standalone) use ($branch) {
-                    $standalone->whereDoesntHave('linkedBookingService')
-                        ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branch->id));
-                })->orWhereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branch->id));
-            })
-            ->where('is_active', true)
+            ->posEligibleAtBranch((int) $branch->id)
             ->when($request->integer('category_id') > 0, fn ($query) => $query->whereHas(
                 'categories', fn ($categories) => $categories->whereKey($request->integer('category_id'))
             ))
@@ -6046,9 +6040,7 @@ class PosController extends Controller
         $page = max(1, $request->integer('page', 1));
         $perPage = max(1, min(100, $request->integer('per_page', 100)));
         $categoryId = $request->integer('category_id');
-        $products = Product::query()->where('is_active', true)->where('is_reward_only', false)
-            ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branch->id)
-                ->where('store_location_product.is_available', true))
+        $products = Product::query()->posEligibleAtBranch((int) $branch->id)
             ->when($categoryId > 0, fn ($query) => $query->whereHas('categories', fn ($categories) => $categories->whereKey($categoryId)))
             ->with([
                 'images',

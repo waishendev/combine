@@ -3633,13 +3633,23 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [selectedBranchId])
 
   const fetchBookingProductCategories = useCallback(async () => {
-    if (lazyLoadedKeyRef.current.bookingProductCategories === 'global') return
+    if (!selectedBranchId) {
+      setBookingProductCategories([])
+      return
+    }
+    const key = `booking-product-categories:${selectedBranchId}`
+    if (lazyLoadedKeyRef.current.bookingProductCategories === key) return
+    lazyRequestAbortRef.current.bookingProductCategories?.abort()
+    const controller = new AbortController()
+    lazyRequestAbortRef.current.bookingProductCategories = controller
     try {
-      const res = await fetch('/api/proxy/admin/booking/product-categories', { cache: 'no-store' })
+      const params = new URLSearchParams({ pos: '1', store_location_id: String(selectedBranchId) })
+      const res = await fetch(`/api/proxy/admin/booking/product-categories?${params}`, { cache: 'no-store', signal: controller.signal })
       if (!res.ok) return setBookingProductCategories([])
       const json = await res.json().catch(() => null)
       const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
       const rows = Array.isArray(payload) ? payload : []
+      if (lazyRequestAbortRef.current.bookingProductCategories !== controller) return
       setBookingProductCategories(rows.map((row: any) => ({
         id: Number(row?.id), name: String(row?.name ?? '').trim(),
         cn_name: typeof row?.cn_name === 'string' ? row.cn_name.trim() || null : null,
@@ -3647,9 +3657,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         show_in_pos_filter: row?.show_in_pos_filter !== false,
       })).filter((row) => row.id > 0 && row.name && row.is_active)
         .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)))
-      lazyLoadedKeyRef.current.bookingProductCategories = 'global'
-    } catch { setBookingProductCategories([]) }
-  }, [])
+      lazyLoadedKeyRef.current.bookingProductCategories = key
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError') && lazyRequestAbortRef.current.bookingProductCategories === controller) {
+        setBookingProductCategories([])
+      }
+    }
+  }, [selectedBranchId])
 
   const fetchBookingProducts = useCallback(async (categoryId: number | null = null) => {
     if (!selectedBranchId) return
@@ -5867,6 +5881,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     lazyLoadedKeyRef.current = {}
     setProducts([])
     setBookingProducts([])
+    setBookingProductCategories([])
+    setSelectedCategoryId(null)
+    setSelectedBookingProductCategoryId(null)
     setServices([])
     setSettlementAppointments([])
     setProductPage(1)
@@ -5880,6 +5897,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         page: '1',
         per_page: '200',
         is_active: 'true',
+        pos: '1',
       })
       if (selectedBranchId) params.set('branch_store_location_id', String(selectedBranchId))
       try {

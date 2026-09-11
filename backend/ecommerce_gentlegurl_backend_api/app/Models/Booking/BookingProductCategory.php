@@ -4,6 +4,7 @@ namespace App\Models\Booking;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 class BookingProductCategory extends Model
 {
@@ -21,5 +22,13 @@ class BookingProductCategory extends Model
     {
         return $this->belongsToMany(BookingProduct::class, 'booking_product_category_product')
             ->withTimestamps();
+    }
+
+    /** Global identity whose operational visibility is derived from sellable children. */
+    public function scopeVisibleAtPosBranch(Builder $query, int $storeLocationId): Builder
+    {
+        return $query
+            ->where('booking_product_categories.is_active', true)
+            ->whereHas('products', fn (Builder $products) => $products->posEligibleAtBranch($storeLocationId));
     }
 }
