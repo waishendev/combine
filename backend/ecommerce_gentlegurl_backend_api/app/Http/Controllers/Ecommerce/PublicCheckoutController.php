@@ -96,7 +96,7 @@ class PublicCheckoutController extends Controller
         if ($shippingMethod === 'pickup') {
             $this->pickupFulfillmentService->validate((int) $validated['store_location_id'], $calculation['items']);
         } else {
-            $this->shippingFulfillmentService->selectBranch($calculation['items']);
+            $this->shippingFulfillmentService->assignBranches($calculation['items']);
         }
         $this->orderReserveService->validateStockForItems($calculation['items']);
 
@@ -221,7 +221,9 @@ class PublicCheckoutController extends Controller
             $fulfillmentBranchId = (int) $validated['store_location_id'];
             $this->pickupFulfillmentService->validate((int) $validated['store_location_id'], $calculation['items']);
         } else {
-            $fulfillmentBranchId = (int) $this->shippingFulfillmentService->selectBranch($calculation['items'])->id;
+            $shippingAssignments = $this->shippingFulfillmentService->assignBranches($calculation['items']);
+            $branchIds = collect($shippingAssignments)->pluck('id')->map(fn ($id) => (int) $id)->unique();
+            $fulfillmentBranchId = $branchIds->count() === 1 ? $branchIds->first() : null;
         }
 
         if ((!empty($validated['voucher_code']) || !empty($validated['customer_voucher_id'])) && (!$calculation['voucher_result'] || !$calculation['voucher_result']['is_valid'])) {
@@ -338,7 +340,9 @@ class PublicCheckoutController extends Controller
                 } else {
                     // Priority is re-evaluated under locks so a stale candidate is
                     // never persisted when a later configured Branch can fulfil.
-                    $fulfillmentBranchId = (int) $this->shippingFulfillmentService->selectBranch($calculation['items'], true)->id;
+                    $shippingAssignments = $this->shippingFulfillmentService->assignBranches($calculation['items'], true);
+                    $branchIds = collect($shippingAssignments)->pluck('id')->map(fn ($id) => (int) $id)->unique();
+                    $fulfillmentBranchId = $branchIds->count() === 1 ? $branchIds->first() : null;
                 }
                 $order = Order::create([
                     'order_number' => $this->generateOrderNumber(),
@@ -387,10 +391,11 @@ class PublicCheckoutController extends Controller
                     $order->setRelation('customer', $customer);
                 }
 
-                foreach ($calculation['items'] as $item) {
+                foreach ($calculation['items'] as $itemIndex => $item) {
                     $resolvedUnitCost = (float) ($item['variant_cost'] ?? $item['product_cost'] ?? 0);
                     $orderItem = OrderItem::create([
                         'order_id' => $order->id,
+                        'fulfillment_store_location_id' => $shippingMethod === 'pickup' ? $fulfillmentBranchId : (int) $shippingAssignments[$itemIndex]->id,
                         'product_id' => $item['product_id'],
                         'product_variant_id' => $item['product_variant_id'] ?? null,
                         'product_name_snapshot' => $item['name'],
@@ -420,13 +425,29 @@ class PublicCheckoutController extends Controller
                             $meta['order_item_id'] = $orderItem->id;
                             $redemption->meta = $meta;
                             $redemption->status = 'completed';
-                            $redemption->store_location_id = $fulfillmentBranchId;
+                            $redemption->store_location_id = $shippingMethod === 'pickup' ? $fulfillmentBranchId : (int) $shippingAssignments[$itemIndex]->id;
                             $redemption->save();
                         }
                     }
                 }
 
-                if ($this->orderBranchInventoryService->isActive($fulfillmentBranchId)) {
+                if ($shippingMethod === 'shipping') {
+                    $groups = collect($calculation['items'])->map(fn ($item, $index) => [
+                        'branch_id' => (int) $shippingAssignments[$index]->id,
+                        'item' => $item,
+                    ])->groupBy('branch_id')->map(fn ($lines, $branchId) => [
+                        'branch_id' => (int) $branchId,
+                        'items' => $lines->pluck('item')->values()->all(),
+                    ])->values();
+                    foreach ($groups as $group) {
+                        \App\Models\Ecommerce\OrderFulfillment::create([
+                            'order_id' => $order->id,
+                            'store_location_id' => $group['branch_id'],
+                            'status' => 'pending',
+                        ]);
+                    }
+                    $this->orderBranchInventoryService->reserveGroups($order, $groups->all(), $this->orderReserveService->getReserveMinutes());
+                } elseif ($this->orderBranchInventoryService->isActive((int) $fulfillmentBranchId)) {
                     $this->orderBranchInventoryService->reserve(
                         $order,
                         $calculation['items'],

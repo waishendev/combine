@@ -158,6 +158,7 @@ type OrderDetailData = {
     unit_price?: string | null
     line_total: string
     product_image?: string | null
+    fulfillment_branch_name?: string | null
   }>
   service_items?: Array<{
     item_type?: 'service' | string
@@ -835,6 +836,9 @@ export default function OrderViewPanel({
                                       />
                                       <div>
                                         <div className="font-medium text-slate-900">{item.product_name}</div>
+                                        {item.fulfillment_branch_name ? (
+                                          <div className="mt-1 text-xs font-medium text-indigo-700">Branch: {item.fulfillment_branch_name}</div>
+                                        ) : null}
                                         {item.product_cn_name ? <div className="text-xs text-slate-500">{item.product_cn_name}</div> : null}
                                         {(item.product_type === 'variant' || item.product_variant_id) && (
                                           <div className="text-xs text-slate-500">

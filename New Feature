@@ -111,3 +111,15 @@ php artisan db:seed --class=BillplzPaymentGatewayPermissionSeeder
 
 不需要的
 php artisan db:seed --class=BillplzPublicBankRhbOptionSeeder
+
+## Split Ecommerce Delivery Fulfilment (2027-03-07)
+
+Deployment order:
+1. Deploy backend code while checkout is in maintenance mode.
+2. Run `php artisan migrate` in `backend/ecommerce_gentlegurl_backend_api`.
+3. Deploy CRM/shop frontends and resume checkout.
+
+No historical backfill is performed: a legacy item's Branch is displayed from its known
+order-level `store_location_id`; NULL legacy orders remain unassigned rather than guessed.
+Rollback requires stopping new checkout first. Rolling the migration back removes persisted
+item/group attribution and is therefore lossy for split orders created after deployment.

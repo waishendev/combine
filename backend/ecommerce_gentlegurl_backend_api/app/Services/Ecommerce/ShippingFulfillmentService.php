@@ -36,4 +36,39 @@ class ShippingFulfillmentService
             ]],
         ])->status(422);
     }
+
+    /**
+     * Assign every cart line, in priority order, to one Branch capable of
+     * fulfilling the complete line quantity. Quantities are never split.
+     *
+     * @return array<int, StoreLocation> keyed by the original cart line index
+     */
+    public function assignBranches(array $items, bool $lockInventory = false): array
+    {
+        $assignments = [];
+        $unavailable = [];
+
+        foreach ($items as $index => $item) {
+            try {
+                $assignments[$index] = $this->selectBranch([$item], $lockInventory);
+            } catch (ValidationException) {
+                $unavailable[] = [
+                    'code' => 'no_shipping_fulfillment_branch',
+                    'product_id' => $item['product_id'] ?? null,
+                    'product_variant_id' => $item['product_variant_id'] ?? null,
+                    'name' => $item['name'] ?? null,
+                    'message' => __('This item is currently unavailable for delivery.'),
+                ];
+            }
+        }
+
+        if ($unavailable !== []) {
+            throw ValidationException::withMessages([
+                'shipping_fulfillment' => [__('Some items are currently unavailable for delivery.')],
+                'unavailable_items' => $unavailable,
+            ])->status(422);
+        }
+
+        return $assignments;
+    }
 }

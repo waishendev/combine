@@ -82,6 +82,14 @@ final class ReportBranchScope
     {
         return $query->where(function ($builder) use ($column) {
             $builder->whereIn($column, $this->storeLocationIds);
+            // Ecommerce delivery ownership is persisted per line. This OR keeps
+            // legacy single-Branch orders while making mixed orders visible once
+            // (EXISTS never multiplies order rows) to every participating Branch.
+            if ($column === 'orders.store_location_id') {
+                $builder->orWhereHas('items', fn ($items) =>
+                    $items->whereIn('fulfillment_store_location_id', $this->storeLocationIds)
+                );
+            }
             if ($this->includeUnassigned) {
                 $builder->orWhereNull($column);
             }

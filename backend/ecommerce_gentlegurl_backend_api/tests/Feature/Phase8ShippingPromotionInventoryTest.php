@@ -51,6 +51,49 @@ class Phase8ShippingPromotionInventoryTest extends TestCase
         app(ShippingFulfillmentService::class)->selectBranch([$this->item($x), $this->item($y)]);
     }
 
+    public function test_delivery_assigns_each_complete_line_by_priority_without_splitting_quantity(): void
+    {
+        [$a, $b] = [$this->branch('A'), $this->branch('B')];
+        [$x, $y] = [$this->product('X'), $this->product('Y')];
+        foreach ([$a, $b] as $branch) { $this->sellAt($x, $branch); $this->sellAt($y, $branch); }
+        $this->stock($a, $x, 2); $this->stock($a, $y, 0);
+        $this->stock($b, $x, 5); $this->stock($b, $y, 3);
+        SettingService::set(ShippingFulfillmentService::SETTING_KEY, [$a->id, $b->id]);
+
+        $assignments = app(ShippingFulfillmentService::class)->assignBranches([
+            $this->item($x),
+            $this->item($y),
+        ]);
+
+        $this->assertSame($a->id, $assignments[0]->id);
+        $this->assertSame($b->id, $assignments[1]->id);
+
+        $three = $this->item($x); $three['quantity'] = 3;
+        $this->assertSame($b->id, app(ShippingFulfillmentService::class)->assignBranches([$three])[0]->id);
+    }
+
+    public function test_split_branch_reservations_restore_each_original_branch(): void
+    {
+        [$a, $b] = [$this->branch('A'), $this->branch('B')];
+        [$x, $y] = [$this->product('X'), $this->product('Y')];
+        $this->sellAt($x, $a); $this->sellAt($y, $b);
+        $this->stock($a, $x, 2); $this->stock($b, $y, 2);
+        $order = Order::create(['order_number' => 'SPLIT-1', 'status' => 'pending', 'payment_status' => 'unpaid', 'pickup_or_shipping' => 'shipping', 'store_location_id' => null, 'subtotal' => 2, 'discount_total' => 0, 'shipping_fee' => 10, 'grand_total' => 12]);
+
+        $service = app(OrderBranchInventoryService::class);
+        $service->reserveGroups($order, [
+            ['branch_id' => $a->id, 'items' => [$this->item($x)]],
+            ['branch_id' => $b->id, 'items' => [$this->item($y)]],
+        ], 30);
+        $this->assertSame(1, $this->quantity($a, $x));
+        $this->assertSame(1, $this->quantity($b, $y));
+        $this->assertSame('10.00', $order->shipping_fee);
+
+        $this->assertTrue($service->release($order));
+        $this->assertSame(2, $this->quantity($a, $x));
+        $this->assertSame(2, $this->quantity($b, $y));
+    }
+
     public function test_product_variant_and_bundle_shortages_fall_through_priority(): void
     {
         [$a, $b] = [$this->branch('A'), $this->branch('B')];

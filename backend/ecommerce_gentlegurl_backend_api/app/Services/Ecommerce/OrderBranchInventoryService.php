@@ -35,7 +35,7 @@ class OrderBranchInventoryService
             'delta' => -$line['quantity'],
             'type' => 'reservation',
             'remark' => 'Ecommerce Order stock reservation',
-            'idempotency_key' => "order:{$order->id}:reserve:{$line['product_id']}:".($line['product_variant_id'] ?? 0),
+            'idempotency_key' => "order:{$order->id}:reserve:{$branchId}:{$line['product_id']}:".($line['product_variant_id'] ?? 0),
         ])->all();
 
         if ($mutations !== []) {
@@ -44,7 +44,7 @@ class OrderBranchInventoryService
 
         foreach ($requirements as $line) {
             OrderInventoryReservation::query()->firstOrCreate(
-                ['idempotency_key' => "order:{$order->id}:reserve:{$line['product_id']}:".($line['product_variant_id'] ?? 0)],
+                ['idempotency_key' => "order:{$order->id}:reserve:{$branchId}:{$line['product_id']}:".($line['product_variant_id'] ?? 0)],
                 [
                     'order_id' => $order->id,
                     'store_location_id' => $branchId,
@@ -55,6 +55,16 @@ class OrderBranchInventoryService
                     'expires_at' => now()->addMinutes($reserveMinutes),
                 ],
             );
+        }
+    }
+
+    /** @param array<int, array{branch_id:int,items:array}> $groups */
+    public function reserveGroups(Order $order, array $groups, int $reserveMinutes): void
+    {
+        foreach ($groups as $group) {
+            $branchOrder = clone $order;
+            $branchOrder->store_location_id = $group['branch_id'];
+            $this->reserve($branchOrder, $group['items'], $reserveMinutes);
         }
     }
 
@@ -71,15 +81,17 @@ class OrderBranchInventoryService
                 return true;
             }
 
-            $mutations = $reserved->map(fn ($line) => [
-                'product_id' => (int) $line->product_id,
-                'product_variant_id' => $line->product_variant_id ? (int) $line->product_variant_id : null,
-                'delta' => (int) $line->quantity,
-                'type' => 'release',
-                'remark' => 'Ecommerce Order reservation release',
-                'idempotency_key' => "order:{$order->id}:release:{$line->product_id}:".($line->product_variant_id ?? 0),
-            ])->all();
-            $this->inventory->mutateMany((int) $reserved->first()->store_location_id, $mutations, null, $order);
+            foreach ($reserved->groupBy('store_location_id') as $branchId => $branchLines) {
+                $mutations = $branchLines->map(fn ($line) => [
+                    'product_id' => (int) $line->product_id,
+                    'product_variant_id' => $line->product_variant_id ? (int) $line->product_variant_id : null,
+                    'delta' => (int) $line->quantity,
+                    'type' => 'release',
+                    'remark' => 'Ecommerce Order reservation release',
+                    'idempotency_key' => "order:{$order->id}:release:{$branchId}:{$line->product_id}:".($line->product_variant_id ?? 0),
+                ])->all();
+                $this->inventory->mutateMany((int) $branchId, $mutations, null, $order);
+            }
             OrderInventoryReservation::query()->whereIn('id', $reserved->pluck('id'))
                 ->update(['status' => 'released', 'released_at' => now(), 'updated_at' => now()]);
             return true;

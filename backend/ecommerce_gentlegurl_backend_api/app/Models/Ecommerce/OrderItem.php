@@ -11,6 +11,7 @@ class OrderItem extends Model
 
     protected $fillable = [
         'order_id',
+        'fulfillment_store_location_id',
         'line_type',
         'product_id',
         'product_variant_id',
@@ -103,6 +104,11 @@ class OrderItem extends Model
     public function productVariant()
     {
         return $this->belongsTo(ProductVariant::class);
+    }
+
+    public function fulfillmentStoreLocation()
+    {
+        return $this->belongsTo(StoreLocation::class, 'fulfillment_store_location_id');
     }
 
     public function parentPackageItem()

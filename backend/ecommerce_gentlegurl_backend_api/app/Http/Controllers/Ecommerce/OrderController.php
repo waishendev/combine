@@ -240,6 +240,7 @@ class OrderController extends Controller
         $order->load([
             'storeLocation:id,name,code',
             'items.product.images',
+            'items.fulfillmentStoreLocation:id,name',
             'items.productVariant',
             'items.booking:id,booking_code,customer_id,guest_name,guest_phone,guest_email,staff_id,service_id,start_at,end_at,status,payment_status,deposit_amount,addon_items_json,settled_service_amount',
             'items.booking.customer:id,name,phone,email',
@@ -351,7 +352,7 @@ class OrderController extends Controller
                 'country' => $order->billing_country,
             ],
             'customer' => $order->customer,
-            'items' => $orderLineItems->where('line_type', 'product')->map(function ($item) {
+            'items' => $orderLineItems->where('line_type', 'product')->map(function ($item) use ($order) {
                 $thumbnail = $item->product?->cover_image_url;
                 $productType = $item->product?->type;
 
@@ -370,6 +371,8 @@ class OrderController extends Controller
                     'line_total' => $item->line_total,
                     'product_image' => $thumbnail,
                     'cover_image_url' => $thumbnail,
+                    'fulfillment_branch_name' => $item->fulfillmentStoreLocation?->name
+                        ?? $order->storeLocation?->name,
                 ];
             }),
             'booking_deposit_items' => $orderLineItems->where('line_type', 'booking_deposit')->values()->map(function ($item) use ($packageClaimsForBooking) {
@@ -1005,9 +1008,18 @@ class OrderController extends Controller
     /** Legacy NULL orders remain accessible under the existing historical compatibility policy. */
     private function authorizeOrderBranch(Order $order, ?Request $request = null): void
     {
+        $user = ($request ?? request())->user();
+        $fulfillmentBranchIds = $order->items()->whereNotNull('fulfillment_store_location_id')
+            ->pluck('fulfillment_store_location_id')->map(fn ($id) => (int) $id)->unique();
+        if ($fulfillmentBranchIds->isNotEmpty()) {
+            $accessible = app(StoreLocationAccessService::class)->accessibleStoreLocations($user)
+                ->pluck('id')->map(fn ($id) => (int) $id);
+            abort_unless($fulfillmentBranchIds->intersect($accessible)->isNotEmpty(), 403);
+            return;
+        }
         if ($order->store_location_id !== null) {
             app(StoreLocationAccessService::class)->authorizeStoreLocation(
-                ($request ?? request())->user(),
+                $user,
                 (int) $order->store_location_id,
                 false
             );
