@@ -90,13 +90,13 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             },
           ] as MenuItem[])
         : []),
-      {
-        key: 'staff-consumables',
-        label: 'Staff Consumables',
-        icon: 'fa-solid fa-hand-holding-heart',
-        href: '/staff-consumables',
-        requiredPermission: 'pos.staff_consumables.access',
-      },
+      // {
+      //   key: 'staff-consumables',
+      //   label: 'Staff Consumables',
+      //   icon: 'fa-solid fa-hand-holding-heart',
+      //   href: '/staff-consumables',
+      //   requiredPermission: 'pos.staff_consumables.access',
+      // },
       ...(staffId
         ? ([
             {
@@ -591,7 +591,10 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             key: 'branch-limit-settings',
             label: 'Branch Limit',
             href: '/settings/branch-limit',
-            requiredPermission: 'ecommerce.settings.view',
+            requiredAnyPermissions: [
+              'ecommerce.branch-limit.view',
+              'ecommerce.branch-limit.update',
+            ],
           },
         ],
       },
