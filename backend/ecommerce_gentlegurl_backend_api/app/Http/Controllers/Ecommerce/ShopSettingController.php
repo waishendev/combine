@@ -493,6 +493,11 @@ class ShopSettingController extends Controller
             'company_website' => ['nullable', 'url', 'max:255'],
             'footer_note' => ['nullable', 'string', 'max:255'],
             'currency' => ['required', 'string', 'max:10'],
+            'branch_receipt_overrides' => ['sometimes', 'array'],
+            'branch_receipt_overrides.*' => ['array'],
+            'branch_receipt_overrides.*.company_name' => ['required', 'string', 'max:255'],
+            'branch_receipt_overrides.*.company_address' => ['required', 'string'],
+            'branch_receipt_overrides.*.footer_note' => ['nullable', 'string', 'max:255'],
         ]);
 
         return [
@@ -505,6 +510,14 @@ class ShopSettingController extends Controller
             'company_website' => $validated['company_website'] ?? null,
             'footer_note' => $validated['footer_note'] ?? null,
             'currency' => $validated['currency'],
+            'branch_receipt_overrides' => collect($validated['branch_receipt_overrides'] ?? [])
+                ->mapWithKeys(fn (array $override, string|int $branchId) => [
+                    (string) (int) $branchId => [
+                        'company_name' => $override['company_name'],
+                        'company_address' => $override['company_address'],
+                        'footer_note' => $override['footer_note'] ?? null,
+                    ],
+                ])->all(),
         ];
     }
 
@@ -786,6 +799,7 @@ class ShopSettingController extends Controller
             'company_website' => null,
             'footer_note' => 'This is a computer-generated invoice.',
             'currency' => 'MYR',
+            'branch_receipt_overrides' => [],
         ];
     }
 

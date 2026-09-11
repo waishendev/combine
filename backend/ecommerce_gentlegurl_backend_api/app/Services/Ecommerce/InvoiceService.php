@@ -235,7 +235,7 @@ class InvoiceService
     {
         $order->loadMissing(['items.product', 'items.productVariant', 'items.bookingService', 'items.booking.service', 'serviceItems.bookingService', 'pickupStore', 'customer', 'payments']);
 
-        $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
+        $invoiceProfile = $this->resolveInvoiceProfile($order);
 
         $bookingIdsForPackage = $order->serviceItems
             ->pluck('booking_id')
@@ -1029,5 +1029,35 @@ class InvoiceService
                 'email' => null,
             ],
         ];
+    }
+
+    /**
+     * Resolve customer-facing receipt identity from immutable transaction data.
+     *
+     * Online ecommerce and booking checkouts intentionally retain the global
+     * profile: ecommerce store_location_id is a fulfilment decision, while an
+     * online booking order is identified by is_booking_checkout. In-store POS
+     * orders (including appointment deposits/settlements) use their
+     * persisted Order Branch. A null/missing/unknown Branch never causes us to
+     * infer a different Branch and safely retains the legacy global identity.
+     */
+    public function resolveInvoiceProfile(Order $order): array
+    {
+        $global = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
+
+        if ($order->pickup_or_shipping !== 'in_store' || empty($order->store_location_id)) {
+            return $global;
+        }
+
+        $override = data_get($global, 'branch_receipt_overrides.'.(int) $order->store_location_id);
+        if (! is_array($override)) {
+            return $global;
+        }
+
+        return array_replace($global, [
+            'company_name' => $override['company_name'],
+            'company_address' => $override['company_address'],
+            'footer_note' => $override['footer_note'] ?? null,
+        ]);
     }
 }

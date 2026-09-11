@@ -94,6 +94,7 @@ type ShopSettingsResponse = {
       company_website?: string | null
       footer_note?: string | null
       currency?: string
+      branch_receipt_overrides?: Record<string, BranchReceiptOverride>
     }
     page_reviews?: {
       enabled?: boolean
@@ -116,6 +117,17 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type FeedbackState = {
   type: 'success' | 'error'
   message: string
+}
+
+type BranchReceiptOverride = {
+  company_name: string
+  company_address: string
+  footer_note: string
+}
+
+type BranchOption = {
+  id: number
+  name: string
 }
 
 const defaultContactSettings = {
@@ -216,6 +228,7 @@ const defaultInvoiceProfileSettings = {
   company_website: '',
   footer_note: 'This is a computer-generated invoice.',
   currency: 'MYR',
+  branch_receipt_overrides: {} as Record<string, BranchReceiptOverride>,
 }
 
 const defaultPageReviewsSettings = {
@@ -266,6 +279,8 @@ export default function ShopSettingsPageContent({
   const [shippingSettings, setShippingSettings] = useState(defaultShippingSettings)
   const [footerSettings, setFooterSettings] = useState(defaultFooterSettings)
   const [invoiceProfileSettings, setInvoiceProfileSettings] = useState(defaultInvoiceProfileSettings)
+  const [branchOptions, setBranchOptions] = useState<BranchOption[]>([])
+  const [selectedReceiptBranchId, setSelectedReceiptBranchId] = useState('')
   const [pageReviewsSettings, setPageReviewsSettings] = useState(defaultPageReviewsSettings)
   const [productReviewsSettings, setProductReviewsSettings] = useState(defaultProductReviewsSettings)
   const [returnSettings, setReturnSettings] = useState(defaultReturnSettings)
@@ -331,6 +346,19 @@ export default function ShopSettingsPageContent({
         }
 
         const payload: ShopSettingsResponse = await response.json()
+        const branchResponse = await fetch('/api/proxy/ecommerce/store-locations?per_page=100', {
+          method: 'GET',
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        if (!branchResponse.ok) throw new Error('Failed to load Branches')
+        const branchPayload = await branchResponse.json()
+        const branches: BranchOption[] = (branchPayload.data?.data ?? []).map((branch: BranchOption) => ({
+          id: Number(branch.id),
+          name: branch.name,
+        }))
+        setBranchOptions(branches)
+        setSelectedReceiptBranchId((current) => current || String(branches[0]?.id ?? ''))
         const contact = payload.data?.shop_contact_widget?.whatsapp ?? defaultContactSettings
         const homepage = payload.data?.homepage_products ?? defaultHomepageSettings
         const shipping = payload.data?.shipping ?? defaultShippingSettings
@@ -454,6 +482,7 @@ export default function ShopSettingsPageContent({
             invoiceProfile.company_website ?? defaultInvoiceProfileSettings.company_website,
           footer_note: invoiceProfile.footer_note ?? defaultInvoiceProfileSettings.footer_note,
           currency: invoiceProfile.currency ?? defaultInvoiceProfileSettings.currency,
+          branch_receipt_overrides: invoiceProfile.branch_receipt_overrides ?? {},
         })
 
         setPageReviewsSettings({
@@ -763,6 +792,7 @@ export default function ShopSettingsPageContent({
           company_website: invoiceProfileSettings.company_website || null,
           footer_note: invoiceProfileSettings.footer_note || null,
           currency: invoiceProfileSettings.currency,
+          branch_receipt_overrides: invoiceProfileSettings.branch_receipt_overrides,
         }),
       })
 
@@ -1072,6 +1102,35 @@ export default function ShopSettingsPageContent({
       default:
         return 'Save Changes'
     }
+  }
+
+  const selectedBranchOverride = selectedReceiptBranchId
+    ? invoiceProfileSettings.branch_receipt_overrides[selectedReceiptBranchId]
+    : undefined
+
+  const updateSelectedBranchOverride = (field: keyof BranchReceiptOverride, value: string) => {
+    if (!selectedReceiptBranchId) return
+    setInvoiceProfileSettings((previous) => ({
+      ...previous,
+      branch_receipt_overrides: {
+        ...previous.branch_receipt_overrides,
+        [selectedReceiptBranchId]: {
+          company_name: selectedBranchOverride?.company_name ?? previous.company_name,
+          company_address: selectedBranchOverride?.company_address ?? previous.company_address,
+          footer_note: selectedBranchOverride?.footer_note ?? previous.footer_note,
+          [field]: value,
+        },
+      },
+    }))
+  }
+
+  const useGlobalReceiptDefault = () => {
+    if (!selectedReceiptBranchId) return
+    setInvoiceProfileSettings((previous) => {
+      const branchReceiptOverrides = { ...previous.branch_receipt_overrides }
+      delete branchReceiptOverrides[selectedReceiptBranchId]
+      return { ...previous, branch_receipt_overrides: branchReceiptOverrides }
+    })
   }
 
   if (loading) {
@@ -1473,6 +1532,12 @@ export default function ShopSettingsPageContent({
               </div>
             </div>
           )}
+          <div className="mb-1">
+            <h4 className="text-base font-semibold text-slate-900">Global Invoice Profile</h4>
+            <p className="mt-1 text-sm text-slate-500">
+              Used for online invoices and whenever a Branch has no receipt override.
+            </p>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             {/* <label className="space-y-2 md:col-span-2">
               <span className="block text-sm font-medium text-slate-800">Company Logo URL</span>
@@ -1621,7 +1686,78 @@ export default function ShopSettingsPageContent({
               />
             </label> */}
 
-          
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h4 className="text-base font-semibold text-slate-900">Branch Receipt Overrides</h4>
+                <p className="mt-1 text-sm text-slate-500">
+                  POS receipts resolve this profile from the Branch saved on the transaction.
+                </p>
+              </div>
+              {selectedBranchOverride ? (
+                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">Override active</span>
+              ) : (
+                <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">Using global</span>
+              )}
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="space-y-2 md:col-span-2">
+                <span className="block text-sm font-medium text-slate-800">Branch</span>
+                <select
+                  value={selectedReceiptBranchId}
+                  disabled={!canEdit || branchOptions.length === 0}
+                  onChange={(event) => setSelectedReceiptBranchId(event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  {branchOptions.length === 0 ? <option value="">No Branches available</option> : null}
+                  {branchOptions.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                </select>
+              </label>
+              <label className="space-y-2">
+                <span className="block text-sm font-medium text-slate-800">Receipt Store Name</span>
+                <input
+                  value={selectedBranchOverride?.company_name ?? ''}
+                  placeholder={invoiceProfileSettings.company_name}
+                  disabled={!canEdit || !selectedReceiptBranchId}
+                  onChange={(event) => updateSelectedBranchOverride('company_name', event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="block text-sm font-medium text-slate-800">Footer / Thank You</span>
+                <input
+                  value={selectedBranchOverride?.footer_note ?? ''}
+                  placeholder={invoiceProfileSettings.footer_note || 'Global footer note'}
+                  disabled={!canEdit || !selectedReceiptBranchId}
+                  onChange={(event) => updateSelectedBranchOverride('footer_note', event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+              <label className="space-y-2 md:col-span-2">
+                <span className="block text-sm font-medium text-slate-800">Receipt Address</span>
+                <textarea
+                  value={selectedBranchOverride?.company_address ?? ''}
+                  placeholder={invoiceProfileSettings.company_address}
+                  disabled={!canEdit || !selectedReceiptBranchId}
+                  onChange={(event) => updateSelectedBranchOverride('company_address', event.target.value)}
+                  rows={2}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                disabled={!canEdit || !selectedBranchOverride}
+                onClick={useGlobalReceiptDefault}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Use Global Default
+              </button>
+            </div>
           </div>
 
           <div className="flex justify-end">
@@ -1630,7 +1766,7 @@ export default function ShopSettingsPageContent({
               disabled={!canEdit || invoiceProfileSaveState === 'saving'}
               className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
             >
-              {renderSaveLabel(invoiceProfileSaveState)}
+              {invoiceProfileSaveState === 'idle' ? 'Save Invoice Settings' : renderSaveLabel(invoiceProfileSaveState)}
             </button>
           </div>
         </form>
