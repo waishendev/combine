@@ -95,7 +95,6 @@ type ShopSettingsResponse = {
       footer_note?: string | null
       currency?: string
       booking_invoice_profile?: ReceiptIdentity | null
-      default_pos_receipt_profile?: ReceiptIdentity | null
       branch_receipt_overrides?: Record<string, BranchReceiptOverride>
     }
     page_reviews?: {
@@ -132,6 +131,12 @@ type BranchReceiptOverride = ReceiptIdentity
 type BranchOption = {
   id: number
   name: string
+  address_line1?: string | null
+  address_line2?: string | null
+  city?: string | null
+  state?: string | null
+  postcode?: string | null
+  country?: string | null
 }
 
 const defaultContactSettings = {
@@ -233,11 +238,6 @@ const defaultInvoiceProfileSettings = {
   footer_note: 'This is a computer-generated invoice.',
   currency: 'MYR',
   booking_invoice_profile: {
-    company_name: 'Gentlegurl Shop',
-    company_address: '123 Gentle Lane\nKuala Lumpur\nMalaysia',
-    footer_note: 'This is a computer-generated invoice.',
-  },
-  default_pos_receipt_profile: {
     company_name: 'Gentlegurl Shop',
     company_address: '123 Gentle Lane\nKuala Lumpur\nMalaysia',
     footer_note: 'This is a computer-generated invoice.',
@@ -370,8 +370,8 @@ export default function ShopSettingsPageContent({
         if (!branchResponse.ok) throw new Error('Failed to load Branches')
         const branchPayload = await branchResponse.json()
         const branches: BranchOption[] = (branchPayload.data?.data ?? []).map((branch: BranchOption) => ({
+          ...branch,
           id: Number(branch.id),
-          name: branch.name,
         }))
         setBranchOptions(branches)
         const contact = payload.data?.shop_contact_widget?.whatsapp ?? defaultContactSettings
@@ -505,11 +505,6 @@ export default function ShopSettingsPageContent({
           footer_note: invoiceProfile.footer_note ?? defaultInvoiceProfileSettings.footer_note,
           currency: invoiceProfile.currency ?? defaultInvoiceProfileSettings.currency,
           booking_invoice_profile: invoiceProfile.booking_invoice_profile ?? {
-            company_name: invoiceProfile.company_name ?? defaultInvoiceProfileSettings.company_name,
-            company_address: invoiceProfile.company_address ?? defaultInvoiceProfileSettings.company_address,
-            footer_note: invoiceProfile.footer_note ?? defaultInvoiceProfileSettings.footer_note,
-          },
-          default_pos_receipt_profile: invoiceProfile.default_pos_receipt_profile ?? {
             company_name: invoiceProfile.company_name ?? defaultInvoiceProfileSettings.company_name,
             company_address: invoiceProfile.company_address ?? defaultInvoiceProfileSettings.company_address,
             footer_note: invoiceProfile.footer_note ?? defaultInvoiceProfileSettings.footer_note,
@@ -818,7 +813,6 @@ export default function ShopSettingsPageContent({
           footer_note: settings.footer_note || null,
           currency: settings.currency,
           booking_invoice_profile: settings.booking_invoice_profile,
-          default_pos_receipt_profile: settings.default_pos_receipt_profile,
           branch_receipt_overrides: settings.branch_receipt_overrides,
         }),
       })
@@ -1142,9 +1136,16 @@ export default function ShopSettingsPageContent({
 
   const openBranchReceiptEditor = (branch: BranchOption) => {
     const custom = invoiceProfileSettings.branch_receipt_overrides[String(branch.id)]
+    const branchAddress = [
+      branch.address_line1,
+      branch.address_line2,
+      [branch.postcode, branch.city].filter(Boolean).join(' '),
+      branch.state,
+      branch.country,
+    ].filter(Boolean).join('\n')
     setEditingReceiptBranch(branch)
     setBranchReceiptMode(custom ? 'custom' : 'default')
-    setBranchReceiptDraft(custom ?? { ...invoiceProfileSettings.default_pos_receipt_profile })
+    setBranchReceiptDraft(custom ?? { company_name: branch.name, company_address: branchAddress, footer_note: '' })
   }
 
   const closeBranchReceiptEditor = () => {
@@ -1176,7 +1177,7 @@ export default function ShopSettingsPageContent({
   }
 
   const updateIdentity = (
-    key: 'booking_invoice_profile' | 'default_pos_receipt_profile',
+    key: 'booking_invoice_profile',
     field: keyof ReceiptIdentity,
     value: string,
   ) => setInvoiceProfileSettings((previous) => ({
@@ -1740,8 +1741,7 @@ export default function ShopSettingsPageContent({
           </div>
 
           {([
-            ['booking_invoice_profile', 'Online Booking Invoice', 'Customer-facing identity for the Online Booking storefront.'],
-            ['default_pos_receipt_profile', 'Default POS Receipt', 'Used by in-store Branches without a custom receipt profile.'],
+            ['booking_invoice_profile', 'Online Booking Invoice', 'Used for all Online Booking receipts. Checkout currently enforces one Branch, while each appointment retains its persisted Branch attribution.'],
           ] as const).map(([key, title, description]) => (
             <div key={key} className="rounded-lg border border-slate-200 p-4">
               <h4 className="text-base font-semibold text-slate-900">{title}</h4>
@@ -1755,11 +1755,11 @@ export default function ShopSettingsPageContent({
           ))}
 
           <div className="overflow-hidden rounded-lg border border-slate-200">
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3"><h4 className="text-base font-semibold text-slate-900">Branch POS Receipt Profiles</h4><p className="mt-1 text-sm text-slate-500">Each Branch explicitly uses the Default POS Receipt or its own custom identity.</p></div>
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3"><h4 className="text-base font-semibold text-slate-900">Branch POS Receipt Profiles</h4><p className="mt-1 text-sm text-slate-500">Each Branch uses its own Store Location information unless a custom receipt identity is configured.</p></div>
             <div className="divide-y divide-slate-200">
               {branchOptions.map((branch) => {
                 const isCustom = Boolean(invoiceProfileSettings.branch_receipt_overrides[String(branch.id)])
-                return <div key={branch.id} className="flex items-center justify-between gap-4 px-4 py-3"><span className="text-sm font-medium text-slate-900">{branch.name}</span><div className="flex items-center gap-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${isCustom ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{isCustom ? 'Custom' : 'Using Default'}</span><button type="button" disabled={!canEdit} onClick={() => openBranchReceiptEditor(branch)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Edit</button></div></div>
+                return <div key={branch.id} className="flex items-center justify-between gap-4 px-4 py-3"><span className="text-sm font-medium text-slate-900">{branch.name}</span><div className="flex items-center gap-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${isCustom ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{isCustom ? 'Custom' : 'Using Branch Info'}</span><button type="button" disabled={!canEdit} onClick={() => openBranchReceiptEditor(branch)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Edit</button></div></div>
               })}
               {branchOptions.length === 0 ? <p className="px-4 py-5 text-sm text-slate-500">No Branches available.</p> : null}
             </div>
@@ -1782,15 +1782,15 @@ export default function ShopSettingsPageContent({
           <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl">
             <h3 id="branch-receipt-title" className="text-xl font-semibold text-slate-900">Edit Receipt Profile — {editingReceiptBranch.name}</h3>
             <div className="mt-5 flex flex-wrap gap-5">
-              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={branchReceiptMode === 'default'} onChange={() => setBranchReceiptMode('default')} />Use Default POS Receipt Profile</label>
+              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={branchReceiptMode === 'default'} onChange={() => setBranchReceiptMode('default')} />Use Branch Information</label>
               <label className="flex items-center gap-2 text-sm"><input type="radio" checked={branchReceiptMode === 'custom'} onChange={() => setBranchReceiptMode('custom')} />Custom Branch Receipt Profile</label>
             </div>
             {branchReceiptMode === 'custom' ? <div className="mt-5 space-y-4">
               <label className="block space-y-2"><span className="text-sm font-medium text-slate-800">Receipt Store Name</span><input required value={branchReceiptDraft.company_name} onChange={(event) => setBranchReceiptDraft({...branchReceiptDraft, company_name: event.target.value})} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
               <label className="block space-y-2"><span className="text-sm font-medium text-slate-800">Receipt Address</span><textarea required rows={2} value={branchReceiptDraft.company_address} onChange={(event) => setBranchReceiptDraft({...branchReceiptDraft, company_address: event.target.value})} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
               <label className="block space-y-2"><span className="text-sm font-medium text-slate-800">Footer Note</span><input value={branchReceiptDraft.footer_note} onChange={(event) => setBranchReceiptDraft({...branchReceiptDraft, footer_note: event.target.value})} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
-            </div> : <p className="mt-5 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">This Branch will use the Default POS Receipt profile.</p>}
-            <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={closeBranchReceiptEditor} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>{branchReceiptMode === 'custom' && invoiceProfileSettings.branch_receipt_overrides[String(editingReceiptBranch.id)] ? <button type="button" onClick={() => setBranchReceiptMode('default')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Use Default</button> : null}<button type="button" disabled={invoiceProfileSaveState === 'saving'} onClick={applyBranchReceiptEditor} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{invoiceProfileSaveState === 'saving' ? 'Saving...' : 'Save'}</button></div>
+            </div> : <p className="mt-5 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">This receipt will use the Branch name, address, and supported contact details from Store Location settings.</p>}
+            <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={closeBranchReceiptEditor} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>{branchReceiptMode === 'custom' && invoiceProfileSettings.branch_receipt_overrides[String(editingReceiptBranch.id)] ? <button type="button" onClick={() => setBranchReceiptMode('default')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Use Branch Info</button> : null}<button type="button" disabled={invoiceProfileSaveState === 'saving'} onClick={applyBranchReceiptEditor} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{invoiceProfileSaveState === 'saving' ? 'Saving...' : 'Save'}</button></div>
           </div>
         </div>
       ) : null}

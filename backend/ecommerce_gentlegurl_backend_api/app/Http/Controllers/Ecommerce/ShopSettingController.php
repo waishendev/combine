@@ -497,10 +497,6 @@ class ShopSettingController extends Controller
             'booking_invoice_profile.company_name' => ['required_with:booking_invoice_profile', 'string', 'max:255'],
             'booking_invoice_profile.company_address' => ['required_with:booking_invoice_profile', 'string'],
             'booking_invoice_profile.footer_note' => ['nullable', 'string', 'max:255'],
-            'default_pos_receipt_profile' => ['sometimes', 'array'],
-            'default_pos_receipt_profile.company_name' => ['required_with:default_pos_receipt_profile', 'string', 'max:255'],
-            'default_pos_receipt_profile.company_address' => ['required_with:default_pos_receipt_profile', 'string'],
-            'default_pos_receipt_profile.footer_note' => ['nullable', 'string', 'max:255'],
             'branch_receipt_overrides' => ['sometimes', 'array'],
             'branch_receipt_overrides.*' => ['array'],
             'branch_receipt_overrides.*.company_name' => ['required', 'string', 'max:255'],
@@ -521,7 +517,6 @@ class ShopSettingController extends Controller
             'footer_note' => $validated['footer_note'] ?? null,
             'currency' => $validated['currency'],
             'booking_invoice_profile' => $validated['booking_invoice_profile'] ?? data_get($current, 'booking_invoice_profile'),
-            'default_pos_receipt_profile' => $validated['default_pos_receipt_profile'] ?? data_get($current, 'default_pos_receipt_profile'),
             'branch_receipt_overrides' => collect($validated['branch_receipt_overrides'] ?? data_get($current, 'branch_receipt_overrides', []))
                 ->mapWithKeys(fn (array $override, string|int $branchId) => [
                     (string) (int) $branchId => [
@@ -813,7 +808,6 @@ class ShopSettingController extends Controller
             'currency' => 'MYR',
             'branch_receipt_overrides' => [],
             'booking_invoice_profile' => null,
-            'default_pos_receipt_profile' => null,
         ];
     }
 

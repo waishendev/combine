@@ -233,7 +233,7 @@ class InvoiceService
 
     public function buildPdf(Order $order)
     {
-        $order->loadMissing(['items.product', 'items.productVariant', 'items.bookingService', 'items.booking.service', 'serviceItems.bookingService', 'pickupStore', 'customer', 'payments']);
+        $order->loadMissing(['items.product', 'items.productVariant', 'items.bookingService', 'items.booking.service', 'serviceItems.bookingService', 'pickupStore', 'storeLocation', 'customer', 'payments']);
 
         $invoiceProfile = $this->resolveInvoiceProfile($order);
 
@@ -1034,10 +1034,10 @@ class InvoiceService
     /**
      * Resolve customer-facing receipt identity from immutable transaction data.
      *
-     * Legacy root fields are the Ecommerce profile and are also the safe
-     * fallback for newly introduced Booking and default POS profiles. In-store
-     * POS orders (including appointment deposits/settlements) use their
-     * persisted Order Branch. No Header Branch or live availability is used.
+     * Legacy root fields remain the Ecommerce profile and the safe fallback for
+     * the Booking profile. In-store POS orders (including appointment
+     * deposits/settlements) use their persisted Order Branch and never an
+     * online profile. No Header Branch or live availability is used.
      */
     public function resolveInvoiceProfile(Order $order): array
     {
@@ -1051,18 +1051,16 @@ class InvoiceService
             return $global;
         }
 
-        $defaultPos = $this->applyIdentity($global, data_get($global, 'default_pos_receipt_profile'));
-
         if (empty($order->store_location_id)) {
-            return $defaultPos;
+            return $this->legacyPosIdentity($global);
         }
 
         $override = data_get($global, 'branch_receipt_overrides.'.(int) $order->store_location_id);
-        if (! is_array($override)) {
-            return $defaultPos;
+        if (is_array($override)) {
+            return $this->applyIdentity($this->branchIdentity($order), $override);
         }
 
-        return $this->applyIdentity($defaultPos, $override);
+        return $this->branchIdentity($order);
     }
 
     private function applyIdentity(array $base, mixed $identity): array
@@ -1076,5 +1074,39 @@ class InvoiceService
             'company_address',
             'footer_note',
         ])));
+    }
+
+    private function branchIdentity(Order $order): array
+    {
+        $order->loadMissing('storeLocation');
+        $branch = $order->storeLocation;
+        if (! $branch) {
+            return array_replace($this->defaultInvoiceProfile(), [
+                'company_name' => 'Branch #'.(int) $order->store_location_id,
+                'company_address' => '',
+                'company_phone' => null,
+                'footer_note' => null,
+            ]);
+        }
+
+        $address = collect([
+            $branch->address_line1,
+            $branch->address_line2,
+            collect([$branch->postcode, $branch->city])->filter()->implode(' '),
+            $branch->state,
+            $branch->country,
+        ])->filter(fn ($line) => trim((string) $line) !== '')->implode("\n");
+
+        return array_replace($this->defaultInvoiceProfile(), [
+            'company_name' => (string) $branch->name,
+            'company_address' => $address,
+            'company_phone' => $branch->phone,
+            'footer_note' => null,
+        ]);
+    }
+
+    private function legacyPosIdentity(array $legacy): array
+    {
+        return $this->applyIdentity($this->defaultInvoiceProfile(), $legacy);
     }
 }
