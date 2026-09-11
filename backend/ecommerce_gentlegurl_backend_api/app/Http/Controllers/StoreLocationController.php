@@ -9,6 +9,7 @@ use App\Http\Requests\StoreLocation\StoreStoreLocationRequest;
 use App\Http\Requests\StoreLocation\UpdateStoreLocationRequest;
 use App\Services\BranchCapacityService;
 use App\Services\Ecommerce\ShippingFulfillmentPriorityService;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -16,6 +17,11 @@ use Illuminate\Validation\ValidationException;
 
 class StoreLocationController extends Controller
 {
+    public function __construct(
+        private readonly StoreLocationAccessService $storeLocationAccess,
+    ) {
+    }
+
     public function index(Request $request)
     {
         // NEW ENHANCEMENT — membership-loyalty-store-query-v1
@@ -64,7 +70,7 @@ class StoreLocationController extends Controller
             return $this->respond(null, __('A maximum of 6 images is allowed.'), false, 422);
         }
 
-        $location = DB::transaction(function () use ($validated) {
+        $location = DB::transaction(function () use ($request, $validated) {
             $setting = Setting::firstOrCreate(
                 ['type' => 'ecommerce', 'key' => BranchCapacityService::SETTING_KEY],
                 ['value' => BranchCapacityService::DEFAULT_LIMIT]
@@ -88,6 +94,12 @@ class StoreLocationController extends Controller
             ]);
 
             app(ShippingFulfillmentPriorityService::class)->append($location);
+
+            // Creator gets Branch access immediately; other Admins must be assigned explicitly.
+            $actor = $request->user();
+            if ($actor && ! $this->storeLocationAccess->hasPlatformBypass($actor)) {
+                $actor->storeLocations()->syncWithoutDetaching([(int) $location->id]);
+            }
 
             return $location;
         });

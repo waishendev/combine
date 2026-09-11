@@ -170,6 +170,46 @@ class BranchFoundationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_creating_a_branch_auto_assigns_access_to_the_creator_only(): void
+    {
+        $creator = $this->userWithPermission('ecommerce.stores.create');
+        $other = $this->userWithPermission('ecommerce.stores.view');
+
+        $response = $this->actingAs($creator)->postJson('/api/ecommerce/store-locations', $this->validPayload('AUTO'))
+            ->assertOk();
+
+        $branchId = (int) $response->json('data.id');
+        $this->assertDatabaseHas('store_location_user', [
+            'user_id' => $creator->id,
+            'store_location_id' => $branchId,
+        ]);
+        $this->assertDatabaseMissing('store_location_user', [
+            'user_id' => $other->id,
+            'store_location_id' => $branchId,
+        ]);
+    }
+
+    public function test_platform_super_admin_does_not_receive_explicit_branch_access_rows_on_create(): void
+    {
+        $permission = Permission::create([
+            'group_id' => PermissionGroup::create(['name' => 'Branches-platform', 'sort_order' => 1])->id,
+            'name' => 'ecommerce.stores.create',
+            'slug' => 'ecommerce.stores.create',
+        ]);
+        $role = Role::create(['name' => 'infra_core_x1', 'is_active' => true]);
+        $role->permissions()->attach($permission);
+        $super = User::factory()->create();
+        $super->roles()->attach($role);
+
+        $response = $this->actingAs($super)->postJson('/api/ecommerce/store-locations', $this->validPayload('PLAT'))
+            ->assertOk();
+
+        $this->assertDatabaseMissing('store_location_user', [
+            'user_id' => $super->id,
+            'store_location_id' => (int) $response->json('data.id'),
+        ]);
+    }
+
     private function branch(array $attributes = []): StoreLocation
     {
         return StoreLocation::create(array_merge($this->validPayload(), $attributes));

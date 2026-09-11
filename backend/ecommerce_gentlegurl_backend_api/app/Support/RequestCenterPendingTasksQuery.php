@@ -8,7 +8,10 @@ use App\Models\Booking\BookingPaymentLink;
 use App\Models\Ecommerce\CustomerWalletTransaction;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\ReturnRequest;
+use App\Services\Reports\ReportBranchScope;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
 /**
@@ -25,6 +28,10 @@ class RequestCenterPendingTasksQuery
     /**
      * Lightweight badge counts for POS Request Center (no row hydration).
      *
+     * Booking + package purchases: selected Branch only (or all accessible when All Branches).
+     * Ecommerce orders/returns: same Branch rules as product fulfilment (order branch OR item fulfilment branch).
+     * Balance top-ups: global (customers are global).
+     *
      * @return array{
      *   cancellations:int,
      *   holds:int,
@@ -38,21 +45,54 @@ class RequestCenterPendingTasksQuery
      *   total:int
      * }
      */
-    public static function summaryCounts(): array
+    public static function summaryCounts(?Request $request = null): array
     {
-        $cancellations = (int) BookingCancellationRequest::query()->where('status', 'pending')->count();
-        $holds = (int) Booking::query()->whereIn('status', static::BOOKING_HOLD_STATUSES)->count();
+        $request = $request ?? request();
+        [$bookingIds, $includeNullBookings, $orderScope] = static::resolveBranchScopes($request);
+
+        $scopeBooking = function ($query) use ($bookingIds, $includeNullBookings): void {
+            $query->where(function ($inner) use ($bookingIds, $includeNullBookings) {
+                $inner->whereIn('store_location_id', $bookingIds);
+                if ($includeNullBookings) {
+                    $inner->orWhereNull('store_location_id');
+                }
+            });
+        };
+
+        $cancellations = (int) BookingCancellationRequest::query()
+            ->where('status', 'pending')
+            ->whereHas('booking', $scopeBooking)
+            ->count();
+        $holds = (int) Booking::query()
+            ->whereIn('status', static::BOOKING_HOLD_STATUSES)
+            ->where(function ($inner) use ($bookingIds, $includeNullBookings) {
+                $inner->whereIn('store_location_id', $bookingIds);
+                if ($includeNullBookings) {
+                    $inner->orWhereNull('store_location_id');
+                }
+            })
+            ->count();
         $depositProofs = (int) BookingPaymentLink::query()
             ->where('status', 'PENDING')
             ->where('manual_review_status', 'slip_uploaded_pending_review')
+            ->whereHas('booking', $scopeBooking)
             ->count();
-        $packagePurchases = (int) Order::query()
-            ->whereIn('status', ['pending', 'processing'])
-            ->where('payment_status', 'unpaid')
-            ->whereHas('items', fn ($items) => $items->where('line_type', 'service_package'))
+        $packagePurchases = (int) $orderScope->apply(
+            Order::query()
+                ->whereIn('status', ['pending', 'processing'])
+                ->where('payment_status', 'unpaid')
+                ->whereHas('items', fn ($items) => $items->where('line_type', 'service_package')),
+            'orders.store_location_id'
+        )->count();
+        $ecommerceOrders = (int) $orderScope->apply(
+            PendingEcommerceOrderQuery::pendingRequestOrders(),
+            'orders.store_location_id'
+        )->count();
+        $returns = (int) ReturnRequest::query()
+            ->whereIn('status', static::RETURN_ACTIVE_STATUSES)
+            ->whereHas('order', fn ($orders) => $orderScope->apply($orders, 'orders.store_location_id'))
             ->count();
-        $ecommerceOrders = (int) PendingEcommerceOrderQuery::pendingRequestOrders()->count();
-        $returns = (int) ReturnRequest::query()->whereIn('status', static::RETURN_ACTIVE_STATUSES)->count();
+        // Customers (and wallet top-ups) are global — not Branch-scoped.
         $balanceTopups = (int) CustomerWalletTransaction::query()->pendingReview()->count();
 
         $booking = $cancellations + $holds + $depositProofs + $packagePurchases;
@@ -69,6 +109,46 @@ class RequestCenterPendingTasksQuery
             'ecommerce' => $ecommerce,
             'balance_topups' => $balanceTopups,
             'total' => $booking + $ecommerce + $balanceTopups,
+        ];
+    }
+
+    /**
+     * @return array{0: list<int>, 1: bool, 2: ReportBranchScope}
+     */
+    private static function resolveBranchScopes(Request $request): array
+    {
+        $access = app(StoreLocationAccessService::class);
+        $user = $request->user();
+        abort_unless($user, 401);
+
+        $requested = null;
+        foreach (['store_location_id', 'branch_store_location_id'] as $key) {
+            if ($request->filled($key)) {
+                $requested = (int) $request->integer($key);
+                break;
+            }
+        }
+
+        if ($requested !== null) {
+            $access->authorizeStoreLocation($user, $requested, false);
+
+            return [
+                [$requested],
+                false,
+                new ReportBranchScope([$requested], $requested, false),
+            ];
+        }
+
+        $ids = $access->accessibleStoreLocations($user, false)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        return [
+            $ids,
+            true,
+            new ReportBranchScope($ids, null, true),
         ];
     }
 

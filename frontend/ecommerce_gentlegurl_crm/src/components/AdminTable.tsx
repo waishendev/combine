@@ -642,6 +642,7 @@ export default function AdminTable({
       {editingAdminId !== null && (
         <AdminEditModal
           adminId={editingAdminId}
+          currentAdminId={currentAdminId}
           onClose={() => {
             setEditingAdminId(null)
             setEditLoadingId(null)

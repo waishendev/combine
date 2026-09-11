@@ -546,7 +546,7 @@ class PosController extends Controller
      */
     public function posRequestsSummary(Request $request)
     {
-        return $this->respond(RequestCenterPendingTasksQuery::summaryCounts());
+        return $this->respond(RequestCenterPendingTasksQuery::summaryCounts($request));
     }
 
     /**

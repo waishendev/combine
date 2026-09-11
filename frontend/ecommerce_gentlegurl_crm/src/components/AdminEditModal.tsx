@@ -14,6 +14,7 @@ type BranchOption = BranchAccessOption
 
 interface AdminEditModalProps {
   adminId: number
+  currentAdminId?: number | null
   onClose: () => void
   onReady?: () => void
   onSuccess: (admin: AdminRowData) => void
@@ -44,6 +45,7 @@ const initialFormState: FormState = {
 
 export default function AdminEditModal({
   adminId,
+  currentAdminId = null,
   onClose,
   onReady,
   onSuccess,
@@ -54,6 +56,8 @@ export default function AdminEditModal({
   canAssignBranches,
 }: AdminEditModalProps) {
   const { t } = useI18n()
+  const isOwnAccount = currentAdminId != null && adminId === currentAdminId
+  const showBranchAssignment = canAssignBranches && !isOwnAccount
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -196,7 +200,7 @@ export default function AdminEditModal({
         username: trimmedUsername || null,
         email: trimmedEmail,
         is_active: form.isActive === 'true',
-        ...(canAssignBranches ? { store_location_ids: form.storeLocationIds.map(Number) } : {}),
+        ...(showBranchAssignment ? { store_location_ids: form.storeLocationIds.map(Number) } : {}),
       }
 
       if (!roleReadOnly) {
@@ -395,7 +399,7 @@ export default function AdminEditModal({
                 </select>
                 {roleReadOnly && (
                   <p className="mt-1 text-xs text-amber-700">
-                    This role is internal and can only be changed by users with admins.manage-system.
+                    This role are not able to change please contact your administrator.
                   </p>
                 )}
                 {!roleReadOnly && currentRoleIsStaff && (
@@ -410,7 +414,7 @@ export default function AdminEditModal({
                 )}
               </div>
 
-              {canAssignBranches && (
+              {showBranchAssignment && (
                 <div>
                   <label htmlFor="edit-storeLocationIds" className="block text-sm font-medium text-gray-700 mb-1">
                     Branch access
@@ -425,7 +429,11 @@ export default function AdminEditModal({
                   <p className="mt-1 text-xs text-gray-500">Select every Branch this Admin may access. Platform Super Admin users do not require branch rows.</p>
                 </div>
               )}
-
+              {isOwnAccount && canAssignBranches ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  You cannot change your own Branch access here. Ask another Admin with Branch assign permission to update it.
+                </p>
+              ) : null}
               <div>
                 <label
                   htmlFor="edit-isActive"

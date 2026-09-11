@@ -8,12 +8,25 @@ import ReturnViewPanel from '@/components/ReturnViewPanel'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import { calculateOrderStatus, detectOrderType, type OrderApiItem } from '@/components/orderUtils'
 import type { PosAppointmentDetail } from '@/components/pos/posAppointmentTypes'
+import { useBranch } from '@/contexts/BranchContext'
 import {
   formatReturnStatusLabel,
   getReturnStatusPosBadgeClasses,
   isActiveReturnStatus,
   normalizeReturnStatus,
 } from '@/lib/returns/returnStatus'
+
+/** Booking endpoints use store_location_id; ecommerce reports use branch_store_location_id (fulfilment-aware). */
+function withRequestCenterBranch(
+  url: string,
+  selectedBranchId: number | null,
+  mode: 'booking' | 'ecommerce',
+): string {
+  if (!selectedBranchId) return url
+  const separator = url.includes('?') ? '&' : '?'
+  const key = mode === 'booking' ? 'store_location_id' : 'branch_store_location_id'
+  return `${url}${separator}${key}=${encodeURIComponent(String(selectedBranchId))}`
+}
 
 export type PosRequestCenterProps = {
   disabled?: boolean
@@ -587,6 +600,7 @@ export default function PosRequestCenter({
   onBookingRequestsChanged,
   permissions = [],
 }: PosRequestCenterProps) {
+  const { selectedBranchId } = useBranch()
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'booking' | 'ecommerce' | 'balance'>('booking')
   const [bookingRows, setBookingRows] = useState<BookingRequestRow[]>([])
@@ -616,7 +630,11 @@ export default function PosRequestCenter({
 
   const refreshSummary = useCallback(async () => {
     try {
-      const res = await fetch('/api/proxy/pos/requests/summary', { cache: 'no-store' })
+      // Booking uses store_location_id; ecommerce half of the badge uses the same id via ReportBranchScope alias.
+      const res = await fetch(
+        withRequestCenterBranch('/api/proxy/pos/requests/summary', selectedBranchId, 'booking'),
+        { cache: 'no-store' },
+      )
       const json = await res.json().catch(() => null)
       if (!res.ok) return
       const total = Number(json?.data?.total ?? json?.total ?? NaN)
@@ -624,7 +642,7 @@ export default function PosRequestCenter({
     } catch {
       // Badge stays on previously loaded list totals.
     }
-  }, [])
+  }, [selectedBranchId])
 
   const load = useCallback(async (options?: { force?: boolean }) => {
     const force = options?.force ?? false
@@ -637,9 +655,13 @@ export default function PosRequestCenter({
     setError(null)
 
     try {
-      const depositProofPromise = fetch('/api/proxy/pos/payment-links/pending-review', { cache: 'no-store' })
+      const depositProofPromise = fetch(
+        withRequestCenterBranch('/api/proxy/pos/payment-links/pending-review', selectedBranchId, 'booking'),
+        { cache: 'no-store' },
+      )
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null)
+      // Balance top-ups stay global (customers are global) — do not attach Branch.
       const balanceTopupPromise = fetch('/api/proxy/admin/customer-wallet/topups/pending?per_page=50', { cache: 'no-store' })
         .then(async (res) => {
           const payload = await res.json().catch(() => null)
@@ -651,26 +673,34 @@ export default function PosRequestCenter({
       // only when the panel is open (or forced refresh) so opening POS Appointments stays light.
       const loadEcommerceFanOut = open || force
 
+      const holdParams = new URLSearchParams({
+        statuses: BOOKING_HOLD_FILTERS.join(','),
+        // Previously 3× per_page=50; keep the same max hold capacity in one round-trip.
+        per_page: '150',
+        // Skip full financial DTO — Request Center only needs hold_deposit_order + identity.
+        lite: '1',
+      })
+      if (selectedBranchId) holdParams.set('store_location_id', String(selectedBranchId))
+
       const [cancellationRes, ...remainingResponses] = await Promise.all([
-        fetch('/api/proxy/pos/cancellation-requests?status=pending&per_page=50', { cache: 'no-store' }),
+        fetch(
+          withRequestCenterBranch(
+            '/api/proxy/pos/cancellation-requests?status=pending&per_page=50',
+            selectedBranchId,
+            'booking',
+          ),
+          { cache: 'no-store' },
+        ),
         ...BOOKING_HOLD_FILTERS.length > 0
           ? [
-              fetch(
-                `/api/proxy/pos/appointments?${new URLSearchParams({
-                  statuses: BOOKING_HOLD_FILTERS.join(','),
-                  // Previously 3× per_page=50; keep the same max hold capacity in one round-trip.
-                  per_page: '150',
-                  // Skip full financial DTO — Request Center only needs hold_deposit_order + identity.
-                  lite: '1',
-                }).toString()}`,
-                { cache: 'no-store' },
-              ),
+              fetch(`/api/proxy/pos/appointments?${holdParams.toString()}`, { cache: 'no-store' }),
             ]
           : [],
         ...BOOKING_PACKAGE_ORDER_FILTERS.map((filter) => {
           const qs = new URLSearchParams({ per_page: '25', order_type: 'booking' })
           if (filter.status) qs.set('status', filter.status)
           if (filter.payment_status) qs.set('payment_status', filter.payment_status)
+          if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
           return fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, { cache: 'no-store' })
         }),
         ...(loadEcommerceFanOut
@@ -678,12 +708,14 @@ export default function PosRequestCenter({
               const qs = new URLSearchParams({ per_page: '25', order_type: 'ecommerce' })
               if (filter.status) qs.set('status', filter.status)
               if (filter.payment_status) qs.set('payment_status', filter.payment_status)
+              if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
               return fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, { cache: 'no-store' })
             })
           : []),
         ...(loadEcommerceFanOut
           ? RETURN_REQUEST_ACTIVE_STATUSES.map((status) => {
               const qs = new URLSearchParams({ per_page: '25', status })
+              if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
               return fetch(`/api/proxy/ecommerce/returns?${qs.toString()}`, { cache: 'no-store' })
             })
           : []),
@@ -821,12 +853,24 @@ export default function PosRequestCenter({
         setLoading(false)
       }
     }
-  }, [open, refreshSummary])
+  }, [open, refreshSummary, selectedBranchId])
 
   useEffect(() => {
     // Fast badge without hydrating Request Center lists.
     void refreshSummary()
   }, [refreshSummary])
+
+  useEffect(() => {
+    // Branch switch invalidates cached lists / badge for Booking + Ecommerce.
+    hasLoadedRef.current = false
+    setSummaryTotal(null)
+    setBookingRows([])
+    setEcommerceRows([])
+    if (open) {
+      setPanelReady(false)
+      void load({ force: true })
+    }
+  }, [selectedBranchId]) // eslint-disable-line react-hooks/exhaustive-deps -- branch identity only
 
   useEffect(() => {
     if (!open) {
@@ -902,7 +946,10 @@ export default function PosRequestCenter({
     setBookingDetailError(null)
     setBookingDetailLoading(true)
     try {
-      const res = await fetch(`/api/proxy/pos/appointments/${row.bookingId}`, { cache: 'no-store' })
+      const res = await fetch(
+        withRequestCenterBranch(`/api/proxy/pos/appointments/${row.bookingId}`, selectedBranchId, 'booking'),
+        { cache: 'no-store' },
+      )
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(String(json?.message ?? 'Unable to load booking detail.'))
       setBookingDetail((json?.data ?? null) as PosAppointmentDetail | null)
@@ -971,11 +1018,15 @@ export default function PosRequestCenter({
     setError(null)
 
     try {
-      const url = bookingConfirm.kind === 'cancellation'
-        ? `/api/proxy/pos/cancellation-requests/${bookingConfirm.row.requestId}/${bookingConfirm.action}`
-        : bookingConfirm.kind === 'deposit_proof'
-          ? `/api/proxy/pos/appointments/${bookingConfirm.row.bookingId}/payment-links/${bookingConfirm.row.linkId}/${bookingConfirm.action === 'approve' ? 'approve' : 'reject-proof'}`
-          : `/api/proxy/pos/appointments/${bookingConfirm.row.bookingId}/${bookingConfirm.action === 'approve' ? 'approve-hold' : 'cancel-hold'}`
+      const url = withRequestCenterBranch(
+        bookingConfirm.kind === 'cancellation'
+          ? `/api/proxy/pos/cancellation-requests/${bookingConfirm.row.requestId}/${bookingConfirm.action}`
+          : bookingConfirm.kind === 'deposit_proof'
+            ? `/api/proxy/pos/appointments/${bookingConfirm.row.bookingId}/payment-links/${bookingConfirm.row.linkId}/${bookingConfirm.action === 'approve' ? 'approve' : 'reject-proof'}`
+            : `/api/proxy/pos/appointments/${bookingConfirm.row.bookingId}/${bookingConfirm.action === 'approve' ? 'approve-hold' : 'cancel-hold'}`,
+        selectedBranchId,
+        'booking',
+      )
 
       const res = await fetch(url, {
         method: 'POST',
