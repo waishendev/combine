@@ -3608,8 +3608,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [selectedBranchId])
 
   const fetchBookingServiceCategories = useCallback(async () => {
+    if (!selectedBranchId) {
+      setBookingServiceCategories([])
+      return
+    }
     try {
-      const res = await fetch('/api/proxy/booking/service-categories', { cache: 'no-store' })
+      const params = new URLSearchParams({ store_location_id: String(selectedBranchId) })
+      const res = await fetch(`/api/proxy/booking/service-categories?${params}`, { cache: 'no-store' })
       if (!res.ok) return
       const json = await res.json().catch(() => null)
       const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
@@ -3625,7 +3630,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     } catch {
       setBookingServiceCategories([])
     }
-  }, [])
+  }, [selectedBranchId])
 
   const fetchBookingProductCategories = useCallback(async () => {
     if (lazyLoadedKeyRef.current.bookingProductCategories === 'global') return

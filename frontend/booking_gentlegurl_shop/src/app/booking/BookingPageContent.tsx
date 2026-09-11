@@ -70,7 +70,7 @@ export default function BookingPageContent() {
       setLoading(true);
       setError(null);
       try {
-        const categoryData = await getBookingServiceCategories();
+        const categoryData = await getBookingServiceCategories(selectedStoreLocation.id);
         setCategories(categoryData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load categories");

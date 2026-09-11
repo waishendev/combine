@@ -7,14 +7,18 @@ use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingServiceCategory;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
+use App\Models\User;
+use App\Services\StoreLocationAccessService;
 use Illuminate\Http\Request;
 
 class ServiceController extends Controller
 {
-    public function categories()
+    public function categories(Request $request)
     {
+        $storeLocationId = $this->validatedBookingBranchId($request);
         $categories = BookingServiceCategory::query()
-            ->where('is_active', true)
+            ->visibleAtBranch($storeLocationId)
+            ->withCount(['services as service_count' => fn ($query) => $query->eligibleAtBranch($storeLocationId)])
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
@@ -30,6 +34,7 @@ class ServiceController extends Controller
             'is_active' => (bool) $category->is_active,
             'show_in_pos_filter' => (bool) ($category->show_in_pos_filter ?? true),
             'sort_order' => (int) $category->sort_order,
+            'service_count' => (int) $category->service_count,
         ])->values());
     }
 
@@ -38,8 +43,7 @@ class ServiceController extends Controller
         $storeLocationId = $this->validatedBookingBranchId($request);
         $services = BookingService::query()
             ->with(['categories' => fn ($query) => $query->where('is_active', true)])
-            ->where('is_active', true)
-            ->whereHas('storeLocations', fn ($query) => $query->where('store_locations.id', $storeLocationId))
+            ->eligibleAtBranch($storeLocationId)
             ->when($request->filled('category_id'), function ($query) use ($request) {
                 $categoryId = (int) $request->integer('category_id');
                 if ($categoryId > 0) {
@@ -89,7 +93,7 @@ class ServiceController extends Controller
             'primarySlots',
             'categories' => fn ($query) => $query->where('is_active', true),
             'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount',
-        ])->whereHas('storeLocations', fn ($query) => $query->where('store_locations.id', $storeLocationId))->findOrFail($id);
+        ])->eligibleAtBranch($storeLocationId)->findOrFail($id);
 
         return $this->respond($this->mapService($service, true, null, $storeLocationId));
     }
@@ -328,6 +332,9 @@ class ServiceController extends Controller
     {
         $validated = $request->validate(['store_location_id' => ['required', 'integer']]);
         $id = (int) $validated['store_location_id'];
+        if ($request->user() instanceof User) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $id, false);
+        }
         $exists = \App\Models\Ecommerce\StoreLocation::query()->whereKey($id)
             ->where('is_active', true)->where('is_booking_available', true)->exists();
         abort_unless($exists, 422, 'The selected Branch is not available for booking.');

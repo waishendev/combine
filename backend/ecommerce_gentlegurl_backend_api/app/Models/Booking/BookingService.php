@@ -6,6 +6,7 @@ use App\Models\Staff;
 use App\Models\Ecommerce\StoreLocation;
 use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 
 class BookingService extends Model
@@ -82,6 +83,17 @@ class BookingService extends Model
     public function storeLocations()
     {
         return $this->belongsToMany(StoreLocation::class, 'booking_service_store_location')->withTimestamps();
+    }
+
+    /**
+     * The shared catalogue eligibility rule for a concrete operational Branch.
+     */
+    public function scopeEligibleAtBranch(Builder $query, int $storeLocationId): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->whereHas('storeLocations', fn (Builder $locations) => $locations
+                ->where('store_locations.id', $storeLocationId));
     }
 
     public function isAvailableAt(int $storeLocationId): bool
