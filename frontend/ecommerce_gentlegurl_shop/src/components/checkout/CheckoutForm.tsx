@@ -22,7 +22,7 @@ import {
   PublicBankAccount,
   BillplzPaymentGatewayOption,
   PublicPaymentGateway,
-  PublicStoreLocation,
+  PickupStoreLocation,
   createCustomerAddress,
   createOrder,
   deleteCustomerAddress,
@@ -30,7 +30,7 @@ import {
   getBankAccounts,
   getPaymentGateways,
   getBillplzPaymentGatewayOptions,
-  getStoreLocations,
+  getPickupStoreLocations,
   getCustomerVouchers,
   getPromotions,
   Promotion,
@@ -165,7 +165,7 @@ export default function CheckoutForm() {
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   const [onlineBankingOptions, setOnlineBankingOptions] = useState<BillplzPaymentGatewayOption[]>([]);
   const [selectedBillplzGatewayOptionId, setSelectedBillplzGatewayOptionId] = useState<number | null>(null);
-  const [storeLocations, setStoreLocations] = useState<PublicStoreLocation[]>([]);
+  const [storeLocations, setStoreLocations] = useState<PickupStoreLocation[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
   const [shippingPreview, setShippingPreview] = useState<CheckoutPreviewResponse | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -230,6 +230,10 @@ export default function CheckoutForm() {
   const hasMissingVariant = selectedItems.some(
     (item) => item.product_type === "variant" && !item.product_variant_id,
   );
+  const pickupCartKey = selectedItems
+    .map((item) => `${item.product_id}:${item.product_variant_id ?? 0}:${item.quantity}:${item.reward_redemption_id ?? 0}`)
+    .sort()
+    .join("|");
 
   const scrollToCheckoutField = useCallback((field: CheckoutErrorField) => {
     requestAnimationFrame(() => {
@@ -623,17 +627,49 @@ export default function CheckoutForm() {
   }, []);
 
   useEffect(() => {
+    if (!isSelfPickup || selectedItems.length === 0 || hasMissingVariant) {
+      setStoreLocations([]);
+      setSelectedStoreId(null);
+      setIsLoadingStoreLocations(false);
+      return;
+    }
+
+    let cancelled = false;
     setIsLoadingStoreLocations(true);
-    getStoreLocations()
+    getPickupStoreLocations({
+      items: selectedItems.map((item) => ({
+        product_id: item.product_id,
+        product_variant_id: item.product_variant_id ?? undefined,
+        quantity: item.quantity,
+        is_reward: item.is_reward,
+        reward_redemption_id: item.reward_redemption_id ?? undefined,
+      })),
+      session_token: sessionToken ?? undefined,
+    })
       .then((locations) => {
+        if (cancelled) return;
         setStoreLocations(locations);
-        if (locations.length > 0) {
-          setSelectedStoreId((prev) => prev ?? locations[0].id);
-        }
+        setSelectedStoreId((selected) =>
+          selected && locations.some((location) => location.id === selected && location.eligible)
+            ? selected
+            : null,
+        );
       })
-      .catch(() => setStoreLocations([]))
-      .finally(() => setIsLoadingStoreLocations(false));
-  }, []);
+      .catch(() => {
+        if (cancelled) return;
+        setStoreLocations([]);
+        setSelectedStoreId(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingStoreLocations(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // pickupCartKey deliberately tracks fulfilment identity/quantity, not presentation changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSelfPickup, pickupCartKey, hasMissingVariant, sessionToken]);
 
   useEffect(() => {
     if (paymentMethod !== "manual_transfer") {
@@ -740,8 +776,21 @@ export default function CheckoutForm() {
       }
     }
 
+    if (shippingMethod === "self_pickup" && isLoadingStoreLocations) {
+      reportCheckoutError("Please wait while Branch availability is checked.", "store");
+      return;
+    }
+
     if (shippingMethod === "self_pickup" && !selectedStoreId) {
       reportCheckoutError("Please choose a store location for self pickup.", "store");
+      return;
+    }
+    if (
+      shippingMethod === "self_pickup" &&
+      !storeLocations.some((store) => store.id === selectedStoreId && store.eligible)
+    ) {
+      setSelectedStoreId(null);
+      reportCheckoutError("The selected pickup Branch can no longer fulfil your cart.", "store");
       return;
     }
 
@@ -1656,24 +1705,35 @@ export default function CheckoutForm() {
               }`}
             >
               <SectionLabel>Choose Store Location</SectionLabel>
-              {storeLocations.length === 0 && (
-                <p className="text-xs text-[var(--foreground)]/70">No active store locations available.</p>
+              {isLoadingStoreLocations && (
+                <p className="text-xs text-[var(--foreground)]/70">Checking Branch availability...</p>
+              )}
+              {!isLoadingStoreLocations && storeLocations.length === 0 && (
+                <p className="text-xs text-[var(--foreground)]/70">No pickup Branches available.</p>
               )}
               <div className="space-y-2">
                 {storeLocations.map((store) => (
                   <label
                     key={store.id}
-                    className="flex cursor-pointer gap-2 rounded border border-transparent p-2 hover:border-[var(--accent)]/60"
+                    className={`flex gap-2 rounded border p-2 ${
+                      store.eligible
+                        ? "cursor-pointer border-transparent hover:border-[var(--accent)]/60"
+                        : "cursor-not-allowed border-[var(--muted)]/50 opacity-60"
+                    }`}
                   >
                     <input
                       type="radio"
                       name="store_location"
                       value={store.id}
                       checked={selectedStoreId === store.id}
+                      disabled={!store.eligible}
                       onChange={() => setSelectedStoreId(store.id)}
                     />
                     <div className="text-xs text-[var(--foreground)]">
                       <div className="font-semibold">{store.name}</div>
+                      {!store.eligible && store.ineligibility_reason && (
+                        <div className="font-medium text-[var(--status-error)]">{store.ineligibility_reason}</div>
+                      )}
                       <div className="text-[var(--foreground)]/70">{store.phone}</div>
                       <div className="text-[var(--foreground)]/70">
                         {store.address_line1}

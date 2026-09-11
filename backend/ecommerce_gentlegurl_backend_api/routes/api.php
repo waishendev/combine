@@ -202,6 +202,8 @@ Route::prefix('/public/shop')->group(function () {
 
     Route::post('/checkout/preview', [PublicCheckoutController::class, 'preview'])
         ->middleware('api.session');
+    Route::post('/checkout/pickup-locations', [PublicCheckoutController::class, 'pickupLocations'])
+        ->middleware('api.session');
     Route::post('/orders', [PublicCheckoutController::class, 'createOrder'])
         ->middleware('api.session');
         

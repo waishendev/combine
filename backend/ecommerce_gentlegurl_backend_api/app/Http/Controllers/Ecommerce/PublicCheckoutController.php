@@ -13,6 +13,7 @@ use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\Cart;
+use App\Models\Ecommerce\StoreLocation;
 use App\Mail\PaymentProofUploadedMail;
 use App\Services\BillplzService;
 use App\Services\Ecommerce\CartService;
@@ -111,6 +112,66 @@ class PublicCheckoutController extends Controller
             'voucher_message' => $calculation['voucher_message'],
             'shipping' => $calculation['shipping'] ?? null,
         ]);
+    }
+
+    /**
+     * Return pickup-enabled Branches with a server-side, whole-cart assessment.
+     * This is advisory for the UI; createOrder revalidates under inventory locks.
+     */
+    public function pickupLocations(Request $request)
+    {
+        $validated = $request->validate([
+            'items' => ['nullable', 'array'],
+            'items.*.product_id' => ['required_with:items', 'integer', 'exists:products,id'],
+            'items.*.product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
+            'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
+            'items.*.is_reward' => ['sometimes', 'boolean'],
+            'items.*.reward_redemption_id' => ['nullable', 'integer', 'exists:loyalty_redemptions,id'],
+            'session_token' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $customer = $this->currentCustomer();
+        $itemsInput = $validated['items'] ?? [];
+        $cart = $itemsInput === [] ? $this->resolveCart($customer, $validated['session_token'] ?? null) : null;
+        if ((! $cart || $cart->items()->count() === 0) && $itemsInput === []) {
+            return $this->respondError(__('Cart is empty.'), 422);
+        }
+
+        $calculation = $this->calculateTotals(
+            $cart,
+            $itemsInput,
+            $customer,
+            'pickup',
+            null,
+            null,
+            null,
+            null,
+            true,
+        );
+
+        $locations = StoreLocation::query()
+            ->where('is_active', true)
+            ->where('is_pickup_available', true)
+            ->orderBy('sort_order')->orderBy('name')->orderBy('id')
+            ->get(['id', 'name', 'code', 'address_line1', 'address_line2', 'city', 'state', 'postcode', 'country', 'phone', 'opening_hours']);
+
+        return $this->respond($locations->map(function (StoreLocation $location) use ($calculation) {
+            $assessment = $this->pickupFulfillmentService->assess((int) $location->id, $calculation['items']);
+            $codes = collect($assessment['unavailable_items'])->pluck('code');
+            $reason = null;
+            if (! $assessment['available']) {
+                $reason = $codes->contains('product_unavailable')
+                    ? __('Some items are not available at this Branch.')
+                    : ($codes->contains('insufficient_branch_stock')
+                        ? __('Insufficient stock at this Branch.')
+                        : __('Branch unavailable for pickup.'));
+            }
+
+            return array_merge($location->toArray(), [
+                'eligible' => (bool) $assessment['available'],
+                'ineligibility_reason' => $reason,
+            ]);
+        })->values());
     }
 
     public function createOrder(Request $request)
@@ -883,7 +944,9 @@ class PublicCheckoutController extends Controller
                 $product = $cartItem->product;
 
                 if (!$product || (!$cartItem->is_reward && !$product->is_active)) {
-                    continue;
+                    throw ValidationException::withMessages([
+                        'items' => __('An item in your cart is no longer available.'),
+                    ])->status(422);
                 }
 
                 if ($cartItem->is_reward) {
@@ -995,7 +1058,9 @@ class PublicCheckoutController extends Controller
                 $product = Product::find($input['product_id'] ?? null);
 
                 if (!$product || (!$isReward && !$product->is_active)) {
-                    continue;
+                    throw ValidationException::withMessages([
+                        'items' => __('An item in your cart is no longer available.'),
+                    ])->status(422);
                 }
 
                 if ($isReward) {

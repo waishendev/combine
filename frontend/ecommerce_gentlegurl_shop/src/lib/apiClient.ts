@@ -793,6 +793,11 @@ export type PublicStoreLocation = {
   images?: StoreLocationImage[];
 };
 
+export type PickupStoreLocation = PublicStoreLocation & {
+  eligible: boolean;
+  ineligibility_reason: string | null;
+};
+
 export type OrderLookupResponse = {
   order_id: number;
   order_no: string;
@@ -968,6 +973,18 @@ export async function getStoreLocations(feature?: "reviews"): Promise<PublicStor
   const response = await get<{ data: PublicStoreLocation[] }>(`/public/shop/store-locations${suffix}`, {
     headers: { Accept: "application/json" },
   });
+
+  return response.data;
+}
+
+export async function getPickupStoreLocations(
+  payload: Pick<CheckoutPayload, "items" | "session_token">,
+): Promise<PickupStoreLocation[]> {
+  const response = await post<{ data: PickupStoreLocation[] }>(
+    "/public/shop/checkout/pickup-locations",
+    payload,
+    { includeSessionToken: payload.session_token === undefined, headers: { Accept: "application/json" } },
+  );
 
   return response.data;
 }
