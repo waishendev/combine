@@ -21,12 +21,21 @@ class BookingProductCategoryController extends Controller
         $branchId = $requestedBranchId > 0
             ? (int) $access->authorizeStoreLocation($request->user(), $requestedBranchId, false)->id
             : null;
+        $forPos = $request->boolean('pos');
+        if ($forPos && ! $branchId) {
+            abort(422, 'A specific POS Branch is required.');
+        }
         $query = BookingProductCategory::query()
             ->select(['id', 'name', 'cn_name', 'sort_order', 'is_active', 'show_in_pos_filter'])
             // Global master list: keep empty / newly created categories visible.
             // Branch only scopes store_locations annotation below.
             ->orderBy('sort_order')
             ->orderBy('id');
+
+        if ($forPos) {
+            $query->visibleAtPosBranch($branchId)
+                ->withCount(['products as products_count' => fn ($products) => $products->posEligibleAtBranch($branchId)]);
+        }
 
         // NEW ENHANCEMENT — booking-categories-crm-query-v1: all=1 picker needs id/name only
         if ($request->boolean('all')) {

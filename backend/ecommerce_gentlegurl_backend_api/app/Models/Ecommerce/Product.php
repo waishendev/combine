@@ -5,6 +5,7 @@ namespace App\Models\Ecommerce;
 use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use App\Models\Ecommerce\ProductReview;
 use App\Models\Ecommerce\ProductMedia;
 use Illuminate\Support\Facades\Storage;
@@ -110,6 +111,19 @@ class Product extends Model
     {
         return $this->belongsToMany(StoreLocation::class, 'store_location_product')
             ->withPivot('is_available')->withTimestamps();
+    }
+
+    /**
+     * The single source of truth for products shown by the operational POS catalogue.
+     */
+    public function scopePosEligibleAtBranch(Builder $query, int $storeLocationId): Builder
+    {
+        return $query
+            ->where('products.is_active', true)
+            ->where('products.is_reward_only', false)
+            ->whereHas('storeLocations', fn (Builder $locations) => $locations
+                ->whereKey($storeLocationId)
+                ->where('store_location_product.is_available', true));
     }
 
     public function branchInventories()

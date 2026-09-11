@@ -5,6 +5,7 @@ namespace App\Models\Booking;
 use App\Models\Ecommerce\StoreLocation;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 
 class BookingProduct extends Model
@@ -59,6 +60,27 @@ class BookingProduct extends Model
     public function storeLocations()
     {
         return $this->belongsToMany(StoreLocation::class, 'booking_product_store_location')->withTimestamps();
+    }
+
+    /**
+     * The single source of truth for Booking Products shown by POS.
+     *
+     * Standalone products own their persisted Branch assignments. A linked
+     * product's effective assignment is managed by its Booking Service.
+     */
+    public function scopePosEligibleAtBranch(Builder $query, int $storeLocationId): Builder
+    {
+        return $query
+            ->where('booking_products.is_active', true)
+            ->where(function (Builder $availability) use ($storeLocationId) {
+                $availability->where(function (Builder $standalone) use ($storeLocationId) {
+                    $standalone->whereDoesntHave('linkedBookingService')
+                        ->whereHas('storeLocations', fn (Builder $locations) => $locations->whereKey($storeLocationId));
+                })->orWhereHas(
+                    'linkedBookingService.storeLocations',
+                    fn (Builder $locations) => $locations->whereKey($storeLocationId)
+                );
+            });
     }
 
     public function getImageUrlAttribute(): ?string

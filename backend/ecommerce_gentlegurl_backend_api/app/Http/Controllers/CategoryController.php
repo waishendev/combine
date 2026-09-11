@@ -17,6 +17,10 @@ class CategoryController extends Controller
     {
         $perPage = $request->integer('per_page', 15);
         $branchId = $request->integer('branch_store_location_id') ?: null;
+        $forPos = $request->boolean('pos');
+        if ($forPos && ! $branchId) {
+            abort(422, 'A specific POS Branch is required.');
+        }
         if ($branchId && $request->user()) {
             app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
         }
@@ -29,15 +33,16 @@ class CategoryController extends Controller
         $categories = Category::with(['shopMenus:id,name,slug'])
             ->withCount(['products as products_count' => function ($query) use ($branchId, $allBranchScope, $accessibleIds) {
                 if ($branchId) {
-                    $query->whereHas('storeLocations', fn ($branches) => $branches
-                        ->where('store_locations.id', $branchId)
-                        ->where('store_location_product.is_available', true));
+                    $query->posEligibleAtBranch($branchId);
                 } elseif ($allBranchScope) {
                     $query->whereHas('storeLocations', fn ($branches) => $branches
                         ->whereIn('store_locations.id', $accessibleIds)
                         ->where('store_location_product.is_available', true));
                 }
             }])
+            ->when($forPos, fn ($query) => $query
+                ->where('categories.is_active', true)
+                ->whereHas('products', fn ($products) => $products->posEligibleAtBranch($branchId)))
             ->when($request->filled('name'), function ($query) use ($request) {
                 $query->where('name', 'like', '%' . $request->get('name') . '%');
             })
