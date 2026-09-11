@@ -133,17 +133,6 @@
               <img class="company-logo" src="{{ $profile['company_logo_url'] }}" alt="Company Logo" style="margin-bottom:6px;" />
             <?php endif; ?>
             <div class="company-name">{{ $profile['company_name'] ?? 'Company Name' }}</div>
-            <div class="company-meta muted">
-              <?php if(!empty($profile['company_reg_no'])): ?>
-                <div>Reg No: {{ $profile['company_reg_no'] }}</div>
-              <?php endif; ?>
-              <?php if(!empty($profile['company_phone'])): ?>
-                <div>Phone: {{ $profile['company_phone'] }}</div>
-              <?php endif; ?>
-              <?php if(!empty($profile['company_email'])): ?>
-                <div>Email: {{ $profile['company_email'] }}</div>
-              <?php endif; ?>
-            </div>
             <?php if(!empty($profile['company_address'])): ?>
               <div class="muted" style="margin-top:8px;">{!! nl2br(e($profile['company_address'])) !!}</div>
             <?php endif; ?>

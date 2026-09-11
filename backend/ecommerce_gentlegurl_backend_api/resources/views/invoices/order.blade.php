@@ -413,21 +413,6 @@
                 <?php endif; ?>
                 <td style="vertical-align:top;">
                   <div class="company-name">{{ $profile['company_name'] ?? 'Company Name' }}</div>
-
-                  <div class="company-meta muted">
-                    <?php if(!empty($profile['company_reg_no'])): ?>
-                      <div>Reg No: {{ $profile['company_reg_no'] }}</div>
-                    <?php endif; ?>
-                    <?php if(!empty($profile['company_phone'])): ?>
-                      <div>Phone: {{ $profile['company_phone'] }}</div>
-                    <?php endif; ?>
-                    <?php if(!empty($profile['company_email'])): ?>
-                      <div>Email: {{ $profile['company_email'] }}</div>
-                    <?php endif; ?>
-                    <?php if(!empty($profile['company_website'])): ?>
-                      <div>Website: {{ $profile['company_website'] }}</div>
-                    <?php endif; ?>
-                  </div>
                 </td>
               </tr>
             </table>
