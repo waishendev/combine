@@ -8,7 +8,7 @@ class BookingServiceStaff extends Model
 {
     protected $table = 'booking_service_staff';
 
-    protected $fillable = ['service_id', 'staff_id', 'is_active'];
+    protected $fillable = ['service_id', 'staff_id', 'store_location_id', 'is_active'];
 
     protected $casts = ['is_active' => 'boolean'];
 }

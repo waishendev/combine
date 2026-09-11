@@ -197,8 +197,11 @@ class ServiceController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'allow_photo_upload' => ['nullable', 'boolean'],
             'rules_json' => ['nullable', 'array'],
-            'allowed_staff_ids' => ['required', 'array', 'min:1'],
+            'allowed_staff_ids' => ['required_without:allowed_staff_by_store_location', 'array', 'min:1'],
             'allowed_staff_ids.*' => ['integer', 'distinct'],
+            'allowed_staff_by_store_location' => ['required_without:allowed_staff_ids', 'array'],
+            'allowed_staff_by_store_location.*' => ['array', 'min:1'],
+            'allowed_staff_by_store_location.*.*' => ['integer', 'distinct'],
             'store_location_ids' => ['required', 'array', 'min:1'],
             'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
             'primary_slots' => ['nullable', 'array'],
@@ -245,14 +248,14 @@ class ServiceController extends Controller
             );
         }
 
-        $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
         $storeLocationIds = $this->storeLocationAccess->assertCanAssign($request->user(), $data['store_location_ids'] ?? [], false);
+        $staffByLocation = $this->resolveAllowedStaffByLocation($data, $storeLocationIds);
         $primarySlots = $data['primary_slots'] ?? [];
         $questions = $data['questions'] ?? [];
         $categoryIds = $this->resolveCategoryIds($request, $data);
         $createLinkedProduct = $request->boolean('create_linked_product');
         $linkedProductId = isset($data['linked_booking_product_id']) ? (int) $data['linked_booking_product_id'] : null;
-        unset($data['store_location_ids'], $data['allowed_staff_ids'], $data['primary_slots'], $data['questions'], $data['questions_json'], $data['create_linked_product'], $data['linked_booking_product_id'], $data['category_ids'], $data['category_id']);
+        unset($data['store_location_ids'], $data['allowed_staff_ids'], $data['allowed_staff_by_store_location'], $data['primary_slots'], $data['questions'], $data['questions_json'], $data['create_linked_product'], $data['linked_booking_product_id'], $data['category_ids'], $data['category_id']);
 
         $uploadedServiceImagePath = $data['image_path'] ?? null;
 
@@ -260,7 +263,7 @@ class ServiceController extends Controller
             $service = DB::transaction(function () use (
                 $request,
                 $data,
-                $allowedStaffIds,
+                $staffByLocation,
                 $storeLocationIds,
                 $primarySlots,
                 $questions,
@@ -270,8 +273,8 @@ class ServiceController extends Controller
             ) {
                 $service = BookingService::create($data);
                 $this->syncCategories($service, $categoryIds);
-                $this->syncAllowedStaffs($service, $allowedStaffIds);
                 $service->storeLocations()->sync($storeLocationIds);
+                $this->syncAllowedStaffsByLocation($service, $staffByLocation);
                 $this->syncPrimarySlots($service, $primarySlots);
                 $this->syncQuestions($service, $questions);
                 $this->productLinkService->handleCreateLink($service, $createLinkedProduct, $linkedProductId ?: null);
@@ -347,8 +350,11 @@ class ServiceController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'allow_photo_upload' => ['sometimes', 'boolean'],
             'rules_json' => ['nullable', 'array'],
-            'allowed_staff_ids' => ['required', 'array', 'min:1'],
+            'allowed_staff_ids' => ['required_without:allowed_staff_by_store_location', 'array', 'min:1'],
             'allowed_staff_ids.*' => ['integer', 'distinct'],
+            'allowed_staff_by_store_location' => ['required_without:allowed_staff_ids', 'array'],
+            'allowed_staff_by_store_location.*' => ['array', 'min:1'],
+            'allowed_staff_by_store_location.*.*' => ['integer', 'distinct'],
             'store_location_ids' => ['required', 'array', 'min:1'],
             'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
             'primary_slots' => ['nullable', 'array'],
@@ -397,8 +403,8 @@ class ServiceController extends Controller
             }
         }
 
-        $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
         $storeLocationIds = $this->storeLocationAccess->assertCanAssign($request->user(), $data['store_location_ids'] ?? [], false);
+        $staffByLocation = $this->resolveAllowedStaffByLocation($data, $storeLocationIds);
         $primarySlots = $data['primary_slots'] ?? [];
         $questions = $data['questions'] ?? [];
         $hasCategoryIdsInput = $request->has('category_ids') || $request->has('category_id');
@@ -413,6 +419,7 @@ class ServiceController extends Controller
         unset(
             $data['store_location_ids'],
             $data['allowed_staff_ids'],
+            $data['allowed_staff_by_store_location'],
             $data['primary_slots'],
             $data['questions'],
             $data['questions_json'],
@@ -436,7 +443,7 @@ class ServiceController extends Controller
                 $request,
                 $service,
                 $data,
-                $allowedStaffIds,
+                $staffByLocation,
                 $storeLocationIds,
                 $primarySlots,
                 $questions,
@@ -452,8 +459,8 @@ class ServiceController extends Controller
                 if ($hasCategoryIdsInput && $categoryIds !== null) {
                     $this->syncCategories($service, $categoryIds);
                 }
-                $this->syncAllowedStaffs($service, $allowedStaffIds);
                 $service->storeLocations()->sync($storeLocationIds);
+                $this->syncAllowedStaffsByLocation($service, $staffByLocation);
                 $this->syncPrimarySlots($service, $primarySlots);
                 $this->syncQuestions($service, $questions);
 
@@ -476,6 +483,13 @@ class ServiceController extends Controller
                     if ($service->linkedBookingProduct) {
                         $this->productLinkService->syncProductFromService($service, $service->linkedBookingProduct);
                     }
+                }
+
+                // Branch availability is always service-owned, independently of whether
+                // descriptive product fields were explicitly overwritten.
+                $service->load('linkedBookingProduct');
+                if ($service->linkedBookingProduct) {
+                    $this->productLinkService->syncBranchAvailability($service, $service->linkedBookingProduct);
                 }
 
                 BookingLog::create([
@@ -1099,6 +1113,63 @@ class ServiceController extends Controller
         return $validIds->all();
     }
 
+    /**
+     * Validate the complete Service + Branch + Staff matrix. The legacy flat input is
+     * accepted only for compatibility and only when exactly one Branch is selected.
+     */
+    private function resolveAllowedStaffByLocation(array $data, array $storeLocationIds): array
+    {
+        $raw = $data['allowed_staff_by_store_location'] ?? null;
+        if (! is_array($raw)) {
+            if (count($storeLocationIds) !== 1) {
+                throw ValidationException::withMessages([
+                    'allowed_staff_by_store_location' => ['Allowed Staff must be configured separately for every Branch.'],
+                ]);
+            }
+            $raw = [(string) $storeLocationIds[0] => $data['allowed_staff_ids'] ?? []];
+        }
+
+        $selected = collect($storeLocationIds)->map(fn ($id) => (int) $id)->sort()->values()->all();
+        $submitted = collect(array_keys($raw))->map(fn ($id) => (int) $id)->filter()->sort()->values()->all();
+        if ($selected !== $submitted) {
+            throw ValidationException::withMessages([
+                'allowed_staff_by_store_location' => ['Provide Allowed Staff for every selected Branch and no other Branch.'],
+            ]);
+        }
+
+        $result = [];
+        foreach ($selected as $locationId) {
+            $ids = $this->resolveAllowedStaffIds((array) ($raw[(string) $locationId] ?? $raw[$locationId] ?? []));
+            $eligibleCount = Staff::query()->whereIn('id', $ids)
+                ->where('is_active', true)
+                ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($locationId))
+                ->count();
+            if ($eligibleCount !== count($ids)) {
+                throw ValidationException::withMessages([
+                    "allowed_staff_by_store_location.{$locationId}" => ['Every selected Staff member must be active and assigned to this Branch.'],
+                ]);
+            }
+            $result[$locationId] = $ids;
+        }
+
+        return $result;
+    }
+
+    private function syncAllowedStaffsByLocation(BookingService $service, array $staffByLocation): void
+    {
+        BookingServiceStaff::query()->where('service_id', $service->id)->delete();
+        foreach ($staffByLocation as $locationId => $staffIds) {
+            foreach ($staffIds as $staffId) {
+                BookingServiceStaff::query()->create([
+                    'service_id' => $service->id,
+                    'store_location_id' => (int) $locationId,
+                    'staff_id' => (int) $staffId,
+                    'is_active' => true,
+                ]);
+            }
+        }
+    }
+
     private function syncAllowedStaffs(BookingService $service, array $allowedStaffIds): void
     {
         BookingServiceStaff::query()
@@ -1215,6 +1286,14 @@ class ServiceController extends Controller
 
     private function formatService(BookingService $service, bool $forList = false): array
     {
+        $allowedStaffByLocation = BookingServiceStaff::query()
+            ->where('service_id', $service->id)
+            ->where('is_active', true)
+            ->whereNotNull('store_location_id')
+            ->get(['store_location_id', 'staff_id'])
+            ->groupBy('store_location_id')
+            ->map(fn ($rows) => $rows->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values()->all())
+            ->all();
         $allowedStaffs = $service->relationLoaded('allowedStaffs')
             ? $service->allowedStaffs
                 ->sortBy('name')
@@ -1285,6 +1364,7 @@ class ServiceController extends Controller
                 'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
                 'allowed_staff_count' => count($allowedStaffs),
                 'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
+                'allowed_staff_by_store_location' => $allowedStaffByLocation,
                 'store_locations' => $service->relationLoaded('storeLocations')
                     ? $service->storeLocations->values()->all()
                     : [],
@@ -1327,6 +1407,7 @@ class ServiceController extends Controller
             'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
             'allowed_staff_count' => count($allowedStaffs),
             'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
+            'allowed_staff_by_store_location' => $allowedStaffByLocation,
             'store_locations' => $service->relationLoaded('storeLocations')
                 ? $service->storeLocations->values()->all()
                 : [],

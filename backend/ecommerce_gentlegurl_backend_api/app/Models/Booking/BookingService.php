@@ -64,6 +64,16 @@ class BookingService extends Model
             ->wherePivot('is_active', true);
     }
 
+    public function allowedStaffsAt(int $storeLocationId)
+    {
+        return $this->belongsToMany(Staff::class, 'booking_service_staff', 'service_id', 'staff_id')
+            ->withTimestamps()
+            ->wherePivot('is_active', true)
+            ->wherePivot('store_location_id', $storeLocationId)
+            ->where('staffs.is_active', true)
+            ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($storeLocationId));
+    }
+
     public function linkedBookingProduct()
     {
         return $this->belongsTo(BookingProduct::class, 'linked_booking_product_id');
@@ -79,8 +89,12 @@ class BookingService extends Model
         return $this->storeLocations()->whereKey($storeLocationId)->exists();
     }
 
-    public function isStaffAllowed(int $staffId): bool
+    public function isStaffAllowed(int $staffId, ?int $storeLocationId = null): bool
     {
+        if ($storeLocationId !== null) {
+            return $this->allowedStaffsAt($storeLocationId)->where('staffs.id', $staffId)->exists();
+        }
+
         return $this->allowedStaffs()->where('staffs.id', $staffId)->exists();
     }
 

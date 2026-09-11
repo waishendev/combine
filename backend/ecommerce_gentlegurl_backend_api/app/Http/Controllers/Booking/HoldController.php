@@ -49,7 +49,7 @@ class HoldController extends Controller
             return $this->respondError('Selected staff does not work at this Branch.', 422);
         }
 
-        if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
+        if (! $service->isStaffAllowed((int) $validated['staff_id'], (int) $branch->id)) {
             return $this->respondError('Selected staff is not allowed for this service.', 422);
         }
         $startAt = Carbon::parse($validated['start_at']);

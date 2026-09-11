@@ -604,7 +604,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
                       {p.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  {isAllBranches && <td className="px-4 py-2 border border-gray-200">{p.linked_booking_service?.store_locations?.map((branch) => branch.name ?? branch.code).filter(Boolean).join(', ') || 'Unassigned'}</td>}
+                  {isAllBranches && <td className="px-4 py-2 border border-gray-200">{(p.linked_booking_service?.store_locations ?? p.store_locations)?.map((branch) => branch.name ?? branch.code).filter(Boolean).join(', ') || 'Unassigned'}</td>}
                   {showActions && (
                     <td className="px-4 py-2 border border-gray-200">
                       <div className="flex items-center gap-2">

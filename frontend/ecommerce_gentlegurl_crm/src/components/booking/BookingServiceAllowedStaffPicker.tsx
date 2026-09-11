@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-export type BookingStaffOption = { id: number; name: string }
+export type BookingStaffOption = { id: number; name: string; store_location_ids?: number[] }
 
 type BookingServiceAllowedStaffPickerProps = {
   staffOptions: BookingStaffOption[]

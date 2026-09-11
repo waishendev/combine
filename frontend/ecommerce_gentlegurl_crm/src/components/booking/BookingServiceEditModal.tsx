@@ -28,6 +28,7 @@ import { IMAGE_ACCEPT } from '../mediaAccept'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import FormErrorAnchor from '@/components/FormErrorAnchor'
 import BranchAssignmentChecklist from '@/components/BranchAssignmentChecklist'
+import { useBranch } from '@/contexts/BranchContext'
 
 const bookingServiceEditFormId = 'booking-service-edit-form'
 
@@ -63,6 +64,7 @@ interface FormState {
   allow_photo_upload: 'true' | 'false'
   imageFile: File | null
   allowed_staff_ids: number[]
+  allowed_staff_by_store_location: Record<number, number[]>
   store_location_ids: number[]
   primary_slots: string
   questions: QuestionForm[]
@@ -102,6 +104,7 @@ const initialFormState: FormState = {
   allow_photo_upload: 'false',
   imageFile: null,
   allowed_staff_ids: [],
+  allowed_staff_by_store_location: {},
   store_location_ids: [],
   primary_slots: '',
   questions: [],
@@ -113,6 +116,7 @@ export default function BookingServiceEditModal({
   onSuccess,
 }: BookingServiceEditModalProps) {
   const { t } = useI18n()
+  const { accessibleBranches } = useBranch()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -314,6 +318,7 @@ export default function BookingServiceEditModal({
             : Array.isArray((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs)
               ? ((service as { allowed_staffs?: Array<{ id?: unknown }> }).allowed_staffs ?? []).map((staff) => Number(staff?.id)).filter((id) => Number.isFinite(id) && id > 0)
               : [],
+          allowed_staff_by_store_location: Object.fromEntries(Object.entries((service as { allowed_staff_by_store_location?: Record<string, unknown[]> }).allowed_staff_by_store_location ?? {}).map(([id, ids]) => [Number(id), ids.map(Number)])),
         })
       } catch (err) {
         if (cancelled) return
@@ -369,7 +374,8 @@ export default function BookingServiceEditModal({
             const id = Number(maybe.id)
             const name = String(maybe.name ?? '').trim()
             if (!id || !name) return null
-            return { id, name }
+            const locations = Array.isArray(maybe.store_locations) ? maybe.store_locations : []
+            return { id, name, store_location_ids: locations.map((location) => Number((location as { id?: unknown })?.id)).filter((value) => value > 0) }
           })
           .filter((row): row is BookingStaffOption => Boolean(row))
 
@@ -514,8 +520,8 @@ export default function BookingServiceEditModal({
     }
 
     if (form.store_location_ids.length === 0) { setError('Select at least one Branch.'); return }
-    if (form.allowed_staff_ids.length === 0) {
-      setError('Please assign at least 1 allowed staff')
+    if (form.store_location_ids.some((id) => (form.allowed_staff_by_store_location[id] ?? []).length === 0)) {
+      setError('Please assign at least 1 allowed staff for every Branch')
       return
     }
     const missingLinkedService = form.questions.some((question) =>
@@ -550,7 +556,7 @@ export default function BookingServiceEditModal({
       fd.append('buffer_min', String(buffer))
       fd.append('is_active', form.is_active === 'true' ? '1' : '0')
       fd.append('allow_photo_upload', form.allow_photo_upload === 'true' ? '1' : '0')
-      form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
+      form.store_location_ids.forEach((locationId) => (form.allowed_staff_by_store_location[locationId] ?? []).forEach((staffId) => fd.append(`allowed_staff_by_store_location[${locationId}][]`, String(staffId))))
       form.store_location_ids.forEach((id) => fd.append('store_location_ids[]', String(id)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       form.questions.forEach((question, questionIndex) => {
@@ -1022,16 +1028,10 @@ export default function BookingServiceEditModal({
                 />
               </div>
 
-              <BranchAssignmentChecklist label="Available at" value={form.store_location_ids} onChange={(ids) => setForm((prev) => ({ ...prev, store_location_ids: ids }))} disabled={disableForm} />
+              <BranchAssignmentChecklist label="Available at" value={form.store_location_ids} onChange={(ids) => setForm((prev) => ({ ...prev, store_location_ids: ids, allowed_staff_by_store_location: Object.fromEntries(ids.map((id) => [id, prev.allowed_staff_by_store_location[id] ?? []])) }))} disabled={disableForm} />
 
-              <div className="min-w-0">
-                <BookingServiceAllowedStaffPicker
-                  staffOptions={staffOptions}
-                  value={form.allowed_staff_ids}
-                  onChange={(ids) => setForm((prev) => ({ ...prev, allowed_staff_ids: ids }))}
-                  disabled={disableForm}
-                  loading={staffLoading}
-                />
+              <div className="min-w-0 space-y-3">
+                {form.store_location_ids.map((locationId) => <div key={locationId} className="rounded-xl border border-gray-200 bg-gray-50 p-4"><h4 className="mb-3 font-semibold text-gray-800">{accessibleBranches.find((branch) => branch.id === locationId)?.name ?? `Branch ${locationId}`}</h4><BookingServiceAllowedStaffPicker staffOptions={staffOptions.filter((staff) => staff.store_location_ids?.includes(locationId))} value={form.allowed_staff_by_store_location[locationId] ?? []} onChange={(ids) => setForm((prev) => ({ ...prev, allowed_staff_by_store_location: { ...prev.allowed_staff_by_store_location, [locationId]: ids } }))} disabled={disableForm} loading={staffLoading} /></div>)}
               </div>
 
               <div>

@@ -75,7 +75,7 @@ class CartController extends Controller
         if (! $service->isAvailableAt((int) $storeLocation->id)) {
             return $this->respondError('The selected service is not available at this Branch.', 422);
         }
-        if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
+        if (! $service->isStaffAllowed((int) $validated['staff_id'], (int) $storeLocation->id)) {
             return $this->respondError('Selected staff is not allowed for this service.', 422);
         }
         if (! Staff::query()->whereKey((int) $validated['staff_id'])
@@ -535,7 +535,7 @@ class CartController extends Controller
             }
             foreach ($activeItems as $item) {
                 if (! $item->service?->isAvailableAt((int) $storeLocation->id)
-                    || ! $item->service?->isStaffAllowed((int) $item->staff_id)
+                    || ! $item->service?->isStaffAllowed((int) $item->staff_id, (int) $storeLocation->id)
                     || ! Staff::query()->whereKey($item->staff_id)->whereHas('storeLocations', fn ($query) => $query->where('store_locations.id', $storeLocation->id))->exists()) {
                     return $this->respondError('A selected service or staff is no longer eligible at this Branch. Please restart your booking selection.', 422);
                 }

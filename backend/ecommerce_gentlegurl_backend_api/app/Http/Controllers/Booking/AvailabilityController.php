@@ -64,7 +64,7 @@ class AvailabilityController extends Controller
         if (! $this->branchEligibilityValid($service, (int) $validated['staff_id'], (int) $validated['store_location_id'])) {
             return $this->respondError('The selected service or staff is not available at this Branch.', 422);
         }
-        if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
+        if (! $service->isStaffAllowed((int) $validated['staff_id'], (int) $validated['store_location_id'])) {
             return $this->respondError('Selected staff is not allowed for this service.', 422);
         }
 
@@ -130,7 +130,7 @@ class AvailabilityController extends Controller
         }
         $extraDurationMin = (int) ($validated['extra_duration_min'] ?? 0);
 
-        $staffIds = $service->allowedStaffs()->whereHas('storeLocations', fn ($query) => $query->where('store_locations.id', (int) $validated['store_location_id']))
+        $staffIds = $service->allowedStaffsAt((int) $validated['store_location_id'])
             ->pluck('staffs.id')->map(fn ($id) => (int) $id)->unique()->values()->all();
 
         $configuredPrimarySlots = $service->primarySlots
@@ -237,6 +237,7 @@ class AvailabilityController extends Controller
         // Get all staff for this service
         $serviceStaff = \App\Models\Booking\BookingServiceStaff::query()
             ->where('service_id', $service->id)
+            ->where('store_location_id', (int) $validated['store_location_id'])
             ->where('is_active', true)
             ->get(['staff_id']);
 
