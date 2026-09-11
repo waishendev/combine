@@ -16,13 +16,8 @@ class CheckPermission
             return response()->json(['error' => 'Unauthenticated'], 401);
         }
 
-        $permissionSlugs = $user->roles()
-            ->with('permissions')
-            ->get()
-            ->pluck('permissions')
-            ->flatten()
-            ->pluck('slug')
-            ->unique();
+        // Include Branch-owned Roles (role_user_store_location), not only legacy role_user.
+        $permissionSlugs = $user->getAllPermissions();
 
         // `permission:a|b` passes the whole string as one argument; treat `|` as OR.
         $required = str_contains($permission, '|')

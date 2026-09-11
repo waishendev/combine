@@ -427,7 +427,8 @@ class StaffController extends Controller
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'username' => $username,
-                'password' => Hash::make($validated['password']),
+                // User model casts password as hashed — pass plain text.
+                'password' => $validated['password'],
                 'is_active' => $validated['is_active'] ?? true,
                 'staff_id' => $staff->id,
             ]);
@@ -498,6 +499,10 @@ class StaffController extends Controller
             $staff->save();
 
             $user = $staff->admin;
+            if (! empty($validated['password']) && ! $user) {
+                abort(422, __('This staff has no login account. Create a Staff login first before setting a password.'));
+            }
+
             if ($user) {
                 $userPayload = [];
                 if (array_key_exists('email', $validated)) {
@@ -508,7 +513,8 @@ class StaffController extends Controller
                     $userPayload['username'] = $username === '' ? null : $username;
                 }
                 if (! empty($validated['password'])) {
-                    $userPayload['password'] = Hash::make($validated['password']);
+                    // User model casts password as hashed — pass plain text (do not Hash::make here).
+                    $userPayload['password'] = $validated['password'];
                 }
                 if (array_key_exists('name', $validated)) {
                     $userPayload['name'] = $validated['name'];

@@ -177,8 +177,12 @@ class AuthController extends Controller
 
     private function userHasStaffRole(User $user): bool
     {
-        $user->loadMissing('roles');
-
-        return $user->roles->contains(fn ($role) => strcasecmp((string) $role->name, 'Staff') === 0);
+        // After role-branch:replicate, operational Staff Roles live on role_user_store_location.
+        return $user->roles()
+            ->whereRaw('LOWER(name) = ?', ['staff'])
+            ->exists()
+            || $user->branchRoles()
+                ->whereRaw('LOWER(name) = ?', ['staff'])
+                ->exists();
     }
 }
