@@ -57,6 +57,45 @@ class Phase8PickupFulfillmentTest extends TestCase
         $this->assertTrue(app(PickupFulfillmentService::class)->assess($branch->id, [$this->item($product)])['available']);
     }
 
+    public function test_pickup_locations_endpoint_assesses_the_actual_whole_cart_and_returns_safe_reasons(): void
+    {
+        [$eligible, $missingProduct, $shortStock] = [
+            $this->branch('A'), $this->branch('B'), $this->branch('C'),
+        ];
+        [$x, $y] = [$this->product('X'), $this->product('Y')];
+        $this->sellAt($x, $eligible, $missingProduct, $shortStock);
+        $this->sellAt($y, $eligible, $shortStock);
+        $this->inventory($eligible, $x, 1); $this->inventory($eligible, $y, 2);
+        $this->inventory($missingProduct, $x, 1); $this->inventory($missingProduct, $y, 20);
+        $this->inventory($shortStock, $x, 1); $this->inventory($shortStock, $y, 1);
+
+        $response = $this->postJson('/api/public/shop/checkout/pickup-locations', [
+            'items' => [$this->item($x), $this->item($y, null, 2)],
+        ])->assertOk()->assertJsonCount(3, 'data');
+
+        $rows = collect($response->json('data'))->keyBy('id');
+        $this->assertTrue($rows[$eligible->id]['eligible']);
+        $this->assertNull($rows[$eligible->id]['ineligibility_reason']);
+        $this->assertFalse($rows[$missingProduct->id]['eligible']);
+        $this->assertSame('Some items are not available at this Branch.', $rows[$missingProduct->id]['ineligibility_reason']);
+        $this->assertFalse($rows[$shortStock->id]['eligible']);
+        $this->assertSame('Insufficient stock at this Branch.', $rows[$shortStock->id]['ineligibility_reason']);
+    }
+
+    public function test_pickup_locations_endpoint_excludes_inactive_and_pickup_disabled_branches(): void
+    {
+        $active = $this->branch('A');
+        $this->branch('B', false, true);
+        $this->branch('C', true, false);
+        $product = $this->product('X');
+        $this->sellAt($product, $active);
+        $this->inventory($active, $product, 1);
+
+        $this->postJson('/api/public/shop/checkout/pickup-locations', [
+            'items' => [$this->item($product)],
+        ])->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $active->id);
+    }
+
     public function test_exact_variant_and_branch_inventory_is_used(): void
     {
         [$a, $b] = [$this->branch('A'), $this->branch('B')];
@@ -92,6 +131,26 @@ class Phase8PickupFulfillmentTest extends TestCase
         $assessment = app(PickupFulfillmentService::class)->assess($branch->id, []);
         $this->assertFalse($assessment['available']);
         $this->assertSame('pickup_branch_unavailable', $assessment['unavailable_items'][0]['code']);
+    }
+
+    public function test_backend_validation_rejects_a_selected_branch_that_becomes_ineligible(): void
+    {
+        $branch = $this->branch('A');
+        $product = $this->product('X');
+        $this->sellAt($product, $branch);
+        $this->inventory($branch, $product, 1);
+        $items = [$this->item($product, null, 1)];
+        app(PickupFulfillmentService::class)->validate($branch->id, $items);
+
+        StoreLocationProductInventory::where('store_location_id', $branch->id)->update(['quantity' => 0]);
+
+        try {
+            app(PickupFulfillmentService::class)->validate($branch->id, $items, true);
+            $this->fail('Expected stale pickup selection to be rejected.');
+        } catch (ValidationException $exception) {
+            $this->assertSame('The selected pickup Branch cannot fulfil the whole cart.', $exception->errors()['store_location_id'][0]);
+            $this->assertSame('insufficient_branch_stock', $exception->errors()['unavailable_items'][0]['code']);
+        }
     }
 
     private function branch(string $code, bool $active = true, bool $pickup = true): StoreLocation
