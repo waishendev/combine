@@ -352,6 +352,63 @@
     }
   }
 
+  $formatReceiptCountry = static function (?string $country): ?string {
+    $raw = trim((string) $country);
+    if ($raw === '' || $raw === '-') {
+      return null;
+    }
+    $code = strtoupper($raw);
+    $labels = [
+      'MY' => 'Malaysia',
+      'SG' => 'Singapore',
+      'BN' => 'Brunei',
+      'ID' => 'Indonesia',
+      'TH' => 'Thailand',
+      'PH' => 'Philippines',
+      'VN' => 'Vietnam',
+      'CN' => 'China',
+      'HK' => 'Hong Kong',
+      'TW' => 'Taiwan',
+      'US' => 'United States',
+      'GB' => 'United Kingdom',
+      'AU' => 'Australia',
+      'NZ' => 'New Zealand',
+    ];
+    if (isset($labels[$code])) {
+      return $labels[$code];
+    }
+    // Already a full name / unknown label — keep as entered.
+    return $raw;
+  };
+
+  $formatReceiptLocalityLine = static function (?string $postcode, ?string $city): ?string {
+    $line = trim(collect([$postcode, $city])->filter(fn ($v) => trim((string) $v) !== '')->implode(' '));
+    return $line !== '' ? $line : null;
+  };
+
+  $formatReceiptRegionLine = static function (?string $state, ?string $country) use ($formatReceiptCountry): ?string {
+    $stateLabel = trim((string) $state);
+    $countryLabel = $formatReceiptCountry($country);
+    if ($stateLabel !== '' && $countryLabel) {
+      return $stateLabel.', '.$countryLabel;
+    }
+    if ($stateLabel !== '') {
+      return $stateLabel;
+    }
+    return $countryLabel;
+  };
+
+  $billingLocalityLine = $formatReceiptLocalityLine($billingPostcode, $billingCity);
+  $billingRegionLine = $formatReceiptRegionLine($billingState, $billingCountry);
+  $shippingLocalityLine = $formatReceiptLocalityLine($order->shipping_postcode, $order->shipping_city);
+  $shippingRegionLine = $formatReceiptRegionLine($order->shipping_state, $order->shipping_country);
+  $pickupLocalityLine = $order->pickupStore
+    ? $formatReceiptLocalityLine($order->pickupStore->postcode, $order->pickupStore->city)
+    : null;
+  $pickupRegionLine = $order->pickupStore
+    ? $formatReceiptRegionLine($order->pickupStore->state, $order->pickupStore->country)
+    : null;
+
   $paymentMethodMap = [
     'manual_transfer' => 'Manual Transfer',
     'billplz' => 'Billplz',
@@ -488,11 +545,11 @@
               <?php if($billingLine2): ?>
                 <div class="addr-line">{{ $billingLine2 }}</div>
               <?php endif; ?>
-              <div class="addr-line">
-                {{ trim(collect([$billingPostcode, $billingCity, $billingState])->filter()->implode(' ')) }}
-              </div>
-              <?php if(trim((string) ($billingCountry ?? '')) && $billingCountry !== '-'): ?>
-                <div class="addr-line">{{ $billingCountry }}</div>
+              <?php if($billingLocalityLine): ?>
+                <div class="addr-line">{{ $billingLocalityLine }}</div>
+              <?php endif; ?>
+              <?php if($billingRegionLine): ?>
+                <div class="addr-line">{{ $billingRegionLine }}</div>
               <?php endif; ?>
             </td>
           </tr>
@@ -519,10 +576,12 @@
               <?php if($billingLine2): ?>
                 <div class="addr-line">{{ $billingLine2 }}</div>
               <?php endif; ?>
-              <div class="addr-line">
-                {{ trim(collect([$billingPostcode, $billingCity, $billingState])->filter()->implode(' ')) }}
-              </div>
-              <div class="addr-line">{{ $billingCountry ?? '-' }}</div>
+              <?php if($billingLocalityLine): ?>
+                <div class="addr-line">{{ $billingLocalityLine }}</div>
+              <?php endif; ?>
+              <?php if($billingRegionLine): ?>
+                <div class="addr-line">{{ $billingRegionLine }}</div>
+              <?php endif; ?>
             </td>
 
             <td>
@@ -535,19 +594,14 @@
                   <?php if($order->pickupStore->address_line2): ?>
                     <div class="addr-line">{{ $order->pickupStore->address_line2 }}</div>
                   <?php endif; ?>
-                  <div class="addr-line">
-                    {{ trim(collect([$order->pickupStore->postcode, $order->pickupStore->city, $order->pickupStore->state])->filter()->implode(' ')) }}
-                  </div>
-                  <?php if($order->pickupStore->country): ?>
-                    <div class="addr-line">{{ $order->pickupStore->country }}</div>
+                  <?php if($pickupLocalityLine): ?>
+                    <div class="addr-line">{{ $pickupLocalityLine }}</div>
                   <?php endif; ?>
-                <?php endif; ?>
-
-                <div style="margin-top:8px;" class="muted small">
-                  <strong style="color:#111827;">{{ $order->shipping_name ?: ($customerName ?? '-') }}</strong>
-                </div>
-                <?php if($order->shipping_phone || $customerPhone): ?>
-                  <div class="muted small">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
+                  <?php if($pickupRegionLine): ?>
+                    <div class="addr-line">{{ $pickupRegionLine }}</div>
+                  <?php endif; ?>
+                <?php else: ?>
+                  <div class="addr-line muted">Pickup branch not set</div>
                 <?php endif; ?>
 
               <?php else: ?>
@@ -561,10 +615,12 @@
                 <?php if($order->shipping_address_line2): ?>
                   <div class="addr-line">{{ $order->shipping_address_line2 }}</div>
                 <?php endif; ?>
-                <div class="addr-line">
-                  {{ trim(collect([$order->shipping_postcode, $order->shipping_city, $order->shipping_state])->filter()->implode(' ')) }}
-                </div>
-                <div class="addr-line">{{ $order->shipping_country ?? '-' }}</div>
+                <?php if($shippingLocalityLine): ?>
+                  <div class="addr-line">{{ $shippingLocalityLine }}</div>
+                <?php endif; ?>
+                <?php if($shippingRegionLine): ?>
+                  <div class="addr-line">{{ $shippingRegionLine }}</div>
+                <?php endif; ?>
               <?php endif; ?>
             </td>
           </tr>
