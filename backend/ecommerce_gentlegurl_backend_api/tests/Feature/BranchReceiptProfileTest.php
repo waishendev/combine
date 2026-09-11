@@ -23,10 +23,20 @@ class BranchReceiptProfileTest extends TestCase
         Setting::query()->updateOrCreate(
             ['type' => 'ecommerce', 'key' => 'ecommerce.invoice_profile'],
             ['value' => [
-                'company_name' => 'Global Salon',
-                'company_address' => 'Global Address',
-                'footer_note' => 'Global footer',
+                'company_name' => 'Ecommerce Salon',
+                'company_address' => 'Ecommerce Address',
+                'footer_note' => 'Ecommerce footer',
                 'currency' => 'MYR',
+                'booking_invoice_profile' => [
+                    'company_name' => 'Booking Salon',
+                    'company_address' => 'Booking Address',
+                    'footer_note' => 'Booking footer',
+                ],
+                'default_pos_receipt_profile' => [
+                    'company_name' => 'Default POS Salon',
+                    'company_address' => 'Default POS Address',
+                    'footer_note' => 'Default POS footer',
+                ],
                 'branch_receipt_overrides' => [
                     '1' => [
                         'company_name' => 'Salon Branch 1',
@@ -69,8 +79,8 @@ class BranchReceiptProfileTest extends TestCase
                 'pickup_or_shipping' => 'in_store',
             ]));
 
-            $this->assertSame('Global Salon', $profile['company_name']);
-            $this->assertSame('Global Address', $profile['company_address']);
+            $this->assertSame('Default POS Salon', $profile['company_name']);
+            $this->assertSame('Default POS Address', $profile['company_address']);
         }
     }
 
@@ -79,8 +89,8 @@ class BranchReceiptProfileTest extends TestCase
         $ecommerce = new Order(['store_location_id' => 2]);
         $booking = new Order(['store_location_id' => 1, 'is_booking_checkout' => true]);
 
-        $this->assertSame('Global Salon', $this->invoiceService->resolveInvoiceProfile($ecommerce)['company_name']);
-        $this->assertSame('Global Salon', $this->invoiceService->resolveInvoiceProfile($booking)['company_name']);
+        $this->assertSame('Ecommerce Salon', $this->invoiceService->resolveInvoiceProfile($ecommerce)['company_name']);
+        $this->assertSame('Booking Salon', $this->invoiceService->resolveInvoiceProfile($booking)['company_name']);
     }
 
     public function test_receipt_resolution_does_not_query_branch_metadata(): void
@@ -99,5 +109,33 @@ class BranchReceiptProfileTest extends TestCase
         ]));
 
         $this->assertSame(0, $branchQueries);
+    }
+
+    public function test_legacy_global_profile_falls_back_for_booking_and_pos_without_migration(): void
+    {
+        Setting::query()->where('type', 'ecommerce')->where('key', 'ecommerce.invoice_profile')->update([
+            'value' => [
+                'company_name' => 'Legacy Salon',
+                'company_address' => 'Legacy Address',
+                'footer_note' => 'Legacy footer',
+                'currency' => 'MYR',
+            ],
+        ]);
+
+        $booking = new Order(['store_location_id' => 1, 'is_booking_checkout' => true]);
+        $pos = new Order(['store_location_id' => 1, 'pickup_or_shipping' => 'in_store']);
+
+        $this->assertSame('Legacy Salon', $this->invoiceService->resolveInvoiceProfile($booking)['company_name']);
+        $this->assertSame('Legacy Salon', $this->invoiceService->resolveInvoiceProfile($pos)['company_name']);
+    }
+
+    public function test_branch_profile_ui_uses_explicit_status_list_instead_of_branch_dropdown(): void
+    {
+        $source = file_get_contents(base_path('../../frontend/ecommerce_gentlegurl_crm/src/components/ShopSettingsPageContent.tsx'));
+
+        $this->assertStringContainsString('Branch POS Receipt Profiles', $source);
+        $this->assertStringContainsString("isCustom ? 'Custom' : 'Using Default'", $source);
+        $this->assertStringContainsString('Edit Receipt Profile — {editingReceiptBranch.name}', $source);
+        $this->assertStringNotContainsString('<span className="block text-sm font-medium text-slate-800">Branch</span>', $source);
     }
 }

@@ -1034,30 +1034,47 @@ class InvoiceService
     /**
      * Resolve customer-facing receipt identity from immutable transaction data.
      *
-     * Online ecommerce and booking checkouts intentionally retain the global
-     * profile: ecommerce store_location_id is a fulfilment decision, while an
-     * online booking order is identified by is_booking_checkout. In-store POS
-     * orders (including appointment deposits/settlements) use their
-     * persisted Order Branch. A null/missing/unknown Branch never causes us to
-     * infer a different Branch and safely retains the legacy global identity.
+     * Legacy root fields are the Ecommerce profile and are also the safe
+     * fallback for newly introduced Booking and default POS profiles. In-store
+     * POS orders (including appointment deposits/settlements) use their
+     * persisted Order Branch. No Header Branch or live availability is used.
      */
     public function resolveInvoiceProfile(Order $order): array
     {
         $global = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
 
-        if ($order->pickup_or_shipping !== 'in_store' || empty($order->store_location_id)) {
+        if ($order->pickup_or_shipping !== 'in_store') {
+            if ((bool) $order->is_booking_checkout) {
+                return $this->applyIdentity($global, data_get($global, 'booking_invoice_profile'));
+            }
+
             return $global;
+        }
+
+        $defaultPos = $this->applyIdentity($global, data_get($global, 'default_pos_receipt_profile'));
+
+        if (empty($order->store_location_id)) {
+            return $defaultPos;
         }
 
         $override = data_get($global, 'branch_receipt_overrides.'.(int) $order->store_location_id);
         if (! is_array($override)) {
-            return $global;
+            return $defaultPos;
         }
 
-        return array_replace($global, [
-            'company_name' => $override['company_name'],
-            'company_address' => $override['company_address'],
-            'footer_note' => $override['footer_note'] ?? null,
-        ]);
+        return $this->applyIdentity($defaultPos, $override);
+    }
+
+    private function applyIdentity(array $base, mixed $identity): array
+    {
+        if (! is_array($identity)) {
+            return $base;
+        }
+
+        return array_replace($base, array_intersect_key($identity, array_flip([
+            'company_name',
+            'company_address',
+            'footer_note',
+        ])));
     }
 }

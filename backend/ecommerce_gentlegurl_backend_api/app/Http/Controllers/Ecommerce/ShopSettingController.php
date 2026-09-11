@@ -493,12 +493,22 @@ class ShopSettingController extends Controller
             'company_website' => ['nullable', 'url', 'max:255'],
             'footer_note' => ['nullable', 'string', 'max:255'],
             'currency' => ['required', 'string', 'max:10'],
+            'booking_invoice_profile' => ['sometimes', 'array'],
+            'booking_invoice_profile.company_name' => ['required_with:booking_invoice_profile', 'string', 'max:255'],
+            'booking_invoice_profile.company_address' => ['required_with:booking_invoice_profile', 'string'],
+            'booking_invoice_profile.footer_note' => ['nullable', 'string', 'max:255'],
+            'default_pos_receipt_profile' => ['sometimes', 'array'],
+            'default_pos_receipt_profile.company_name' => ['required_with:default_pos_receipt_profile', 'string', 'max:255'],
+            'default_pos_receipt_profile.company_address' => ['required_with:default_pos_receipt_profile', 'string'],
+            'default_pos_receipt_profile.footer_note' => ['nullable', 'string', 'max:255'],
             'branch_receipt_overrides' => ['sometimes', 'array'],
             'branch_receipt_overrides.*' => ['array'],
             'branch_receipt_overrides.*.company_name' => ['required', 'string', 'max:255'],
             'branch_receipt_overrides.*.company_address' => ['required', 'string'],
             'branch_receipt_overrides.*.footer_note' => ['nullable', 'string', 'max:255'],
         ]);
+
+        $current = SettingService::get('ecommerce.invoice_profile', [], $this->resolveType($request));
 
         return [
             'company_logo_url' => $validated['company_logo_url'] ?? null,
@@ -510,7 +520,9 @@ class ShopSettingController extends Controller
             'company_website' => $validated['company_website'] ?? null,
             'footer_note' => $validated['footer_note'] ?? null,
             'currency' => $validated['currency'],
-            'branch_receipt_overrides' => collect($validated['branch_receipt_overrides'] ?? [])
+            'booking_invoice_profile' => $validated['booking_invoice_profile'] ?? data_get($current, 'booking_invoice_profile'),
+            'default_pos_receipt_profile' => $validated['default_pos_receipt_profile'] ?? data_get($current, 'default_pos_receipt_profile'),
+            'branch_receipt_overrides' => collect($validated['branch_receipt_overrides'] ?? data_get($current, 'branch_receipt_overrides', []))
                 ->mapWithKeys(fn (array $override, string|int $branchId) => [
                     (string) (int) $branchId => [
                         'company_name' => $override['company_name'],
@@ -800,6 +812,8 @@ class ShopSettingController extends Controller
             'footer_note' => 'This is a computer-generated invoice.',
             'currency' => 'MYR',
             'branch_receipt_overrides' => [],
+            'booking_invoice_profile' => null,
+            'default_pos_receipt_profile' => null,
         ];
     }
 
