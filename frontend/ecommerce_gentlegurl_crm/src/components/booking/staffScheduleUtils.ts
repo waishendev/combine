@@ -19,6 +19,80 @@ export type StaffOption = {
   name: string
 }
 
+/** Branch-scoped staff dropdown query (header Branch or form Branch). */
+export function buildStaffOptionsQuery(params?: {
+  branchId?: number | null
+  perPage?: number
+  isActive?: boolean
+}): string {
+  const qs = new URLSearchParams()
+  qs.set('per_page', String(params?.perPage ?? 200))
+  if (params?.isActive !== false) qs.set('is_active', 'true')
+  // Specific Branch → only staff assigned there.
+  // All Branches / no Branch → staff from the admin's accessible Branches only (never other Branches).
+  if (params?.branchId != null && params.branchId > 0) {
+    qs.set('branch_store_location_id', String(params.branchId))
+  } else {
+    qs.set('require_store_location', '1')
+  }
+  return qs.toString()
+}
+
+export function parseStaffOptionsPayload(payload: unknown): StaffOption[] {
+  const root = payload && typeof payload === 'object' ? (payload as { data?: unknown }).data : null
+  const rows = Array.isArray(root)
+    ? root
+    : root && typeof root === 'object' && Array.isArray((root as { data?: unknown }).data)
+      ? (root as { data: unknown[] }).data
+      : []
+  return rows
+    .map((row: unknown): StaffOption | null => {
+      if (!row || typeof row !== 'object') return null
+      const rec = row as Record<string, unknown>
+      const id = Number(rec.id)
+      const name = String(rec.name ?? '').trim()
+      if (!id || !name) return null
+      return { id, name }
+    })
+    .filter((row): row is StaffOption => Boolean(row))
+}
+
+export async function fetchStaffOptionsForBranch(
+  branchId: number | null | undefined,
+  options?: { signal?: AbortSignal; perPage?: number },
+): Promise<StaffOption[]> {
+  const qs = buildStaffOptionsQuery({ branchId: branchId ?? null, perPage: options?.perPage })
+  const res = await fetch(`/api/proxy/staffs/options/query?${qs}`, {
+    cache: 'no-store',
+    signal: options?.signal,
+  })
+  if (!res.ok) return []
+  const payload = await res.json().catch(() => null)
+  return parseStaffOptionsPayload(payload)
+}
+
+/** Prefer field errors over a generic "Validation failed" message. */
+export function formatApiValidationError(
+  payload: unknown,
+  fallback = 'Request failed.',
+): string {
+  if (!payload || typeof payload !== 'object') return fallback
+  const data = payload as { message?: unknown; errors?: unknown }
+  const errors = data.errors
+  if (errors && typeof errors === 'object') {
+    const messages = Object.values(errors as Record<string, unknown>)
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean)
+    if (messages.length > 0) return Array.from(new Set(messages)).join(' ')
+  }
+  if (typeof data.message === 'string' && data.message.trim()) {
+    const message = data.message.trim()
+    if (message.toLowerCase() !== 'validation failed') return message
+  }
+  return fallback
+}
+
 export const mapStaffScheduleApiItemToRow = (
   item: StaffScheduleApiItem,
   staffNameMap?: Map<number, string>

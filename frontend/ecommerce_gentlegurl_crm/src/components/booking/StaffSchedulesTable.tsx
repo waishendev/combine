@@ -19,6 +19,7 @@ import {
   type StaffScheduleApiItem,
   mapStaffScheduleApiItemToRow,
   type StaffOption,
+  fetchStaffOptionsForBranch,
 } from './staffScheduleUtils'
 import { useI18n } from '@/lib/i18n'
 import { useBranch } from '@/contexts/BranchContext'
@@ -112,50 +113,17 @@ export default function StaffSchedulesTable({
 
   useEffect(() => {
     const controller = new AbortController()
-    // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1: slim staff options
     const fetchStaffs = async () => {
       try {
-        const res = await fetch('/api/proxy/staffs/options/query?per_page=200&is_active=true', {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        if (!res.ok) return
-        const payload = await res.json().catch(() => ({}))
-        const data = payload?.data
-        if (Array.isArray(data)) {
-          setStaffs(
-            data
-              .map((row: unknown): StaffOption | null => {
-                if (!row || typeof row !== 'object') return null
-                const rec = row as Record<string, unknown>
-                const id = Number(rec.id)
-                const name = String(rec.name ?? '').trim()
-                if (!id || !name) return null
-                return { id, name }
-              })
-              .filter((row: StaffOption | null): row is StaffOption => Boolean(row)),
-          )
-        } else if (data?.data && Array.isArray(data.data)) {
-          setStaffs(
-            data.data
-              .map((row: unknown): StaffOption | null => {
-                if (!row || typeof row !== 'object') return null
-                const rec = row as Record<string, unknown>
-                const id = Number(rec.id)
-                const name = String(rec.name ?? '').trim()
-                if (!id || !name) return null
-                return { id, name }
-              })
-              .filter((row: StaffOption | null): row is StaffOption => Boolean(row)),
-          )
-        }
+        const rows = await fetchStaffOptionsForBranch(selectedBranchId, { signal: controller.signal })
+        setStaffs(rows)
       } catch {
-        // Ignore
+        // Ignore abort / network
       }
     }
     fetchStaffs()
     return () => controller.abort()
-  }, [])
+  }, [selectedBranchId])
 
   function DualSortIcons({
     active,

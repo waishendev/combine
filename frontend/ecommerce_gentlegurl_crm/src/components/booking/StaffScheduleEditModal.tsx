@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import type { StaffScheduleRowData } from './StaffScheduleRow'
-import { mapStaffScheduleApiItemToRow, type StaffScheduleApiItem, type StaffOption } from './staffScheduleUtils'
+import { mapStaffScheduleApiItemToRow, type StaffScheduleApiItem, type StaffOption, fetchStaffOptionsForBranch, formatApiValidationError } from './staffScheduleUtils'
 import { useI18n } from '@/lib/i18n'
 import { useBranch } from '@/contexts/BranchContext'
 
@@ -49,7 +49,7 @@ export default function StaffScheduleEditModal({
   staffs: staffsProp,
 }: StaffScheduleEditModalProps) {
   const { t } = useI18n()
-  const { accessibleBranches } = useBranch()
+  const { accessibleBranches, selectedBranchId } = useBranch()
   const [form, setForm] = useState<FormState>({
     staff_id: '',
     store_location_id: '',
@@ -65,45 +65,41 @@ export default function StaffScheduleEditModal({
   const [error, setError] = useState<string | null>(null)
   const [loadedSchedule, setLoadedSchedule] = useState<StaffScheduleRowData | null>(null)
   const [staffsLocal, setStaffsLocal] = useState<StaffOption[]>([])
-  const staffs = staffsProp && staffsProp.length > 0 ? staffsProp : staffsLocal
+  const [staffOptionsReady, setStaffOptionsReady] = useState(false)
+  const staffScopeBranchId = Number(form.store_location_id) > 0
+    ? Number(form.store_location_id)
+    : selectedBranchId
+  // Only show staff for the form Branch. Never fall back to the parent (header) list —
+  // that would keep Branch 1 staff visible after switching the form to Branch 2.
+  const staffs = staffOptionsReady ? staffsLocal : (staffsProp ?? [])
+  const staffOptions = (() => {
+    // Keep the currently assigned staff visible only while still on the same Branch.
+    const sameBranch =
+      loadedSchedule?.staff_id != null &&
+      loadedSchedule.store_location_id != null &&
+      Number(form.store_location_id) === Number(loadedSchedule.store_location_id)
+    if (!sameBranch) return staffs
+    if (staffs.some((staff) => staff.id === loadedSchedule.staff_id)) return staffs
+    return [{ id: loadedSchedule.staff_id, name: loadedSchedule.staff_name }, ...staffs]
+  })()
 
   useEffect(() => {
-    if (staffsProp && staffsProp.length > 0) return
     const controller = new AbortController()
-    // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1: slim staff options fallback
+    setStaffOptionsReady(false)
     const fetchStaffs = async () => {
       try {
-        const res = await fetch('/api/proxy/staffs/options/query?per_page=200&is_active=true', {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        if (!res.ok) return
-        const payload = await res.json().catch(() => ({}))
-        const data = payload?.data
-        const rows = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-            ? data.data
-            : []
-        setStaffsLocal(
-          rows
-            .map((row: unknown): StaffOption | null => {
-              if (!row || typeof row !== 'object') return null
-              const rec = row as Record<string, unknown>
-              const id = Number(rec.id)
-              const name = String(rec.name ?? '').trim()
-              if (!id || !name) return null
-              return { id, name }
-            })
-            .filter((row: StaffOption | null): row is StaffOption => Boolean(row)),
-        )
-      } catch {
-        // Ignore
+        const rows = await fetchStaffOptionsForBranch(staffScopeBranchId, { signal: controller.signal })
+        setStaffsLocal(rows)
+        setStaffOptionsReady(true)
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setStaffsLocal([])
+        setStaffOptionsReady(true)
       }
     }
-    fetchStaffs()
+    void fetchStaffs()
     return () => controller.abort()
-  }, [staffsProp])
+  }, [staffScopeBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -166,6 +162,7 @@ export default function StaffScheduleEditModal({
     setForm((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
+      ...(name === 'store_location_id' ? { staff_id: '' } : {}),
     }))
   }
 
@@ -240,7 +237,7 @@ export default function StaffScheduleEditModal({
       }
 
       if (!res.ok) {
-        setError(data?.message || 'Failed to update schedule')
+        setError(formatApiValidationError(data, 'Failed to update schedule'))
         return
       }
 
@@ -334,7 +331,7 @@ export default function StaffScheduleEditModal({
                   disabled={disableForm}
                 >
                   <option value="">Select staff</option>
-                  {staffs.map((staff) => (
+                  {staffOptions.map((staff) => (
                     <option key={staff.id} value={staff.id}>
                       {staff.name}
                     </option>

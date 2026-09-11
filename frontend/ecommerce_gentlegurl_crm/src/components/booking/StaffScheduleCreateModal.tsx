@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import type { StaffScheduleRowData } from './StaffScheduleRow'
-import { mapStaffScheduleApiItemToRow, type StaffScheduleApiItem, type StaffOption } from './staffScheduleUtils'
+import { mapStaffScheduleApiItemToRow, type StaffScheduleApiItem, type StaffOption, fetchStaffOptionsForBranch, formatApiValidationError } from './staffScheduleUtils'
 import { useI18n } from '@/lib/i18n'
 import { useBranch } from '@/contexts/BranchContext'
 
@@ -80,8 +80,13 @@ export default function StaffScheduleCreateModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [staffsLocal, setStaffsLocal] = useState<StaffOption[]>([])
-  const staffs = staffsProp && staffsProp.length > 0 ? staffsProp : staffsLocal
+  const [staffOptionsReady, setStaffOptionsReady] = useState(false)
   const selectedBranch = accessibleBranches.find((branch) => branch.id === Number(form.store_location_id))
+  const staffScopeBranchId = Number(form.store_location_id) > 0
+    ? Number(form.store_location_id)
+    : selectedBranchId
+  // After a branch-scoped fetch, use that list even when empty — never fall back to header Branch staff.
+  const staffs = staffOptionsReady ? staffsLocal : (staffsProp ?? [])
 
   const selectedDayCount = form.days_of_week.length
   const selectedDayLabels = useMemo(
@@ -100,42 +105,27 @@ export default function StaffScheduleCreateModal({
   }, [selectedBranch])
 
   useEffect(() => {
-    if (staffsProp && staffsProp.length > 0) return
     const controller = new AbortController()
-    // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1: slim staff options fallback
+    setStaffOptionsReady(false)
     const fetchStaffs = async () => {
       try {
-        const res = await fetch('/api/proxy/staffs/options/query?per_page=200&is_active=true', {
-          cache: 'no-store',
-          signal: controller.signal,
+        const rows = await fetchStaffOptionsForBranch(staffScopeBranchId, { signal: controller.signal })
+        setStaffsLocal(rows)
+        setStaffOptionsReady(true)
+        setForm((current) => {
+          if (!current.staff_id) return current
+          if (rows.some((staff) => String(staff.id) === current.staff_id)) return current
+          return { ...current, staff_id: '' }
         })
-        if (!res.ok) return
-        const payload = await res.json().catch(() => ({}))
-        const data = payload?.data
-        const rows = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-            ? data.data
-            : []
-        setStaffsLocal(
-          rows
-            .map((row: unknown): StaffOption | null => {
-              if (!row || typeof row !== 'object') return null
-              const rec = row as Record<string, unknown>
-              const id = Number(rec.id)
-              const name = String(rec.name ?? '').trim()
-              if (!id || !name) return null
-              return { id, name }
-            })
-            .filter((row: StaffOption | null): row is StaffOption => Boolean(row)),
-        )
-      } catch {
-        // Ignore
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setStaffsLocal([])
+        setStaffOptionsReady(true)
       }
     }
-    fetchStaffs()
+    void fetchStaffs()
     return () => controller.abort()
-  }, [staffsProp])
+  }, [staffScopeBranchId])
 
   const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = event.target
@@ -143,6 +133,7 @@ export default function StaffScheduleCreateModal({
     setForm((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
+      ...(name === 'store_location_id' ? { staff_id: '' } : {}),
     }))
   }
 
@@ -225,14 +216,7 @@ export default function StaffScheduleCreateModal({
 
       const data = await res.json().catch(() => null)
       if (!res.ok) {
-        let message = 'Failed to create schedule'
-        if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string') {
-          message = data.message
-        } else if (data?.errors && typeof data.errors === 'object') {
-          const first = Object.values(data.errors as Record<string, string[]>)[0]
-          if (Array.isArray(first) && typeof first[0] === 'string') message = first[0]
-        }
-        setError(message)
+        setError(formatApiValidationError(data, 'Failed to create schedule'))
         return
       }
 
@@ -310,6 +294,19 @@ export default function StaffScheduleCreateModal({
     >
       <form id="staff-schedule-create-form" onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <div>
+            <label htmlFor="store_location_id" className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
+            <select id="store_location_id" name="store_location_id" value={form.store_location_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting}>
+              <option value="">Select a specific Branch</option>
+              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}{!branch.is_booking_available ? ' — Booking unavailable' : ''}</option>)}
+            </select>
+            {selectedBranch && !selectedBranch.is_booking_available && (
+              <p className="mt-1 text-xs text-amber-700" role="status">
+                This Branch is currently unavailable for booking. The schedule will be saved as inactive.
+              </p>
+            )}
+          </div>
+
+          <div>
             <label htmlFor="staff_id" className="block text-sm font-medium text-gray-700 mb-1">
               Staff <span className="text-red-500">*</span>
             </label>
@@ -328,19 +325,6 @@ export default function StaffScheduleCreateModal({
                 </option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <label htmlFor="store_location_id" className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
-            <select id="store_location_id" name="store_location_id" value={form.store_location_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting}>
-              <option value="">Select a specific Branch</option>
-              {accessibleBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}{!branch.is_booking_available ? ' — Booking unavailable' : ''}</option>)}
-            </select>
-            {selectedBranch && !selectedBranch.is_booking_available && (
-              <p className="mt-1 text-xs text-amber-700" role="status">
-                This Branch is currently unavailable for booking. The schedule will be saved as inactive.
-              </p>
-            )}
           </div>
 
           <div>

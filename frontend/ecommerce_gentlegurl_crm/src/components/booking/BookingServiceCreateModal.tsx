@@ -10,7 +10,7 @@ import type { BookingServiceRowData } from './BookingServiceRow'
 import BookingServiceCategoriesPicker, {
   type BookingServiceCategoryOption,
 } from './BookingServiceCategoriesPicker'
-import BookingServiceAllowedStaffPicker, {
+import {
   type BookingStaffOption,
 } from './BookingServiceAllowedStaffPicker'
 import BookingServiceQuestionsBuilder, {
@@ -34,6 +34,7 @@ import { IMAGE_ACCEPT } from '../mediaAccept'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import FormErrorAnchor from '@/components/FormErrorAnchor'
 import BranchAssignmentChecklist from '@/components/BranchAssignmentChecklist'
+import BookingServiceBranchStaffCard from '@/components/booking/BookingServiceBranchStaffCard'
 import { useBranch } from '@/contexts/BranchContext'
 
 const bookingServiceCreateFormId = 'booking-service-create-form'
@@ -961,10 +962,61 @@ export default function BookingServiceCreateModal({
               />
             </div>
 
-            <BranchAssignmentChecklist label="Available at" value={form.store_location_ids} onChange={(ids) => setForm((prev) => ({ ...prev, store_location_ids: ids, allowed_staff_by_store_location: Object.fromEntries(ids.map((id) => [id, prev.allowed_staff_by_store_location[id] ?? []])) }))} disabled={disableForm} />
+            <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Branches & allowed staff</p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Choose where this service is available, then assign staff for each Branch.
+                </p>
+              </div>
 
-            <div className="min-w-0 space-y-3">
-              {form.store_location_ids.map((locationId) => <div key={locationId} className="rounded-xl border border-gray-200 bg-gray-50 p-4"><h4 className="mb-3 font-semibold text-gray-800">{accessibleBranches.find((branch) => branch.id === locationId)?.name ?? `Branch ${locationId}`}</h4><BookingServiceAllowedStaffPicker staffOptions={staffOptions.filter((staff) => staff.store_location_ids?.includes(locationId))} value={form.allowed_staff_by_store_location[locationId] ?? []} onChange={(ids) => setForm((prev) => ({ ...prev, allowed_staff_by_store_location: { ...prev.allowed_staff_by_store_location, [locationId]: ids } }))} disabled={disableForm} loading={staffLoading} /></div>)}
+              <BranchAssignmentChecklist
+                label="Available at"
+                value={form.store_location_ids}
+                onChange={(ids) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    store_location_ids: ids,
+                    allowed_staff_by_store_location: Object.fromEntries(
+                      ids.map((id) => [id, prev.allowed_staff_by_store_location[id] ?? []]),
+                    ),
+                  }))
+                }
+                disabled={disableForm}
+              />
+
+              {form.store_location_ids.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                  Select at least one Branch above to assign allowed staff.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {form.store_location_ids.map((locationId) => (
+                    <BookingServiceBranchStaffCard
+                      key={locationId}
+                      branchName={
+                        accessibleBranches.find((branch) => branch.id === locationId)?.name ??
+                        `Branch ${locationId}`
+                      }
+                      staffOptions={staffOptions.filter((staff) =>
+                        staff.store_location_ids?.includes(locationId),
+                      )}
+                      value={form.allowed_staff_by_store_location[locationId] ?? []}
+                      onChange={(ids) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          allowed_staff_by_store_location: {
+                            ...prev.allowed_staff_by_store_location,
+                            [locationId]: ids,
+                          },
+                        }))
+                      }
+                      disabled={disableForm}
+                      loading={staffLoading}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>

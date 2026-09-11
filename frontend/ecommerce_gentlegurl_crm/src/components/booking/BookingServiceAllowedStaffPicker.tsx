@@ -10,6 +10,8 @@ type BookingServiceAllowedStaffPickerProps = {
   onChange: (ids: number[]) => void
   disabled?: boolean
   loading?: boolean
+  /** When nested under a Branch card, keep the label light. */
+  compact?: boolean
 }
 
 export default function BookingServiceAllowedStaffPicker({
@@ -18,6 +20,7 @@ export default function BookingServiceAllowedStaffPicker({
   onChange,
   disabled = false,
   loading = false,
+  compact = false,
 }: BookingServiceAllowedStaffPickerProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -76,44 +79,44 @@ export default function BookingServiceAllowedStaffPicker({
     [staffOptions, value],
   )
 
-  const triggerSummary = () => {
-    if (value.length === 0) {
-      return (
-        <span className="flex items-center gap-2 text-gray-500">
-          <i className="fa-solid fa-user-group text-xs" />
-          Select allowed staff
-        </span>
-      )
-    }
-    if (value.length <= 2) {
-      return (
-        <span className="flex items-center gap-2 truncate text-gray-700">
-          <i className="fa-solid fa-check-circle text-blue-600 text-xs" />
-          {selectedStaff.map((s) => s.name).join(', ')}
-        </span>
-      )
-    }
-    return (
-      <span className="flex items-center gap-2 text-gray-700">
-        <i className="fa-solid fa-check-circle text-blue-600 text-xs" />
-        <span className="font-medium">{value.length} staff selected</span>
-      </span>
-    )
-  }
-
   const allFilteredSelected =
     filteredStaff.length > 0 && filteredStaff.every((s) => value.includes(s.id))
 
   return (
     <div ref={rootRef} className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">
-        Allowed Staff <span className="text-red-500">*</span>
-        {value.length > 0 && (
-          <span className="ml-2 text-xs font-normal text-gray-500">
-            ({value.length} selected)
-          </span>
-        )}
-      </label>
+      <div className="flex items-baseline justify-between gap-2">
+        <label className="block text-sm font-medium text-gray-700">
+          {compact ? 'Staff' : 'Allowed Staff'} <span className="text-red-500">*</span>
+        </label>
+        <span className="text-xs text-gray-500">
+          {loading ? 'Loading…' : `${value.length} selected`}
+        </span>
+      </div>
+
+      {selectedStaff.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {selectedStaff.map((staff) => (
+            <span
+              key={staff.id}
+              className="inline-flex max-w-full items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800"
+            >
+              <span className="truncate">{staff.name}</span>
+              {!disabled ? (
+                <button
+                  type="button"
+                  onClick={() => toggleId(staff.id)}
+                  className="rounded-full p-0.5 text-blue-600 hover:bg-blue-100 hover:text-blue-900"
+                  aria-label={`Remove ${staff.name}`}
+                >
+                  <i className="fa-solid fa-xmark text-[10px]" />
+                </button>
+              ) : null}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-amber-700">Select at least one staff for this Branch.</p>
+      )}
 
       <div className="relative">
         <button
@@ -123,15 +126,15 @@ export default function BookingServiceAllowedStaffPicker({
             if (disabled || loading) return
             setOpen((o) => !o)
           }}
-          className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-4 py-2.5 pr-10 text-left text-sm shadow-sm transition-all duration-200 hover:bg-gray-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-left text-sm transition hover:bg-gray-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <div className="min-w-0 flex-1">{triggerSummary()}</div>
-          <i
-            className={`fa-solid fa-chevron-${open ? 'up' : 'down'} flex-shrink-0 text-xs text-gray-400 transition-transform duration-200`}
-          />
+          <span className="text-gray-600">
+            {open ? 'Close staff list' : value.length > 0 ? 'Edit staff selection' : 'Select staff'}
+          </span>
+          <i className={`fa-solid fa-chevron-${open ? 'up' : 'down'} text-xs text-gray-400`} />
         </button>
 
-        {open && (
+        {open ? (
           <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
             <div className="border-b border-gray-100 bg-gray-50 p-3">
               <div className="relative">
@@ -145,7 +148,7 @@ export default function BookingServiceAllowedStaffPicker({
                   disabled={loading}
                   className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-9 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                 />
-                {searchQuery && (
+                {searchQuery ? (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
@@ -153,39 +156,34 @@ export default function BookingServiceAllowedStaffPicker({
                   >
                     <i className="fa-solid fa-xmark text-xs" />
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
 
-            {!loading && filteredStaff.length > 0 && (
-              <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-3 py-2">
+            {!loading && filteredStaff.length > 0 ? (
+              <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
                 <button
                   type="button"
                   onClick={handleSelectAllFiltered}
-                  className="flex items-center gap-1.5 text-xs font-medium text-blue-600 transition-colors hover:text-blue-700"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700"
                 >
-                  <i className="fa-solid fa-check-double" />
                   {allFilteredSelected ? 'Deselect filtered' : 'Select all (filtered)'}
                 </button>
-                {value.length > 0 && (
+                {value.length > 0 ? (
                   <button
                     type="button"
                     onClick={handleClearAll}
-                    className="flex items-center gap-1.5 text-xs font-medium text-red-600 transition-colors hover:text-red-700"
+                    className="text-xs font-medium text-red-600 hover:text-red-700"
                   >
-                    <i className="fa-solid fa-trash-can" />
                     Clear all
                   </button>
-                )}
+                ) : null}
               </div>
-            )}
+            ) : null}
 
-            <div className="max-h-64 overflow-y-auto">
+            <div className="max-h-56 overflow-y-auto">
               {loading ? (
-                <div className="p-6 text-center">
-                  <i className="fa-solid fa-spinner fa-spin mb-2 text-blue-600" />
-                  <p className="text-sm text-gray-500">Loading staff…</p>
-                </div>
+                <div className="p-6 text-center text-sm text-gray-500">Loading staff…</div>
               ) : filteredStaff.length > 0 ? (
                 <div className="p-2">
                   {filteredStaff.map((staff) => {
@@ -193,38 +191,30 @@ export default function BookingServiceAllowedStaffPicker({
                     return (
                       <label
                         key={staff.id}
-                        className={`flex cursor-pointer items-center gap-3 rounded-lg p-2.5 transition-all duration-150 ${
-                          isSelected ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'
+                        className={`flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-sm ${
+                          isSelected ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'
                         }`}
                       >
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleId(staff.id)}
-                          className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           disabled={disabled}
                         />
-                        <span
-                          className={`flex-1 text-sm ${isSelected ? 'font-medium text-blue-900' : 'text-gray-700'}`}
-                        >
-                          {staff.name}
-                        </span>
-                        {isSelected && <i className="fa-solid fa-check-circle flex-shrink-0 text-xs text-blue-600" />}
+                        <span className={isSelected ? 'font-medium' : ''}>{staff.name}</span>
                       </label>
                     )
                   })}
                 </div>
               ) : (
-                <div className="p-6 text-center">
-                  <i className="fa-solid fa-user-slash mb-2 text-2xl text-gray-300" />
-                  <p className="text-sm text-gray-500">
-                    {searchQuery ? 'No staff match your search.' : 'No active staff found.'}
-                  </p>
+                <div className="p-6 text-center text-sm text-gray-500">
+                  {searchQuery ? 'No staff match your search.' : 'No active staff at this Branch.'}
                 </div>
               )}
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )
