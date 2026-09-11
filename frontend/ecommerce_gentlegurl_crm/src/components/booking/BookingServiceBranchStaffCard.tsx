@@ -28,7 +28,7 @@ export default function BookingServiceBranchStaffCard({
   const [open, setOpen] = useState(defaultOpen)
 
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/80">
+    <div className="rounded-lg border border-gray-200 bg-gray-50/80">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}

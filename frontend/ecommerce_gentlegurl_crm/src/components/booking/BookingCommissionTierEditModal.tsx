@@ -3,6 +3,10 @@
 import { FormEvent, useEffect, useState } from 'react'
 
 import type { CommissionTierRow } from './BookingCommissionTierCreateModal'
+import {
+  clampCommissionPercentInput,
+  clampCommissionPercentValue,
+} from './BookingCommissionTierCreateModal'
 import { useI18n } from '@/lib/i18n'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 
@@ -27,7 +31,9 @@ export default function BookingCommissionTierEditModal({
 
   useEffect(() => {
     setMinSales(String(tier.min_sales ?? '0'))
-    setCommissionPercent(String(tier.commission_percent ?? '0'))
+    setCommissionPercent(
+      String(clampCommissionPercentValue(Number(tier.commission_percent ?? 0))),
+    )
   }, [tier])
 
   const handleSubmit = async (e: FormEvent) => {
@@ -35,8 +41,9 @@ export default function BookingCommissionTierEditModal({
     setError(null)
 
     const minSalesNum = Number(minSales)
-    const percentNum = Number(commissionPercent)
-    if (!Number.isFinite(minSalesNum) || minSalesNum < 0 || !Number.isFinite(percentNum) || percentNum < 0) {
+    const percentNum = clampCommissionPercentValue(Number(commissionPercent))
+    setCommissionPercent(String(percentNum))
+    if (!Number.isFinite(minSalesNum) || minSalesNum < 0 || !Number.isFinite(percentNum)) {
       setError('Please enter valid values.')
       return
     }
@@ -123,10 +130,18 @@ export default function BookingCommissionTierEditModal({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Commission %</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="commission-tier-edit-percent">
+              Commission %
+            </label>
             <input
+              id="commission-tier-edit-percent"
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
               value={commissionPercent}
-              onChange={(e) => setCommissionPercent(e.target.value)}
+              onChange={(e) => setCommissionPercent(clampCommissionPercentInput(e.target.value))}
+              onBlur={() => setCommissionPercent(String(clampCommissionPercentValue(Number(commissionPercent || 0))))}
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               disabled={submitting}
               inputMode="decimal"
@@ -142,4 +157,3 @@ export default function BookingCommissionTierEditModal({
     </CrmFormModalShell>
   )
 }
-

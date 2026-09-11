@@ -239,7 +239,11 @@ function durationMinutesFromRange(startAt?: string | null, endAt?: string | null
 
 const POS_SLOT_INTERVAL_MIN = 15
 
-type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null }
+type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null; show_in_pos_filter?: boolean }
+
+function categoryShowsInPosFilter(category: { show_in_pos_filter?: boolean }): boolean {
+  return category.show_in_pos_filter !== false
+}
 
 type BookingServiceOption = {
   id: number
@@ -1573,12 +1577,22 @@ export default function PosAppointmentsWorkspace({
         const id = Number(row.id)
         const name = String(row.name ?? '').trim()
         if (!Number.isFinite(id) || id <= 0 || !name) return null
-        return { id, name, cn_name: typeof row.cn_name === 'string' ? row.cn_name.trim() || null : null }
+        return {
+          id,
+          name,
+          cn_name: typeof row.cn_name === 'string' ? row.cn_name.trim() || null : null,
+          show_in_pos_filter: row.show_in_pos_filter !== false,
+        }
       }).filter((item): item is BookingServiceCategoryOption => Boolean(item)))
     } catch {
       setBookingServiceCategories([])
     }
   }, [])
+
+  const posBookingServiceFilterCategories = useMemo(
+    () => bookingServiceCategories.filter(categoryShowsInPosFilter),
+    [bookingServiceCategories],
+  )
 
   const loadCreateAppointmentQuestions = useCallback(async (serviceId: number) => {
     if (!serviceId) {
@@ -1730,9 +1744,9 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentModalOpen(true)
     if (!createAppointmentServices.length) {
       void fetchCreateAppointmentServices()
-    void fetchBookingServiceCategories()
     }
-  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchCreateAppointmentServices, requireOpenShiftMessage, selectedBranchId, showMsg, thermalPrinterSettings])
+    void fetchBookingServiceCategories()
+  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchBookingServiceCategories, fetchCreateAppointmentServices, requireOpenShiftMessage, selectedBranchId, showMsg, thermalPrinterSettings])
 
   const closeCreateAppointmentMemberPicker = useCallback(() => {
     setCreateAppointmentMemberPickerOpen(false)
@@ -3369,7 +3383,8 @@ export default function PosAppointmentsWorkspace({
     setEditMainServiceQuery('')
     setEditMainServicePickerTargetId('__original__')
     setEditMainServicePickerOpen(true)
-  }, [])
+    void fetchBookingServiceCategories()
+  }, [fetchBookingServiceCategories])
 
   const addEditMainServiceBlock = useCallback(async (service: BookingServiceOption) => {
     if (!service?.id) return
@@ -3416,7 +3431,8 @@ export default function PosAppointmentsWorkspace({
     setEditMainServiceQuery('')
     setEditMainServicePickerTargetId('__new__')
     setEditMainServicePickerOpen(true)
-  }, [])
+    void fetchBookingServiceCategories()
+  }, [fetchBookingServiceCategories])
 
   const updateEditAddedMainSplitStaff = useCallback((tmpId: string, index: number, staffId: number | null) => {
     setEditAddedMainBlocks((prev) => prev.map((block) => {
@@ -4332,11 +4348,13 @@ export default function PosAppointmentsWorkspace({
     setActiveStaffs([])
     setAppointmentStaffOptions([])
     setCreateAppointmentServices([])
+    setBookingServiceCategories([])
     if (selectedBranchId) {
       void fetchActiveStaffs()
       void fetchCreateAppointmentServices()
+      void fetchBookingServiceCategories()
     }
-  }, [fetchActiveStaffs, fetchCreateAppointmentServices, selectedBranchId])
+  }, [fetchActiveStaffs, fetchBookingServiceCategories, fetchCreateAppointmentServices, selectedBranchId])
 
   useEffect(() => {
     void fetchAppointments()
@@ -6362,7 +6380,7 @@ export default function PosAppointmentsWorkspace({
                     </div>
                   </div>
                   <BookingServicePicker
-                    categories={bookingServiceCategories}
+                    categories={posBookingServiceFilterCategories}
                     services={createAppointmentServices}
                     selectedCategoryId={createAppointmentServiceCategoryId}
                     onCategoryChange={(next) => {
@@ -6526,7 +6544,7 @@ export default function PosAppointmentsWorkspace({
 
                             return (
                               <BookingServicePicker
-                                categories={bookingServiceCategories}
+                                categories={posBookingServiceFilterCategories}
                                 services={createAppointmentServices}
                                 selectedCategoryId={createAppointmentExtraServiceCategoryIds[block.id] ?? null}
                                 onCategoryChange={(next) => {
@@ -8894,7 +8912,7 @@ export default function PosAppointmentsWorkspace({
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <BookingServicePicker
-                categories={bookingServiceCategories}
+                categories={posBookingServiceFilterCategories}
                 services={editMainServiceCatalog}
                 selectedCategoryId={editMainServiceCategoryId}
                 onCategoryChange={setEditMainServiceCategoryId}

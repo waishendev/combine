@@ -13,6 +13,30 @@ export type CommissionTierRow = {
   store_location?: { id: number; name: string } | null
 }
 
+/** Keep Commission % in 0–100; values above 100 auto-clamp to 100. */
+export function clampCommissionPercentInput(raw: string): string {
+  const trimmed = raw.trim()
+  if (trimmed === '' || trimmed === '-' || trimmed === '.') return trimmed
+  // Allow in-progress typing like "10." without forcing a number yet.
+  if (/^\d+\.$/.test(trimmed)) {
+    const whole = Number(trimmed.slice(0, -1))
+    if (!Number.isFinite(whole)) return ''
+    if (whole > 100) return '100'
+    if (whole < 0) return '0'
+    return trimmed
+  }
+  const n = Number(trimmed)
+  if (!Number.isFinite(n)) return ''
+  if (n > 100) return '100'
+  if (n < 0) return '0'
+  return trimmed
+}
+
+export function clampCommissionPercentValue(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, value))
+}
+
 interface BookingCommissionTierCreateModalProps {
   tierType: 'BOOKING' | 'ECOMMERCE'
   onClose: () => void
@@ -40,12 +64,13 @@ export default function BookingCommissionTierCreateModal({
     setError(null)
 
     const minSalesNum = Number(minSales)
-    const percentNum = Number(commissionPercent)
+    const percentNum = clampCommissionPercentValue(Number(commissionPercent))
+    setCommissionPercent(String(percentNum))
     if (!storeLocationId) {
       setError('Branch is required.')
       return
     }
-    if (!Number.isFinite(minSalesNum) || minSalesNum < 0 || !Number.isFinite(percentNum) || percentNum < 0) {
+    if (!Number.isFinite(minSalesNum) || minSalesNum < 0 || !Number.isFinite(percentNum)) {
       setError('Please enter valid values.')
       return
     }
@@ -141,10 +166,18 @@ export default function BookingCommissionTierCreateModal({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Commission %</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="commission-tier-create-percent">
+              Commission %
+            </label>
             <input
+              id="commission-tier-create-percent"
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
               value={commissionPercent}
-              onChange={(e) => setCommissionPercent(e.target.value)}
+              onChange={(e) => setCommissionPercent(clampCommissionPercentInput(e.target.value))}
+              onBlur={() => setCommissionPercent(String(clampCommissionPercentValue(Number(commissionPercent || 0))))}
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               disabled={submitting}
               inputMode="decimal"

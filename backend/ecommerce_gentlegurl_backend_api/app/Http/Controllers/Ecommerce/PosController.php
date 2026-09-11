@@ -295,8 +295,9 @@ class PosController extends Controller
         $builder = Customer::query();
 
         $builder->where(function ($queryBuilder) use ($query) {
-            $queryBuilder->where('name', 'like', "%{$query}%")
-                ->orWhere('phone', 'like', "%{$query}%");
+            // Postgres LIKE is case-sensitive; ILIKE matches "nicole hai" ↔ "Nicole Hai".
+            $queryBuilder->where('name', 'ilike', "%{$query}%")
+                ->orWhere('phone', 'ilike', "%{$query}%");
         });
 
         $paginator = $builder
