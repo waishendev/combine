@@ -1780,6 +1780,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       is_range_priced?: boolean
       service_price_range_min?: number | null
       service_price_range_max?: number | null
+      can_add_to_settlement_cart?: boolean
+      settlement_disabled_reason?: string | null
       add_ons?: Array<{
         id?: number | null
         name: string

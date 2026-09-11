@@ -1740,7 +1740,7 @@ export default function ShopSettingsPageContent({
 
           </div>
 
-          {([
+          {/* {([
             ['booking_invoice_profile', 'Online Booking Invoice', 'Used for all Online Booking receipts. Checkout currently enforces one Branch, while each appointment retains its persisted Branch attribution.'],
           ] as const).map(([key, title, description]) => (
             <div key={key} className="rounded-lg border border-slate-200 p-4">
@@ -1752,7 +1752,7 @@ export default function ShopSettingsPageContent({
                 <label className="space-y-2 md:col-span-2"><span className="block text-sm font-medium text-slate-800">Company Address</span><textarea required disabled={!canEdit} rows={2} value={invoiceProfileSettings[key].company_address} onChange={(event) => updateIdentity(key, 'company_address', event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
               </div>
             </div>
-          ))}
+          ))} */}
 
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <div className="border-b border-slate-200 bg-slate-50 px-4 py-3"><h4 className="text-base font-semibold text-slate-900">Branch POS Receipt Profiles</h4><p className="mt-1 text-sm text-slate-500">Each Branch uses its own Store Location information unless a custom receipt identity is configured.</p></div>
