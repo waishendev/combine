@@ -136,6 +136,21 @@ class BranchReceiptProfileTest extends TestCase
         $this->assertStringNotContainsString('Default POS Receipt', $source);
     }
 
+    public function test_receipt_headers_show_only_company_name_and_address_metadata(): void
+    {
+        foreach (['order.blade.php', 'refund.blade.php'] as $view) {
+            $source = file_get_contents(resource_path("views/invoices/{$view}"));
+            $headerStart = strpos($source, '<div class="company-name">');
+            $addressStart = strpos($source, "if(!empty(\$profile['company_address']))", $headerStart);
+            $headerIdentity = substr($source, $headerStart, $addressStart - $headerStart);
+
+            $this->assertStringNotContainsString("company_phone", $headerIdentity);
+            $this->assertStringNotContainsString('Phone:', $headerIdentity);
+            $this->assertStringNotContainsString('Email:', $headerIdentity);
+            $this->assertStringNotContainsString('Reg No:', $headerIdentity);
+        }
+    }
+
     private function branch(int $id, bool $active = true): StoreLocation
     {
         return new StoreLocation([
