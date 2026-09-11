@@ -161,8 +161,8 @@ export async function getBookingLandingPage() {
   return unwrapData<BookingLandingPage>(response);
 }
 
-export async function getBookingServiceCategories() {
-  const response = await request<{ data: BookingServiceCategory[] } | BookingServiceCategory[]>(`/booking/service-categories`);
+export async function getBookingServiceCategories(storeLocationId: number) {
+  const response = await request<{ data: BookingServiceCategory[] } | BookingServiceCategory[]>(`/booking/service-categories?store_location_id=${storeLocationId}`);
   return unwrapData<BookingServiceCategory[]>(response);
 }
 

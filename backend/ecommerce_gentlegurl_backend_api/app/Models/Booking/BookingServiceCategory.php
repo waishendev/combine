@@ -3,6 +3,7 @@
 namespace App\Models\Booking;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 
 class BookingServiceCategory extends Model
@@ -34,6 +35,17 @@ class BookingServiceCategory extends Model
             'booking_service_category_id',
             'booking_service_id',
         )->withTimestamps();
+    }
+
+    /**
+     * Categories remain global identities; operational visibility is derived from
+     * their active Services' authoritative Branch assignments.
+     */
+    public function scopeVisibleAtBranch(Builder $query, int $storeLocationId): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->whereHas('services', fn (Builder $services) => $services->eligibleAtBranch($storeLocationId));
     }
 
     public function getImageUrlAttribute(): ?string

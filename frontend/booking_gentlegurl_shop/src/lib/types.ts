@@ -8,6 +8,7 @@ export type BookingServiceCategory = {
   image_url?: string | null;
   is_active: boolean;
   sort_order: number;
+  service_count: number;
 };
 
 export type PublicBookingStoreLocation = {

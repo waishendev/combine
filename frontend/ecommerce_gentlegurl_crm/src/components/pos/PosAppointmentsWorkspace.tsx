@@ -1565,8 +1565,13 @@ export default function PosAppointmentsWorkspace({
   }, [branchScopedUrl])
 
   const fetchBookingServiceCategories = useCallback(async () => {
+    const branchId = selectedBranchIdRef.current
+    if (!branchId) {
+      setBookingServiceCategories([])
+      return
+    }
     try {
-      const res = await fetch('/api/proxy/booking/service-categories', { cache: 'no-store' })
+      const res = await fetch(appointmentBranchScopedUrl('/api/proxy/booking/service-categories', branchId), { cache: 'no-store' })
       if (!res.ok) return
       const json = await res.json().catch(() => null)
       const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
@@ -1587,7 +1592,7 @@ export default function PosAppointmentsWorkspace({
     } catch {
       setBookingServiceCategories([])
     }
-  }, [])
+  }, [appointmentBranchScopedUrl])
 
   const posBookingServiceFilterCategories = useMemo(
     () => bookingServiceCategories.filter(categoryShowsInPosFilter),
