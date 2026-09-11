@@ -61,6 +61,7 @@ class BookingServiceProductLinkService
         $payload['image_path'] = $this->copyImageForProduct($service->image_path);
 
         $product = BookingProduct::query()->create($payload);
+        $this->syncBranchAvailability($service, $product);
         $this->syncQuestionsFromService($service, $product);
         $this->syncProductCategoriesFromService($service, $product);
 
@@ -80,6 +81,7 @@ class BookingServiceProductLinkService
         }
 
         $product->update($payload);
+        $this->syncBranchAvailability($service, $product);
         $this->syncQuestionsFromService($service, $product);
         $this->syncProductCategoriesFromService($service, $product);
 
@@ -110,6 +112,14 @@ class BookingServiceProductLinkService
             ->update(['linked_booking_product_id' => null]);
 
         $service->update(['linked_booking_product_id' => $productId]);
+        $this->syncBranchAvailability($service, BookingProduct::query()->findOrFail($productId));
+    }
+
+    public function syncBranchAvailability(BookingService $service, BookingProduct $product): void
+    {
+        $product->storeLocations()->sync(
+            $service->storeLocations()->pluck('store_locations.id')->map(fn ($id) => (int) $id)->all()
+        );
     }
 
     public function handleCreateLink(BookingService $service, bool $createLinkedProduct, ?int $linkedProductId): void

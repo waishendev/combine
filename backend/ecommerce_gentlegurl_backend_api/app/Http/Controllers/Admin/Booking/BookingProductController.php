@@ -46,12 +46,27 @@ class BookingProductController extends Controller
                 'linkedBookingService.storeLocations' => fn ($locations) => $locations
                     ->whereIn('store_locations.id', $accessibleIds)
                     ->select('store_locations.id', 'name', 'code'),
+                'storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)
+                    ->select('store_locations.id', 'name', 'code'),
             ])
             // Keep newly created / unlinked products visible in CRM.
             // Branch only scopes products that already have a linked service.
             ->where(function ($scope) use ($accessibleIds, $branchId) {
-                $scope->whereDoesntHave('linkedBookingService')
-                    ->orWhereHas('linkedBookingService', fn ($service) => $service->whereDoesntHave('storeLocations'));
+                $scope->where(function ($standalone) use ($accessibleIds, $branchId) {
+                    $standalone->whereDoesntHave('linkedBookingService')
+                        ->where(function ($availability) use ($accessibleIds, $branchId) {
+                            if (! $branchId) {
+                                $availability->whereDoesntHave('storeLocations')->orWhereHas('storeLocations', fn ($locations) => $locations->whereIn(
+                                    'store_locations.id', $branchId ? [$branchId] : $accessibleIds
+                                ));
+                            } else {
+                                $availability->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branchId));
+                            }
+                        });
+                });
+                if (! $branchId) {
+                    $scope->orWhereHas('linkedBookingService', fn ($service) => $service->whereDoesntHave('storeLocations'));
+                }
 
                 if ($branchId) {
                     $scope->orWhereHas(
@@ -116,6 +131,8 @@ class BookingProductController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
             'questions' => ['nullable', 'array'],
+            'store_location_ids' => ['required', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
         ]);
 
         $data = $this->normalizePricingPayload($data);
@@ -129,19 +146,21 @@ class BookingProductController extends Controller
         }
 
         $categoryIds = $data['category_ids'] ?? [];
-        unset($data['category_ids']);
+        $storeLocationIds = app(StoreLocationAccessService::class)->assertCanAssign($request->user(), $data['store_location_ids'], false);
+        unset($data['category_ids'], $data['store_location_ids']);
 
         $questions = $request->input('questions', []);
         $product = BookingProduct::create($data);
         $product->categories()->sync($categoryIds);
+        $product->storeLocations()->sync($storeLocationIds);
         $this->syncQuestions($product, is_array($questions) ? $questions : []);
 
-        return $this->respond($product->load(['categories', 'questions.options']), 'Created', true, 201);
+        return $this->respond($product->load(['categories', 'questions.options', 'storeLocations']), 'Created', true, 201);
     }
 
     public function show(int $id)
     {
-        return $this->respond(BookingProduct::query()->with(['categories', 'questions.options'])->findOrFail($id));
+        return $this->respond(BookingProduct::query()->with(['categories', 'questions.options', 'storeLocations:id,name,code', 'linkedBookingService:id,linked_booking_product_id'])->findOrFail($id));
     }
 
     public function update(Request $request, int $id)
@@ -162,7 +181,15 @@ class BookingProductController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
             'questions' => ['nullable', 'array'],
+            'store_location_ids' => ['sometimes', 'array', 'min:1'],
+            'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
         ]);
+
+        if ($request->has('store_location_ids') && $product->linkedBookingService()->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'store_location_ids' => ['Branch availability is managed by the linked Booking Service.'],
+            ]);
+        }
 
         $data = $this->normalizePricingPayload($data, $product);
 
@@ -176,7 +203,10 @@ class BookingProductController extends Controller
         }
 
         $categoryIds = $data['category_ids'] ?? null;
-        unset($data['category_ids']);
+        $storeLocationIds = array_key_exists('store_location_ids', $data)
+            ? app(StoreLocationAccessService::class)->assertCanAssign($request->user(), $data['store_location_ids'], false)
+            : null;
+        unset($data['category_ids'], $data['store_location_ids']);
 
         $product->update($data);
         if ($request->has('questions')) {
@@ -186,12 +216,15 @@ class BookingProductController extends Controller
         if ($categoryIds !== null) {
             $product->categories()->sync($categoryIds);
         }
+        if ($storeLocationIds !== null) {
+            $product->storeLocations()->sync($storeLocationIds);
+        }
 
         if (isset($data['image_path']) && $oldImagePath && $oldImagePath !== $data['image_path'] && Storage::disk('public')->exists($oldImagePath)) {
             Storage::disk('public')->delete($oldImagePath);
         }
 
-        return $this->respond($product->fresh()->load(['categories', 'questions.options']));
+        return $this->respond($product->fresh()->load(['categories', 'questions.options', 'storeLocations', 'linkedBookingService']));
     }
 
 

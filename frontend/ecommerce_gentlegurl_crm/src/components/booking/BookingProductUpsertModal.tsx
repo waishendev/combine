@@ -8,6 +8,7 @@ import type { BookingProductCategory, BookingProductQuestion, BookingProductRowD
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 import { compressImage } from '@/lib/compressImage'
+import BranchAssignmentChecklist from '@/components/BranchAssignmentChecklist'
 
 const fieldClass =
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-50 disabled:text-gray-500'
@@ -41,6 +42,7 @@ export default function BookingProductUpsertModal({
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [questions, setQuestions] = useState<BookingProductQuestion[]>([])
+  const [storeLocationIds, setStoreLocationIds] = useState<number[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -98,6 +100,13 @@ export default function BookingProductUpsertModal({
     setCategoryIds(Array.isArray(product?.categories) ? product.categories.map((c) => Number(c.id)) : [])
     setIsActive(Boolean(product?.is_active ?? true))
     setQuestions(mappedQuestions)
+    setStoreLocationIds(
+      product?.linked_booking_service
+        ? (product.linked_booking_service.store_locations ?? []).map((branch) => Number(branch.id))
+        : Array.isArray(product?.store_location_ids)
+          ? product.store_location_ids.map(Number)
+          : (product?.store_locations ?? []).map((branch) => Number(branch.id)),
+    )
     setImageFile(null)
     setPreviewUrl(null)
     setError(null)
@@ -137,6 +146,10 @@ export default function BookingProductUpsertModal({
       setError('Name is required.')
       return
     }
+    if (!product?.linked_booking_service && storeLocationIds.length === 0) {
+      setError('Select at least one Branch.')
+      return
+    }
     const p = Number(price)
     const min = Number(priceRangeMin)
     const max = Number(priceRangeMax)
@@ -166,6 +179,9 @@ export default function BookingProductUpsertModal({
       if (description.trim()) fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
       categoryIds.forEach((id) => fd.append('category_ids[]', String(id)))
+      if (!product?.linked_booking_service) {
+        storeLocationIds.forEach((id) => fd.append('store_location_ids[]', String(id)))
+      }
       if (imageFile) {
         const compressed = await compressImage(imageFile)
         fd.append('image', compressed)
@@ -400,6 +416,19 @@ export default function BookingProductUpsertModal({
 
           <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
             <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Pricing & inventory</h3>
+            <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <BranchAssignmentChecklist
+                label="Available at"
+                value={storeLocationIds}
+                onChange={setStoreLocationIds}
+                disabled={submitting || Boolean(product?.linked_booking_service)}
+              />
+              {product?.linked_booking_service && (
+                <p className="mt-2 text-xs font-medium text-blue-700">
+                  Managed by Booking Service. Branch availability is read-only here.
+                </p>
+              )}
+            </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="sm:col-span-2 lg:col-span-3">
                 <p className="mb-1.5 block text-sm font-medium text-gray-700">Price Mode</p>

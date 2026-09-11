@@ -66,6 +66,7 @@ interface FormState {
   allow_photo_upload: boolean
   imageFile: File | null
   allowed_staff_ids: number[]
+  allowed_staff_by_store_location: Record<number, number[]>
   store_location_ids: number[]
   primary_slots: string
   questions: QuestionForm[]
@@ -105,6 +106,7 @@ const initialFormState: FormState = {
   allow_photo_upload: false,
   imageFile: null,
   allowed_staff_ids: [],
+  allowed_staff_by_store_location: {},
   store_location_ids: [],
   primary_slots: '',
   questions: [],
@@ -134,6 +136,7 @@ type BookingServiceApiItemWithRelations = BookingServiceApiItem & {
   }>
   allowed_staff_ids?: unknown[]
   allowed_staffs?: Array<{ id?: unknown }>
+  allowed_staff_by_store_location?: Record<string, unknown[]>
   primary_slots?: Array<{ start_time?: string | null }>
 }
 
@@ -196,6 +199,7 @@ function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWit
       service.allow_photo_upload === 1,
     imageFile: null,
     allowed_staff_ids,
+    allowed_staff_by_store_location: Object.fromEntries(Object.entries(service.allowed_staff_by_store_location ?? {}).map(([id, ids]) => [Number(id), ids.map(Number)])),
     store_location_ids: Array.isArray(service.store_location_ids) ? service.store_location_ids.map(Number) : [],
     primary_slots: Array.isArray(service.primary_slots)
       ? (service.primary_slots ?? []).map((slot) => slot?.start_time ?? '').filter(Boolean).join(', ')
@@ -289,7 +293,8 @@ export default function BookingServiceCreateModal({
             const id = Number(maybe.id)
             const name = String(maybe.name ?? '').trim()
             if (!id || !name) return null
-            return { id, name }
+            const locations = Array.isArray(maybe.store_locations) ? maybe.store_locations : []
+            return { id, name, store_location_ids: locations.map((location) => Number((location as { id?: unknown })?.id)).filter((value) => value > 0) }
           })
           .filter((row): row is BookingStaffOption => Boolean(row))
 
@@ -514,8 +519,8 @@ export default function BookingServiceCreateModal({
     }
 
     if (form.store_location_ids.length === 0) { setError('Select at least one Branch.'); return }
-    if (form.allowed_staff_ids.length === 0) {
-      setError('Please assign at least 1 allowed staff')
+    if (form.store_location_ids.some((id) => (form.allowed_staff_by_store_location[id] ?? []).length === 0)) {
+      setError('Please assign at least 1 allowed staff for every Branch')
       return
     }
     const missingLinkedService = form.questions.some((question) =>
@@ -549,7 +554,7 @@ export default function BookingServiceCreateModal({
       fd.append('buffer_min', String(buffer))
       fd.append('is_active', form.is_active ? '1' : '0')
       fd.append('allow_photo_upload', form.allow_photo_upload ? '1' : '0')
-      form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
+      form.store_location_ids.forEach((locationId) => (form.allowed_staff_by_store_location[locationId] ?? []).forEach((staffId) => fd.append(`allowed_staff_by_store_location[${locationId}][]`, String(staffId))))
       form.store_location_ids.forEach((id) => fd.append('store_location_ids[]', String(id)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       form.questions.forEach((question, questionIndex) => {
@@ -956,16 +961,10 @@ export default function BookingServiceCreateModal({
               />
             </div>
 
-            <BranchAssignmentChecklist label="Available at" value={form.store_location_ids} onChange={(ids) => setForm((prev) => ({ ...prev, store_location_ids: ids }))} disabled={disableForm} />
+            <BranchAssignmentChecklist label="Available at" value={form.store_location_ids} onChange={(ids) => setForm((prev) => ({ ...prev, store_location_ids: ids, allowed_staff_by_store_location: Object.fromEntries(ids.map((id) => [id, prev.allowed_staff_by_store_location[id] ?? []])) }))} disabled={disableForm} />
 
-            <div className="min-w-0">
-              <BookingServiceAllowedStaffPicker
-                staffOptions={staffOptions}
-                value={form.allowed_staff_ids}
-                onChange={(ids) => setForm((prev) => ({ ...prev, allowed_staff_ids: ids }))}
-                disabled={disableForm}
-                loading={staffLoading}
-              />
+            <div className="min-w-0 space-y-3">
+              {form.store_location_ids.map((locationId) => <div key={locationId} className="rounded-xl border border-gray-200 bg-gray-50 p-4"><h4 className="mb-3 font-semibold text-gray-800">{accessibleBranches.find((branch) => branch.id === locationId)?.name ?? `Branch ${locationId}`}</h4><BookingServiceAllowedStaffPicker staffOptions={staffOptions.filter((staff) => staff.store_location_ids?.includes(locationId))} value={form.allowed_staff_by_store_location[locationId] ?? []} onChange={(ids) => setForm((prev) => ({ ...prev, allowed_staff_by_store_location: { ...prev.allowed_staff_by_store_location, [locationId]: ids } }))} disabled={disableForm} loading={staffLoading} /></div>)}
             </div>
 
             <div>

@@ -2,6 +2,7 @@
 
 namespace App\Models\Booking;
 
+use App\Models\Ecommerce\StoreLocation;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
@@ -53,6 +54,11 @@ class BookingProduct extends Model
     public function linkedBookingService()
     {
         return $this->hasOne(BookingService::class, 'linked_booking_product_id');
+    }
+
+    public function storeLocations()
+    {
+        return $this->belongsToMany(StoreLocation::class, 'booking_product_store_location')->withTimestamps();
     }
 
     public function getImageUrlAttribute(): ?string

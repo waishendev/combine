@@ -140,6 +140,7 @@ class StaffController extends Controller
 
         $staffs = Staff::query()
             ->select(['id', 'name'])
+            ->with(['storeLocations' => fn ($locations) => $locations->whereIn('store_locations.id', $accessibleIds)->select('store_locations.id')])
             ->when($storeLocationId > 0, fn ($query) => $query->whereHas(
                 'storeLocations',
                 fn ($locations) => $locations->where('store_locations.id', $storeLocationId),

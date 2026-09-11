@@ -520,9 +520,12 @@ class PosController extends Controller
         $perPage = max(1, min(200, $request->integer('per_page', 200)));
         $builder = BookingProduct::query()
             ->with(['categories', 'questions.options'])
-            // Booking Products inherit operational availability from their existing
-            // linked Booking Service; the definition itself remains global.
-            ->whereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branch->id))
+            ->where(function ($availability) use ($branch) {
+                $availability->where(function ($standalone) use ($branch) {
+                    $standalone->whereDoesntHave('linkedBookingService')
+                        ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branch->id));
+                })->orWhereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branch->id));
+            })
             ->where('is_active', true)
             ->when($request->integer('category_id') > 0, fn ($query) => $query->whereHas(
                 'categories', fn ($categories) => $categories->whereKey($request->integer('category_id'))
@@ -4108,7 +4111,18 @@ class PosController extends Controller
         if (! $hasItemType || ! $hasBookingProductId) {
             return $this->respondError(__('POS booking product fields are not ready. Please run latest migrations.'), 422);
         }
-        $bookingProduct = BookingProduct::query()->where('is_active', true)->with(['activeQuestions.options' => fn ($q) => $q->where('is_active', true)])->findOrFail((int) $validated['booking_product_id']);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $branch = app(StoreLocationAccessService::class)->authorizeStoreLocation(
+            $request->user(), (int) $cart->store_location_id, false
+        );
+        $bookingProduct = BookingProduct::query()->where('is_active', true)
+            ->where(function ($availability) use ($branch) {
+                $availability->where(fn ($standalone) => $standalone->whereDoesntHave('linkedBookingService')
+                    ->whereHas('storeLocations', fn ($locations) => $locations->whereKey($branch->id)))
+                    ->orWhereHas('linkedBookingService.storeLocations', fn ($locations) => $locations->whereKey($branch->id));
+            })
+            ->with(['activeQuestions.options' => fn ($q) => $q->where('is_active', true)])
+            ->findOrFail((int) $validated['booking_product_id']);
         $selectedOptionIds = collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values();
         $activeQuestions = $bookingProduct->activeQuestions;
         $optionsById = $activeQuestions->flatMap(fn ($question) => $question->options)->keyBy('id');
@@ -4159,7 +4173,6 @@ class PosController extends Controller
         }
         $unitPriceSnapshot = round($basePrice + $extraPrice, 2);
         $targetSignature = $this->bookingProductOptionConfigurationSignature($selectedSnapshotRows);
-        $cart = $this->resolveCart((int) $request->user()->id);
         $item = PosCartItem::query()
             ->where('pos_cart_id', $cart->id)
             ->where('item_type', 'booking_product')
@@ -4734,7 +4747,7 @@ class PosController extends Controller
             throw ValidationException::withMessages(['assigned_staff_id' => __('Selected staff does not work at this Branch.')]);
         }
 
-        if (! $service->isStaffAllowed((int) $staff->id)) {
+        if (! $service->isStaffAllowed((int) $staff->id, (int) $transactionBranch->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
         }
         $qty = max(1, (int) ($validated['qty'] ?? 1));
@@ -4839,7 +4852,7 @@ class PosController extends Controller
             if (! Staff::query()->findOrFail((int) $splitStaffId)->worksAt((int) $transactionBranch->id)) {
                 throw ValidationException::withMessages(['staff_splits' => __('Selected staff split contains staff outside this Branch.')]);
             }
-            if (! $service->isStaffAllowed((int) $splitStaffId)) {
+            if (! $service->isStaffAllowed((int) $splitStaffId, (int) $transactionBranch->id)) {
                 return $this->respondError(__('Selected staff split contains staff not allowed for this service.'), 422);
             }
         }
@@ -4995,7 +5008,7 @@ class PosController extends Controller
             throw ValidationException::withMessages(['assigned_staff_id' => __('Selected staff does not work at this Branch.')]);
         }
 
-        if (! $service->isStaffAllowed((int) $staff->id)) {
+        if (! $service->isStaffAllowed((int) $staff->id, (int) $transactionBranch->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
         }
 
@@ -5160,7 +5173,7 @@ class PosController extends Controller
             throw ValidationException::withMessages(['assigned_staff_id' => __('Selected staff does not work at this Branch.')]);
         }
 
-        if (! $service->isStaffAllowed((int) $staff->id)) {
+        if (! $service->isStaffAllowed((int) $staff->id, (int) $transactionBranch->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
         }
 
@@ -5266,7 +5279,7 @@ class PosController extends Controller
             if (! Staff::query()->findOrFail((int) $splitStaffId)->worksAt((int) $transactionBranch->id)) {
                 throw ValidationException::withMessages(['staff_splits' => __('Selected staff split contains staff outside this Branch.')]);
             }
-            if (! $service->isStaffAllowed((int) $splitStaffId)) {
+            if (! $service->isStaffAllowed((int) $splitStaffId, (int) $transactionBranch->id)) {
                 return $this->respondError(__('Selected staff split contains staff not allowed for this service.'), 422);
             }
         }
