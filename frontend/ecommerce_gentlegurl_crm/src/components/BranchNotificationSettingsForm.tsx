@@ -69,7 +69,7 @@ function SettingCard({
           <p className="text-xs text-slate-500">Uses the application timezone and runs independently for this Branch.</p>
           <input
             type="time"
-            value={sendAt.slice(0, 5)}
+            value={sendAt}
             disabled={!canEdit || !enabled}
             onChange={(event) => onSendAtChange(event.target.value)}
             className="w-full max-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
