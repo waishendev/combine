@@ -8,5 +8,5 @@ export type BranchNotificationSettings = {
   daily_low_stock_enabled: boolean; daily_low_stock_send_at: string; daily_low_stock_recipients: string[]
 }
 type Response<T> = { data: T | null; message: string | null; success: boolean }
-export const getBranchNotificationSettings = (id: number) => apiFetch<Response<BranchNotificationSettings>>(`/api/proxy/ecommerce/branch-notification-settings?store_location_id=${id}`)
+export const getBranchNotificationSettings = (id: number, signal?: AbortSignal) => apiFetch<Response<BranchNotificationSettings>>(`/api/proxy/ecommerce/branch-notification-settings?store_location_id=${id}`, { signal })
 export const saveBranchNotificationSettings = (id: number, data: BranchNotificationSettings) => apiFetch<Response<BranchNotificationSettings>>(`/api/proxy/ecommerce/branch-notification-settings?store_location_id=${id}`, { method: 'PUT', body: JSON.stringify(data) })

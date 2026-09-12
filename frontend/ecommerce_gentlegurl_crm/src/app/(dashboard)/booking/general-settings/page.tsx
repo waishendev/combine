@@ -6,9 +6,6 @@ import { redirect } from 'next/navigation'
 import ShopSettingsPageContent from '@/components/ShopSettingsPageContent'
 import BookingPolicySettingsCard from '@/components/BookingPolicySettingsCard'
 import BookingServiceNoteSettingsCard from '@/components/BookingServiceNoteSettingsCard'
-import BookingReminderEmailSettingsCard from '@/components/BookingReminderEmailSettingsCard'
-import BookingFeedbackEmailSettingsCard from '@/components/BookingFeedbackEmailSettingsCard'
-import PaymentProofNotificationSettingsCard from '@/components/PaymentProofNotificationSettingsCard'
 import BookingDepositTermsSettingsCard from '@/components/BookingDepositTermsSettingsCard'
 import BookingSlotsHelpNoteSettingsCard from '@/components/BookingSlotsHelpNoteSettingsCard'
 import BookingMaxAdvanceDaysSettingsCard from '@/components/BookingMaxAdvanceDaysSettingsCard'
@@ -62,21 +59,6 @@ export default async function BookingShopSettingsPage() {
       </div>
       <div className="mt-6">
         <BookingServiceNoteSettingsCard canEdit={canUpdate} />
-      </div>
-      <div className="mt-6">
-        <BookingReminderEmailSettingsCard canEdit={canUpdate} />
-      </div>
-      <div className="mt-6">
-        <BookingFeedbackEmailSettingsCard canEdit={canUpdate} />
-      </div>
-      <div className="mt-6">
-        <PaymentProofNotificationSettingsCard
-          canEdit={canUpdate}
-          settingKey="booking_payment_proof_notification"
-          settingType="booking"
-          title="Payment Proof Upload Notification"
-          description="Notify an admin via email when a customer uploads or re-uploads a manual transfer payment slip for a booking."
-        />
       </div>
       <div className="mt-6">
         <BookingDepositTermsSettingsCard canEdit={canUpdate} />
