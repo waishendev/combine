@@ -35,6 +35,7 @@ class PosOrderReceiptMail extends Mailable implements ShouldQueue
         string $pdfBytes,
         private string $pdfFilename,
         private array $items = [],
+        private array $invoiceIdentity = [],
     ) {
         $this->pdfBytesBase64 = base64_encode($pdfBytes);
         $this->orderNumber = mb_scrub($this->orderNumber, 'UTF-8');
@@ -75,6 +76,7 @@ class PosOrderReceiptMail extends Mailable implements ShouldQueue
                 'paymentStatusDisplay' => $this->paymentStatusDisplay,
                 'receiptUrl' => $this->receiptUrl,
                 'items' => $this->items,
+                'invoiceIdentity' => $this->invoiceIdentity,
             ])
             ->attachData($pdfBinary, $this->pdfFilename, [
                 'mime' => 'application/pdf',

@@ -41,7 +41,7 @@ export default async function ShopSettingsPage() {
         <div>
           <h2 className="text-3xl font-semibold text-slate-900 leading-tight">General Settings</h2>
           <p className="text-sm text-slate-500 mt-2 max-w-2xl">
-            Manage storefront widgets and homepage product windows shown to shoppers.
+            Manage storefront widgets, homepage product windows, and global Ecommerce Payment Proof notifications.
           </p>
         </div>
       </div>

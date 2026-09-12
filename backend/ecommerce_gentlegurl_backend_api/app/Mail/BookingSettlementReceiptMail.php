@@ -38,6 +38,8 @@ class BookingSettlementReceiptMail extends Mailable implements ShouldQueue
         string $pdfBytes,
         private string $pdfFilename,
         private array $items = [],
+        private ?array $venue = null,
+        private array $invoiceIdentity = [],
     ) {
         $this->pdfBytesBase64 = base64_encode($pdfBytes);
         $this->bookingReference = mb_scrub($this->bookingReference, 'UTF-8');
@@ -86,6 +88,8 @@ class BookingSettlementReceiptMail extends Mailable implements ShouldQueue
                 'paymentStatusDisplay' => $this->paymentStatusDisplay,
                 'receiptUrl' => $this->receiptUrl,
                 'items' => $this->items,
+                'venue' => $this->venue,
+                'invoiceIdentity' => $this->invoiceIdentity,
             ])
             ->attachData($pdfBinary, $this->pdfFilename, [
                 'mime' => 'application/pdf',

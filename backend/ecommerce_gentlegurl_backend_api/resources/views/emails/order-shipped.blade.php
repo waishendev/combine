@@ -89,7 +89,7 @@
 
         <p style="margin: 20px 0 0; font-size: 14px;">
             If you have any questions about your delivery, please contact us directly:<br>
-            &#128242; Gentlegurls Nail Salon @ {{ $contactPhone }}
+            &#128242; {{ $companyName }} @ {{ $contactPhone }}
         </p>
         <p style="margin: 8px 0 0; font-size: 13px; color: #888;">
             如果有任何配送上的疑问，请直接联系以上号码，请勿回复此信息

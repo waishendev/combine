@@ -77,6 +77,7 @@ use App\Http\Controllers\Ecommerce\LoyaltyAdminController;
 use App\Http\Controllers\Ecommerce\LoyaltyRewardController;
 use App\Http\Controllers\Ecommerce\LoyaltyRedemptionAdminController;
 use App\Http\Controllers\Ecommerce\ShopSettingController;
+use App\Http\Controllers\Ecommerce\BranchNotificationSettingController;
 use App\Http\Controllers\Ecommerce\ShippingFulfillmentSettingController;
 use App\Http\Controllers\Ecommerce\ThermalPrinterSettingController;
 use App\Http\Controllers\Ecommerce\BranchLimitSettingController;
@@ -1329,6 +1330,11 @@ $protectedRoutes = function () {
         Route::put('/shop-settings/{key}', [ShopSettingController::class, 'update']);
 
         Route::post('/shop-settings/{key}', [ShopSettingController::class, 'update']);
+
+        Route::get('/branch-notification-settings', [BranchNotificationSettingController::class, 'show'])
+            ->middleware('permission:ecommerce.settings.view|ecommerce.settings.update|booking.settings.view|booking.settings.update');
+        Route::put('/branch-notification-settings', [BranchNotificationSettingController::class, 'update'])
+            ->middleware('permission:ecommerce.settings.update|booking.settings.update');
 
         // Branding (logos)
         // NEW ENHANCEMENT — crm-logo-thermal-branch-limit-query-v1 (SettingService memo + FE brandingFetch dedupe)

@@ -45,7 +45,7 @@
                         <p style="margin: 0 0 8px;"><strong>Order:</strong> {{ $order['order_number'] }} <span style="color:#666;">({{ $order['order_kind'] ?? 'Shop' }})</span></p>
                         <p style="margin: 0 0 8px;"><strong>Status:</strong> {{ $order['status_label'] ?? ($order['status'] . ' / ' . $order['payment_status']) }}</p>
                         <p style="margin: 0 0 8px;"><strong>Customer:</strong> {{ $order['customer_name'] }}</p>
-                        <p style="margin: 0 0 8px;"><strong>Total Amount:</strong> {{ number_format((float) $order['total_amount'], 2) }}</p>
+                        <p style="margin: 0 0 8px;"><strong>{{ $order['amount_label'] ?? 'Amount' }}:</strong> {{ number_format((float) $order['total_amount'], 2) }}</p>
                         <p style="margin: 0;"><strong>Products:</strong>
                             @if (! empty($order['product_names']))
                                 {{ implode(', ', $order['product_names']) }}

@@ -1201,7 +1201,7 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()
-            ->with(['service', 'staff', 'customer'])
+            ->with(['service', 'staff', 'customer', 'storeLocation'])
             ->findOrFail($id);
         $this->authorizePosAppointmentBranch($booking, $request);
 
@@ -1239,6 +1239,7 @@ class PosController extends Controller
             source: (string) ($booking->source ?? 'STAFF'),
             addonItems: $addonItems,
             contactPhone: $contactPhone,
+                    venue: \App\Support\BranchEmailPresentation::from($booking->storeLocation),
         ));
 
         $this->appointmentActivityLogService->log($booking, 'appointment.email_queued', $request->user(), [
@@ -3941,7 +3942,7 @@ class PosController extends Controller
             'created_at' => now(),
         ]);
 
-        $freshBooking = $booking->fresh(['service', 'staff', 'customer']);
+        $freshBooking = $booking->fresh(['service', 'staff', 'customer', 'storeLocation']);
         $this->appointmentActivityLogService->log($freshBooking, 'appointment.rescheduled', $request->user(), [
             'old_start_at' => $oldStart?->toDateTimeString(),
             'new_start_at' => $newStart->toDateTimeString(),
@@ -5041,7 +5042,7 @@ class PosController extends Controller
         ]);
 
         return $this->respond([
-            'booking' => $booking->load(['service', 'staff', 'customer']),
+            'booking' => $booking->load(['service', 'staff', 'customer', 'storeLocation']),
         ], __('Booking created successfully.'));
     }
 
@@ -10458,10 +10459,12 @@ class PosController extends Controller
         $order = Order::query()
             ->with(['items.booking', 'items.product', 'items.productVariant', 'items.bookingService', 'serviceItems', 'bankAccount'])
             ->findOrFail($orderId);
+        $this->authorizeReceiptOrderBranch($request, $order);
 
         $receiptUrl = $this->buildReceiptUrl($order, $request);
 
         $pdf = $this->invoiceService->buildPdf($order);
+        $invoiceIdentity = $this->invoiceService->resolveInvoiceProfile($order);
 
         $bookingForReceipt = $this->resolveBookingForReceiptEmail($order);
         $packageClaimsByBsId = [];
@@ -10541,6 +10544,8 @@ class PosController extends Controller
                 pdfBytes: $pdf->output(),
                 pdfFilename: $pdfFilename,
                 items: $itemsPayload,
+                venue: \App\Support\BranchEmailPresentation::from($booking->storeLocation),
+                invoiceIdentity: $invoiceIdentity,
             ));
         } else {
             Mail::to($validated['email'])->send(new PosOrderReceiptMail(
@@ -10553,6 +10558,7 @@ class PosController extends Controller
                 pdfBytes: $pdf->output(),
                 pdfFilename: $pdfFilename,
                 items: $itemsPayload,
+                invoiceIdentity: $invoiceIdentity,
             ));
         }
 
@@ -10564,23 +10570,19 @@ class PosController extends Controller
     protected function resolveBookingForReceiptEmail(Order $order): ?Booking
     {
         $order->loadMissing(['items.booking', 'serviceItems']);
+        $ids = $order->items->pluck('booking_id')->concat($order->serviceItems->pluck('booking_id'))
+            ->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        return $ids->count() === 1 ? Booking::query()->with('storeLocation')->find($ids->first()) : null;
+    }
 
-        foreach ($order->items as $item) {
-            if ($item->booking_id && $item->booking) {
-                return $item->booking;
-            }
-        }
-
-        foreach ($order->serviceItems as $serviceItem) {
-            if ($serviceItem->booking_id) {
-                $found = Booking::query()->find($serviceItem->booking_id);
-                if ($found) {
-                    return $found;
-                }
-            }
-        }
-
-        return null;
+    private function authorizeReceiptOrderBranch(Request $request, Order $order): void
+    {
+        $ids = $order->items()->whereNotNull('fulfillment_store_location_id')->pluck('fulfillment_store_location_id')
+            ->push($order->store_location_id)->filter()->map(fn ($id) => (int) $id)->unique();
+        if ($ids->isEmpty()) return;
+        $accessible = app(\App\Services\StoreLocationAccessService::class)->accessibleStoreLocations($request->user())
+            ->whereIn('id', $ids)->pluck('id');
+        abort_if($accessible->count() !== $ids->count(), 403, __('You cannot email a receipt for an inaccessible Branch Order.'));
     }
 
     /**
@@ -10593,7 +10595,7 @@ class PosController extends Controller
         }
 
         $bookings = Booking::query()
-            ->with(['service', 'staff', 'customer'])
+            ->with(['service', 'staff', 'customer', 'storeLocation'])
             ->whereIn('id', $bookingIds)
             ->where('status', 'CONFIRMED')
             ->get();
@@ -10644,6 +10646,7 @@ class PosController extends Controller
                     source: (string) ($booking->source ?? 'STAFF'),
                     addonItems: $addonItems,
                     contactPhone: $contactPhone,
+                    venue: \App\Support\BranchEmailPresentation::from($booking->storeLocation),
                 ));
 
                 Log::info('Booking confirmation email queued.', [
@@ -10706,6 +10709,7 @@ class PosController extends Controller
                 newEndTime: $booking->end_at?->format('h:i A') ?? '—',
                 durationMin: (int) ($booking->service?->duration_min ?? 0),
                 contactPhone: $contactPhone,
+                    venue: \App\Support\BranchEmailPresentation::from($booking->storeLocation),
             ));
 
             Log::info('Booking rescheduled email queued.', [

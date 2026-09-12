@@ -26,6 +26,7 @@ class BookingFeedbackMail extends Mailable implements ShouldQueue
         private int $durationMin,
         private string $whatsappUrl,
         private string $contactPhone,
+        private ?array $venue = null,
     ) {
         $this->customerName = mb_scrub($this->customerName, 'UTF-8');
         $this->serviceName = mb_scrub($this->serviceName, 'UTF-8');
@@ -46,7 +47,7 @@ class BookingFeedbackMail extends Mailable implements ShouldQueue
 
     public function build(): self
     {
-        return $this->subject('How was your visit? — Gentlegurls Nail Salon')
+        return $this->subject('How was your visit? — ' . ($this->venue['name'] ?? 'Gentlegurls'))
             ->view('emails.booking-feedback', [
                 'customerName' => $this->customerName,
                 'serviceName' => $this->serviceName,
@@ -58,6 +59,7 @@ class BookingFeedbackMail extends Mailable implements ShouldQueue
                 'durationMin' => $this->durationMin,
                 'whatsappUrl' => $this->whatsappUrl,
                 'contactPhone' => $this->contactPhone,
+                'venue' => $this->venue,
             ]);
     }
 }

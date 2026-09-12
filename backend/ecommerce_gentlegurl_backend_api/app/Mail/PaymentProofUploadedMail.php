@@ -21,6 +21,7 @@ class PaymentProofUploadedMail extends Mailable implements ShouldQueue
         private float $amount,
         private string $uploadedAt,
         private bool $isReupload,
+        private ?array $branch = null,
     ) {
         $this->orderType = mb_scrub($this->orderType, 'UTF-8');
         $this->orderNumber = mb_scrub($this->orderNumber, 'UTF-8');
@@ -33,8 +34,9 @@ class PaymentProofUploadedMail extends Mailable implements ShouldQueue
     public function build(): self
     {
         $prefix = $this->isReupload ? 'Re-uploaded' : 'New';
+        $typeLabel = $this->orderType !== '' ? $this->orderType : 'Payment';
 
-        return $this->subject("{$prefix} Payment Proof — {$this->orderNumber}")
+        return $this->subject("{$prefix} {$typeLabel} Payment Proof — {$this->orderNumber}")
             ->view('emails.payment-proof-uploaded', [
                 'orderType' => $this->orderType,
                 'orderNumber' => $this->orderNumber,
@@ -44,6 +46,7 @@ class PaymentProofUploadedMail extends Mailable implements ShouldQueue
                 'amount' => $this->amount,
                 'uploadedAt' => $this->uploadedAt,
                 'isReupload' => $this->isReupload,
+                'branch' => $this->branch,
             ]);
     }
 }

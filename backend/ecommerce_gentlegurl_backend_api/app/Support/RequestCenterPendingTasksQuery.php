@@ -155,7 +155,7 @@ class RequestCenterPendingTasksQuery
     /**
      * @return EloquentCollection<int, BookingCancellationRequest>
      */
-    public static function pendingCancellationRequests(): EloquentCollection
+    public static function pendingCancellationRequests(?int $storeLocationId = null): EloquentCollection
     {
         return BookingCancellationRequest::query()
             ->with([
@@ -163,6 +163,7 @@ class RequestCenterPendingTasksQuery
                 'booking.customer:id,name,phone,email',
             ])
             ->where('status', 'pending')
+            ->when($storeLocationId, fn ($query) => $query->whereHas('booking', fn ($booking) => $booking->where('store_location_id', $storeLocationId)))
             ->orderByDesc('requested_at')
             ->get();
     }
@@ -170,11 +171,12 @@ class RequestCenterPendingTasksQuery
     /**
      * @return EloquentCollection<int, Booking>
      */
-    public static function pendingHoldBookings(): EloquentCollection
+    public static function pendingHoldBookings(?int $storeLocationId = null): EloquentCollection
     {
         return Booking::query()
             ->with(['customer:id,name,phone,email'])
             ->whereIn('status', static::BOOKING_HOLD_STATUSES)
+            ->when($storeLocationId, fn ($query) => $query->where('store_location_id', $storeLocationId))
             ->orderByDesc('created_at')
             ->get();
     }
@@ -191,9 +193,9 @@ class RequestCenterPendingTasksQuery
      *   reason:?string
      * }>
      */
-    public static function pendingBookingRequestRows(): Collection
+    public static function pendingBookingRequestRows(?int $storeLocationId = null): Collection
     {
-        $cancellationRows = static::pendingCancellationRequests()->map(function (BookingCancellationRequest $row) {
+        $cancellationRows = static::pendingCancellationRequests($storeLocationId)->map(function (BookingCancellationRequest $row) {
             $booking = $row->booking;
             $customer = $booking?->customer;
             $bookingId = (int) ($row->booking_id ?? $booking?->id ?? 0);
@@ -211,7 +213,7 @@ class RequestCenterPendingTasksQuery
             ];
         });
 
-        $holdRows = static::pendingHoldBookings()->map(function (Booking $booking) {
+        $holdRows = static::pendingHoldBookings($storeLocationId)->map(function (Booking $booking) {
             return [
                 'key' => "hold-{$booking->id}",
                 'request_type' => 'Hold confirmation',

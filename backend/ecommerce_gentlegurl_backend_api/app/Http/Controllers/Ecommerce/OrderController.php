@@ -16,7 +16,7 @@ use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Booking\BookingCancellationService;
 use App\Services\Booking\BookingOrderConfirmationService;
 use App\Services\Booking\CustomerServicePackageService;
-// use App\Services\Ecommerce\OrderReserveService;
+use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
 use App\Services\StoreLocationAccessService;
@@ -32,7 +32,7 @@ class OrderController extends Controller
 {
     public function __construct(
         protected OrderPaymentService $paymentService,
-        // protected OrderReserveService $orderReserveService,
+        protected OrderReserveService $orderReserveService,
         protected InvoiceService $invoiceService,
         protected BookingCancellationService $bookingCancellationService,
         protected BookingOrderConfirmationService $bookingOrderConfirmationService,
@@ -750,6 +750,7 @@ class OrderController extends Controller
             'shipped_at' => ['nullable', 'date'],
         ]);
 
+        $wasShipped = (string) $order->status === 'shipped';
         $order->status = $validated['status'];
         $order->shipping_courier = $validated['shipping_courier'] ?? $order->shipping_courier;
         $order->shipping_tracking_no = $validated['shipping_tracking_no'] ?? $order->shipping_tracking_no;
@@ -765,7 +766,7 @@ class OrderController extends Controller
 
         $order->save();
 
-        if ($validated['status'] === 'shipped') {
+        if ($validated['status'] === 'shipped' && ! $wasShipped) {
             $this->sendOrderShippedEmail($order->fresh(['items', 'customer']));
         }
 
@@ -801,11 +802,9 @@ class OrderController extends Controller
             $order->shipping_country,
         ]);
 
-        $widget = SettingService::get('shop_contact_widget', null, 'booking');
-        $phone = data_get($widget, 'whatsapp.phone');
-        $contactPhone = ($phone && is_string($phone) && trim($phone) !== '')
-            ? trim($phone)
-            : '010-387 0881';
+        $profile = SettingService::get('ecommerce.invoice_profile', [], 'ecommerce');
+        $contactPhone = (string) data_get($profile, 'company_phone', '');
+        $companyName = (string) data_get($profile, 'company_name', 'Gentlegurl Shop');
 
         try {
             Mail::to($recipientEmail)->queue(new OrderShippedMail(
@@ -820,6 +819,7 @@ class OrderController extends Controller
                 grandTotal: (float) $order->grand_total,
                 items: $items,
                 contactPhone: $contactPhone,
+                companyName: $companyName,
             ));
 
             Log::info('Order shipped email queued.', [
@@ -1127,7 +1127,7 @@ class OrderController extends Controller
         $bookings = Booking::query()
             ->whereIn('id', $confirmedIds)
             ->where('status', 'CONFIRMED')
-            ->with(['service', 'staff', 'customer'])
+            ->with(['service', 'staff', 'customer', 'storeLocation'])
             ->get();
 
         foreach ($bookings as $booking) {
@@ -1215,6 +1215,7 @@ class OrderController extends Controller
                 source: (string) ($booking->source ?? 'ONLINE'),
                 addonItems: $addonItems,
                 contactPhone: $contactPhone,
+                venue: \App\Support\BranchEmailPresentation::from($booking->storeLocation),
             ));
         } catch (\Throwable $e) {
             Log::error('Failed to queue booking confirmation email (admin confirm).', [

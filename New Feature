@@ -91,7 +91,19 @@ php artisan role-branch:cleanup-legacy-global --dry-run
 
 php artisan role-branch:cleanup-legacy-global --force --confirm=CLEANUP_LEGACY_GLOBAL_ROLES
 
+php artisan booking-service-staff-branch:reconcile --dry-run
+php artisan booking-service-staff-branch:reconcile --force
+
+
 ==== finishing run=====
+
+
+# Multi-Branch Email / Notification rollout
+php artisan migrate --force
+php artisan branch-email-settings:initialize --dry-run
+php artisan branch-email-settings:initialize --force
+
+
 
 
 

@@ -289,7 +289,7 @@ class PaymentController extends Controller
         $payment->raw_response = $raw;
         $payment->save();
 
-        $this->notifyPaymentProofUploaded($booking->fresh(['customer', 'service']), $isReupload);
+        $this->notifyPaymentProofUploaded($booking->fresh(['customer', 'service', 'storeLocation']), $isReupload);
 
         return $this->respond([
             'upload' => [
@@ -358,7 +358,7 @@ class PaymentController extends Controller
         $payment->raw_response = $raw;
         $payment->save();
 
-        $this->notifyPaymentProofUploaded($booking->fresh(['customer', 'service']), $isReupload);
+        $this->notifyPaymentProofUploaded($booking->fresh(['customer', 'service', 'storeLocation']), $isReupload);
 
         return $this->respond([
             'payment_id' => $payment->id,
@@ -415,7 +415,7 @@ class PaymentController extends Controller
                 'created_at' => now(),
             ]);
 
-            $this->sendBookingConfirmationEmail($booking->fresh(['service', 'staff', 'customer']));
+            $this->sendBookingConfirmationEmail($booking->fresh(['service', 'staff', 'customer', 'storeLocation']));
         } else {
             $payment->update([
                 'status' => 'FAILED',
@@ -496,7 +496,7 @@ class PaymentController extends Controller
                 'bill_id' => $billId,
             ]);
 
-            $this->sendBookingConfirmationEmail($booking->fresh(['service', 'staff', 'customer']));
+            $this->sendBookingConfirmationEmail($booking->fresh(['service', 'staff', 'customer', 'storeLocation']));
         } elseif (! $isPaymentConfirmed && $state === 'due') {
             $payment->update([
                 'status' => 'FAILED',
@@ -565,6 +565,7 @@ class PaymentController extends Controller
                 source: (string) ($booking->source ?? 'ONLINE'),
                 addonItems: $addonItems,
                 contactPhone: $contactPhone,
+                    venue: \App\Support\BranchEmailPresentation::from($booking->storeLocation),
             ));
 
             Log::info('Booking confirmation email queued.', [
@@ -582,52 +583,27 @@ class PaymentController extends Controller
 
     protected function notifyPaymentProofUploaded(Booking $booking, bool $isReupload): void
     {
-        $setting = SettingService::get('booking_payment_proof_notification', ['enabled' => true, 'email' => ''], 'booking');
-
-        if (! ($setting['enabled'] ?? true)) {
+        if (! $booking->store_location_id) {
+            Log::warning('Booking payment proof notification skipped: legacy Booking has no Branch.', ['booking_id' => $booking->id]);
             return;
         }
-
-        $adminEmail = $setting['email'] ?? '';
-        if (! $adminEmail || ! filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
+        $settings = \App\Models\Ecommerce\BranchNotificationSetting::query()
+            ->where('store_location_id', $booking->store_location_id)->first();
+        if (! $settings || ! $settings->booking_payment_proof_enabled) {
+            Log::warning('Booking payment proof notification skipped: Branch settings missing or disabled.', ['booking_id' => $booking->id, 'store_location_id' => $booking->store_location_id]);
             return;
         }
-
-        $customerName = $booking->billing_name
-            ?: $booking->guest_name
-            ?: $booking->customer?->name
-            ?: 'Customer';
-        $customerEmail = $booking->billing_email
-            ?: $booking->guest_email
-            ?: $booking->customer?->email
-            ?: '';
-        $customerPhone = $booking->billing_phone
-            ?: $booking->guest_phone
-            ?: $booking->customer?->phone
-            ?: '';
-
-        try {
+        $recipients = array_values(array_filter($settings->booking_payment_proof_recipients ?? [], fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL)));
+        $customerName = $booking->billing_name ?: $booking->guest_name ?: $booking->customer?->name ?: 'Customer';
+        $customerEmail = $booking->billing_email ?: $booking->guest_email ?: $booking->customer?->email ?: '';
+        $customerPhone = $booking->billing_phone ?: $booking->guest_phone ?: $booking->customer?->phone ?: '';
+        foreach ($recipients as $adminEmail) {
             Mail::to($adminEmail)->queue(new PaymentProofUploadedMail(
-                orderType: 'Booking',
-                orderNumber: (string) ($booking->booking_code ?? ''),
-                customerName: $customerName,
-                customerEmail: $customerEmail,
-                customerPhone: $customerPhone,
-                amount: (float) ($booking->deposit_amount ?? 0),
-                uploadedAt: now()->format('l, d M Y h:i A'),
-                isReupload: $isReupload,
+                orderType: 'Booking', orderNumber: (string) ($booking->booking_code ?? ''), customerName: $customerName,
+                customerEmail: $customerEmail, customerPhone: $customerPhone, amount: (float) ($booking->deposit_amount ?? 0),
+                uploadedAt: now()->format('l, d M Y h:i A'), isReupload: $isReupload,
+                branch: \App\Support\BranchEmailPresentation::from($booking->storeLocation),
             ));
-
-            Log::info('Payment proof notification email queued (booking).', [
-                'booking_id' => $booking->id,
-                'admin_email' => $adminEmail,
-                'is_reupload' => $isReupload,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Failed to queue payment proof notification email (booking).', [
-                'booking_id' => $booking->id,
-                'error' => $e->getMessage(),
-            ]);
         }
     }
 

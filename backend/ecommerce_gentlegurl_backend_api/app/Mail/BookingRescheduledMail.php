@@ -29,6 +29,7 @@ class BookingRescheduledMail extends Mailable implements ShouldQueue
         private string $newEndTime,
         private int $durationMin,
         private string $contactPhone,
+        private ?array $venue = null,
     ) {
         $this->customerName = mb_scrub($this->customerName, 'UTF-8');
         $this->bookingCode = mb_scrub($this->bookingCode, 'UTF-8');
@@ -67,6 +68,7 @@ class BookingRescheduledMail extends Mailable implements ShouldQueue
                 'newEndTime' => $this->newEndTime,
                 'durationMin' => $this->durationMin,
                 'contactPhone' => $this->contactPhone,
+                'venue' => $this->venue,
             ]);
     }
 }

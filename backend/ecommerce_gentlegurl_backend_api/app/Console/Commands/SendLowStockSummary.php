@@ -5,6 +5,9 @@ namespace App\Console\Commands;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\BranchInventoryCutoverState;
+use App\Models\Ecommerce\BranchNotificationSetting;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use App\Services\Notifications\NotificationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -39,11 +42,12 @@ class SendLowStockSummary extends Command
             ->where('p.track_stock', true)
             ->whereRaw('COALESCE(v.low_stock_threshold, p.low_stock_threshold, 0) > 0')
             ->whereRaw('COALESCE(i.quantity, 0) < COALESCE(v.low_stock_threshold, p.low_stock_threshold, 0)')
-            ->selectRaw('branch.name as branch_name, branch.code as branch_code, p.sku as product_sku, p.name, p.cn_name, v.sku as variant_sku, v.title as variant_name, v.cn_name as variant_cn_name, COALESCE(i.quantity, 0) as stock, COALESCE(v.low_stock_threshold, p.low_stock_threshold, 0) as threshold')
+            ->selectRaw('branch.id as store_location_id, branch.name as branch_name, branch.code as branch_code, p.sku as product_sku, p.name, p.cn_name, v.sku as variant_sku, v.title as variant_name, v.cn_name as variant_cn_name, COALESCE(i.quantity, 0) as stock, COALESCE(v.low_stock_threshold, p.low_stock_threshold, 0) as threshold')
             ->get() : collect();
 
         if ($branchRows->isNotEmpty()) {
             $payload = $branchRows->map(fn ($row) => [
+                'store_location_id' => (int) $row->store_location_id,
                 'branch_name' => (string) $row->branch_name,
                 'branch_code' => (string) ($row->branch_code ?? ''),
                 'sku' => (string) ($row->variant_sku ?: $row->product_sku ?: ''),
@@ -101,10 +105,31 @@ class SendLowStockSummary extends Command
             return Command::SUCCESS;
         }
 
-        $notifications->sendDailyLowStockSummary($payload);
+        if (! $branchAuthorityActive) {
+            Log::warning('Daily low-stock email skipped: legacy global inventory cannot be routed to a Branch safely.');
+            return Command::SUCCESS;
+        }
 
-        $this->info('Low stock summary sent for ' . count($payload) . ' items.');
+        $settings = BranchNotificationSetting::query()->where('daily_low_stock_enabled', true)
+            ->whereIn('store_location_id', collect($payload)->pluck('store_location_id')->filter()->unique())
+            ->get()->keyBy('store_location_id');
+        foreach (collect($payload)->groupBy('store_location_id') as $branchId => $rows) {
+            $setting = $settings->get((int) $branchId);
+            if (! $setting || ! $this->isDue((string) $setting->daily_low_stock_send_at)) continue;
+            $cacheKey = 'daily_low_stock_sent_'.$branchId.'_'.now()->toDateString();
+            if (Cache::has($cacheKey)) continue;
+            Cache::put($cacheKey, true, now()->addDay());
+            $notifications->sendDailyLowStockSummary($rows->values()->all(), $setting->daily_low_stock_recipients ?? []);
+        }
+
+        $this->info('Branch low stock summaries evaluated for ' . count($payload) . ' items.');
 
         return Command::SUCCESS;
+    }
+
+    private function isDue(string $sendAt): bool
+    {
+        $scheduled = now()->copy()->startOfDay()->setTimeFromTimeString(substr($sendAt, 0, 5));
+        return now()->betweenIncluded($scheduled, $scheduled->copy()->addMinutes(5));
     }
 }

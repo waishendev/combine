@@ -15,6 +15,8 @@ use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\Cart;
 use App\Models\Ecommerce\StoreLocation;
 use App\Mail\PaymentProofUploadedMail;
+use App\Models\Booking\Booking;
+use App\Models\Ecommerce\BranchNotificationSetting;
 use App\Services\BillplzService;
 use App\Services\Ecommerce\CartService;
 use App\Services\Ecommerce\ShippingService;
@@ -32,6 +34,7 @@ use App\Services\Ecommerce\PickupFulfillmentService;
 use App\Services\Ecommerce\ShippingFulfillmentService;
 use App\Services\Ecommerce\OrderBranchInventoryService;
 use Carbon\Carbon;
+use App\Support\BranchEmailPresentation;
 use App\Support\Pricing\ProductPricing;
 use App\Support\WorkspaceType;
 use App\Support\FrontendUrlResolver;
@@ -759,7 +762,10 @@ class PublicCheckoutController extends Controller
             Storage::disk('public')->delete($path);
         }
 
-        $this->notifyEcommercePaymentProofUploaded($order->fresh(['customer']), (bool) $result['is_reupload']);
+        $this->notifyOrderPaymentProofUploaded(
+            $order->fresh(['customer', 'storeLocation', 'items', 'serviceItems']),
+            (bool) $result['is_reupload'],
+        );
 
         $upload = $result['upload'];
 
@@ -1400,6 +1406,142 @@ class PublicCheckoutController extends Controller
         return (float) $pricing['effective_price'];
     }
 
+    /**
+     * Booking cart checkout creates an Order (`is_booking_checkout=true`) and uploads slips via
+     * `/public/shop/orders/{order}/upload-slip`. That is still a Booking payment proof operationally,
+     * so it must use Branch `booking_payment_proof_*` settings — not the global Ecommerce inbox.
+     * Pure Ecommerce shop orders keep the global Ecommerce payment-proof setting.
+     */
+    protected function notifyOrderPaymentProofUploaded(Order $order, bool $isReupload): void
+    {
+        if ((bool) ($order->is_booking_checkout ?? false)) {
+            $this->notifyBookingCheckoutPaymentProofUploaded($order, $isReupload);
+
+            return;
+        }
+
+        $this->notifyEcommercePaymentProofUploaded($order, $isReupload);
+    }
+
+    protected function notifyBookingCheckoutPaymentProofUploaded(Order $order, bool $isReupload): void
+    {
+        $bookingIds = collect()
+            ->merge($order->items->pluck('booking_id') ?? [])
+            ->merge($order->serviceItems->pluck('booking_id') ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $bookings = $bookingIds->isEmpty()
+            ? collect()
+            : Booking::query()->with(['customer', 'storeLocation'])->whereIn('id', $bookingIds->all())->get();
+
+        $bookingBranchIds = $bookings
+            ->pluck('store_location_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        // Prefer a single linked Booking Branch; otherwise the Order's persisted Branch.
+        // Never invent Branch from Header/Staff/first StoreLocation.
+        $branchId = $bookingBranchIds->count() === 1
+            ? (int) $bookingBranchIds->first()
+            : ($order->store_location_id ? (int) $order->store_location_id : null);
+
+        if (! $branchId) {
+            Log::warning('Booking checkout payment proof notification skipped: no persisted Branch.', [
+                'order_id' => $order->id,
+                'booking_ids' => $bookingIds->all(),
+            ]);
+
+            return;
+        }
+
+        $settings = BranchNotificationSetting::query()
+            ->where('store_location_id', $branchId)
+            ->first();
+        if (! $settings || ! $settings->booking_payment_proof_enabled) {
+            Log::warning('Booking checkout payment proof notification skipped: Branch settings missing or disabled.', [
+                'order_id' => $order->id,
+                'store_location_id' => $branchId,
+            ]);
+
+            return;
+        }
+
+        $recipients = array_values(array_filter(
+            $settings->booking_payment_proof_recipients ?? [],
+            fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL),
+        ));
+        if ($recipients === []) {
+            Log::warning('Booking checkout payment proof notification skipped: no valid Branch recipients.', [
+                'order_id' => $order->id,
+                'store_location_id' => $branchId,
+            ]);
+
+            return;
+        }
+
+        $primaryBooking = $bookings->firstWhere('store_location_id', $branchId) ?? $bookings->first();
+        $customerName = $primaryBooking?->billing_name
+            ?: $primaryBooking?->guest_name
+            ?: $primaryBooking?->customer?->name
+            ?: $order->shipping_name
+            ?: $order->customer?->name
+            ?: 'Customer';
+        $customerEmail = $primaryBooking?->billing_email
+            ?: $primaryBooking?->guest_email
+            ?: $primaryBooking?->customer?->email
+            ?: $order->customer?->email
+            ?: '';
+        $customerPhone = $primaryBooking?->billing_phone
+            ?: $primaryBooking?->guest_phone
+            ?: $primaryBooking?->customer?->phone
+            ?: $order->shipping_phone
+            ?: $order->customer?->phone
+            ?: '';
+        $orderNumber = $bookings->count() === 1 && filled($primaryBooking?->booking_code)
+            ? (string) $primaryBooking->booking_code
+            : (string) ($order->order_number ?? '');
+        $amount = $bookings->count() === 1
+            ? (float) ($primaryBooking?->deposit_amount ?? $order->grand_total ?? 0)
+            : (float) ($order->grand_total ?? 0);
+        $branch = $primaryBooking?->storeLocation
+            ?? $order->storeLocation
+            ?? StoreLocation::query()->find($branchId);
+
+        foreach ($recipients as $adminEmail) {
+            try {
+                Mail::to($adminEmail)->queue(new PaymentProofUploadedMail(
+                    orderType: 'Booking',
+                    orderNumber: $orderNumber,
+                    customerName: $customerName,
+                    customerEmail: $customerEmail,
+                    customerPhone: $customerPhone,
+                    amount: $amount,
+                    uploadedAt: now()->format('l, d M Y h:i A'),
+                    isReupload: $isReupload,
+                    branch: BranchEmailPresentation::from($branch),
+                ));
+
+                Log::info('Payment proof notification email queued (booking checkout).', [
+                    'order_id' => $order->id,
+                    'store_location_id' => $branchId,
+                    'admin_email' => $adminEmail,
+                    'is_reupload' => $isReupload,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Failed to queue payment proof notification email (booking checkout).', [
+                    'order_id' => $order->id,
+                    'store_location_id' => $branchId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
     protected function notifyEcommercePaymentProofUploaded(Order $order, bool $isReupload): void
     {
         $setting = SettingService::get('ecommerce_payment_proof_notification', ['enabled' => true, 'email' => ''], 'ecommerce');
@@ -1410,6 +1552,10 @@ class PublicCheckoutController extends Controller
 
         $adminEmail = $setting['email'] ?? '';
         if (! $adminEmail || ! filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
+            Log::warning('Ecommerce payment proof notification skipped: global recipient missing or invalid.', [
+                'order_id' => $order->id,
+            ]);
+
             return;
         }
 
@@ -1423,7 +1569,7 @@ class PublicCheckoutController extends Controller
 
         try {
             Mail::to($adminEmail)->queue(new PaymentProofUploadedMail(
-                orderType: 'Order',
+                orderType: 'Ecommerce',
                 orderNumber: (string) ($order->order_number ?? ''),
                 customerName: $customerName,
                 customerEmail: $customerEmail,

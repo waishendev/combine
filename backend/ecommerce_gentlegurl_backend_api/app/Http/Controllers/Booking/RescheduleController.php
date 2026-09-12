@@ -99,9 +99,9 @@ class RescheduleController extends Controller
             'created_at' => now(),
         ]);
 
-        $this->sendBookingRescheduledEmail($booking->fresh(['service', 'staff', 'customer']), $oldStart, $oldEnd);
+        $this->sendBookingRescheduledEmail($booking->fresh(['service', 'staff', 'customer', 'storeLocation']), $oldStart, $oldEnd);
 
-        return $this->respond($booking->fresh(['service', 'staff', 'customer']));
+        return $this->respond($booking->fresh(['service', 'staff', 'customer', 'storeLocation']));
     }
 
     protected function sendBookingRescheduledEmail(Booking $booking, ?Carbon $oldStart, ?Carbon $oldEnd): void
@@ -149,6 +149,7 @@ class RescheduleController extends Controller
                 newEndTime: $booking->end_at?->format('h:i A') ?? '—',
                 durationMin: (int) ($booking->service?->duration_min ?? 0),
                 contactPhone: $contactPhone,
+                    venue: \App\Support\BranchEmailPresentation::from($booking->storeLocation),
             ));
 
             Log::info('Booking rescheduled email queued (customer-side).', [

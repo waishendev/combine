@@ -28,6 +28,7 @@ class BookingConfirmationMail extends Mailable implements ShouldQueue
         private string $source,
         private array $addonItems = [],
         private string $contactPhone,
+        private ?array $venue = null,
     ) {
         $this->bookingCode = mb_scrub($this->bookingCode, 'UTF-8');
         $this->customerName = mb_scrub($this->customerName, 'UTF-8');
@@ -64,6 +65,7 @@ class BookingConfirmationMail extends Mailable implements ShouldQueue
                 'source' => $this->source,
                 'addonItems' => $this->addonItems,
                 'contactPhone' => $this->contactPhone,
+                'venue' => $this->venue,
             ]);
     }
 }
