@@ -35,8 +35,16 @@ function loginErrorMessage(err: unknown): string {
   return 'Login failed'
 }
 
+/**
+ * After Set-Cookie from /api/login, soft router.replace races middleware on LIVE
+ * (cookie not yet visible → bounce back to /login). Hard navigation always sends
+ * the new session cookie on the next document request.
+ */
+function hardNavigate(path: string) {
+  window.location.assign(path)
+}
+
 async function completeSessionAndNavigate(
-  router: ReturnType<typeof useRouter>,
   portal: 'admin' | 'staff',
   workspace: Workspace,
   options?: { preferPosForAdminRoleFromHub?: boolean },
@@ -45,16 +53,15 @@ async function completeSessionAndNavigate(
 
   if (options?.preferPosForAdminRoleFromHub && portal === 'admin') {
     try {
-      const me = await apiFetch<MePayload>('/api/me')
+      const me = await apiFetch<MePayload>('/api/me', { skipAuthRedirect: true })
       const permissions = Array.isArray(me?.data?.permissions) ? me.data.permissions : []
       if (hasAdminRoleName(me?.data?.roles) && permissions.includes('pos.checkout')) {
         setWorkspace(workspace)
-        router.refresh()
-        router.replace('/pos')
+        hardNavigate('/pos')
         return
       }
     } catch {
-      // fall through to default landing
+      // fall through to default landing — do not wipe the fresh session
     }
   }
 
@@ -64,7 +71,7 @@ async function completeSessionAndNavigate(
     landing = '/my-sales'
   } else if (workspace === 'booking') {
     try {
-      const me = await apiFetch<MePayload>('/api/me')
+      const me = await apiFetch<MePayload>('/api/me', { skipAuthRedirect: true })
       const staffId = me?.data?.staff_id ?? null
       const permissions = Array.isArray(me?.data?.permissions) ? me.data.permissions : []
 
@@ -81,8 +88,7 @@ async function completeSessionAndNavigate(
   }
 
   setWorkspace(workspace)
-  router.refresh()
-  router.replace(landing)
+  hardNavigate(landing)
 }
 
 const fieldClass =
@@ -323,7 +329,7 @@ export function UnifiedLoginForm() {
         method: 'POST',
         body: JSON.stringify({ email, password, portal }),
       })
-      await completeSessionAndNavigate(router, portal, workspace, {
+      await completeSessionAndNavigate(portal, workspace, {
         preferPosForAdminRoleFromHub: role === 'admin',
       })
     } catch (err) {
@@ -402,7 +408,7 @@ function StaffLoginForm() {
         method: 'POST',
         body: JSON.stringify({ email, password, portal: 'staff' }),
       })
-      await completeSessionAndNavigate(router, 'staff', 'booking')
+      await completeSessionAndNavigate('staff', 'booking')
     } catch (err) {
       setError(loginErrorMessage(err))
     } finally {
@@ -454,7 +460,7 @@ function AdminLoginForm() {
         method: 'POST',
         body: JSON.stringify({ email, password, portal: 'admin' }),
       })
-      await completeSessionAndNavigate(router, 'admin', selectedWorkspace)
+      await completeSessionAndNavigate('admin', selectedWorkspace)
     } catch (err) {
       setError(loginErrorMessage(err))
     } finally {

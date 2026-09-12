@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { forwardSetCookies } from '@/lib/forward-set-cookies';
+
 // Proxy route for /api/proxy/* that forwards to backend
 // Example: /api/proxy/admins -> http://localhost:8000/api/admins
 
@@ -233,56 +235,8 @@ async function handleRequest(
       status: response.status,
     });
 
-    // Forward cookies from backend to client
-    const setCookieHeader = response.headers.get('set-cookie');
-    if (setCookieHeader) {
-      // Handle multiple cookies
-      const cookieStrings = setCookieHeader.split(',').map(c => c.trim());
-      
-      cookieStrings.forEach(cookieString => {
-        const parts = cookieString.split(';');
-        const [nameValue] = parts;
-        const [name, ...valueParts] = nameValue.split('=');
-        const value = valueParts.join('=');
-        
-        if (name && value) {
-          let httpOnly = false;
-          let sameSite: 'strict' | 'lax' | 'none' = 'lax';
-          let path = '/';
-          let maxAge: number | undefined;
-          let secure = false;
-          
-          parts.slice(1).forEach(attr => {
-            const trimmed = attr.trim().toLowerCase();
-            if (trimmed === 'httponly') httpOnly = true;
-            if (trimmed === 'secure') secure = true;
-            if (trimmed.startsWith('samesite=')) {
-              const samesiteValue = trimmed.split('=')[1];
-              if (samesiteValue === 'strict' || samesiteValue === 'none') {
-                sameSite = samesiteValue;
-              }
-            }
-            if (trimmed.startsWith('path=')) {
-              path = trimmed.split('=')[1];
-            }
-            if (trimmed.startsWith('max-age=')) {
-              maxAge = parseInt(trimmed.split('=')[1], 10);
-            }
-          });
-          
-          nextResponse.cookies.set(name.trim(), value.trim(), {
-            httpOnly,
-            sameSite,
-            path,
-            secure,
-            ...(maxAge && { maxAge }),
-          });
-        }
-      });
-    }
+    forwardSetCookies(response, nextResponse);
 
-    // console.log(`[Proxy API] Returning response with status: ${nextResponse.status}`);
-    // console.log(`[Proxy API] ==========================================`);
     return nextResponse;
   } catch (error) {
     //console.error('[Proxy API] Error:', error);

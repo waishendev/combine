@@ -43,12 +43,18 @@ function isUnauthenticatedResponse(data: unknown, status: number) {
   return false;
 }
 
+type ApiFetchOptions = RequestInit & {
+  /** When true, 401/419 throws without clearing cookies or forcing /login (post-login /api/me). */
+  skipAuthRedirect?: boolean
+}
+
 export async function apiFetch<T>(
   path: string,
-  options: RequestInit = {},
+  options: ApiFetchOptions = {},
 ): Promise<T> {
   // If path starts with /api/, use Next.js API route (no baseUrl needed)
   // Otherwise, use the backend API directly
+  const { skipAuthRedirect = false, ...requestInit } = options
   const isLocalApiRoute = path.startsWith('/api/');
   const baseUrl = isLocalApiRoute 
     ? '' 
@@ -63,8 +69,8 @@ export async function apiFetch<T>(
     Accept: 'application/json',
   });
 
-  if (options.headers) {
-    new Headers(options.headers).forEach((value, key) => {
+  if (requestInit.headers) {
+    new Headers(requestInit.headers).forEach((value, key) => {
       headers.set(key, value);
     });
   }
@@ -74,8 +80,8 @@ export async function apiFetch<T>(
   let res: Response;
   try {
     res = await fetch(url, {
-      ...options,
-      method: options.method ?? 'GET',
+      ...requestInit,
+      method: requestInit.method ?? 'GET',
       headers,
       credentials: 'include',
       cache: 'no-store',
@@ -94,9 +100,11 @@ export async function apiFetch<T>(
   const data = await res.json().catch(() => null);
 
   if (isUnauthenticatedResponse(data, res.status)) {
-    clearAuthCookies();
-    if (typeof window !== 'undefined') {
-      window.location.replace(getLoginPagePath());
+    if (!skipAuthRedirect) {
+      clearAuthCookies();
+      if (typeof window !== 'undefined') {
+        window.location.replace(getLoginPagePath());
+      }
     }
     throw new ApiError('Unauthenticated', res.status || 401);
   }
