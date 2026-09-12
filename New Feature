@@ -91,7 +91,19 @@ php artisan role-branch:cleanup-legacy-global --dry-run
 
 php artisan role-branch:cleanup-legacy-global --force --confirm=CLEANUP_LEGACY_GLOBAL_ROLES
 
+php artisan booking-service-staff-branch:reconcile --dry-run
+php artisan booking-service-staff-branch:reconcile --force
+
+
 ==== finishing run=====
+
+
+# Multi-Branch Email / Notification rollout
+php artisan migrate --force
+php artisan branch-email-settings:initialize --dry-run
+php artisan branch-email-settings:initialize --force
+
+
 
 
 
@@ -124,15 +136,3 @@ No historical backfill is performed: a legacy item's Branch is displayed from it
 order-level `store_location_id`; NULL legacy orders remain unassigned rather than guessed.
 Rollback requires stopping new checkout first. Rolling the migration back removes persisted
 item/group attribution and is therefore lossy for split orders created after deployment.
-
-# Multi-Branch Email / Notification rollout
-# SMTP/Mailgun sender stays global. Branch values are persisted in
-# branch_notification_settings; no runtime PNG/first/Header/Staff fallback.
-php artisan migrate --force
-php artisan branch-email-settings:initialize --dry-run
-# Review every existing Branch, then initialize missing rows without overwriting custom rows:
-php artisan branch-email-settings:initialize --force
-# Re-run dry-run; all Branches should report "already configured — skipped".
-# In CRM select each concrete Header Branch and open /settings/email-notifications.
-# Verify Booking confirmations/reminders/feedback/proofs, Branch summaries and stock.
-# Verify Ecommerce proof/shipment and customer verification/reset remain global.

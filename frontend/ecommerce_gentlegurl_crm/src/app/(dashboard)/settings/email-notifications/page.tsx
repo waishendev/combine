@@ -1,4 +1,4 @@
-export const dynamic = 'force-dynamic'
+ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
@@ -27,6 +27,7 @@ export default async function EmailNotificationSettingsPage() {
         <h1 className="text-3xl font-semibold leading-tight text-slate-900">Email / Notifications</h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-500">
           Configure booking email schedules and operational notification recipients for the Branch selected in the Header.
+          SMTP sender settings remain global. Ecommerce Payment Proof stays under Shop Settings → General Settings.
         </p>
       </div>
 

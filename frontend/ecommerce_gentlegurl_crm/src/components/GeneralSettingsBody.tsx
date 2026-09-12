@@ -55,8 +55,8 @@ export default function GeneralSettingsBody({ canEdit }: { canEdit: boolean }) {
             canEdit={canEdit}
             settingKey="ecommerce_payment_proof_notification"
             settingType="ecommerce"
-            title="Payment Proof Upload Notification"
-            description="Notify an admin via email when a customer uploads or re-uploads a manual transfer payment slip for an order."
+            title="Ecommerce Payment Proof"
+            description="Notify an admin via email when a customer uploads or re-uploads a manual transfer payment slip for a shop Order. This is company-wide and does not change with the Header Branch. Booking checkout proofs use Branch settings under Settings → Email / Notifications."
             hideLoadingUi
             onReady={onPaymentReady}
           />

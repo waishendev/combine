@@ -64,6 +64,9 @@ class MultiBranchEmailArchitectureTest extends TestCase
         $this->assertStringContainsString("SettingService::get('ecommerce.invoice_profile'", $shipping);
         $this->assertStringContainsString("&& ! \$wasShipped", $shipping);
         $this->assertStringContainsString("SettingService::get('ecommerce_payment_proof_notification'", $ecommerceProof);
+        $this->assertStringContainsString('notifyBookingCheckoutPaymentProofUploaded', $ecommerceProof);
+        $this->assertStringContainsString('booking_payment_proof_recipients', $ecommerceProof);
+        $this->assertStringContainsString("is_booking_checkout", $ecommerceProof);
         $this->assertStringContainsString('authorizeReceiptOrderBranch($request, $order)', $pos);
         $this->assertStringContainsString("\$ids->count() === 1", $pos);
         $this->assertStringContainsString('resolveInvoiceProfile($order)', $pos);

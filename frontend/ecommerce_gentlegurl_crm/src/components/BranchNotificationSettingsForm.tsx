@@ -95,7 +95,7 @@ function SettingCard({
   )
 }
 
-export default function BranchNotificationSettingsForm({ canEdit }: { canEdit: boolean }) {
+function BranchNotificationSection({ canEdit }: { canEdit: boolean }) {
   const { selectedBranchId, selectedBranch, loading: branchLoading } = useBranch()
   const [form, setForm] = useState<BranchNotificationSettings | null>(null)
   const [loading, setLoading] = useState(false)
@@ -130,9 +130,9 @@ export default function BranchNotificationSettingsForm({ canEdit }: { canEdit: b
     return () => controller.abort()
   }, [selectedBranchId])
 
-  const setBoolean = (key: BooleanKey, value: boolean) => setForm((current) => current ? { ...current, [key]: value } : current)
-  const setTime = (key: TimeKey, value: string) => setForm((current) => current ? { ...current, [key]: value } : current)
-  const setRecipients = (key: RecipientKey, value: string[]) => setForm((current) => current ? { ...current, [key]: value } : current)
+  const setBoolean = (key: BooleanKey, value: boolean) => setForm((current) => (current ? { ...current, [key]: value } : current))
+  const setTime = (key: TimeKey, value: string) => setForm((current) => (current ? { ...current, [key]: value } : current))
+  const setRecipients = (key: RecipientKey, value: string[]) => setForm((current) => (current ? { ...current, [key]: value } : current))
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -153,13 +153,13 @@ export default function BranchNotificationSettingsForm({ canEdit }: { canEdit: b
   }
 
   if (branchLoading || loading) {
-    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">Loading email and notification settings...</div>
+    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">Loading Branch notification settings...</div>
   }
 
   if (!selectedBranchId || !selectedBranch) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-        Select a specific Branch in the Header to view its settings. All Branches cannot own operational notification settings.
+        Select a specific Branch in the Header to configure Branch booking schedules and operational recipients. All Branches cannot own these settings.
       </div>
     )
   }
@@ -174,7 +174,7 @@ export default function BranchNotificationSettingsForm({ canEdit }: { canEdit: b
         <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Selected Branch</p>
         <p className="mt-1 text-lg font-semibold text-slate-900">{selectedBranch.name}</p>
         <p className="mt-2 text-sm text-blue-900">
-          Email sender settings are managed globally. Branch-specific settings on this page control booking schedules and operational notification recipients.
+          These settings apply only to {selectedBranch.name}. Venue details still come from the Branch record; SMTP sender remains global.
         </p>
       </section>
 
@@ -188,10 +188,10 @@ export default function BranchNotificationSettingsForm({ canEdit }: { canEdit: b
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-2xl font-semibold text-slate-900">Internal Notifications</h2>
+        <h2 className="text-2xl font-semibold text-slate-900">Branch Internal Notifications</h2>
         <p className="mt-2 text-sm text-slate-500">Choose which operational alerts are sent and who receives them for this Branch.</p>
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <SettingCard title="Booking Payment Proof" description="Notifies the configured recipients when a booking payment proof is uploaded or re-uploaded." enabled={form.booking_payment_proof_enabled} enabledLabel="Enable Payment Proof Notification" canEdit={canEdit} onEnabledChange={(value) => setBoolean('booking_payment_proof_enabled', value)} recipients={form.booking_payment_proof_recipients} onRecipientsChange={(value) => setRecipients('booking_payment_proof_recipients', value)} />
+          <SettingCard title="Booking Payment Proof" description="Notifies recipients when a booking payment proof is uploaded or re-uploaded for this Branch." enabled={form.booking_payment_proof_enabled} enabledLabel="Enable Payment Proof Notification" canEdit={canEdit} onEnabledChange={(value) => setBoolean('booking_payment_proof_enabled', value)} recipients={form.booking_payment_proof_recipients} onRecipientsChange={(value) => setRecipients('booking_payment_proof_recipients', value)} />
           <SettingCard title="Daily Order Summary" description="Summarizes pending Branch bookings and Ecommerce fulfilment participation." enabled={form.daily_order_summary_enabled} enabledLabel="Enable Daily Summary" canEdit={canEdit} onEnabledChange={(value) => setBoolean('daily_order_summary_enabled', value)} sendAt={form.daily_order_summary_send_at} onSendAtChange={(value) => setTime('daily_order_summary_send_at', value)} recipients={form.daily_order_summary_recipients} onRecipientsChange={(value) => setRecipients('daily_order_summary_recipients', value)} />
           <SettingCard title="Daily Low Stock" description="Contains only low-stock inventory rows belonging to this Branch." enabled={form.daily_low_stock_enabled} enabledLabel="Enable Low Stock Notification" canEdit={canEdit} onEnabledChange={(value) => setBoolean('daily_low_stock_enabled', value)} sendAt={form.daily_low_stock_send_at} onSendAtChange={(value) => setTime('daily_low_stock_send_at', value)} recipients={form.daily_low_stock_recipients} onRecipientsChange={(value) => setRecipients('daily_low_stock_recipients', value)} />
         </div>
@@ -201,9 +201,13 @@ export default function BranchNotificationSettingsForm({ canEdit }: { canEdit: b
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
       <div className="flex justify-end">
         <button type="submit" disabled={!canEdit || saving} className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
-          {saving ? 'Saving...' : 'Save Changes'}
+          {saving ? 'Saving...' : 'Save Branch Changes'}
         </button>
       </div>
     </form>
   )
+}
+
+export default function BranchNotificationSettingsForm({ canEdit }: { canEdit: boolean }) {
+  return <BranchNotificationSection canEdit={canEdit} />
 }
