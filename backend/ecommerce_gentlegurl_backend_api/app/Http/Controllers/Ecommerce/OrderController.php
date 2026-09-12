@@ -16,7 +16,7 @@ use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Booking\BookingCancellationService;
 use App\Services\Booking\BookingOrderConfirmationService;
 use App\Services\Booking\CustomerServicePackageService;
-// use App\Services\Ecommerce\OrderReserveService;
+use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
 use App\Services\StoreLocationAccessService;
@@ -32,7 +32,7 @@ class OrderController extends Controller
 {
     public function __construct(
         protected OrderPaymentService $paymentService,
-        // protected OrderReserveService $orderReserveService,
+        protected OrderReserveService $orderReserveService,
         protected InvoiceService $invoiceService,
         protected BookingCancellationService $bookingCancellationService,
         protected BookingOrderConfirmationService $bookingOrderConfirmationService,
