@@ -8,6 +8,7 @@
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 700px; margin: 0 auto; padding: 20px;">
     <div style="background-color: #f9f9f9; padding: 30px; border-radius: 8px;">
         <h1 style="color: #333; margin-top: 0;">Booking · Final Settlement</h1>
+        @if(!empty($venue))<p><strong>Venue: {{ $venue['name'] }}</strong>@if(!empty($venue['address']))<br>{!! nl2br(e($venue['address'])) !!}@endif @if(!empty($venue['phone']))<br>{{ $venue['phone'] }}@endif</p>@else<p style="color:#777;">Venue unavailable (legacy booking)</p>@endif
         <p style="margin: 0 0 20px;">Your appointment payment is complete.</p>
 
         <div style="padding: 15px; border: 1px solid #e0e0e0; border-radius: 6px; margin: 20px 0; background-color: #ffffff;">

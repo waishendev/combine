@@ -21,6 +21,7 @@ class PaymentProofUploadedMail extends Mailable implements ShouldQueue
         private float $amount,
         private string $uploadedAt,
         private bool $isReupload,
+        private ?array $branch = null,
     ) {
         $this->orderType = mb_scrub($this->orderType, 'UTF-8');
         $this->orderNumber = mb_scrub($this->orderNumber, 'UTF-8');
@@ -44,6 +45,7 @@ class PaymentProofUploadedMail extends Mailable implements ShouldQueue
                 'amount' => $this->amount,
                 'uploadedAt' => $this->uploadedAt,
                 'isReupload' => $this->isReupload,
+                'branch' => $this->branch,
             ]);
     }
 }

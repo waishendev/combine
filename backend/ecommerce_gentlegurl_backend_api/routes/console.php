@@ -14,7 +14,7 @@ Artisan::command('inspire', function () {
 // =========================
 
 Schedule::command('ecommerce:send-low-stock-summary')
-    ->dailyAt('10:00')
+    ->everyMinute()
     ->onOneServer()
     ->withoutOverlapping();
 
@@ -44,7 +44,7 @@ Schedule::command('booking:expire-cart-items')
     ->withoutOverlapping();
 
 Schedule::job(new SendDailyOrderSummaryEmailJob())
-    ->dailyAt('10:00')
+    ->everyMinute()
     ->onOneServer()
     ->withoutOverlapping();
 

@@ -26,7 +26,8 @@ class OrderShippedMail extends Mailable implements ShouldQueue
         private string $shippingAddress,
         private float $grandTotal,
         private array $items = [],
-        private string $contactPhone = '010-387 0881',
+        private string $contactPhone = '',
+        private string $companyName = 'Gentlegurl Shop',
     ) {
         $this->customerName = mb_scrub($this->customerName, 'UTF-8');
         $this->orderNumber = mb_scrub($this->orderNumber, 'UTF-8');
@@ -62,6 +63,7 @@ class OrderShippedMail extends Mailable implements ShouldQueue
                 'grandTotal' => $this->grandTotal,
                 'items' => $this->items,
                 'contactPhone' => $this->contactPhone,
+                'companyName' => $this->companyName,
             ]);
     }
 }

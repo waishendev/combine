@@ -8,6 +8,7 @@
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 700px; margin: 0 auto; padding: 20px;">
     <div style="background-color: #f9f9f9; padding: 30px; border-radius: 8px;">
         <h1 style="color: #333; margin-top: 0;">Thank you for your purchase!</h1>
+        @if(!empty($invoiceIdentity['company_name']))<p><strong>{{ $invoiceIdentity['company_name'] }}</strong>@if(!empty($invoiceIdentity['company_address']))<br>{!! nl2br(e($invoiceIdentity['company_address'])) !!}@endif @if(!empty($invoiceIdentity['company_phone']))<br>{{ $invoiceIdentity['company_phone'] }}@endif</p>@endif
         <p>Your order is completed successfully.</p>
 
         <div style="padding: 15px; border: 1px solid #e0e0e0; border-radius: 6px; margin: 20px 0; background-color: #ffffff;">

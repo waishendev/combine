@@ -25,6 +25,7 @@ class BookingReminderMail extends Mailable implements ShouldQueue
         private string $appointmentEndTime,
         private int $durationMin,
         private string $contactPhone,
+        private ?array $venue = null,
     ) {
         $this->customerName = mb_scrub($this->customerName, 'UTF-8');
         $this->serviceName = mb_scrub($this->serviceName, 'UTF-8');
@@ -55,6 +56,7 @@ class BookingReminderMail extends Mailable implements ShouldQueue
                 'appointmentEndTime' => $this->appointmentEndTime,
                 'durationMin' => $this->durationMin,
                 'contactPhone' => $this->contactPhone,
+                'venue' => $this->venue,
             ]);
     }
 }

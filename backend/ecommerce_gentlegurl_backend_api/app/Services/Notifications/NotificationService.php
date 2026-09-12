@@ -16,7 +16,7 @@ class NotificationService
     /**
      * @param array<int, array{sku:string,name:string,cn_name?:string,variant_name?:string|null,variant_cn_name?:string|null,stock:int,threshold:int}> $products
      */
-    public function sendDailyLowStockSummary(array $products): void
+    public function sendDailyLowStockSummary(array $products, array $recipients): void
     {
         if (empty($products)) {
             return;
@@ -73,30 +73,18 @@ class NotificationService
         ];
 
         $adminEmails = array_values(array_unique(array_filter(
-            array_map('trim', explode(',', (string) env('NOTIFY_ADMIN_EMAILS', ''))),
-            fn ($email) => $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)
+            $recipients,
+            fn ($email) => is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL)
         )));
 
         if (! empty($adminEmails)) {
-            // Fixed transactional subject — avoid newsletter-style wording (Gmail Promotions).
-            $subject = sprintf(
-                'Inventory alert: %d product(s) below threshold (%s)',
-                count($products),
-                $date
-            );
-
+            $subject = sprintf('Inventory alert: %d product(s) below threshold (%s)', count($products), $date);
             foreach ($adminEmails as $email) {
                 Mail::to($email)->send(new DailyLowStockSummaryMail($products, $date, $subject));
             }
         }
 
-        $adminWhatsApp = env('NOTIFY_ADMIN_WHATSAPP');
-        if ($adminWhatsApp) {
-            $tpl = $this->renderer->getTemplate('stock.low.admin.whatsapp', 'whatsapp');
-            if ($tpl) {
-                $body = $this->renderer->render($tpl->body_template, $data);
-                $this->whatsAppSender->send($adminWhatsApp, $body);
-            }
-        }
+        // Legacy NOTIFY_ADMIN_WHATSAPP is intentionally not used for Branch-routed summaries.
+
     }
 }

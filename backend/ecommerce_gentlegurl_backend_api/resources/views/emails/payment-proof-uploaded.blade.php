@@ -28,6 +28,9 @@
 
         <div style="padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; margin: 20px 0; background-color: #ffffff;">
             <table style="width: 100%; border-collapse: collapse;">
+                @if (!empty($branch))
+                <tr><td style="padding:8px 4px;color:#666;">Branch:</td><td style="padding:8px 4px;font-weight:600;">{{ $branch['name'] }}</td></tr>
+                @endif
                 <tr>
                     <td style="padding: 8px 4px; color: #666; vertical-align: top;">Order No:</td>
                     <td style="padding: 8px 4px; font-weight: 600;">{{ $orderNumber }}</td>

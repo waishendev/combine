@@ -74,6 +74,7 @@
                     <td style="padding: 8px 4px;">{{ $durationMin }} minutes</td>
                 </tr>
                 @endif
+                <tr><td style="padding:8px 4px;color:#666;vertical-align:top;">Venue:</td><td style="padding:8px 4px;">@if(!empty($venue))<strong>{{ $venue['name'] }}</strong><br>@if(!empty($venue['address'])){!! nl2br(e($venue['address'])) !!}<br>@endif @if(!empty($venue['phone'])){{ $venue['phone'] }}@endif @else<span style="color:#999;">Venue unavailable (legacy booking)</span>@endif</td></tr>
             </table>
         </div>
 

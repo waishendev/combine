@@ -582,6 +582,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             requiredPermission: 'ecommerce.settings.view',
           },
           {
+            key: 'email-notification-settings',
+            label: 'Email / Notifications',
+            href: '/settings/email-notifications',
+            requiredAnyPermissions: ['ecommerce.settings.view', 'booking.settings.view'],
+          },
+          {
             key: 'thermal-printer-settings',
             label: 'Thermal Printer',
             href: '/settings/thermal-printer',

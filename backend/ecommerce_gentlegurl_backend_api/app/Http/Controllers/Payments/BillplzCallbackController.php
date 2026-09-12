@@ -363,7 +363,7 @@ class BillplzCallbackController extends Controller
         $bookings = Booking::query()
             ->whereIn('id', $confirmedIds)
             ->where('status', 'CONFIRMED')
-            ->with(['service', 'staff', 'customer'])
+            ->with(['service', 'staff', 'customer', 'storeLocation'])
             ->get();
 
         foreach ($bookings as $booking) {
@@ -427,6 +427,7 @@ class BillplzCallbackController extends Controller
                 source: (string) ($booking->source ?? 'ONLINE'),
                 addonItems: $addonItems,
                 contactPhone: $contactPhone,
+                    venue: \App\Support\BranchEmailPresentation::from($booking->storeLocation),
             ));
 
             Log::info('Booking confirmation email queued (order callback).', [

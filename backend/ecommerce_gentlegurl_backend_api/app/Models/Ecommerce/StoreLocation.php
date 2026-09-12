@@ -16,6 +16,10 @@ class StoreLocation extends Model
     protected static function booted(): void
     {
         static::created(function (StoreLocation $location): void {
+            BranchNotificationSetting::query()->firstOrCreate(
+                ['store_location_id' => $location->id],
+                BranchNotificationSetting::initialValues()
+            );
             PosCashPoolAccount::query()->firstOrCreate(
                 ['store_location_id' => $location->id, 'code' => PosCashPoolAccount::DEFAULT_CODE],
                 ['total_initial_cash' => 0, 'total_withdraw' => 0]
@@ -113,6 +117,11 @@ class StoreLocation extends Model
     public function posSettings()
     {
         return $this->hasOne(StoreLocationPosSetting::class);
+    }
+
+    public function notificationSettings()
+    {
+        return $this->hasOne(BranchNotificationSetting::class);
     }
 
     public function cashPoolAccounts()
