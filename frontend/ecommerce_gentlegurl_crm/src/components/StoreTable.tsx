@@ -118,7 +118,6 @@ export default function StoreTable({
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
         if (filters.name) qs.set('name', filters.name)
-        if (filters.code) qs.set('code', filters.code)
         if (filters.city) qs.set('city', filters.city)
         if (filters.state) qs.set('state', filters.state)
         if (filters.country) qs.set('country', filters.country)
@@ -293,7 +292,6 @@ export default function StoreTable({
 
   const filterLabels: Record<keyof StoreFilterValues, string> = {
     name: 'Name',
-    code: 'Code',
     city: 'City',
     state: 'State',
     country: 'Country',

@@ -1069,8 +1069,13 @@ export default function PosAppointmentsWorkspace({
 
   const fetchStaffOptions = useCallback(
     async (search: string) => {
-      const params = new URLSearchParams({ page: '1', per_page: '50', is_active: '1' })
-      if (selectedBranchIdRef.current) params.set('branch_store_location_id', String(selectedBranchIdRef.current))
+      const params = new URLSearchParams({ page: '1', per_page: '500', is_active: '1' })
+      if (selectedBranchIdRef.current) {
+        params.set('branch_store_location_id', String(selectedBranchIdRef.current))
+      } else {
+        // All Branches: only staff assigned to branches the user can access
+        params.set('require_store_location', '1')
+      }
       if (search.trim()) params.set('search', search.trim())
       const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) return [] as StaffOption[]
@@ -1364,8 +1369,13 @@ export default function PosAppointmentsWorkspace({
   }, [appointmentLineSplitDraftRows, appointmentLineSplitLineTotal, appointmentLineSplitMode, appointmentLineSplitOverwrite, appointmentLineSplitTarget])
 
   const fetchActiveStaffs = useCallback(async () => {
-    const params = new URLSearchParams({ page: '1', per_page: '50', is_active: '1' })
-    if (selectedBranchIdRef.current) params.set('branch_store_location_id', String(selectedBranchIdRef.current))
+    const params = new URLSearchParams({ page: '1', per_page: '500', is_active: '1' })
+    if (selectedBranchIdRef.current) {
+      params.set('branch_store_location_id', String(selectedBranchIdRef.current))
+    } else {
+      // All Branches: only staff assigned to branches the user can access
+      params.set('require_store_location', '1')
+    }
     const res = await fetch(`/api/proxy/staffs?${params.toString()}`, { cache: 'no-store' })
     if (!res.ok) return
     const json = await res.json().catch(() => null)
@@ -1373,6 +1383,9 @@ export default function PosAppointmentsWorkspace({
     setActiveStaffs(mapped)
     // Seed the staff filter dropdown from the same payload (avoids a duplicate /staffs call).
     setAppointmentStaffOptions(mapped)
+    setAppointmentStaffFilter((prev) => (
+      prev && !mapped.some((staff) => String(staff.id) === prev) ? '' : prev
+    ))
   }, [mapStaffOptions])
 
   const fetchAppointmentCustomers = useCallback(async (search: string) => {
@@ -4352,10 +4365,11 @@ export default function PosAppointmentsWorkspace({
     setAppointmentListRefreshCountdown(5)
     setActiveStaffs([])
     setAppointmentStaffOptions([])
+    setAppointmentStaffFilter('')
     setCreateAppointmentServices([])
     setBookingServiceCategories([])
+    void fetchActiveStaffs()
     if (selectedBranchId) {
-      void fetchActiveStaffs()
       void fetchCreateAppointmentServices()
       void fetchBookingServiceCategories()
     }

@@ -31,7 +31,7 @@ export default function AppointmentActivityLogTable() {
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 25 })
-  const [filters, setFilters] = useState({ search: '', booking_number: '', action: '', actor_user_id: '', date_from: '', date_to: '' })
+  const [filters, setFilters] = useState({ booking_number: '', action: '', actor_user_id: '', date_from: '', date_to: '' })
 
   const query = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), per_page: String(pagination.per_page) })
@@ -43,6 +43,7 @@ export default function AppointmentActivityLogTable() {
 
   useEffect(() => {
     let active = true
+    setLoading(true)
     fetch(`/api/proxy/admin/appointment-activity-logs?${query}`, { credentials: 'include' })
       .then(async (res) => {
         if (!res.ok) throw new Error('Unable to load appointment activity logs.')
@@ -67,8 +68,7 @@ export default function AppointmentActivityLogTable() {
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-6">
-        <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Search" value={filters.search} onChange={(e) => updateFilter('search', e.target.value)} />
+      <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-5">
         <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Booking ID" value={filters.booking_number} onChange={(e) => updateFilter('booking_number', e.target.value)} />
         <select className="rounded-lg border px-3 py-2 text-sm" value={filters.action} onChange={(e) => updateFilter('action', e.target.value)}>
           <option value="">All actions</option>

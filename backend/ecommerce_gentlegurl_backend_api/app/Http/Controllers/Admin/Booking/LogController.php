@@ -87,7 +87,14 @@ class LogController extends Controller
         if ($request->filled('to')) {
             $query->where('created_at', '<=', Carbon::parse($request->query('to'))->endOfDay());
         }
-        foreach (['actor_type', 'actor_id', 'action', 'booking_id'] as $filter) {
+        if ($request->filled('action')) {
+            $action = trim((string) $request->query('action'));
+            if ($action !== '') {
+                $query->where('action', 'ilike', '%' . $action . '%');
+            }
+        }
+
+        foreach (['actor_type', 'actor_id', 'booking_id'] as $filter) {
             if ($request->filled($filter)) {
                 $query->where($filter, $request->query($filter));
             }

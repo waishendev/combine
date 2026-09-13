@@ -73,8 +73,8 @@ class PromotionController extends Controller
             $search = trim((string) $request->string('search'));
             if ($search !== '') {
                 $query->where(function ($sub) use ($search) {
-                    $sub->where('name', 'like', '%' . $search . '%')
-                        ->orWhere('title', 'like', '%' . $search . '%');
+                    $sub->where('name', 'ilike', '%' . $search . '%')
+                        ->orWhere('title', 'ilike', '%' . $search . '%');
                 });
             }
         }

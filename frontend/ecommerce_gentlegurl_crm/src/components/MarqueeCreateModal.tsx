@@ -5,8 +5,16 @@ import { ChangeEvent, FormEvent, useState } from 'react'
 import type { MarqueeRowData } from './MarqueeRow'
 import { mapMarqueeApiItemToRow, type MarqueeApiItem } from './marqueeUtils'
 import CrmFormModalShell from './CrmFormModalShell'
+import { getApiErrorMessage } from '@/lib/api-errors'
 import { useI18n } from '@/lib/i18n'
 import type { Workspace } from '@/lib/workspace'
+
+const marqueeFieldLabel = (fieldKey: string): string | null => {
+  if (fieldKey === 'start_at') return 'Start date'
+  if (fieldKey === 'end_at') return 'End date'
+  if (fieldKey === 'text') return 'Text'
+  return null
+}
 
 interface MarqueeCreateModalProps {
   onClose: () => void
@@ -73,24 +81,7 @@ export default function MarqueeCreateModal({
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        let message = 'Failed to create marquee'
-        if (data && typeof data === 'object') {
-          if (typeof (data as { message?: unknown }).message === 'string') {
-            message = (data as { message: string }).message
-          } else if (data && 'errors' in data) {
-            const errors = (data as { errors?: unknown }).errors
-            if (errors && typeof errors === 'object') {
-              const firstKey = Object.keys(errors)[0]
-              const firstValue = firstKey ? (errors as Record<string, unknown>)[firstKey] : null
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                message = firstValue[0]
-              } else if (typeof firstValue === 'string') {
-                message = firstValue
-              }
-            }
-          }
-        }
-        setError(message)
+        setError(getApiErrorMessage(data, 'Failed to create marquee', { labelResolver: marqueeFieldLabel }))
         return
       }
 
@@ -213,7 +204,7 @@ export default function MarqueeCreateModal({
           </div>
 
           {error && (
-            <div className="text-sm text-red-600" role="alert">
+            <div className="whitespace-pre-line text-sm text-red-600" role="alert">
               {error}
             </div>
           )}

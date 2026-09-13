@@ -28,6 +28,8 @@ type ReturnDetail = {
     placed_at?: string | null
     status?: string | null
     grand_total?: number | string | null
+    shipping_name?: string | null
+    billing_name?: string | null
   }
   customer?: {
     name?: string | null
@@ -148,7 +150,6 @@ export default function ReturnOrdersTable() {
     return {
       orderNo: searchParams.get('order_no') ?? '',
       customerName: searchParams.get('customer_name') ?? '',
-      customerEmail: searchParams.get('customer_email') ?? '',
       status: searchParams.get('status') ?? '',
       dateFrom: searchParams.get('date_from') ?? '',
       dateTo: searchParams.get('date_to') ?? '',
@@ -161,14 +162,12 @@ export default function ReturnOrdersTable() {
   const [statusFilter, setStatusFilter] = useState(queryFilters.status)
   const [orderNoFilter, setOrderNoFilter] = useState(queryFilters.orderNo)
   const [customerNameFilter, setCustomerNameFilter] = useState(queryFilters.customerName)
-  const [customerEmailFilter, setCustomerEmailFilter] = useState(queryFilters.customerEmail)
   const [dateFromFilter, setDateFromFilter] = useState(queryFilters.dateFrom)
   const [dateToFilter, setDateToFilter] = useState(queryFilters.dateTo)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [filterDraft, setFilterDraft] = useState(() => ({
     order_no: queryFilters.orderNo,
     customer_name: queryFilters.customerName,
-    customer_email: queryFilters.customerEmail,
     status: queryFilters.status,
     date_from: queryFilters.dateFrom,
     date_to: queryFilters.dateTo,
@@ -188,14 +187,12 @@ export default function ReturnOrdersTable() {
   useEffect(() => {
     setOrderNoFilter(queryFilters.orderNo)
     setCustomerNameFilter(queryFilters.customerName)
-    setCustomerEmailFilter(queryFilters.customerEmail)
     setStatusFilter(queryFilters.status)
     setDateFromFilter(queryFilters.dateFrom)
     setDateToFilter(queryFilters.dateTo)
     setFilterDraft({
       order_no: queryFilters.orderNo,
       customer_name: queryFilters.customerName,
-      customer_email: queryFilters.customerEmail,
       status: queryFilters.status,
       date_from: queryFilters.dateFrom,
       date_to: queryFilters.dateTo,
@@ -211,7 +208,6 @@ export default function ReturnOrdersTable() {
     if (statusFilter) params.set('status', statusFilter)
     if (orderNoFilter) params.set('order_no', orderNoFilter)
     if (customerNameFilter) params.set('customer_name', customerNameFilter)
-    if (customerEmailFilter) params.set('customer_email', customerEmailFilter)
     if (dateFromFilter) params.set('date_from', dateFromFilter)
     if (dateToFilter) params.set('date_to', dateToFilter)
     if (selectedBranchId === null) params.set('branch_scope', 'all')
@@ -221,7 +217,6 @@ export default function ReturnOrdersTable() {
     statusFilter,
     orderNoFilter,
     customerNameFilter,
-    customerEmailFilter,
     dateFromFilter,
     dateToFilter,
     currentPage,
@@ -251,7 +246,7 @@ export default function ReturnOrdersTable() {
       const mapped = items.map((item: ReturnDetail & { created_at?: string | null }) => ({
         id: Number(item.id),
         orderNumber: item.order?.order_number ?? String(item.order?.id ?? '—'),
-        customer: item.customer?.name ?? '—',
+        customer: item.customer?.name ?? item.order?.shipping_name ?? item.order?.billing_name ?? '—',
         status: item.status ?? '—',
         reason: item.reason ?? '—',
         refundAmount: item.refund_amount ?? null,
@@ -386,7 +381,7 @@ export default function ReturnOrdersTable() {
 
   const activeFilters = useMemo(() => {
     const filters: Array<{
-      key: 'order_no' | 'customer_name' | 'customer_email' | 'status' | 'date_from' | 'date_to'
+      key: 'order_no' | 'customer_name' | 'status' | 'date_from' | 'date_to'
       label: string
       value: string
     }> = []
@@ -395,9 +390,6 @@ export default function ReturnOrdersTable() {
     }
     if (customerNameFilter) {
       filters.push({ key: 'customer_name', label: 'Customer Name', value: customerNameFilter })
-    }
-    if (customerEmailFilter) {
-      filters.push({ key: 'customer_email', label: 'Customer Email', value: customerEmailFilter })
     }
     if (statusFilter) {
       filters.push({ key: 'status', label: 'Status', value: statusFilter })
@@ -412,7 +404,6 @@ export default function ReturnOrdersTable() {
   }, [
     orderNoFilter,
     customerNameFilter,
-    customerEmailFilter,
     statusFilter,
     dateFromFilter,
     dateToFilter,
@@ -432,7 +423,6 @@ export default function ReturnOrdersTable() {
               setFilterDraft({
                 order_no: orderNoFilter,
                 customer_name: customerNameFilter,
-                customer_email: customerEmailFilter,
                 status: statusFilter,
                 date_from: dateFromFilter,
                 date_to: dateToFilter,
@@ -492,8 +482,6 @@ export default function ReturnOrdersTable() {
                     setOrderNoFilter('')
                   } else if (filter.key === 'customer_name') {
                     setCustomerNameFilter('')
-                  } else if (filter.key === 'customer_email') {
-                    setCustomerEmailFilter('')
                   } else if (filter.key === 'status') {
                     setStatusFilter('')
                   } else if (filter.key === 'date_from') {
@@ -616,14 +604,12 @@ export default function ReturnOrdersTable() {
                 onClick={() => {
                   setOrderNoFilter('')
                   setCustomerNameFilter('')
-                  setCustomerEmailFilter('')
                   setStatusFilter('')
                   setDateFromFilter('')
                   setDateToFilter('')
                   setFilterDraft({
                     order_no: '',
                     customer_name: '',
-                    customer_email: '',
                     status: '',
                     date_from: '',
                     date_to: '',
@@ -640,7 +626,6 @@ export default function ReturnOrdersTable() {
                 onClick={() => {
                   setOrderNoFilter(filterDraft.order_no.trim())
                   setCustomerNameFilter(filterDraft.customer_name.trim())
-                  setCustomerEmailFilter(filterDraft.customer_email.trim())
                   setStatusFilter(filterDraft.status)
                   setDateFromFilter(filterDraft.date_from)
                   setDateToFilter(filterDraft.date_to)
@@ -674,19 +659,6 @@ export default function ReturnOrdersTable() {
                   value={filterDraft.customer_name}
                   onChange={(event) => setFilterDraft((prev) => ({ ...prev, customer_name: event.target.value }))}
                   placeholder="Customer name"
-                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
-                  Customer Email
-                </label>
-                <input
-                  value={filterDraft.customer_email}
-                  onChange={(event) =>
-                    setFilterDraft((prev) => ({ ...prev, customer_email: event.target.value }))
-                  }
-                  placeholder="Customer email"
                   className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
                 />
               </div>

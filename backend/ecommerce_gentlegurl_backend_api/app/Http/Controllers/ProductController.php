@@ -64,10 +64,10 @@ class ProductController extends Controller
                 }
                 $pattern = $this->likeContainsPattern($term);
                 $query->where(function ($q) use ($pattern) {
-                    $q->where('name', 'like', $pattern)
-                        ->orWhere('sku', 'like', $pattern)
+                    $q->where('name', 'ilike', $pattern)
+                        ->orWhere('sku', 'ilike', $pattern)
                         ->orWhereHas('variants', function ($vq) use ($pattern) {
-                            $vq->where('sku', 'like', $pattern);
+                            $vq->where('sku', 'ilike', $pattern);
                         });
                 });
             })
@@ -76,7 +76,7 @@ class ProductController extends Controller
                 if ($term === '') {
                     return;
                 }
-                $query->where('name', 'like', $this->likeContainsPattern($term));
+                $query->where('name', 'ilike', $this->likeContainsPattern($term));
             })
             ->when($request->filled('sku'), function ($query) use ($request) {
                 $term = trim((string) $request->get('sku'));
@@ -85,9 +85,9 @@ class ProductController extends Controller
                 }
                 $pattern = $this->likeContainsPattern($term);
                 $query->where(function ($q) use ($pattern) {
-                    $q->where('sku', 'like', $pattern)
+                    $q->where('sku', 'ilike', $pattern)
                         ->orWhereHas('variants', function ($vq) use ($pattern) {
-                            $vq->where('sku', 'like', $pattern);
+                            $vq->where('sku', 'ilike', $pattern);
                         });
                 });
             })
@@ -161,8 +161,8 @@ class ProductController extends Controller
                 }
                 $pattern = $this->likeContainsPattern($term);
                 $query->where(function ($q) use ($pattern) {
-                    $q->where('name', 'like', $pattern)
-                        ->orWhere('sku', 'like', $pattern);
+                    $q->where('name', 'ilike', $pattern)
+                        ->orWhere('sku', 'ilike', $pattern);
                 });
             })
             ->orderBy('name')
@@ -282,10 +282,10 @@ class ProductController extends Controller
                 }
                 $pattern = $this->likeContainsPattern($term);
                 $query->where(function ($q) use ($pattern) {
-                    $q->where('name', 'like', $pattern)
-                        ->orWhere('sku', 'like', $pattern)
+                    $q->where('name', 'ilike', $pattern)
+                        ->orWhere('sku', 'ilike', $pattern)
                         ->orWhereHas('variants', function ($vq) use ($pattern) {
-                            $vq->where('sku', 'like', $pattern);
+                            $vq->where('sku', 'ilike', $pattern);
                         });
                 });
             })
@@ -294,7 +294,7 @@ class ProductController extends Controller
                 if ($term === '') {
                     return;
                 }
-                $query->where('name', 'like', $this->likeContainsPattern($term));
+                $query->where('name', 'ilike', $this->likeContainsPattern($term));
             })
             ->when($request->filled('sku'), function ($query) use ($request) {
                 $term = trim((string) $request->get('sku'));
@@ -303,9 +303,9 @@ class ProductController extends Controller
                 }
                 $pattern = $this->likeContainsPattern($term);
                 $query->where(function ($q) use ($pattern) {
-                    $q->where('sku', 'like', $pattern)
+                    $q->where('sku', 'ilike', $pattern)
                         ->orWhereHas('variants', function ($vq) use ($pattern) {
-                            $vq->where('sku', 'like', $pattern);
+                            $vq->where('sku', 'ilike', $pattern);
                         });
                 });
             })

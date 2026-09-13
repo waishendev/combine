@@ -25,7 +25,6 @@ class ReturnRequestController extends Controller
             'status' => ['nullable', 'string'],
             'order_no' => ['nullable', 'string'],
             'customer_name' => ['nullable', 'string'],
-            'customer_email' => ['nullable', 'string'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
             'per_page' => ['nullable', 'integer'],
@@ -48,14 +47,14 @@ class ReturnRequestController extends Controller
         }
 
         if (!empty($validated['customer_name'])) {
-            $query->whereHas('customer', function ($q) use ($validated) {
-                $q->where('name', 'ilike', '%' . $validated['customer_name'] . '%');
-            });
-        }
-
-        if (!empty($validated['customer_email'])) {
-            $query->whereHas('customer', function ($q) use ($validated) {
-                $q->where('email', 'ilike', '%' . $validated['customer_email'] . '%');
+            $name = '%' . trim($validated['customer_name']) . '%';
+            $query->where(function ($outer) use ($name) {
+                $outer->whereHas('customer', fn ($q) => $q->where('name', 'ilike', $name))
+                    ->orWhereHas('order', function ($orders) use ($name) {
+                        $orders->where('shipping_name', 'ilike', $name)
+                            ->orWhere('billing_name', 'ilike', $name)
+                            ->orWhereHas('customer', fn ($q) => $q->where('name', 'ilike', $name));
+                    });
             });
         }
 

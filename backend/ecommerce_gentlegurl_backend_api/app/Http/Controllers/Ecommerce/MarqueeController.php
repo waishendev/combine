@@ -22,7 +22,7 @@ class MarqueeController extends Controller
         if ($request->filled('text')) {
             $term = trim((string) $request->get('text'));
             if ($term !== '') {
-                $query->where('text', 'like', '%' . $term . '%');
+                $query->where('text', 'ilike', '%' . $term . '%');
             }
         }
 

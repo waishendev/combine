@@ -5,7 +5,6 @@ import { ChangeEvent, FormEvent } from 'react'
 export interface OrderFilterValues {
   orderNo: string
   customerName: string
-  customerEmail: string
   status: string
   orderType: string
   dateFrom: string
@@ -17,7 +16,6 @@ export const orderFiltersFormId = 'order-filters-form'
 export const emptyOrderFilters: OrderFilterValues = {
   orderNo: '',
   customerName: '',
-  customerEmail: '',
   status: '',
   orderType: '',
   dateFrom: '',
@@ -115,24 +113,6 @@ export default function OrderFilters({
             value={values.customerName}
             onChange={handleChange}
             placeholder="Enter customer name"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-
-        <div>
-          <label
-            htmlFor="customerEmail"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            Customer Email
-          </label>
-          <input
-            id="customerEmail"
-            name="customerEmail"
-            type="text"
-            value={values.customerEmail}
-            onChange={handleChange}
-            placeholder="Enter customer email"
             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
           />
         </div>

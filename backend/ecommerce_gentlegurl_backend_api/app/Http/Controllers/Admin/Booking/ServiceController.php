@@ -74,8 +74,8 @@ class ServiceController extends Controller
             ->when($request->filled('name'), function ($query) use ($request) {
                 $term = '%' . trim((string) $request->get('name')) . '%';
                 $query->where(function ($inner) use ($term) {
-                    $inner->where('name', 'like', $term)
-                        ->orWhere('cn_name', 'like', $term);
+                    $inner->where('name', 'ilike', $term)
+                        ->orWhere('cn_name', 'ilike', $term);
                 });
             })
             ->when($request->has('is_active'), function ($query) use ($request) {

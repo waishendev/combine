@@ -43,14 +43,14 @@ class CommissionLogController extends Controller
         }
         if ($request->filled('remarks')) {
             $remarks = trim((string) $request->query('remarks'));
-            $query->where('remarks', 'like', '%' . $remarks . '%');
+            $query->where('remarks', 'ilike', '%' . $remarks . '%');
         }
         if ($request->filled('keyword')) {
             $keyword = trim((string) $request->query('keyword'));
             $query->where(function ($inner) use ($keyword) {
-                $inner->where('remarks', 'like', '%' . $keyword . '%')
-                    ->orWhere('action', 'like', '%' . strtoupper($keyword) . '%')
-                    ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('name', 'like', '%' . $keyword . '%'));
+                $inner->where('remarks', 'ilike', '%' . $keyword . '%')
+                    ->orWhere('action', 'ilike', '%' . $keyword . '%')
+                    ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('name', 'ilike', '%' . $keyword . '%'));
             });
         }
 

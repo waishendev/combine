@@ -44,10 +44,10 @@ class CategoryController extends Controller
                 ->where('categories.is_active', true)
                 ->whereHas('products', fn ($products) => $products->posEligibleAtBranch($branchId)))
             ->when($request->filled('name'), function ($query) use ($request) {
-                $query->where('name', 'like', '%' . $request->get('name') . '%');
+                $query->where('name', 'ilike', '%' . $request->get('name') . '%');
             })
             ->when($request->filled('slug'), function ($query) use ($request) {
-                $query->where('slug', 'like', '%' . $request->get('slug') . '%');
+                $query->where('slug', 'ilike', '%' . $request->get('slug') . '%');
             })
             ->when($request->has('is_active'), function ($query) use ($request) {
                 $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
@@ -134,10 +134,10 @@ class CategoryController extends Controller
             }])
             // Same as index: do not hide empty / no-menu categories from CRM table.
             ->when($request->filled('name'), function ($query) use ($request) {
-                $query->where('name', 'like', '%' . $request->get('name') . '%');
+                $query->where('name', 'ilike', '%' . $request->get('name') . '%');
             })
             ->when($request->filled('slug'), function ($query) use ($request) {
-                $query->where('slug', 'like', '%' . $request->get('slug') . '%');
+                $query->where('slug', 'ilike', '%' . $request->get('slug') . '%');
             })
             ->when($request->has('is_active'), function ($query) use ($request) {
                 $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
@@ -189,7 +189,7 @@ class CategoryController extends Controller
                 $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
             })
             ->when($request->filled('name'), function ($query) use ($request) {
-                $query->where('name', 'like', '%' . $request->get('name') . '%');
+                $query->where('name', 'ilike', '%' . $request->get('name') . '%');
             })
             ->orderBy('sort_order')
             ->orderBy('id')

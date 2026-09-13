@@ -5,8 +5,16 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import type { MarqueeRowData } from './MarqueeRow'
 import { mapMarqueeApiItemToRow, type MarqueeApiItem } from './marqueeUtils'
 import CrmFormModalShell from './CrmFormModalShell'
+import { getApiErrorMessage } from '@/lib/api-errors'
 import { useI18n } from '@/lib/i18n'
 import type { Workspace } from '@/lib/workspace'
+
+const marqueeFieldLabel = (fieldKey: string): string | null => {
+  if (fieldKey === 'start_at') return 'Start date'
+  if (fieldKey === 'end_at') return 'End date'
+  if (fieldKey === 'text') return 'Text'
+  return null
+}
 
 interface MarqueeEditModalProps {
   marqueeId: number
@@ -169,28 +177,7 @@ export default function MarqueeEditModal({
       }
 
       if (!res.ok) {
-        if (data && typeof data === 'object') {
-          if ('message' in data && typeof data.message === 'string') {
-            setError(data.message)
-            return
-          }
-          if ('errors' in data && typeof data.errors === 'object') {
-            const errors = data.errors as Record<string, unknown>
-            const firstKey = Object.keys(errors)[0]
-            if (firstKey) {
-              const firstValue = errors[firstKey]
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                setError(firstValue[0])
-                return
-              }
-              if (typeof firstValue === 'string') {
-                setError(firstValue)
-                return
-              }
-            }
-          }
-        }
-        setError('Failed to update marquee')
+        setError(getApiErrorMessage(data, 'Failed to update marquee', { labelResolver: marqueeFieldLabel }))
         return
       }
 
@@ -341,7 +328,7 @@ export default function MarqueeEditModal({
           )}
 
           {error && (
-            <div className="text-sm text-red-600" role="alert">
+            <div className="whitespace-pre-line text-sm text-red-600" role="alert">
               {error}
             </div>
           )}

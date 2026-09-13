@@ -183,7 +183,6 @@ export default function OrdersTable({
         if (selectedBranchId === null) qs.set('branch_scope', 'all')
         else qs.set('branch_store_location_id', String(selectedBranchId))
         if (filters.customerName) qs.set('customer_name', filters.customerName)
-        if (filters.customerEmail) qs.set('customer_email', filters.customerEmail)
         if (filters.orderType) qs.set('order_type', filters.orderType)
         if (extraQueryParams) {
           Object.entries(extraQueryParams).forEach(([key, value]) => {
@@ -455,7 +454,6 @@ export default function OrdersTable({
   const filterLabels: Record<keyof OrderFilterValues, string> = {
     orderNo: 'Order Number',
     customerName: 'Customer Name',
-    customerEmail: 'Customer Email',
     status: 'Status',
     orderType: 'Type',
     dateFrom: 'Date From',

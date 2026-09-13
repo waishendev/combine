@@ -28,7 +28,7 @@ class CustomerController extends Controller
         $window = $this->getWindowDates($loyaltySetting?->evaluation_cycle_months ?? 6);
 
         $customers = Customer::query()
-            ->when($request->filled('name'), fn($q) => $q->where('name', 'like', '%' . $request->string('name')->toString() . '%'))
+            ->when($request->filled('name'), fn($q) => $q->where('name', 'ilike', '%' . $request->string('name')->toString() . '%'))
             ->when($request->filled('email'), fn($q) => $q->where('email', $request->string('email')->toString()))
             ->when($request->filled('phone'), fn($q) => $q->where('phone', $request->string('phone')->toString()))
             ->when($request->filled('tier'), fn($q) => $q->where('tier', $request->string('tier')->toString()))

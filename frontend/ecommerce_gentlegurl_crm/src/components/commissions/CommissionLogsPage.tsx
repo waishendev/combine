@@ -101,10 +101,40 @@ export default function CommissionLogsPage() {
 
   const loadStaffs = async () => {
     try {
-      const res = await fetch('/api/proxy/staffs?per_page=200&is_active=true', { cache: 'no-store' })
+      const qs = new URLSearchParams()
+      qs.set('per_page', '500')
+      qs.set('is_active', 'true')
+      if (selectedBranchId !== null) {
+        qs.set('branch_store_location_id', String(selectedBranchId))
+      } else {
+        qs.set('require_store_location', '1')
+      }
+
+      const res = await fetch(`/api/proxy/staffs/options/query?${qs.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
-      const staffData = Array.isArray(json?.data) ? (json.data as StaffOption[]) : []
-      setStaffs(staffData)
+      const data = Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json?.data?.data)
+          ? json.data.data
+          : []
+      const mapped = data
+        .map((row: { id?: number; name?: string }) => ({
+          id: Number(row?.id),
+          name: String(row?.name ?? ''),
+        }))
+        .filter((row: StaffOption) => Number.isFinite(row.id) && row.id > 0 && row.name !== '')
+
+      setStaffs(mapped)
+      setFilters((prev) => (
+        prev.staff_id && !mapped.some((staff: StaffOption) => String(staff.id) === prev.staff_id)
+          ? { ...prev, staff_id: '' }
+          : prev
+      ))
+      setInputs((prev) => (
+        prev.staff_id && !mapped.some((staff: StaffOption) => String(staff.id) === prev.staff_id)
+          ? { ...prev, staff_id: '' }
+          : prev
+      ))
     } catch {
       setStaffs([])
     }
@@ -119,7 +149,7 @@ export default function CommissionLogsPage() {
     if (filters.year) qs.set('year', filters.year)
     if (filters.month) qs.set('month', filters.month)
     if (filters.action) qs.set('action', filters.action)
-    if (filters.keyword) qs.set('keyword', filters.keyword)
+    if (filters.keyword.trim()) qs.set('keyword', filters.keyword.trim())
     if (filters.from) qs.set('from', filters.from)
     if (filters.to) qs.set('to', filters.to)
     if (selectedBranchId !== null) qs.set('branch_store_location_id', String(selectedBranchId))
@@ -158,7 +188,8 @@ export default function CommissionLogsPage() {
 
   useEffect(() => {
     void loadStaffs()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchId])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -167,7 +198,11 @@ export default function CommissionLogsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, meta.current_page, meta.per_page, selectedBranchId])
 
-  useEffect(() => { setMeta((prev) => ({ ...prev, current_page: 1 })) }, [selectedBranchId])
+  useEffect(() => {
+    setFilters((prev) => ({ ...prev, staff_id: '' }))
+    setInputs((prev) => ({ ...prev, staff_id: '' }))
+    setMeta((prev) => ({ ...prev, current_page: 1 }))
+  }, [selectedBranchId])
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 6 }, (_, index) => currentYear - index)
@@ -202,7 +237,12 @@ export default function CommissionLogsPage() {
 
   const handleFilterSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setFilters({ ...inputs })
+    const next = {
+      ...inputs,
+      keyword: inputs.keyword.trim(),
+    }
+    setInputs(next)
+    setFilters(next)
     setMeta((prev) => ({ ...prev, current_page: 1 }))
     setIsFilterOpen(false)
   }
@@ -345,7 +385,10 @@ export default function CommissionLogsPage() {
       <div className="flex justify-between items-center flex-wrap gap-2">
         <button
           className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
-          onClick={() => setIsFilterOpen(true)}
+          onClick={() => {
+            setInputs({ ...filters })
+            setIsFilterOpen(true)
+          }}
           disabled={loading}
           type="button"
         >

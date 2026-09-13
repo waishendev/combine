@@ -143,6 +143,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
   const [toast, setToast] = useState<ToastState>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skipBranchResetRef = useRef(true)
 
   const showToast = useCallback((message: string, tone: NonNullable<ToastState>['tone'] = 'info') => {
     if (toastTimerRef.current) {
@@ -157,7 +158,17 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
 
   const loadStaffs = useCallback(async () => {
     try {
-      const res = await fetch('/api/proxy/staffs/options/query?per_page=500&is_active=true', { cache: 'no-store' })
+      const qs = new URLSearchParams()
+      qs.set('per_page', '500')
+      qs.set('is_active', 'true')
+      if (selectedBranchId !== null) {
+        qs.set('branch_store_location_id', String(selectedBranchId))
+      } else {
+        // All Branches: only staff assigned to branches the user can access
+        qs.set('require_store_location', '1')
+      }
+
+      const res = await fetch(`/api/proxy/staffs/options/query?${qs.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       const data = Array.isArray(json?.data)
         ? json.data
@@ -175,7 +186,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     } catch {
       setStaffs([])
     }
-  }, [])
+  }, [selectedBranchId])
 
   useEffect(() => {
     void loadStaffs()
@@ -253,7 +264,16 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
   }, [resolvedParams.staffId, resolvedParams.year, resolvedParams.month, resolvedParams.page, resolvedParams.perPage, type, selectedBranchId])
 
   useEffect(() => {
-    updateQuery({ page: String(DEFAULT_PAGE) })
+    if (skipBranchResetRef.current) {
+      skipBranchResetRef.current = false
+      return
+    }
+    // Branch switch: reset page and drop staff filter (staff options are branch-scoped).
+    updateQuery({
+      page: String(DEFAULT_PAGE),
+      staff_id: '',
+    })
+    setInputs((prev) => ({ ...prev, staff_id: '' }))
     // Header Branch changes are an external navigation dimension.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranchId])
@@ -371,6 +391,14 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     })
     router.push(`${routeBasePath}?${params.toString()}`)
   }
+
+  useEffect(() => {
+    if (!resolvedParams.staffId || staffs.length === 0) return
+    if (staffs.some((staff) => String(staff.id) === resolvedParams.staffId)) return
+    updateQuery({ staff_id: '' })
+    setInputs((prev) => ({ ...prev, staff_id: '' }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staffs, resolvedParams.staffId])
 
   const handleStatusAction = async (row: CommissionRow, action: 'freeze' | 'reopen') => {
     setActionLoadingId(row.id)

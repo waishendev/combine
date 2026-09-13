@@ -37,20 +37,20 @@ class CustomerController extends Controller
 
         // NEW ENHANCEMENT — customers-query-v1 (batch loyalty aggregates after paginate)
         $customers = Customer::query()
-            ->when($request->filled('name'), fn ($query) => $query->where('name', 'like', '%' . $request->string('name')->toString() . '%'))
-            ->when($request->filled('email'), fn ($query) => $query->where('email', 'like', '%' . $request->string('email')->toString() . '%'))
+            ->when($request->filled('name'), fn ($query) => $query->where('name', 'ilike', '%' . $request->string('name')->toString() . '%'))
+            ->when($request->filled('email'), fn ($query) => $query->where('email', 'ilike', '%' . $request->string('email')->toString() . '%'))
             ->when($request->filled('phone'), function ($query) use ($request) {
                 $phone = ltrim($request->string('phone')->toString(), '+');
-                $query->where('phone', 'like', '%' . $phone . '%');
+                $query->where('phone', 'ilike', '%' . $phone . '%');
             })
             ->when($request->filled('tier'), fn ($query) => $query->where('tier', $request->string('tier')->toString()))
             ->when($request->filled('is_active'), fn ($query) => $query->where('is_active', $request->boolean('is_active')))
             ->when($search, function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%")
-                        ->orWhereHas('customerType', fn ($typeQuery) => $typeQuery->where('name', 'like', "%{$search}%"));
+                    $q->where('name', 'ilike', "%{$search}%")
+                        ->orWhere('email', 'ilike', "%{$search}%")
+                        ->orWhere('phone', 'ilike', "%{$search}%")
+                        ->orWhereHas('customerType', fn ($typeQuery) => $typeQuery->where('name', 'ilike', "%{$search}%"));
                 });
             })
             ->orderByDesc('created_at')
@@ -96,9 +96,9 @@ class CustomerController extends Controller
             })
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%");
+                    $q->where('name', 'ilike', "%{$search}%")
+                        ->orWhere('email', 'ilike', "%{$search}%")
+                        ->orWhere('phone', 'ilike', "%{$search}%");
                 });
             })
             ->orderBy('name')

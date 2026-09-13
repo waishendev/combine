@@ -203,7 +203,6 @@ export default function AdminTable({
         qs.set('per_page', String(pageSize))
         if (selectedBranchId === null) qs.set('branch_scope', 'all')
         else qs.set('branch_store_location_id', String(selectedBranchId))
-        if (filters.username) qs.set('username', filters.username)
         if (filters.email) qs.set('email', filters.email)
         if (filters.roleId) qs.set('role_id', filters.roleId)
         if (filters.isActive) {
@@ -398,7 +397,6 @@ export default function AdminTable({
   }, [filters])
 
   const filterLabels: Record<keyof AdminFilterValues, string> = {
-    username: t('common.username'),
     email: t('common.email'),
     isActive: t('common.status'),
     roleId: t('common.role'),

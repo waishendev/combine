@@ -44,6 +44,11 @@ type PeriodSummary = {
   difference: number
 }
 
+type StaffOption = {
+  id: number
+  name: string
+}
+
 const currency = (value: number | null | undefined) => `RM ${Number(value ?? 0).toFixed(2)}`
 const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
 const formatDate = (value?: string | null) => (value ? value.slice(0, 10) : '—')
@@ -193,9 +198,10 @@ export default function CashShiftReportPage() {
     [isAllBranches],
   )
   const defaults = useMemo(() => defaultDateRange(), [])
-  const [filters, setFilters] = useState({ date_from: defaults.from, date_to: defaults.to, status: '', staff_id: '', user_id: '' })
+  const [filters, setFilters] = useState({ date_from: defaults.from, date_to: defaults.to, status: '', staff_id: '' })
   const [appliedFilters, setAppliedFilters] = useState(filters)
   const [rows, setRows] = useState<CashShiftRow[]>([])
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const [poolBalances, setPoolBalances] = useState<PoolBalances | null>(null)
   const [periodSummary, setPeriodSummary] = useState<PeriodSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(true)
@@ -207,6 +213,47 @@ export default function CashShiftReportPage() {
   const [selectedRow, setSelectedRow] = useState<CashShiftRow | null>(null)
   const requestSequence = useRef(0)
   const summaryRequestSequence = useRef(0)
+
+  const loadStaffOptions = useCallback(async () => {
+    try {
+      const qs = new URLSearchParams()
+      qs.set('per_page', '500')
+      qs.set('is_active', 'true')
+      if (selectedBranchId !== null) {
+        qs.set('branch_store_location_id', String(selectedBranchId))
+      } else {
+        qs.set('require_store_location', '1')
+      }
+
+      const res = await fetch(`/api/proxy/staffs/options/query?${qs.toString()}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => ({}))
+      const data = Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json?.data?.data)
+          ? json.data.data
+          : []
+      const mapped = data
+        .map((row: { id?: number; name?: string }) => ({
+          id: Number(row?.id),
+          name: String(row?.name ?? ''),
+        }))
+        .filter((row: StaffOption) => Number.isFinite(row.id) && row.id > 0 && row.name !== '')
+
+      setStaffOptions(mapped)
+      setFilters((prev) => (
+        prev.staff_id && !mapped.some((staff: StaffOption) => String(staff.id) === prev.staff_id)
+          ? { ...prev, staff_id: '' }
+          : prev
+      ))
+    } catch {
+      setStaffOptions([])
+    }
+  }, [selectedBranchId])
+
+  useEffect(() => {
+    if (branchLoading) return
+    void loadStaffOptions()
+  }, [branchLoading, loadStaffOptions])
 
   const periodLabel = useMemo(
     () => formatFilterPeriodLabel(appliedFilters.date_from, appliedFilters.date_to),
@@ -249,7 +296,6 @@ export default function CashShiftReportPage() {
       if (nextFilters.date_to) qs.set('date_to', nextFilters.date_to)
       if (nextFilters.status) qs.set('status', nextFilters.status)
       if (nextFilters.staff_id) qs.set('staff_id', nextFilters.staff_id)
-      if (nextFilters.user_id) qs.set('user_id', nextFilters.user_id)
       if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
 
       const [reportRes] = await Promise.all([
@@ -284,7 +330,9 @@ export default function CashShiftReportPage() {
     // Wait for Header Branch to hydrate from localStorage — otherwise null briefly
     // means "all branches" and flashes the summed Total Initial Cash.
     if (branchLoading) return
-    void loadData(1)
+    const nextFilters = { ...filters, staff_id: '' }
+    setFilters(nextFilters)
+    void loadData(1, nextFilters)
     return () => {
       requestSequence.current += 1
       summaryRequestSequence.current += 1
@@ -338,7 +386,7 @@ export default function CashShiftReportPage() {
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-6">
+        <div className="grid gap-3 md:grid-cols-5">
           <label className="text-sm font-semibold text-gray-700">
             Date From
             <input type="date" value={filters.date_from} onChange={(e) => setFilters((p) => ({ ...p, date_from: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3" />
@@ -356,12 +404,17 @@ export default function CashShiftReportPage() {
             </select>
           </label>
           <label className="text-sm font-semibold text-gray-700">
-            Staff ID
-            <input type="number" min="1" value={filters.staff_id} onChange={(e) => setFilters((p) => ({ ...p, staff_id: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3" placeholder="Optional staff ID" />
-          </label>
-          <label className="text-sm font-semibold text-gray-700">
-            Account/User ID
-            <input type="number" min="1" value={filters.user_id} onChange={(e) => setFilters((p) => ({ ...p, user_id: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3" placeholder="Optional user ID" />
+            Staff
+            <select
+              value={filters.staff_id}
+              onChange={(e) => setFilters((p) => ({ ...p, staff_id: e.target.value }))}
+              className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3"
+            >
+              <option value="">All Staff</option>
+              {staffOptions.map((staff) => (
+                <option key={staff.id} value={staff.id}>{staff.name}</option>
+              ))}
+            </select>
           </label>
           <div className="flex items-end">
             <button type="button" onClick={() => void loadData(1, filters)} disabled={loading} className="h-10 w-full rounded-lg bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60">

@@ -13,10 +13,10 @@ class MembershipTierRuleController extends Controller
     {
         $perPage = $request->integer('per_page', 15);
         $rules = MembershipTierRule::when($request->filled('tier'), function ($query) use ($request) {
-                $query->where('tier', 'like', '%' . $request->get('tier') . '%');
+                $query->where('tier', 'ilike', '%' . $request->get('tier') . '%');
             })
             ->when($request->filled('display_name'), function ($query) use ($request) {
-                $query->where('display_name', 'like', '%' . $request->get('display_name') . '%');
+                $query->where('display_name', 'ilike', '%' . $request->get('display_name') . '%');
             })
             ->when($request->has('is_active'), function ($query) use ($request) {
                 $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));

@@ -29,16 +29,24 @@ class StoreLocationController extends Controller
         $hasFilters = $request->filled('name')
             || $request->filled('code')
             || $request->filled('city')
+            || $request->filled('state')
+            || $request->filled('country')
             || $request->has('is_active');
 
         $locations = StoreLocation::when($request->filled('name'), function ($query) use ($request) {
-                $query->where('name', 'like', '%' . $request->get('name') . '%');
+                $query->where('name', 'ilike', '%' . $request->get('name') . '%');
             })
             ->when($request->filled('code'), function ($query) use ($request) {
-                $query->where('code', 'like', '%' . $request->get('code') . '%');
+                $query->where('code', 'ilike', '%' . $request->get('code') . '%');
             })
             ->when($request->filled('city'), function ($query) use ($request) {
-                $query->where('city', 'like', '%' . $request->get('city') . '%');
+                $query->where('city', 'ilike', '%' . $request->get('city') . '%');
+            })
+            ->when($request->filled('state'), function ($query) use ($request) {
+                $query->where('state', 'ilike', '%' . $request->get('state') . '%');
+            })
+            ->when($request->filled('country'), function ($query) use ($request) {
+                $query->where('country', 'ilike', '%' . $request->get('country') . '%');
             })
             ->when($request->has('is_active'), function ($query) use ($request) {
                 $query->where('is_active', filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));

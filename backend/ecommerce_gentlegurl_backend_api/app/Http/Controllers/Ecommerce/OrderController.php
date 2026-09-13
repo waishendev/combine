@@ -171,6 +171,17 @@ class OrderController extends Controller
                 });
             })
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->integer('customer_id')))
+            ->when($request->filled('customer_name'), function ($q) use ($request) {
+                $name = '%' . trim($request->string('customer_name')->toString()) . '%';
+                if ($name === '%%') {
+                    return;
+                }
+                $q->where(function ($inner) use ($name) {
+                    $inner->whereHas('customer', fn ($customers) => $customers->where('name', 'ilike', $name))
+                        ->orWhere('shipping_name', 'ilike', $name)
+                        ->orWhere('billing_name', 'ilike', $name);
+                });
+            })
             ->when($request->filled('order_no'), fn ($q) => $q->where('order_number', 'like', '%' . $request->string('order_no')->toString() . '%'))
             ->when($request->filled('reference'), fn ($q) => $q->where('order_number', 'like', '%' . $request->string('reference')->toString() . '%'))
             ->when($request->filled('date_from'), function ($q) use ($request) {

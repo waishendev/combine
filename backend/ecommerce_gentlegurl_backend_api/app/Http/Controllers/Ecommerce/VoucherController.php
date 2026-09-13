@@ -17,7 +17,7 @@ class VoucherController extends Controller
         $perPage = $request->integer('per_page', 15);
 
         $vouchers = Voucher::query()
-            ->when($request->filled('code'), fn($q) => $q->where('code', 'like', '%' . $request->string('code')->toString() . '%'))
+            ->when($request->filled('code'), fn($q) => $q->where('code', 'ilike', '%' . $request->string('code')->toString() . '%'))
             ->when($request->filled('type'), fn($q) => $q->where('type', $request->string('type')))
             ->when($request->filled('is_active'), fn($q) => $q->where('is_active', $request->boolean('is_active')))
             ->when($request->filled('is_reward_only'), fn($q) => $q->where('is_reward_only', $request->boolean('is_reward_only')))
@@ -44,7 +44,7 @@ class VoucherController extends Controller
         $search = $request->string('search')->toString();
 
         $vouchers = Voucher::query()
-            ->when($search, fn($q) => $q->where('code', 'like', '%' . $search . '%'))
+            ->when($search, fn($q) => $q->where('code', 'ilike', '%' . $search . '%'))
             ->when($status === 'active' || $status === '', function ($q) use ($now) {
                 $q->where('is_active', true)
                     ->where(function ($query) use ($now) {
