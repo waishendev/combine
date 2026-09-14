@@ -229,15 +229,31 @@ class LeaveRequestController extends Controller
         $item = BookingLeaveRequest::query()->findOrFail($id);
         $this->branches->authorizeRecord($request->user(), $item);
 
-        if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
-            return $this->respondError('Only approved off days can be updated.', 422);
+        $editableTypes = ['off_day', 'annual', 'mc', 'emergency', 'unpaid'];
+        if ($item->status !== 'approved' || ! in_array((string) $item->leave_type, $editableTypes, true)) {
+            return $this->respondError('Only approved leave / off days can be updated.', 422);
         }
 
         $startDate = Carbon::parse($data['start_date'])->startOfDay();
         $endDate = Carbon::parse($data['end_date'])->startOfDay();
+        $dayType = (string) ($item->day_type ?: 'full_day');
+        $newDays = $this->leaveService->calculateRequestedDays($startDate, $endDate, $dayType);
+
+        // Balance-backed leave: remaining already subtracts this record's days,
+        // so available headroom is remaining + current days.
+        if (in_array((string) $item->leave_type, ['annual', 'mc', 'emergency'], true)) {
+            $remaining = $this->leaveService->getRemainingDaysByType((int) $item->staff_id, (string) $item->leave_type);
+            $available = $remaining + (float) $item->days;
+            if ($newDays > $available + 0.0001) {
+                return $this->respondError(
+                    sprintf('Insufficient leave balance. Requested %.1f day(s), available %.1f day(s).', $newDays, $available),
+                    422
+                );
+            }
+        }
 
         $updated = DB::transaction(function () use ($item, $data, $request, $startDate, $endDate) {
-            return $this->leaveService->updateApprovedOffDay(
+            return $this->leaveService->updateApprovedLeaveDates(
                 $item,
                 $startDate,
                 $endDate,

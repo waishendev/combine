@@ -229,7 +229,10 @@ const formatLogChange = (log: LeaveLogEntry): string => {
   return log.remark ?? LOG_ACTION_LABEL[log.action_type] ?? log.action_type
 }
 
-const canManageOffDay = (item: LeaveRow, canUpdate: boolean): boolean =>
+const canEditApprovedLeave = (item: LeaveRow, canUpdate: boolean): boolean =>
+  canUpdate && (item.status ?? 'approved') === 'approved' && ['off_day', 'annual', 'mc', 'emergency', 'unpaid'].includes(item.leave_type)
+
+const canCancelOffDay = (item: LeaveRow, canUpdate: boolean): boolean =>
   canUpdate && item.leave_type === 'off_day' && (item.status ?? 'approved') === 'approved'
 
 const monthToTargetValue = (date: Date) =>
@@ -590,7 +593,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       : (editOffDayForm.end_date || startDate)
 
     if (!startDate || !endDate) {
-      setError('Please select the new off day date(s).')
+      setError('Please select the new date(s).')
       return
     }
 
@@ -607,7 +610,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       })
       const payload = await res.json().catch(() => ({})) as { message?: string }
       if (!res.ok) {
-        setError(payload.message ?? 'Failed to update off day.')
+        setError(payload.message ?? `Failed to update ${LEAVE_LABEL[editingOffDay.leave_type]}.`)
         return
       }
 
@@ -698,13 +701,14 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
   useEffect(() => {
     void loadStaffOptions()
+    closeEditOffDay()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranchId])
 
   useEffect(() => {
     void loadRows()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, staffFilter, leaveTypeFilter])
+  }, [month, staffFilter, leaveTypeFilter, selectedBranchId])
 
   const calendarDays = useMemo(() => {
     const start = new Date(month.getFullYear(), month.getMonth(), 1)
@@ -1231,7 +1235,9 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
             {selectedItems.map((item) => {
               const logs = logsByRequestId[item.id] ?? []
               const showLogs = expandedLogsId === item.id
-              const manageable = canManageOffDay(item, canUpdate)
+              const canEdit = canEditApprovedLeave(item, canUpdate)
+              const canCancel = canCancelOffDay(item, canUpdate)
+              const manageable = canEdit || canCancel
               const isLoading = actionLoadingId === item.id
 
               return (
@@ -1280,27 +1286,31 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                           {showLogs ? 'Hide activity log' : 'Activity log'}
                         </button>
 
-                        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-                          <button
-                            type="button"
-                            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={() => openEditOffDay(item)}
-                            disabled={isLoading}
-                            title="Edit off day"
-                          >
-                            <i className="fa-solid fa-pen-to-square text-[11px]" />
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-3.5 text-xs font-medium text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={() => void cancelOffDay(item)}
-                            disabled={isLoading}
-                            title="Cancel off day"
-                          >
-                            <i className="fa-solid fa-ban text-[11px]" />
-                            {isLoading ? 'Working…' : 'Cancel'}
-                          </button>
+                        <div className={`grid gap-2 sm:flex sm:items-center ${canEdit && canCancel ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => openEditOffDay(item)}
+                              disabled={isLoading}
+                              title={`Edit ${LEAVE_LABEL[item.leave_type]}`}
+                            >
+                              <i className="fa-solid fa-pen-to-square text-[11px]" />
+                              Edit
+                            </button>
+                          ) : null}
+                          {canCancel ? (
+                            <button
+                              type="button"
+                              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-3.5 text-xs font-medium text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => void cancelOffDay(item)}
+                              disabled={isLoading}
+                              title="Cancel off day"
+                            >
+                              <i className="fa-solid fa-ban text-[11px]" />
+                              {isLoading ? 'Working…' : 'Cancel'}
+                            </button>
+                          ) : null}
                         </div>
                       </div>
 
@@ -1341,7 +1351,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
       {editingOffDay && (
         <CrmFormModalShell
-          title="Edit Off Day"
+          title={`Edit ${LEAVE_LABEL[editingOffDay.leave_type]}`}
           onClose={closeEditOffDay}
           closeDisabled={actionLoadingId === editingOffDay.id}
           footer={
@@ -1367,7 +1377,9 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         >
           <div className="space-y-3 p-5">
             <p className="text-xs text-slate-500">
-              Move this off day to another date. Pick a new date to change the weekday (e.g. Thursday → Tuesday).
+              {editingOffDay.leave_type === 'off_day'
+                ? 'Move this off day to another date. Pick a new date to change the weekday (e.g. Thursday → Tuesday).'
+                : `Change the date range for this ${LEAVE_LABEL[editingOffDay.leave_type]}. Day type stays the same.`}
             </p>
 
             {error && <p className="text-sm text-rose-600">{error}</p>}
