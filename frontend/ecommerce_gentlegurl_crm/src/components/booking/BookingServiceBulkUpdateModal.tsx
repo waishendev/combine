@@ -39,6 +39,8 @@ interface Props {
   show: boolean
   selectedServices: BookingServiceRowData[]
   categories: BookingServiceCategoryOption[]
+  /** Header Branch. Allowed Staff is only available when a specific Branch is selected. */
+  selectedBranchId: number | null
   onClose: () => void
   onSuccess: () => Promise<void> | void
 }
@@ -47,9 +49,19 @@ export default function BookingServiceBulkUpdateModal({
   show,
   selectedServices,
   categories,
+  selectedBranchId,
   onClose,
   onSuccess,
 }: Props) {
+  const canEditAllowedStaff = selectedBranchId != null && selectedBranchId > 0
+
+  const fieldOptions = useMemo(
+    () =>
+      canEditAllowedStaff
+        ? FIELD_OPTIONS
+        : FIELD_OPTIONS.filter((field) => field.key !== 'allowed_staff_ids'),
+    [canEditAllowedStaff],
+  )
   const [selectedFields, setSelectedFields] = useState<FieldKey[]>([])
   const [categoryIds, setCategoryIds] = useState<number[]>([])
   const [serviceType, setServiceType] = useState<'standard' | 'premium'>('standard')
@@ -79,8 +91,15 @@ export default function BookingServiceBulkUpdateModal({
   )
 
   useEffect(() => {
+    if (canEditAllowedStaff) return
+    setSelectedFields((prev) => prev.filter((key) => key !== 'allowed_staff_ids'))
+    setAllowedStaffIds([])
+  }, [canEditAllowedStaff])
+
+  useEffect(() => {
     if (!show) return
     if (!selectedFields.includes('allowed_staff_ids')) return
+    if (!canEditAllowedStaff || !selectedBranchId) return
 
     const controller = new AbortController()
     let ignore = false
@@ -88,7 +107,13 @@ export default function BookingServiceBulkUpdateModal({
     const loadStaffs = async () => {
       setStaffLoading(true)
       try {
-        const res = await fetch('/api/proxy/staffs/options/query?per_page=200&is_active=true', {
+        const qs = new URLSearchParams({
+          per_page: '200',
+          is_active: 'true',
+          require_store_location: '1',
+          branch_store_location_id: String(selectedBranchId),
+        })
+        const res = await fetch(`/api/proxy/staffs/options/query?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -115,7 +140,7 @@ export default function BookingServiceBulkUpdateModal({
       ignore = true
       controller.abort()
     }
-  }, [show, selectedFields])
+  }, [show, selectedFields, canEditAllowedStaff, selectedBranchId])
 
   useEffect(() => {
     if (!show) return
@@ -300,7 +325,13 @@ export default function BookingServiceBulkUpdateModal({
         payload.primary_slots = parsePrimarySlots(primarySlots)
       }
       if (selectedFields.includes('allowed_staff_ids')) {
-        payload.allowed_staff_ids = allowedStaffIds
+        if (!selectedBranchId) {
+          setError('Select a specific Branch before bulk-updating Allowed Staff.')
+          return
+        }
+        payload.allowed_staff_by_store_location = {
+          [selectedBranchId]: allowedStaffIds,
+        }
       }
       if (selectedFields.includes('questions')) {
         payload.questions = questions
@@ -409,7 +440,7 @@ export default function BookingServiceBulkUpdateModal({
               Select Fields to Update <span className="text-gray-500">(you can choose more than one)</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {FIELD_OPTIONS.map((field) => {
+              {fieldOptions.map((field) => {
                 const isSelected = selectedFields.includes(field.key)
                 return (
                   <button
@@ -434,6 +465,11 @@ export default function BookingServiceBulkUpdateModal({
                 )
               })}
             </div>
+            {!canEditAllowedStaff ? (
+              <p className="mt-2 text-xs text-amber-700">
+                Allowed Staff is hidden in All Branches — switch to a specific Branch to bulk-update staff.
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-4">

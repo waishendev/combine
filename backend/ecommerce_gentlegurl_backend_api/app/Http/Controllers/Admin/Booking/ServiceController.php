@@ -611,6 +611,9 @@ class ServiceController extends Controller
 
             'allowed_staff_ids' => ['nullable', 'array', 'min:1'],
             'allowed_staff_ids.*' => ['integer', 'distinct'],
+            'allowed_staff_by_store_location' => ['nullable', 'array'],
+            'allowed_staff_by_store_location.*' => ['array', 'min:1'],
+            'allowed_staff_by_store_location.*.*' => ['integer', 'distinct'],
             'primary_slots' => ['nullable', 'array'],
             'primary_slots.*' => ['date_format:H:i'],
 
@@ -641,15 +644,41 @@ class ServiceController extends Controller
         $payload = collect($validated)->except('ids')->toArray();
 
         // Normalize payload bits
+        $hasAllowedStaffByLocation = array_key_exists('allowed_staff_by_store_location', $payload);
         $hasAllowedStaff = array_key_exists('allowed_staff_ids', $payload);
         $hasPrimarySlots = array_key_exists('primary_slots', $payload);
         $hasQuestions = array_key_exists('questions', $payload);
         $hasCategoryIds = array_key_exists('category_ids', $payload) || array_key_exists('category_id', $payload);
         $categoryIds = $hasCategoryIds ? $this->resolveCategoryIds($request, $payload) : null;
-        $allowedStaffIds = $hasAllowedStaff ? $this->resolveAllowedStaffIds($payload['allowed_staff_ids'] ?? []) : null;
+        $allowedStaffByLocation = null;
+        if ($hasAllowedStaffByLocation) {
+            $allowedStaffByLocation = [];
+            foreach (($payload['allowed_staff_by_store_location'] ?? []) as $locationId => $staffIds) {
+                $locationId = (int) $locationId;
+                if ($locationId <= 0 || ! is_array($staffIds)) {
+                    continue;
+                }
+                $allowedStaffByLocation[$locationId] = $this->resolveAllowedStaffIds($staffIds);
+            }
+            if ($allowedStaffByLocation === []) {
+                throw ValidationException::withMessages([
+                    'allowed_staff_by_store_location' => [__('Provide Allowed Staff for at least one Branch.')],
+                ])->status(422);
+            }
+        }
+        $allowedStaffIds = (! $hasAllowedStaffByLocation && $hasAllowedStaff)
+            ? $this->resolveAllowedStaffIds($payload['allowed_staff_ids'] ?? [])
+            : null;
         $primarySlots = $hasPrimarySlots ? ($payload['primary_slots'] ?? []) : null;
         $questions = $hasQuestions ? ($payload['questions'] ?? []) : null;
-        unset($payload['allowed_staff_ids'], $payload['primary_slots'], $payload['questions'], $payload['category_ids'], $payload['category_id']);
+        unset(
+            $payload['allowed_staff_ids'],
+            $payload['allowed_staff_by_store_location'],
+            $payload['primary_slots'],
+            $payload['questions'],
+            $payload['category_ids'],
+            $payload['category_id'],
+        );
 
         foreach ($services as $service) {
             // Validate range mode constraints if present
@@ -692,7 +721,9 @@ class ServiceController extends Controller
                 $service->save();
             }
 
-            if ($hasAllowedStaff && $allowedStaffIds !== null) {
+            if ($allowedStaffByLocation !== null) {
+                $this->syncAllowedStaffsForLocations($service, $allowedStaffByLocation);
+            } elseif ($hasAllowedStaff && $allowedStaffIds !== null) {
                 $this->syncAllowedStaffs($service, $allowedStaffIds);
             }
             if ($hasCategoryIds && $categoryIds !== null) {
@@ -1163,6 +1194,31 @@ class ServiceController extends Controller
                 BookingServiceStaff::query()->create([
                     'service_id' => $service->id,
                     'store_location_id' => (int) $locationId,
+                    'staff_id' => (int) $staffId,
+                    'is_active' => true,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Replace Allowed Staff for the given Branches only; leave other Branches untouched.
+     *
+     * @param  array<int, list<int>>  $staffByLocation
+     */
+    private function syncAllowedStaffsForLocations(BookingService $service, array $staffByLocation): void
+    {
+        foreach ($staffByLocation as $locationId => $staffIds) {
+            $locationId = (int) $locationId;
+            BookingServiceStaff::query()
+                ->where('service_id', $service->id)
+                ->where('store_location_id', $locationId)
+                ->delete();
+
+            foreach ($staffIds as $staffId) {
+                BookingServiceStaff::query()->create([
+                    'service_id' => $service->id,
+                    'store_location_id' => $locationId,
                     'staff_id' => (int) $staffId,
                     'is_active' => true,
                 ]);

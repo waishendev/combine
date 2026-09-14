@@ -54,6 +54,7 @@ type ProductApiResponse = {
 type StockAdjustmentState = {
   product: ProductRowData
   selectedVariantId: string
+  storeLocationId: string
   adjustmentType: 'stock_in' | 'stock_out'
   quantity: string
   costPricePerUnit: string
@@ -138,7 +139,7 @@ export default function ProductTable({
   showCategories = true,
 }: ProductTableProps) {
   const { t } = useI18n()
-  const { selectedBranchId, selectedBranch, isAllBranches } = useBranch()
+  const { selectedBranchId, selectedBranch, isAllBranches, accessibleBranches } = useBranch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -707,13 +708,93 @@ export default function ProductTable({
     return state.product.variants?.find((variant) => variant.id === variantId) ?? null
   }
 
+  const stockAdjustmentBranchOptions = useMemo(() => {
+    if (!stockAdjustment) return []
+    const assignedIds = new Set(
+      (stockAdjustment.product.storeLocationIds?.length
+        ? stockAdjustment.product.storeLocationIds
+        : stockAdjustment.product.storeLocations?.map((branch) => branch.id)) ?? [],
+    )
+    const fromProduct = stockAdjustment.product.storeLocations ?? []
+    if (fromProduct.length > 0) {
+      return fromProduct
+        .map((branch) => ({
+          id: branch.id,
+          name: branch.name,
+          code: branch.code,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    }
+    return accessibleBranches
+      .filter((branch) => assignedIds.size === 0 || assignedIds.has(branch.id))
+      .map((branch) => ({ id: branch.id, name: branch.name, code: branch.code }))
+  }, [accessibleBranches, stockAdjustment])
+
+  const loadProductForStockAdjustment = async (productId: number, branchId: number | null) => {
+    const qs = new URLSearchParams()
+    if (branchId) qs.set('branch_store_location_id', String(branchId))
+    else qs.set('branch_scope', 'all')
+    const res = await fetch(
+      `/api/proxy/ecommerce/products/${productId}/query${qs.toString() ? `?${qs}` : ''}`,
+      { cache: 'no-store' },
+    )
+    if (!res.ok) {
+      throw new Error('Failed to load product stock details.')
+    }
+    const json = await res.json().catch(() => null)
+    const payload = json?.data as ProductApiItem | undefined
+    if (!payload) {
+      throw new Error('Failed to load product stock details.')
+    }
+    return mapProductApiItemToRow(payload)
+  }
+
+  const handleStockAdjustmentBranchChange = async (branchIdValue: string) => {
+    if (!stockAdjustment) return
+    const branchId = Number.parseInt(branchIdValue, 10)
+    if (!Number.isFinite(branchId) || branchId <= 0) {
+      setStockAdjustment((prev) => (prev ? { ...prev, storeLocationId: '' } : prev))
+      return
+    }
+
+    setIsSubmittingAdjustment(true)
+    try {
+      const detailed = await loadProductForStockAdjustment(stockAdjustment.product.id, branchId)
+      const previousVariantId = stockAdjustment.selectedVariantId
+      const stillValid = (detailed.variants ?? []).some(
+        (variant) => !variant.isBundle && String(variant.id) === previousVariantId,
+      )
+      const firstAdjustable = (detailed.variants ?? []).find((variant) => !variant.isBundle)
+      setStockAdjustment((prev) =>
+        prev
+          ? {
+              ...prev,
+              product: detailed,
+              storeLocationId: String(branchId),
+              selectedVariantId: stillValid
+                ? previousVariantId
+                : firstAdjustable
+                  ? String(firstAdjustable.id)
+                  : '',
+            }
+          : prev,
+      )
+    } catch (error) {
+      console.error(error)
+      window.alert(error instanceof Error ? error.message : 'Failed to load product stock details.')
+    } finally {
+      setIsSubmittingAdjustment(false)
+    }
+  }
+
   const handleSubmitStockAdjustment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     if (!stockAdjustment) return
 
-    if (!selectedBranchId || isAllBranches) {
-      window.alert('Please select a specific Branch before adjusting stock.')
+    const adjustmentBranchId = Number.parseInt(stockAdjustment.storeLocationId, 10)
+    if (!Number.isFinite(adjustmentBranchId) || adjustmentBranchId <= 0) {
+      window.alert('Please select a Branch before adjusting stock.')
       return
     }
 
@@ -752,7 +833,7 @@ export default function ProductTable({
     setIsSubmittingAdjustment(true)
     try {
       const payload: Record<string, unknown> = {
-        store_location_id: selectedBranchId,
+        store_location_id: adjustmentBranchId,
         adjustment_type: stockAdjustment.adjustmentType,
         quantity,
         remark: stockAdjustment.remark.trim() || null,
@@ -861,8 +942,37 @@ export default function ProductTable({
               return (
                 <>
                   <p className="mb-3 text-sm text-gray-600">Product: {stockAdjustment.product.name}</p>
-                  <div className={`mb-4 rounded border px-3 py-2 text-sm ${selectedBranchId ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-                    {selectedBranchId ? `Operating Branch: ${selectedBranch?.name ?? `#${selectedBranchId}`}` : 'Please select a specific Branch before adjusting stock.'}
+                  <div className="mb-4">
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Branch <span className="text-red-500">*</span>
+                    </label>
+                    {isAllBranches || !selectedBranchId ? (
+                      <select
+                        value={stockAdjustment.storeLocationId}
+                        onChange={(event) => {
+                          void handleStockAdjustmentBranchChange(event.target.value)
+                        }}
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                        disabled={isSubmittingAdjustment}
+                        required
+                      >
+                        <option value="">Select branch</option>
+                        {stockAdjustmentBranchOptions.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {branch.name}{branch.code ? ` (${branch.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                        Operating Branch: {selectedBranch?.name ?? `#${selectedBranchId}`}
+                      </div>
+                    )}
+                    {isAllBranches || !selectedBranchId ? (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Stock is per branch — pick one branch to adjust. Not all branches at once.
+                      </p>
+                    ) : null}
                   </div>
                   {hasVariants && (
                     <div className="mb-4">
@@ -971,7 +1081,7 @@ export default function ProductTable({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmittingAdjustment || !selectedBranchId || isAllBranches || !!getSelectedVariant(stockAdjustment)?.isBundle}
+                  disabled={isSubmittingAdjustment || !stockAdjustment.storeLocationId || !!getSelectedVariant(stockAdjustment)?.isBundle}
                   className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {isSubmittingAdjustment ? 'Saving...' : 'Save Adjustment'}
@@ -1262,27 +1372,15 @@ export default function ProductTable({
                   onStockAdjustment={async () => {
                     if (!canUpdate) return
                     try {
-                      const qs = new URLSearchParams()
-                      if (selectedBranchId) qs.set('branch_store_location_id', String(selectedBranchId))
-                      const res = await fetch(
-                        `/api/proxy/ecommerce/products/${product.id}/query${qs.toString() ? `?${qs}` : ''}`,
-                        { cache: 'no-store' },
+                      const detailed = await loadProductForStockAdjustment(
+                        product.id,
+                        selectedBranchId,
                       )
-                      if (!res.ok) {
-                        window.alert('Failed to load product stock details.')
-                        return
-                      }
-                      const json = await res.json().catch(() => null)
-                      const payload = json?.data as ProductApiItem | undefined
-                      if (!payload) {
-                        window.alert('Failed to load product stock details.')
-                        return
-                      }
-                      const detailed = mapProductApiItemToRow(payload)
                       const firstAdjustable = (detailed.variants ?? []).find((variant) => !variant.isBundle)
                       setStockAdjustment({
                         product: detailed,
                         selectedVariantId: firstAdjustable ? String(firstAdjustable.id) : '',
+                        storeLocationId: selectedBranchId ? String(selectedBranchId) : '',
                         adjustmentType: 'stock_in',
                         quantity: '',
                         costPricePerUnit: '',
@@ -1290,7 +1388,7 @@ export default function ProductTable({
                       })
                     } catch (error) {
                       console.error(error)
-                      window.alert('Failed to load product stock details.')
+                      window.alert(error instanceof Error ? error.message : 'Failed to load product stock details.')
                     }
                   }}
                   onViewStockLogs={() => router.push(`/products/stock-movements?product_id=${product.id}`)}

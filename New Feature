@@ -136,3 +136,13 @@ No historical backfill is performed: a legacy item's Branch is displayed from it
 order-level `store_location_id`; NULL legacy orders remain unassigned rather than guessed.
 Rollback requires stopping new checkout first. Rolling the migration back removes persisted
 item/group attribution and is therefore lossy for split orders created after deployment.
+
+
+
+BRANCHDUPLICATED
+php artisan product-branch:clone-catalog --from-code=PNG --to-code="TESTING BRANCH 2" --dry-run
+php artisan product-branch:clone-catalog --from-code=PNG --to-code="TESTING BRANCH 2" --force
+
+
+php artisan staff-branch:clone-assignments --from-code=PNG --to-code="TESTING BRANCH 2" --dry-run
+php artisan staff-branch:clone-assignments --from-code=PNG --to-code="TESTING BRANCH 2" --force

@@ -591,6 +591,7 @@ export default function BookingServicesTable({
           show={isBulkUpdateOpen}
           selectedServices={selectedServices}
           categories={categories}
+          selectedBranchId={selectedBranchId}
           onClose={() => setIsBulkUpdateOpen(false)}
           onSuccess={async () => {
             await fetchServices()
