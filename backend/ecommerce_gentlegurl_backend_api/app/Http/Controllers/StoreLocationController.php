@@ -92,13 +92,16 @@ class StoreLocationController extends Controller
                 ]);
             }
 
+            unset($validated['sort_order']);
+            $sortOrder = (int) (StoreLocation::max('sort_order') ?? 0) + 1;
+
             $location = StoreLocation::create($validated + [
                 'is_active' => $validated['is_active'] ?? true,
                 'is_pickup_available' => $validated['is_pickup_available'] ?? true,
                 'is_review_available' => $validated['is_review_available'] ?? true,
                 'is_booking_available' => $validated['is_booking_available'] ?? false,
                 'is_pos_available' => $validated['is_pos_available'] ?? false,
-                'sort_order' => $validated['sort_order'] ?? 0,
+                'sort_order' => $sortOrder,
             ]);
 
             app(ShippingFulfillmentPriorityService::class)->append($location);
@@ -139,6 +142,8 @@ class StoreLocationController extends Controller
             return $this->respond(null, __('A maximum of 6 images is allowed.'), false, 422);
         }
 
+        // Sort order is managed via move-up / move-down only.
+        unset($validated['sort_order']);
         $storeLocation->fill($validated);
         $storeLocation->save();
 
@@ -303,5 +308,63 @@ class StoreLocationController extends Controller
             $image->update(['sort_order' => $position]);
             $position++;
         }
+    }
+
+    public function moveUp(StoreLocation $storeLocation)
+    {
+        return DB::transaction(function () use ($storeLocation) {
+            $oldPosition = $storeLocation->sort_order;
+
+            $previousItem = StoreLocation::where('sort_order', '<', $storeLocation->sort_order)
+                ->orderBy('sort_order', 'desc')
+                ->first();
+
+            if (! $previousItem) {
+                return $this->respond(null, __('Branch is already at the top.'), false, 400);
+            }
+
+            $newPosition = $previousItem->sort_order;
+
+            $storeLocation->sort_order = $newPosition;
+            $storeLocation->save();
+
+            $previousItem->sort_order = $oldPosition;
+            $previousItem->save();
+
+            return $this->respond([
+                'id' => $storeLocation->id,
+                'old_position' => $oldPosition,
+                'new_position' => $newPosition,
+            ], __('Branch moved up successfully.'));
+        });
+    }
+
+    public function moveDown(StoreLocation $storeLocation)
+    {
+        return DB::transaction(function () use ($storeLocation) {
+            $oldPosition = $storeLocation->sort_order;
+
+            $nextItem = StoreLocation::where('sort_order', '>', $storeLocation->sort_order)
+                ->orderBy('sort_order', 'asc')
+                ->first();
+
+            if (! $nextItem) {
+                return $this->respond(null, __('Branch is already at the bottom.'), false, 400);
+            }
+
+            $newPosition = $nextItem->sort_order;
+
+            $storeLocation->sort_order = $newPosition;
+            $storeLocation->save();
+
+            $nextItem->sort_order = $oldPosition;
+            $nextItem->save();
+
+            return $this->respond([
+                'id' => $storeLocation->id,
+                'old_position' => $oldPosition,
+                'new_position' => $newPosition,
+            ], __('Branch moved down successfully.'));
+        });
     }
 }

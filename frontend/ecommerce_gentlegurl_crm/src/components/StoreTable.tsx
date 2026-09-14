@@ -64,6 +64,7 @@ export default function StoreTable({
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingStoreId, setEditingStoreId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<StoreRowData | null>(null)
+  const [movingStoreId, setMovingStoreId] = useState<number | null>(null)
   const [branchUsage, setBranchUsage] = useState({ count: 0, limit: 0, can_create: false })
   const hasCreatePermission = permissions.includes('ecommerce.stores.create')
   const canView = permissions.includes('ecommerce.stores.view')
@@ -281,7 +282,109 @@ export default function StoreTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 9 : 8
+  const swapStoreAdjacent = (
+    prev: StoreRowData[],
+    rowId: number,
+    direction: 'up' | 'down',
+  ): StoreRowData[] | null => {
+    const idx = prev.findIndex((r) => r.id === rowId)
+    if (idx === -1) return null
+    const next = [...prev]
+    if (direction === 'up') {
+      if (idx === 0) return null
+      const j = idx - 1
+      const a = next[idx]
+      const b = next[j]
+      next[j] = { ...a, sortOrder: b.sortOrder }
+      next[idx] = { ...b, sortOrder: a.sortOrder }
+      return next
+    }
+    if (idx >= next.length - 1) return null
+    const j = idx + 1
+    const a = next[idx]
+    const b = next[j]
+    next[idx] = { ...b, sortOrder: a.sortOrder }
+    next[j] = { ...a, sortOrder: b.sortOrder }
+    return next
+  }
+
+  const handleMoveUp = async (store: StoreRowData) => {
+    if (movingStoreId === store.id) return
+    setMovingStoreId(store.id)
+
+    try {
+      const res = await fetch(
+        `/api/proxy/ecommerce/store-locations/${store.id}/move-up`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-Language': 'en',
+          },
+        },
+      )
+
+      const data = await res.json().catch(() => null)
+      if (data && typeof data === 'object') {
+        if (data?.success === false && data?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+      }
+
+      if (!res.ok) {
+        console.error('Failed to move branch up')
+        return
+      }
+
+      setRows((prev) => swapStoreAdjacent(prev, store.id, 'up') ?? prev)
+      void refreshBranches({ silent: true })
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setMovingStoreId(null)
+    }
+  }
+
+  const handleMoveDown = async (store: StoreRowData) => {
+    if (movingStoreId === store.id) return
+    setMovingStoreId(store.id)
+
+    try {
+      const res = await fetch(
+        `/api/proxy/ecommerce/store-locations/${store.id}/move-down`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-Language': 'en',
+          },
+        },
+      )
+
+      const data = await res.json().catch(() => null)
+      if (data && typeof data === 'object') {
+        if (data?.success === false && data?.message === 'Unauthorized') {
+          window.location.replace('/dashboard')
+          return
+        }
+      }
+
+      if (!res.ok) {
+        console.error('Failed to move branch down')
+        return
+      }
+
+      setRows((prev) => swapStoreAdjacent(prev, store.id, 'down') ?? prev)
+      void refreshBranches({ silent: true })
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setMovingStoreId(null)
+    }
+  }
+
+  const colCount = showActions ? 10 : 9
 
   const totalPages = meta.last_page || 1
 
@@ -472,6 +575,7 @@ export default function StoreTable({
                     { key: 'postcode', label: 'Postcode' },
                     { key: 'country', label: 'Country' },
                     { key: 'phone', label: 'Phone' },
+                    { key: 'sortOrder', label: 'Sort Order' },
                     { key: 'isActive', label: t('common.status') },
                   ] as const
                 ).map(({ key, label }) => (
@@ -503,25 +607,58 @@ export default function StoreTable({
               {loading ? (
                 <TableLoadingRow colSpan={colCount} />
               ) : rows.length > 0 ? (
-                sortedRows.map((store) => (
-                  <StoreRow
-                    key={store.id}
-                    store={store}
-                    showActions={showActions}
-                    canUpdate={canUpdate}
-                    canDelete={canDelete}
-                    onEdit={() => {
-                      if (canUpdate) {
-                        setEditingStoreId(store.id)
-                      }
-                    }}
-                    onDelete={() => {
-                      if (canDelete) {
-                        setDeleteTarget(store)
-                      }
-                    }}
-                  />
-                ))
+                (() => {
+                  const sortOrders = sortedRows
+                    .map((r) => r.sortOrder)
+                    .filter((v): v is number => typeof v === 'number')
+                  const minSortOrder =
+                    sortOrders.length > 0 ? Math.min(...sortOrders) : null
+                  const maxSortOrder =
+                    sortOrders.length > 0 ? Math.max(...sortOrders) : null
+
+                  return sortedRows.map((store) => {
+                    const isFirst =
+                      store.sortOrder !== null &&
+                      store.sortOrder !== undefined &&
+                      store.sortOrder === minSortOrder
+                    const isLast =
+                      store.sortOrder !== null &&
+                      store.sortOrder !== undefined &&
+                      store.sortOrder === maxSortOrder
+
+                    return (
+                      <StoreRow
+                        key={store.id}
+                        store={store}
+                        showActions={showActions}
+                        canUpdate={canUpdate}
+                        canDelete={canDelete}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        onEdit={() => {
+                          if (canUpdate) {
+                            setEditingStoreId(store.id)
+                          }
+                        }}
+                        onDelete={() => {
+                          if (canDelete) {
+                            setDeleteTarget(store)
+                          }
+                        }}
+                        onMoveUp={() => {
+                          if (canUpdate) {
+                            void handleMoveUp(store)
+                          }
+                        }}
+                        onMoveDown={() => {
+                          if (canUpdate) {
+                            void handleMoveDown(store)
+                          }
+                        }}
+                      />
+                    )
+                  })
+                })()
               ) : (
                 <TableEmptyState colSpan={colCount} />
               )}

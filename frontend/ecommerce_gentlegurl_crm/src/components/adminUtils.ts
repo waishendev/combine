@@ -102,6 +102,13 @@ export const mapAdminApiItemToRow = (item: AdminApiItem): AdminRowData => {
     isActive,
     roleName,
     roleId: normalizedRoleId,
+    staffId:
+      item.staff_id != null && item.staff_id !== ''
+        ? Number(item.staff_id)
+        : null,
+    isStaffLogin:
+      isOperationalStaffRole(role) ||
+      (item.staff_id != null && item.staff_id !== '' && Number(item.staff_id) > 0),
     createdAt: formatDateTime12Hour(item.created_at),
     updatedAt: item.updated_at ?? '',
     storeLocations: Array.isArray(item.store_locations)

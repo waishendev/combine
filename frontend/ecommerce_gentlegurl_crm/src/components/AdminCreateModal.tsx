@@ -132,6 +132,8 @@ export default function AdminCreateModal({
             isActive: true,
             roleName,
             roleId: roleIdNumber,
+            staffId: null,
+            isStaffLogin: false,
             createdAt: '',
             updatedAt: '',
             storeLocations: branchOptions.filter((location) => form.storeLocationIds.includes(String(location.id))).map((location) => ({ id: location.id, name: location.name, code: location.code })),

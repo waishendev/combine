@@ -10,6 +10,8 @@ export interface AdminRowData {
   isActive: boolean
   roleName: string
   roleId: number | null
+  staffId: number | null
+  isStaffLogin: boolean
   createdAt: string
   updatedAt: string
   storeLocations?: { id: number; name: string; code?: string; isActive?: boolean }[]
@@ -76,7 +78,7 @@ export default function AdminRow({
                 )}
               </button>
             )}
-            {canDelete && (
+            {canDelete && !admin.isStaffLogin && (
               <button
                 type="button"
                 className="inline-flex h-8 w-8 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
@@ -88,6 +90,15 @@ export default function AdminRow({
               >
                 <i className="fa-solid fa-trash" />
               </button>
+            )}
+            {canDelete && admin.isStaffLogin && (
+              <span
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-200 text-gray-500"
+                title="Staff login — manage from Staffs page"
+                aria-label="Staff login — manage from Staffs page"
+              >
+                <i className="fa-solid fa-link" />
+              </span>
             )}
           </div>
         </td>

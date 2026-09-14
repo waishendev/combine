@@ -28,7 +28,6 @@ interface FormState {
   isReviewAvailable: 'true' | 'false'
   isBookingAvailable: 'true' | 'false'
   isPosAvailable: 'true' | 'false'
-  sortOrder: string
 }
 
 const initialFormState: FormState = {
@@ -45,7 +44,6 @@ const initialFormState: FormState = {
   isReviewAvailable: 'true',
   isBookingAvailable: 'false',
   isPosAvailable: 'false',
-  sortOrder: '0',
 }
 
 const MAX_IMAGES = 6
@@ -230,7 +228,6 @@ export default function StoreCreateModal({
       formData.append('is_review_available', form.isReviewAvailable === 'true' ? '1' : '0')
       formData.append('is_booking_available', form.isBookingAvailable === 'true' ? '1' : '0')
       formData.append('is_pos_available', form.isPosAvailable === 'true' ? '1' : '0')
-      formData.append('sort_order', form.sortOrder)
 
       openingHours
         .map(buildOpeningHourValue)
@@ -504,7 +501,6 @@ export default function StoreCreateModal({
                   </select>
                 </div>
               ))}
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label><input name="sortOrder" type="number" min="0" value={form.sortOrder} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={submitting} /></div>
 
               <div className="md:col-span-2">
                 <label

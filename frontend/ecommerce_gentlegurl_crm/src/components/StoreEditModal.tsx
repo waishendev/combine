@@ -30,7 +30,6 @@ interface FormState {
   isReviewAvailable: 'true' | 'false'
   isBookingAvailable: 'true' | 'false'
   isPosAvailable: 'true' | 'false'
-  sortOrder: string
 }
 
 const initialFormState: FormState = {
@@ -48,7 +47,6 @@ const initialFormState: FormState = {
   isReviewAvailable: 'true',
   isBookingAvailable: 'false',
   isPosAvailable: 'false',
-  sortOrder: '0',
 }
 
 const MAX_IMAGES = 6
@@ -197,7 +195,6 @@ export default function StoreEditModal({
           isReviewAvailable: mappedStore.isReviewAvailable ? 'true' : 'false',
           isBookingAvailable: mappedStore.isBookingAvailable ? 'true' : 'false',
           isPosAvailable: mappedStore.isPosAvailable ? 'true' : 'false',
-          sortOrder: String(mappedStore.sortOrder ?? 0),
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -373,7 +370,6 @@ export default function StoreEditModal({
       formData.append('is_review_available', form.isReviewAvailable === 'true' ? '1' : '0')
       formData.append('is_booking_available', form.isBookingAvailable === 'true' ? '1' : '0')
       formData.append('is_pos_available', form.isPosAvailable === 'true' ? '1' : '0')
-      formData.append('sort_order', form.sortOrder)
       openingHours
         .map(buildOpeningHourValue)
         .map((value) => value.trim())
@@ -676,7 +672,6 @@ export default function StoreEditModal({
                   {(['isPickupAvailable', 'isReviewAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (
                     <div key={field}><label className="block text-sm font-medium text-gray-700 mb-1">{field === 'isPickupAvailable' ? 'Pickup Available' : field === 'isReviewAvailable' ? 'Reviews Available' : field === 'isBookingAvailable' ? 'Booking Available' : 'POS Available'}</label><select name={field} value={form[field]} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={disableForm}><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
                   ))}
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label><input name="sortOrder" type="number" min="0" value={form.sortOrder} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={disableForm} /></div>
 
                   <div className="md:col-span-2">
                     <label

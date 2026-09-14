@@ -158,12 +158,14 @@ const ECOMMERCE_REQUEST_FILTERS = [
   { status: 'confirmed' },
   { status: 'ready_for_pickup' },
   { status: 'shipped' },
+  { status: 'reject_payment_proof' },
   { payment_status: 'failed' },
 ]
 
 const BOOKING_PACKAGE_ORDER_FILTERS = [
   { status: 'pending', payment_status: 'unpaid' },
   { status: 'processing', payment_status: 'unpaid' },
+  { status: 'reject_payment_proof', payment_status: 'unpaid' },
 ]
 
 const BOOKING_HOLD_FILTERS = ['HOLD', 'PENDING', 'PENDING_CONFIRMATION']
@@ -379,7 +381,6 @@ function shouldShowBookingPackageOrder(order: OrderApiItem): boolean {
 
   if (status === 'cancelled' || status === 'completed') return false
   if (payment === 'paid' || payment === 'refunded') return false
-  if (status === 'reject_payment_proof') return false
 
   return true
 }
@@ -389,11 +390,13 @@ function buildPackagePurchaseRequest(order: OrderApiItem): BookingRequestRow {
   const orderNo = order.order_no ?? order.order_number ?? `#${orderId}`
   const status = String(order.status ?? '').toLowerCase()
   const payment = String(order.payment_status ?? '').toLowerCase()
-  const statusLabel = payment === 'unpaid' && status === 'processing'
-    ? 'AWAITING VERIFICATION'
-    : payment === 'unpaid'
-      ? 'AWAITING PAYMENT'
-      : String(order.status ?? 'PENDING').toUpperCase()
+  const statusLabel = status === 'reject_payment_proof'
+    ? 'PAYMENT PROOF REJECTED'
+    : payment === 'unpaid' && status === 'processing'
+      ? 'AWAITING VERIFICATION'
+      : payment === 'unpaid'
+        ? 'AWAITING PAYMENT'
+        : String(order.status ?? 'PENDING').toUpperCase()
 
   return {
     key: `package-order-${orderId}`,
@@ -424,7 +427,6 @@ function shouldShowEcommerceOrder(order: OrderApiItem): boolean {
   const payment = String(order.payment_status ?? '').toLowerCase()
 
   if (status === 'cancelled' || status === 'completed') return false
-  if (status === 'reject_payment_proof') return false
   if (payment === 'refunded' && status === 'cancelled') return false
 
   return true

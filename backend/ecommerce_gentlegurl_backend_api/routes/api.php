@@ -1025,6 +1025,12 @@ $protectedRoutes = function () {
 
         Route::delete('/store-locations/{storeLocation}', [StoreLocationController::class, 'destroy'])
             ->middleware('permission:ecommerce.stores.delete');
+
+        Route::post('/store-locations/{storeLocation}/move-up', [StoreLocationController::class, 'moveUp'])
+            ->middleware('permission:ecommerce.stores.update');
+
+        Route::post('/store-locations/{storeLocation}/move-down', [StoreLocationController::class, 'moveDown'])
+            ->middleware('permission:ecommerce.stores.update');
         // END NEW ENHANCEMENT
 
         // Bank Accounts Admin

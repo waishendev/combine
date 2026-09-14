@@ -916,8 +916,8 @@ class OrderController extends Controller
 
         $isBookingOrder = $this->detectOrderType($order) === 'booking';
 
-        if ($isBookingOrder && ! in_array((string) $order->status, ['pending', 'processing'], true)) {
-            return $this->respond($order, __('Only awaiting payment or waiting verification booking orders can be cancelled here.'), false, 422);
+        if ($isBookingOrder && ! in_array((string) $order->status, ['pending', 'processing', 'reject_payment_proof'], true)) {
+            return $this->respond($order, __('Only awaiting payment, waiting verification, or payment-proof-rejected booking orders can be cancelled here.'), false, 422);
         }
 
         try {
@@ -932,8 +932,8 @@ class OrderController extends Controller
                     throw new \RuntimeException('Order cannot be cancelled in its current status.');
                 }
 
-                if ($isBookingOrder && ! in_array((string) $lockedOrder->status, ['pending', 'processing'], true)) {
-                    throw new \RuntimeException('Only awaiting payment or waiting verification booking orders can be cancelled here.');
+                if ($isBookingOrder && ! in_array((string) $lockedOrder->status, ['pending', 'processing', 'reject_payment_proof'], true)) {
+                    throw new \RuntimeException('Only awaiting payment, waiting verification, or payment-proof-rejected booking orders can be cancelled here.');
                 }
 
                 $lockedOrder->status = 'cancelled';

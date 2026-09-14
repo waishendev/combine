@@ -499,11 +499,30 @@ class StaffController extends Controller
             $staff->save();
 
             $user = $staff->admin;
-            if (! empty($validated['password']) && ! $user) {
-                abort(422, __('This staff has no login account. Create a Staff login first before setting a password.'));
-            }
 
-            if ($user) {
+            if (! $user) {
+                // Quietly recreate login when a password is provided (e.g. after accidental Admin delete).
+                if (! empty($validated['password'])) {
+                    $email = (string) ($validated['email'] ?? $staff->email);
+                    $username = array_key_exists('username', $validated)
+                        ? (trim((string) ($validated['username'] ?? '')) ?: null)
+                        : null;
+                    $staffRole = $this->ensureStaffRole();
+
+                    $user = User::create([
+                        'name' => (string) ($validated['name'] ?? $staff->name),
+                        'email' => $email,
+                        'username' => $username,
+                        // User model casts password as hashed — pass plain text.
+                        'password' => $validated['password'],
+                        'is_active' => array_key_exists('is_active', $validated)
+                            ? (bool) $validated['is_active']
+                            : (bool) $staff->is_active,
+                        'staff_id' => $staff->id,
+                    ]);
+                    $user->roles()->sync([$staffRole->id]);
+                }
+            } else {
                 $userPayload = [];
                 if (array_key_exists('email', $validated)) {
                     $userPayload['email'] = $validated['email'];
@@ -536,7 +555,7 @@ class StaffController extends Controller
                 $this->staffBranchAccess->synchronize($staff, $user);
             }
 
-            return $staff->load(['admin:id,staff_id,username,email', 'storeLocations:id,name,code']);
+            return $staff->fresh()->load(['admin:id,staff_id,username,email', 'storeLocations:id,name,code']);
         });
 
         if ($newAvatarPath && $oldAvatarPath && $oldAvatarPath !== $newAvatarPath && Storage::disk('public')->exists($oldAvatarPath)) {

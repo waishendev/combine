@@ -79,7 +79,7 @@ class RequestCenterPendingTasksQuery
             ->count();
         $packagePurchases = (int) $orderScope->apply(
             Order::query()
-                ->whereIn('status', ['pending', 'processing'])
+                ->whereIn('status', ['pending', 'processing', 'reject_payment_proof'])
                 ->where('payment_status', 'unpaid')
                 ->whereHas('items', fn ($items) => $items->where('line_type', 'service_package')),
             'orders.store_location_id'

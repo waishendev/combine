@@ -29,6 +29,9 @@ class AdminController extends Controller
         $accessibleIds = $this->storeLocationAccess->accessibleStoreLocations($request->user(), false)->pluck('id');
 
         $admins = User::with(['roles', 'branchRoles', 'staff', 'storeLocations'])
+            // Staff logins belong on /staffs — never list them as CRM admins.
+            ->whereNull('staff_id')
+            ->whereDoesntHave('roles', fn ($roles) => $roles->whereRaw('LOWER(name) = ?', ['staff']))
             ->when(! $request->user()?->canManageSystemAdmins(), function ($query) {
                 $query->whereDoesntHave('roles', function ($roleQuery) {
                     $roleQuery->where('is_system', true);
@@ -184,6 +187,15 @@ class AdminController extends Controller
     public function destroy(Request $request, User $admin)
     {
         $this->ensureSystemAdminAllowed($request->user(), $admin);
+
+        if ($admin->staff_id || $admin->roles()->whereRaw('LOWER(name) = ?', ['staff'])->exists()) {
+            return $this->respond(
+                null,
+                __('This login belongs to a Staff profile. Deactivate or manage it from the Staffs page instead of deleting here.'),
+                false,
+                422
+            );
+        }
 
         $admin->delete();
 

@@ -275,6 +275,8 @@ export default function AdminEditModal({
             isActive: form.isActive === 'true',
             roleName,
             roleId: roleIdNumber || null,
+            staffId: loadedAdmin?.staffId ?? null,
+            isStaffLogin: loadedAdmin?.isStaffLogin ?? false,
             createdAt: loadedAdmin?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
             storeLocations: branchOptions.filter((location) => form.storeLocationIds.includes(String(location.id))).map((location) => ({ id: location.id, name: location.name, code: location.code })),

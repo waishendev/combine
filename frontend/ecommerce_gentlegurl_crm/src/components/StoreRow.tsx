@@ -29,7 +29,7 @@ export interface StoreRowData {
   isReviewAvailable?: boolean
   isBookingAvailable?: boolean
   isPosAvailable?: boolean
-  sortOrder?: number
+  sortOrder?: number | null
 }
 
 interface StoreRowProps {
@@ -37,8 +37,12 @@ interface StoreRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  isFirst?: boolean
+  isLast?: boolean
   onEdit?: (store: StoreRowData) => void
   onDelete?: (store: StoreRowData) => void
+  onMoveUp?: (store: StoreRowData) => void
+  onMoveDown?: (store: StoreRowData) => void
 }
 
 export default function StoreRow({
@@ -46,8 +50,12 @@ export default function StoreRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  isFirst = false,
+  isLast = false,
   onEdit,
   onDelete,
+  onMoveUp,
+  onMoveDown,
 }: StoreRowProps) {
   const { t } = useI18n()
   return (
@@ -82,6 +90,37 @@ export default function StoreRow({
       <td className="px-4 py-2 border border-gray-200">{store.postcode}</td>
       <td className="px-4 py-2 border border-gray-200">{store.country}</td>
       <td className="px-4 py-2 border border-gray-200">{store.phone}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        {canUpdate ? (
+          <div className="flex items-center gap-3 justify-left">
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              onClick={() => onMoveUp?.(store)}
+              disabled={isFirst}
+              aria-label="Move up"
+              title="Move up"
+            >
+              <i className="fa-solid fa-chevron-up text-xs" />
+            </button>
+            <span className="text-sm font-medium text-gray-700 bg-gray-50 text-center">
+              {store.sortOrder != null ? store.sortOrder : '-'}
+            </span>
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              onClick={() => onMoveDown?.(store)}
+              disabled={isLast}
+              aria-label="Move down"
+              title="Move down"
+            >
+              <i className="fa-solid fa-chevron-down text-xs" />
+            </button>
+          </div>
+        ) : (
+          <span>{store.sortOrder != null ? store.sortOrder : '-'}</span>
+        )}
+      </td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={store.isActive ? 'active' : 'inactive'}

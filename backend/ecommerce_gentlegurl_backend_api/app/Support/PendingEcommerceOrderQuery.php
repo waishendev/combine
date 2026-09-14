@@ -24,10 +24,10 @@ class PendingEcommerceOrderQuery
      *
      * Mirrors PosRequestCenter ECOMMERCE_REQUEST_FILTERS + shouldShowEcommerceOrder:
      * - shop orders only (no booking deposit / settlement lines)
-     * - status: pending, processing, confirmed, ready_for_pickup, shipped
+     * - status: pending, processing, confirmed, ready_for_pickup, shipped, reject_payment_proof
      * - or payment_status: failed
      *
-     * Excluded: cancelled, completed, reject_payment_proof, booking orders.
+     * Excluded: cancelled, completed, booking orders.
      */
     public static function pendingRequestOrders(): Builder
     {
@@ -35,10 +35,10 @@ class PendingEcommerceOrderQuery
         static::applyNonBookingOrderScope($query);
 
         return $query
-            ->whereNotIn('status', ['cancelled', 'completed', 'reject_payment_proof'])
+            ->whereNotIn('status', ['cancelled', 'completed'])
             ->where(function ($statusQuery) {
                 $statusQuery
-                    ->whereIn('status', ['pending', 'processing', 'confirmed', 'ready_for_pickup', 'shipped'])
+                    ->whereIn('status', ['pending', 'processing', 'confirmed', 'ready_for_pickup', 'shipped', 'reject_payment_proof'])
                     ->orWhere('payment_status', 'failed');
             })
             ->orderByDesc('id');
