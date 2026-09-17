@@ -86,6 +86,7 @@ class StaffScheduleController extends Controller
                 foreach ($days as $day) {
                     $this->branchSchedules->assertScheduleDoesNotOverlap(
                         (int) $data['staff_id'],
+                        (int) $data['store_location_id'],
                         $day,
                         $data['start_time'],
                         $data['end_time'],
@@ -144,7 +145,7 @@ class StaffScheduleController extends Controller
         }
         $this->branchSchedules->assertStaffAssigned($staffId, $branchId);
         $this->validateScheduleTimes((string) ($data['start_time'] ?? $item->start_time), (string) ($data['end_time'] ?? $item->end_time), $data['break_start'] ?? $item->break_start, $data['break_end'] ?? $item->break_end);
-        $this->branchSchedules->assertScheduleDoesNotOverlap($staffId, (int) ($data['day_of_week'] ?? $item->day_of_week), (string) ($data['start_time'] ?? $item->start_time), (string) ($data['end_time'] ?? $item->end_time), $willBeActive, $item->id);
+        $this->branchSchedules->assertScheduleDoesNotOverlap($staffId, $branchId, (int) ($data['day_of_week'] ?? $item->day_of_week), (string) ($data['start_time'] ?? $item->start_time), (string) ($data['end_time'] ?? $item->end_time), $willBeActive, $item->id);
         $item->update($data);
         return $this->respond($item->load(['staff:id,name','storeLocation:id,name,code,is_active,is_booking_available']));
     }
@@ -211,7 +212,7 @@ class StaffScheduleController extends Controller
                     if (! $schedule->is_active && $willBeActive) {
                         $this->branchSchedules->authorizeOperationalBranch(request()->user(), (int) $schedule->store_location_id);
                     }
-                    $this->branchSchedules->assertScheduleDoesNotOverlap((int) $schedule->staff_id, (int) $schedule->day_of_week, (string) $start, (string) $end, $willBeActive, (int) $schedule->id);
+                    $this->branchSchedules->assertScheduleDoesNotOverlap((int) $schedule->staff_id, (int) $schedule->store_location_id, (int) $schedule->day_of_week, (string) $start, (string) $end, $willBeActive, (int) $schedule->id);
 
                     $payload = [];
                     if ($hasStart) {
@@ -414,7 +415,7 @@ class StaffScheduleController extends Controller
                     }
                 }
 
-                $this->branchSchedules->assertScheduleDoesNotOverlap((int) $validated['staff_id'], (int) $validated['day_of_week'], $validated['start_time'], $validated['end_time'], (bool) $validated['is_active'], $record?->id);
+                $this->branchSchedules->assertScheduleDoesNotOverlap((int) $validated['staff_id'], (int) $validated['store_location_id'], (int) $validated['day_of_week'], $validated['start_time'], $validated['end_time'], (bool) $validated['is_active'], $record?->id);
                 if (! $record) {
                     BookingStaffSchedule::query()->create($validated);
                     $summary['created']++;

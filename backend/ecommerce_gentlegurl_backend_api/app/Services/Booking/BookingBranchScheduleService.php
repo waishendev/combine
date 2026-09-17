@@ -36,8 +36,15 @@ class BookingBranchScheduleService
         return $staff;
     }
 
-    public function assertScheduleDoesNotOverlap(int $staffId, int $dayOfWeek, string $startTime, string $endTime, bool $willBeActive, ?int $ignoreId = null): void
-    {
+    public function assertScheduleDoesNotOverlap(
+        int $staffId,
+        int $storeLocationId,
+        int $dayOfWeek,
+        string $startTime,
+        string $endTime,
+        bool $willBeActive,
+        ?int $ignoreId = null,
+    ): void {
         if ($this->minutes($startTime) >= $this->minutes($endTime)) {
             throw ValidationException::withMessages(['end_time' => 'End time must be later than start time.']);
         }
@@ -46,8 +53,10 @@ class BookingBranchScheduleService
             return;
         }
 
+        // Overlap is Branch-local: the same Staff may hold matching hours at other Branches.
         $overlap = BookingStaffSchedule::query()
             ->where('staff_id', $staffId)
+            ->where('store_location_id', $storeLocationId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
@@ -55,7 +64,7 @@ class BookingBranchScheduleService
             ->where('end_time', '>', $startTime)
             ->exists();
         if ($overlap) {
-            throw ValidationException::withMessages(['start_time' => 'This schedule overlaps another active schedule for the Staff, including schedules at other Branches.']);
+            throw ValidationException::withMessages(['start_time' => 'This schedule overlaps another active schedule for the Staff at this Branch.']);
         }
     }
 

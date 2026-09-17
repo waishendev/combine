@@ -26,17 +26,26 @@ class BookingBranchSchedulingTest extends TestCase
     {
         [$staff, $a, $b] = $this->workplace();
         BookingStaffSchedule::create($this->schedule($staff, $a, 1, '10:00', '14:00'));
-        app(BookingBranchScheduleService::class)->assertScheduleDoesNotOverlap($staff->id, 1, '15:00', '19:00', true);
+        app(BookingBranchScheduleService::class)->assertScheduleDoesNotOverlap($staff->id, $b->id, 1, '15:00', '19:00', true);
         BookingStaffSchedule::create($this->schedule($staff, $b, 1, '15:00', '19:00'));
         $this->assertDatabaseCount('booking_staff_schedules', 2);
     }
 
-    public function test_cross_branch_schedule_overlap_is_rejected(): void
+    public function test_cross_branch_schedule_overlap_is_allowed(): void
+    {
+        [$staff, $a, $b] = $this->workplace();
+        BookingStaffSchedule::create($this->schedule($staff, $a, 1, '10:00', '15:00'));
+        app(BookingBranchScheduleService::class)->assertScheduleDoesNotOverlap($staff->id, $b->id, 1, '14:00', '18:00', true);
+        BookingStaffSchedule::create($this->schedule($staff, $b, 1, '14:00', '18:00'));
+        $this->assertDatabaseCount('booking_staff_schedules', 2);
+    }
+
+    public function test_same_branch_schedule_overlap_is_rejected(): void
     {
         [$staff, $a] = $this->workplace();
         BookingStaffSchedule::create($this->schedule($staff, $a, 1, '10:00', '15:00'));
         $this->expectException(ValidationException::class);
-        app(BookingBranchScheduleService::class)->assertScheduleDoesNotOverlap($staff->id, 1, '14:00', '18:00', true);
+        app(BookingBranchScheduleService::class)->assertScheduleDoesNotOverlap($staff->id, $a->id, 1, '14:00', '18:00', true);
     }
 
     public function test_availability_requires_schedule_at_selected_branch(): void
@@ -101,18 +110,19 @@ class BookingBranchSchedulingTest extends TestCase
     {
         [$staff, $a, $b] = $this->workplace();
         $active = BookingStaffSchedule::create($this->schedule($staff, $a, 1, '10:00', '15:00'));
-        $inactive = BookingStaffSchedule::create(array_merge($this->schedule($staff, $b, 1, '14:00', '18:00'), ['is_active' => false]));
+        $inactive = BookingStaffSchedule::create(array_merge($this->schedule($staff, $a, 1, '14:00', '18:00'), ['is_active' => false]));
         $service = app(BookingBranchScheduleService::class);
 
-        $service->assertScheduleDoesNotOverlap($staff->id, 1, '11:00', '17:00', false);
-        $service->assertScheduleDoesNotOverlap($staff->id, 1, '15:00', '18:00', true);
+        $service->assertScheduleDoesNotOverlap($staff->id, $a->id, 1, '11:00', '17:00', false);
+        $service->assertScheduleDoesNotOverlap($staff->id, $b->id, 1, '14:30', '17:00', true);
+        $service->assertScheduleDoesNotOverlap($staff->id, $a->id, 1, '15:00', '18:00', true);
         try {
-            $service->assertScheduleDoesNotOverlap($staff->id, 1, '14:30', '17:00', true, $inactive->id);
+            $service->assertScheduleDoesNotOverlap($staff->id, $a->id, 1, '14:30', '17:00', true, $inactive->id);
             $this->fail('Activating an overlapping inactive schedule should fail.');
         } catch (ValidationException) {
             $this->assertTrue(true);
         }
-        $service->assertScheduleDoesNotOverlap($staff->id, 1, '10:00', '15:00', true, $active->id);
+        $service->assertScheduleDoesNotOverlap($staff->id, $a->id, 1, '10:00', '15:00', true, $active->id);
 
         $bookingService = BookingService::create(['name'=>'Gel','service_type'=>'standard','duration_min'=>60,'buffer_min'=>0]);
         $monday = Carbon::parse('next monday')->addWeeks(2);
