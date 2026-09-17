@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent } from 'react'
 import { useI18n } from '@/lib/i18n'
+import { formatAdminRoleLabel } from './adminUtils'
 
 export interface AdminFilterValues {
   email: string
@@ -22,6 +23,9 @@ export interface AdminRoleOption {
   name: string | null
   isSystem?: boolean
   isDefault?: boolean
+  /** Owning Branch for operational Roles; null = Global / Unassigned. */
+  storeLocationId?: number | null
+  storeLocationName?: string | null
 }
 
 interface AdminFiltersProps {
@@ -120,7 +124,7 @@ export default function AdminFilters({
             <option value="">{t('common.all')}</option>
             {roles.map((role) => (
               <option key={String(role.id)} value={String(role.id ?? '')}>
-                {role.name ?? role.id}
+                {formatAdminRoleLabel(role)}
               </option>
             ))}
           </select>

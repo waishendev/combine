@@ -58,7 +58,10 @@ class AdminController extends Controller
             })
             ->paginate($perPage);
 
-        $admins->getCollection()->each(fn (User $admin) => $admin->mergeAssignedRolesForDisplay());
+        $admins->getCollection()->each(function (User $admin) {
+            $admin->mergeAssignedRolesForDisplay();
+            $admin->roles->each->loadMissing('storeLocation:id,name');
+        });
 
         return $this->respond($admins);
     }
@@ -102,12 +105,14 @@ class AdminController extends Controller
         if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
             $user->load(['roles', 'branchRoles', 'storeLocations']);
             $user->mergeAssignedRolesForDisplay();
+            $user->roles->each->loadMissing('storeLocation:id,name');
 
             return $this->respond($user, __('Admin created successfully.'));
         }
 
         $user->load(['roles', 'branchRoles', 'staff', 'storeLocations']);
         $user->mergeAssignedRolesForDisplay();
+        $user->roles->each->loadMissing('storeLocation:id,name');
 
         return $this->respond($user, __('Admin created successfully.'));
     }
@@ -119,12 +124,14 @@ class AdminController extends Controller
         if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
             $admin->load(['roles', 'branchRoles', 'storeLocations']);
             $admin->mergeAssignedRolesForDisplay();
+            $admin->roles->each->loadMissing('storeLocation:id,name');
 
             return $this->respond($admin);
         }
 
         $admin->load(['roles', 'branchRoles', 'staff', 'storeLocations']);
         $admin->mergeAssignedRolesForDisplay();
+        $admin->roles->each->loadMissing('storeLocation:id,name');
 
         return $this->respond($admin);
     }
@@ -174,12 +181,14 @@ class AdminController extends Controller
         if ($request->attributes->get(\App\Http\Controllers\AdminManagementMutationEnhancementController::SLIM_FLAG)) {
             $admin->load(['roles', 'branchRoles', 'storeLocations']);
             $admin->mergeAssignedRolesForDisplay();
+            $admin->roles->each->loadMissing('storeLocation:id,name');
 
             return $this->respond($admin, __('Admin updated successfully.'));
         }
 
         $admin->load(['roles', 'branchRoles', 'staff', 'storeLocations']);
         $admin->mergeAssignedRolesForDisplay();
+        $admin->roles->each->loadMissing('storeLocation:id,name');
 
         return $this->respond($admin, __('Admin updated successfully.'));
     }

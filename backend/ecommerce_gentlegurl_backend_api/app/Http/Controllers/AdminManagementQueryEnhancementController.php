@@ -182,7 +182,10 @@ class AdminManagementQueryEnhancementController extends Controller
         }
 
         $paginator = $query->orderBy('id')->paginate($perPage)->withQueryString();
-        $paginator->getCollection()->each(fn (User $admin) => $admin->mergeAssignedRolesForDisplay());
+        $paginator->getCollection()->each(function (User $admin) {
+            $admin->mergeAssignedRolesForDisplay();
+            $admin->roles->each->loadMissing('storeLocation:id,name');
+        });
 
         return $paginator;
     }
@@ -193,7 +196,7 @@ class AdminManagementQueryEnhancementController extends Controller
     public function buildRolesDropdownPayload(Request $request)
     {
         $scope = ExpenseBranchScope::forRoles($request, $this->branchAccess);
-        $query = Role::query()->select(['id', 'name', 'is_system', 'is_default', 'is_active', 'store_location_id']);
+        $query = Role::query()->select(['id', 'name', 'is_system', 'is_default', 'is_active', 'store_location_id'])->with('storeLocation:id,name');
         $scope->apply($query);
         if (! $request->user()?->canManageSystemAdmins()) {
             $query->where(fn ($roles) => $roles->where('is_system', false)->orWhereNotNull('store_location_id'));

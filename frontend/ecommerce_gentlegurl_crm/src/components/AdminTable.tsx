@@ -20,6 +20,7 @@ import {
   type AdminApiItem,
   type AdminApiRole,
   mapAdminApiItemToRow,
+  mapRoleApiToOption,
 } from './adminUtils'
 import { useI18n } from '@/lib/i18n'
 import { useBranch } from '@/contexts/BranchContext'
@@ -175,14 +176,7 @@ export default function AdminTable({
       }
 
       if (rolesArray.length > 0) {
-        setRoles(
-          rolesArray.map((role: AdminApiRole) => ({
-            id: role.id ?? null,
-            name: role.name ?? null,
-            isSystem: role.is_system === true || role.is_system === 1 || role.is_system === '1' || role.is_system === 'true',
-            isDefault: !(role.is_default === false || role.is_default === 0 || role.is_default === '0' || role.is_default === 'false'),
-          })),
-        )
+        setRoles(rolesArray.map((role: AdminApiRole) => mapRoleApiToOption(role)))
       }
     } finally {
       setRolesLoading(false)

@@ -4,7 +4,14 @@ import { ChangeEvent, FormEvent, useMemo, useState } from 'react'
 
 import type { AdminRowData } from './AdminRow'
 import { AdminRoleOption } from './AdminFilters'
-import { assignableAdminRoles, mapAdminApiItemToRow, type AdminApiItem } from './adminUtils'
+import {
+  assignableAdminRoles,
+  assignableRolesForBranch,
+  collectSelectedBranchRoleIds,
+  formatAdminRoleLabel,
+  mapAdminApiItemToRow,
+  type AdminApiItem,
+} from './adminUtils'
 import CrmFormModalShell from './CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 import BranchAccessChecklist, { type BranchAccessOption } from './BranchAccessChecklist'
@@ -20,13 +27,14 @@ interface AdminCreateModalProps {
   canAssignBranches: boolean
 }
 
-
 interface FormState {
   username: string
   password: string
   email: string
+  /** Used only when the actor cannot assign Branches (single Role picker). */
   roleId: string
   storeLocationIds: string[]
+  roleByBranchId: Record<string, string>
 }
 
 const initialFormState: FormState = {
@@ -35,6 +43,7 @@ const initialFormState: FormState = {
   email: '',
   roleId: '',
   storeLocationIds: [],
+  roleByBranchId: {},
 }
 
 export default function AdminCreateModal({
@@ -51,6 +60,11 @@ export default function AdminCreateModal({
   const [error, setError] = useState<string | null>(null)
   const assignableRoles = useMemo(() => assignableAdminRoles(roles), [roles])
 
+  const selectedBranches = useMemo(
+    () => branchOptions.filter((branch) => form.storeLocationIds.includes(String(branch.id))),
+    [branchOptions, form.storeLocationIds],
+  )
+
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
@@ -58,14 +72,43 @@ export default function AdminCreateModal({
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handleBranchAccessChange = (storeLocationIds: string[]) => {
+    setForm((prev) => {
+      const roleByBranchId = { ...prev.roleByBranchId }
+      Object.keys(roleByBranchId).forEach((branchId) => {
+        if (!storeLocationIds.includes(branchId)) {
+          delete roleByBranchId[branchId]
+        }
+      })
+      return { ...prev, storeLocationIds, roleByBranchId }
+    })
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     const trimmedUsername = form.username.trim()
     const trimmedEmail = form.email.trim()
-    const roleIdNumber = Number(form.roleId)
+    const roleIds = canAssignBranches
+      ? collectSelectedBranchRoleIds(form.storeLocationIds, form.roleByBranchId)
+      : [Number(form.roleId)].filter((id) => Number.isFinite(id) && id > 0)
 
-    if (!form.password || !trimmedEmail || !roleIdNumber) {
+    if (!form.password || !trimmedEmail) {
+      setError(t('common.allFieldsRequired'))
+      return
+    }
+
+    if (canAssignBranches && form.storeLocationIds.length === 0) {
+      setError('Select at least one Branch for this Admin.')
+      return
+    }
+
+    if (canAssignBranches && roleIds.length !== form.storeLocationIds.length) {
+      setError('Select a Role for each selected Branch. A Branch Role only applies to its owning Branch.')
+      return
+    }
+
+    if (roleIds.length === 0) {
       setError(t('common.allFieldsRequired'))
       return
     }
@@ -85,7 +128,7 @@ export default function AdminCreateModal({
           username: trimmedUsername || null,
           password: form.password,
           email: trimmedEmail,
-          role_ids: [roleIdNumber],
+          role_ids: roleIds,
           is_active: true,
           ...(canAssignBranches ? { store_location_ids: form.storeLocationIds.map(Number) } : {}),
         }),
@@ -121,7 +164,10 @@ export default function AdminCreateModal({
           : null
 
       const roleName =
-        roles.find((role) => Number(role.id) === roleIdNumber)?.name ?? '-'
+        roleIds
+          .map((id) => roles.find((role) => Number(role.id) === id)?.name)
+          .filter(Boolean)
+          .join(', ') || '-'
 
       const adminRow: AdminRowData = payload
         ? mapAdminApiItemToRow(payload)
@@ -131,12 +177,14 @@ export default function AdminCreateModal({
             email: trimmedEmail,
             isActive: true,
             roleName,
-            roleId: roleIdNumber,
+            roleId: roleIds[0] ?? null,
             staffId: null,
             isStaffLogin: false,
             createdAt: '',
             updatedAt: '',
-            storeLocations: branchOptions.filter((location) => form.storeLocationIds.includes(String(location.id))).map((location) => ({ id: location.id, name: location.name, code: location.code })),
+            storeLocations: branchOptions
+              .filter((location) => form.storeLocationIds.includes(String(location.id)))
+              .map((location) => ({ id: location.id, name: location.name, code: location.code })),
           }
 
       setForm({ ...initialFormState })
@@ -216,44 +264,103 @@ export default function AdminCreateModal({
               disabled={submitting}
             />
           </div>
-          <div>
-            <label
-              htmlFor="roleId"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              {t('common.role')}  <span className="text-red-500">*</span>
-            </label>
-            <select
-              id="roleId"
-              name="roleId"
-              value={form.roleId}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              disabled={submitting || rolesLoading}
-            >
-              <option value="">{t('common.selectRole')}</option>
-              {assignableRoles.map((role) => (
-                <option key={String(role.id)} value={String(role.id ?? '')}>
-                  {role.name ?? role.id}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-gray-500">Staff accounts are created on the Staffs page, not here.</p>
-          </div>
 
           {canAssignBranches && (
             <div>
               <label htmlFor="storeLocationIds" className="block text-sm font-medium text-gray-700 mb-1">
-                Branch access
+                Branch access <span className="text-red-500">*</span>
               </label>
               <BranchAccessChecklist
                 id="storeLocationIds"
                 options={branchOptions}
                 selectedIds={form.storeLocationIds}
-                onChange={(storeLocationIds) => setForm((previous) => ({ ...previous, storeLocationIds }))}
+                onChange={handleBranchAccessChange}
                 disabled={submitting}
               />
-              <p className="mt-1 text-xs text-gray-500">Select every Branch this Admin may access. Platform Super Admin users do not require branch rows.</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Select every Branch this Admin may access. Each Branch needs its own Role below.
+              </p>
+            </div>
+          )}
+
+          {canAssignBranches ? (
+            <div className="space-y-3">
+              <div className="text-sm font-medium text-gray-700">
+                Role per Branch <span className="text-red-500">*</span>
+              </div>
+              {selectedBranches.length === 0 ? (
+                <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Select Branch access first. Only Roles owned by those Branches will appear.
+                </p>
+              ) : (
+                selectedBranches.map((branch) => {
+                  const branchKey = String(branch.id)
+                  const branchRoles = assignableRolesForBranch(roles, branch.id)
+                  return (
+                    <div key={branch.id}>
+                      <label
+                        htmlFor={`create-role-${branchKey}`}
+                        className="mb-1 block text-sm font-medium text-gray-700"
+                      >
+                        {branch.name}
+                      </label>
+                      <select
+                        id={`create-role-${branchKey}`}
+                        value={form.roleByBranchId[branchKey] ?? ''}
+                        onChange={(event) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            roleByBranchId: {
+                              ...prev.roleByBranchId,
+                              [branchKey]: event.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                        disabled={submitting || rolesLoading}
+                      >
+                        <option value="">{t('common.selectRole')}</option>
+                        {branchRoles.map((role) => (
+                          <option key={String(role.id)} value={String(role.id ?? '')}>
+                            {formatAdminRoleLabel(role)}
+                          </option>
+                        ))}
+                      </select>
+                      {branchRoles.length === 0 ? (
+                        <p className="mt-1 text-xs text-amber-700">
+                          No active Role exists for this Branch. Create one on the Roles page first.
+                        </p>
+                      ) : null}
+                    </div>
+                  )
+                })
+              )}
+              <p className="text-xs text-gray-500">Staff accounts are created on the Staffs page, not here.</p>
+            </div>
+          ) : (
+            <div>
+              <label
+                htmlFor="roleId"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                {t('common.role')} <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="roleId"
+                name="roleId"
+                value={form.roleId}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                disabled={submitting || rolesLoading}
+              >
+                <option value="">{t('common.selectRole')}</option>
+                {assignableRoles.map((role) => (
+                  <option key={String(role.id)} value={String(role.id ?? '')}>
+                    {formatAdminRoleLabel(role)}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">Staff accounts are created on the Staffs page, not here.</p>
             </div>
           )}
 

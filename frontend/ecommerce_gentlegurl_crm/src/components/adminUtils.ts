@@ -6,6 +6,15 @@ export const isOperationalStaffRole = (
   role: { name?: string | null } | null | undefined,
 ): boolean => (role?.name ?? '').trim().toLowerCase() === 'staff'
 
+export const formatAdminRoleLabel = (role: AdminRoleOption): string => {
+  const name = role.name ?? (role.id != null ? String(role.id) : 'Role')
+  if (role.storeLocationId == null) {
+    return `${name} (Global)`
+  }
+  const branch = role.storeLocationName?.trim() || `Branch #${role.storeLocationId}`
+  return `${name} · ${branch}`
+}
+
 export const assignableAdminRoles = (
   roles: AdminRoleOption[],
   currentRole?: AdminRoleOption | null,
@@ -22,12 +31,80 @@ export const assignableAdminRoles = (
   return filtered
 }
 
+/** Branch-owned Roles for one Branch (+ keep Staff only when it is already assigned). */
+export const assignableRolesForBranch = (
+  roles: AdminRoleOption[],
+  branchId: number | string,
+  currentRoleId?: string | null,
+): AdminRoleOption[] => {
+  const branchKey = String(branchId)
+  const forBranch = roles.filter(
+    (role) => role.storeLocationId != null && String(role.storeLocationId) === branchKey,
+  )
+  const current =
+    currentRoleId != null
+      ? forBranch.find((role) => String(role.id ?? '') === currentRoleId) ?? null
+      : null
+  return assignableAdminRoles(forBranch, current)
+}
+
+export const mapRoleApiToOption = (role: AdminApiRole): AdminRoleOption => {
+  const storeLocationIdRaw = role.store_location_id ?? role.store_location?.id ?? null
+  const storeLocationId =
+    storeLocationIdRaw == null || storeLocationIdRaw === ''
+      ? null
+      : Number(storeLocationIdRaw)
+
+  return {
+    id: role.id ?? null,
+    name: role.name ?? null,
+    isSystem:
+      role.is_system === true ||
+      role.is_system === 1 ||
+      role.is_system === '1' ||
+      role.is_system === 'true',
+    isDefault: !(
+      role.is_default === false ||
+      role.is_default === 0 ||
+      role.is_default === '0' ||
+      role.is_default === 'false'
+    ),
+    storeLocationId: Number.isFinite(storeLocationId as number) ? (storeLocationId as number) : null,
+    storeLocationName: role.store_location?.name ?? null,
+  }
+}
+
+/** Build branchId → roleId from an Admin's assigned Roles (Branch-owned only). */
+export const roleIdsByBranchFromAdminRoles = (
+  roles: AdminApiRole[] | null | undefined,
+): Record<string, string> => {
+  const next: Record<string, string> = {}
+  if (!Array.isArray(roles)) return next
+  for (const role of roles) {
+    if (role?.id == null) continue
+    const owner = role.store_location_id ?? role.store_location?.id
+    if (owner == null || owner === '') continue
+    next[String(owner)] = String(role.id)
+  }
+  return next
+}
+
+export const collectSelectedBranchRoleIds = (
+  storeLocationIds: string[],
+  roleByBranchId: Record<string, string>,
+): number[] =>
+  storeLocationIds
+    .map((branchId) => Number(roleByBranchId[branchId]))
+    .filter((roleId) => Number.isFinite(roleId) && roleId > 0)
+
 export type AdminApiRole = {
   id?: number | string | null
   name?: string | null
   guard_name?: string | null
   is_system?: boolean | number | string | null
   is_default?: boolean | number | string | null
+  store_location_id?: number | string | null
+  store_location?: { id?: number | string | null; name?: string | null } | null
 }
 
 export type AdminApiStoreLocation = {

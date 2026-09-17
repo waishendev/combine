@@ -4,7 +4,17 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 
 import type { AdminRowData } from './AdminRow'
 import { AdminRoleOption } from './AdminFilters'
-import { assignableAdminRoles, isOperationalStaffRole, mapAdminApiItemToRow, type AdminApiItem } from './adminUtils'
+import {
+  assignableAdminRoles,
+  assignableRolesForBranch,
+  collectSelectedBranchRoleIds,
+  formatAdminRoleLabel,
+  isOperationalStaffRole,
+  mapAdminApiItemToRow,
+  mapRoleApiToOption,
+  roleIdsByBranchFromAdminRoles,
+  type AdminApiItem,
+} from './adminUtils'
 import CrmFormModalShell from './CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 import BranchAccessChecklist, { type BranchAccessOption } from './BranchAccessChecklist'
@@ -29,18 +39,21 @@ interface FormState {
   username: string
   password: string
   email: string
-  roleId: string
   isActive: 'true' | 'false'
   storeLocationIds: string[]
+  roleByBranchId: Record<string, string>
+  /** Legacy / platform Global Roles (store_location_id IS NULL). */
+  globalRoleIds: string[]
 }
 
 const initialFormState: FormState = {
   username: '',
   password: '',
   email: '',
-  roleId: '',
   isActive: 'true',
   storeLocationIds: [],
+  roleByBranchId: {},
+  globalRoleIds: [],
 }
 
 export default function AdminEditModal({
@@ -110,45 +123,35 @@ export default function AdminEditModal({
         const mappedAdmin = mapAdminApiItemToRow(admin)
         setLoadedAdmin(mappedAdmin)
 
-        const primaryRoleId =
-          admin.role?.id ??
-          (Array.isArray(admin.roles) && admin.roles[0]?.id != null
-            ? admin.roles[0].id
-            : null)
+        const assignedRoles = Array.isArray(admin.roles)
+          ? admin.roles
+          : admin.role
+            ? [admin.role]
+            : []
 
-        const primaryRole =
-          admin.role ??
-          (Array.isArray(admin.roles) && admin.roles.length > 0
-            ? admin.roles[0]
-            : null)
-
+        const primaryRole = assignedRoles[0] ?? null
         if (primaryRole) {
-          setCurrentRole({
-            id: primaryRole.id ?? null,
-            name: primaryRole.name ?? null,
-            isSystem:
-              primaryRole.is_system === true ||
-              primaryRole.is_system === 1 ||
-              primaryRole.is_system === '1' ||
-              primaryRole.is_system === 'true',
-            isDefault: !(
-              primaryRole.is_default === false ||
-              primaryRole.is_default === 0 ||
-              primaryRole.is_default === '0' ||
-              primaryRole.is_default === 'false'
-            ),
-          })
+          setCurrentRole(mapRoleApiToOption(primaryRole))
         } else {
           setCurrentRole(null)
         }
+
+        const roleByBranchId = roleIdsByBranchFromAdminRoles(assignedRoles)
+        const globalRoleIds = assignedRoles
+          .filter((role) => {
+            const owner = role.store_location_id ?? role.store_location?.id
+            return role?.id != null && (owner == null || owner === '')
+          })
+          .map((role) => String(role.id))
 
         setForm({
           username: typeof admin.username === 'string' ? admin.username : '',
           password: '',
           email: typeof admin.email === 'string' ? admin.email : '',
-          roleId: primaryRoleId != null ? String(primaryRoleId) : '',
           isActive: mappedAdmin.isActive ? 'true' : 'false',
           storeLocationIds: branchIdsFromAssignments(admin.store_locations),
+          roleByBranchId,
+          globalRoleIds,
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -179,14 +182,76 @@ export default function AdminEditModal({
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handleBranchAccessChange = (storeLocationIds: string[]) => {
+    setForm((prev) => {
+      const roleByBranchId = { ...prev.roleByBranchId }
+      Object.keys(roleByBranchId).forEach((branchId) => {
+        if (!storeLocationIds.includes(branchId)) {
+          delete roleByBranchId[branchId]
+        }
+      })
+      return { ...prev, storeLocationIds, roleByBranchId }
+    })
+  }
+
+  const roleReadOnly =
+    !canManageSystemRoles &&
+    !!currentRole &&
+    (currentRole.isSystem === true || currentRole.isDefault === false)
+
+  const selectedBranches = useMemo(
+    () => branchOptions.filter((branch) => form.storeLocationIds.includes(String(branch.id))),
+    [branchOptions, form.storeLocationIds],
+  )
+
+  const legacyRoleOptions = useMemo(
+    () => assignableAdminRoles(roles, currentRole),
+    [currentRole, roles],
+  )
+  const currentRoleIsStaff = isOperationalStaffRole(currentRole)
+
+  const resolveRoleIdsForSubmit = (): number[] => {
+    if (showBranchAssignment) {
+      const branchRoleIds = collectSelectedBranchRoleIds(form.storeLocationIds, form.roleByBranchId)
+      const globalIds = form.globalRoleIds
+        .map(Number)
+        .filter((id) => Number.isFinite(id) && id > 0)
+      return [...new Set([...branchRoleIds, ...globalIds])]
+    }
+
+    const fallback = form.globalRoleIds[0] ?? Object.values(form.roleByBranchId)[0] ?? ''
+    const id = Number(fallback)
+    return Number.isFinite(id) && id > 0 ? [id] : []
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     const trimmedUsername = form.username.trim()
     const trimmedEmail = form.email.trim()
-    const roleIdNumber = Number(form.roleId)
+    const roleIds = resolveRoleIdsForSubmit()
 
-    if (!trimmedEmail || !roleIdNumber) {
+    if (!trimmedEmail) {
+      setError(t('common.allFieldsRequired'))
+      return
+    }
+
+    if (showBranchAssignment && form.storeLocationIds.length === 0 && form.globalRoleIds.length === 0) {
+      setError('Select at least one Branch, or keep a Global Role assignment.')
+      return
+    }
+
+    if (
+      showBranchAssignment &&
+      form.storeLocationIds.length > 0 &&
+      collectSelectedBranchRoleIds(form.storeLocationIds, form.roleByBranchId).length !==
+        form.storeLocationIds.length
+    ) {
+      setError('Select a Role for each selected Branch. A Branch Role only applies to its owning Branch.')
+      return
+    }
+
+    if (!roleReadOnly && roleIds.length === 0) {
       setError(t('common.allFieldsRequired'))
       return
     }
@@ -203,8 +268,9 @@ export default function AdminEditModal({
         ...(showBranchAssignment ? { store_location_ids: form.storeLocationIds.map(Number) } : {}),
       }
 
-      if (!roleReadOnly) {
-        payload.role_ids = [roleIdNumber]
+      // Always send role_ids when Branch access changes so removed Branches drop their Roles.
+      if (!roleReadOnly || showBranchAssignment) {
+        payload.role_ids = roleIds
       }
 
       const trimmedPassword = form.password.trim()
@@ -262,7 +328,10 @@ export default function AdminEditModal({
           : null
 
       const roleName =
-        roles.find((role) => Number(role.id) === roleIdNumber)?.name ||
+        roleIds
+          .map((id) => roles.find((role) => Number(role.id) === id)?.name)
+          .filter(Boolean)
+          .join(', ') ||
         loadedAdmin?.roleName ||
         '-'
 
@@ -274,12 +343,14 @@ export default function AdminEditModal({
             email: trimmedEmail,
             isActive: form.isActive === 'true',
             roleName,
-            roleId: roleIdNumber || null,
+            roleId: roleIds[0] ?? null,
             staffId: loadedAdmin?.staffId ?? null,
             isStaffLogin: loadedAdmin?.isStaffLogin ?? false,
             createdAt: loadedAdmin?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
-            storeLocations: branchOptions.filter((location) => form.storeLocationIds.includes(String(location.id))).map((location) => ({ id: location.id, name: location.name, code: location.code })),
+            storeLocations: branchOptions
+              .filter((location) => form.storeLocationIds.includes(String(location.id)))
+              .map((location) => ({ id: location.id, name: location.name, code: location.code })),
           }
 
       setLoadedAdmin(adminRow)
@@ -293,16 +364,6 @@ export default function AdminEditModal({
   }
 
   const disableForm = submitting
-  const roleReadOnly =
-    !canManageSystemRoles &&
-    !!currentRole &&
-    (currentRole.isSystem === true || currentRole.isDefault === false)
-
-  const roleOptions = useMemo(
-    () => assignableAdminRoles(roles, currentRole),
-    [currentRole, roles],
-  )
-  const currentRoleIsStaff = isOperationalStaffRole(currentRole)
 
   if (loading) {
     return null
@@ -376,46 +437,6 @@ export default function AdminEditModal({
                 />
               </div>
 
-              <div>
-                <label
-                  htmlFor="edit-roleId"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('common.role')} <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="edit-roleId"
-                  name="roleId"
-                  value={form.roleId}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm || rolesLoading || roleReadOnly}
-                  title={roleReadOnly ? 'You cannot change this internal role.' : undefined}
-                >
-                  <option value="">{t('common.selectRole')}</option>
-                  {roleOptions.map((role) => (
-                    <option key={String(role.id)} value={String(role.id ?? '')}>
-                      {role.name ?? role.id}
-                    </option>
-                  ))}
-                </select>
-                {roleReadOnly && (
-                  <p className="mt-1 text-xs text-amber-700">
-                    This role are not able to change please contact your administrator.
-                  </p>
-                )}
-                {!roleReadOnly && currentRoleIsStaff && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    This login uses the Staff role. Manage the staff profile on the Staffs page, or pick another role to promote this account.
-                  </p>
-                )}
-                {!roleReadOnly && !currentRoleIsStaff && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    The Staff role can only be assigned from the Staffs page.
-                  </p>
-                )}
-              </div>
-
               {showBranchAssignment && (
                 <div>
                   <label htmlFor="edit-storeLocationIds" className="block text-sm font-medium text-gray-700 mb-1">
@@ -425,10 +446,12 @@ export default function AdminEditModal({
                     id="edit-storeLocationIds"
                     options={branchOptions}
                     selectedIds={form.storeLocationIds}
-                    onChange={(storeLocationIds) => setForm((previous) => ({ ...previous, storeLocationIds }))}
+                    onChange={handleBranchAccessChange}
                     disabled={disableForm}
                   />
-                  <p className="mt-1 text-xs text-gray-500">Select every Branch this Admin may access. Platform Super Admin users do not require branch rows.</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Select every Branch this Admin may access. Unchecking a Branch also drops that Branch&apos;s Role.
+                  </p>
                 </div>
               )}
               {isOwnAccount && canAssignBranches ? (
@@ -436,6 +459,128 @@ export default function AdminEditModal({
                   You cannot change your own Branch access here. Ask another Admin with Branch assign permission to update it.
                 </p>
               ) : null}
+
+              {showBranchAssignment ? (
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-gray-700">
+                    Role per Branch {form.storeLocationIds.length > 0 ? <span className="text-red-500">*</span> : null}
+                  </div>
+                  {selectedBranches.length === 0 ? (
+                    <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      {form.globalRoleIds.length > 0
+                        ? 'No Branch access selected. Global Role assignment will be kept.'
+                        : 'Select Branch access to assign Branch Roles.'}
+                    </p>
+                  ) : (
+                    selectedBranches.map((branch) => {
+                      const branchKey = String(branch.id)
+                      const currentRoleId = form.roleByBranchId[branchKey] ?? null
+                      const branchRoles = assignableRolesForBranch(roles, branch.id, currentRoleId)
+                      return (
+                        <div key={branch.id}>
+                          <label
+                            htmlFor={`edit-role-${branchKey}`}
+                            className="mb-1 block text-sm font-medium text-gray-700"
+                          >
+                            {branch.name}
+                          </label>
+                          <select
+                            id={`edit-role-${branchKey}`}
+                            value={currentRoleId ?? ''}
+                            onChange={(event) =>
+                              setForm((prev) => ({
+                                ...prev,
+                                roleByBranchId: {
+                                  ...prev.roleByBranchId,
+                                  [branchKey]: event.target.value,
+                                },
+                              }))
+                            }
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                            disabled={disableForm || rolesLoading || roleReadOnly}
+                            title={roleReadOnly ? 'You cannot change this internal role.' : undefined}
+                          >
+                            <option value="">{t('common.selectRole')}</option>
+                            {branchRoles.map((role) => (
+                              <option key={String(role.id)} value={String(role.id ?? '')}>
+                                {formatAdminRoleLabel(role)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )
+                    })
+                  )}
+                  {roleReadOnly && (
+                    <p className="text-xs text-amber-700">
+                      This role are not able to change please contact your administrator.
+                    </p>
+                  )}
+                  {!roleReadOnly && (
+                    <p className="text-xs text-gray-500">
+                      The Staff role can only be assigned from the Staffs page.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label
+                    htmlFor="edit-roleId"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    {t('common.role')} <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="edit-roleId"
+                    name="legacyRoleId"
+                    value={form.globalRoleIds[0] ?? Object.values(form.roleByBranchId)[0] ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      const selected = roles.find((role) => String(role.id) === value)
+                      setForm((prev) => {
+                        if (selected?.storeLocationId != null) {
+                          return {
+                            ...prev,
+                            globalRoleIds: [],
+                            roleByBranchId: { [String(selected.storeLocationId)]: value },
+                          }
+                        }
+                        return {
+                          ...prev,
+                          globalRoleIds: value ? [value] : [],
+                          roleByBranchId: {},
+                        }
+                      })
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    disabled={disableForm || rolesLoading || roleReadOnly}
+                    title={roleReadOnly ? 'You cannot change this internal role.' : undefined}
+                  >
+                    <option value="">{t('common.selectRole')}</option>
+                    {legacyRoleOptions.map((role) => (
+                      <option key={String(role.id)} value={String(role.id ?? '')}>
+                        {formatAdminRoleLabel(role)}
+                      </option>
+                    ))}
+                  </select>
+                  {roleReadOnly && (
+                    <p className="mt-1 text-xs text-amber-700">
+                      This role are not able to change please contact your administrator.
+                    </p>
+                  )}
+                  {!roleReadOnly && currentRoleIsStaff && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      This login uses the Staff role. Manage the staff profile on the Staffs page, or pick another role to promote this account.
+                    </p>
+                  )}
+                  {!roleReadOnly && !currentRoleIsStaff && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      The Staff role can only be assigned from the Staffs page.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label
                   htmlFor="edit-isActive"
