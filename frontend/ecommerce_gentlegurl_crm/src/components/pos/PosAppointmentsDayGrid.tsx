@@ -102,6 +102,8 @@ type Props = {
   onBlockClick: (id: number) => void
   scheduleStaff: PosScheduleStaff[]
   staffOffTodayIds: number[]
+  /** When false, holiday / leave columns are omitted from the DAY grid. */
+  showHolidayStaff?: boolean
   showBranchContext?: boolean
 }
 
@@ -112,6 +114,7 @@ export default function PosAppointmentsDayGrid({
   onBlockClick,
   scheduleStaff,
   staffOffTodayIds,
+  showHolidayStaff = false,
   showBranchContext = false,
 }: Props) {
   const dayRows = useMemo(() => {
@@ -125,6 +128,7 @@ export default function PosAppointmentsDayGrid({
   }, [dayRows])
 
   const staffIdsFromSchedule = useMemo(() => new Set(scheduleStaff.map((s) => s.id)), [scheduleStaff])
+  const staffOffTodaySet = useMemo(() => new Set(staffOffTodayIds), [staffOffTodayIds])
 
   const staffColumns = useMemo((): ColumnDef[] => {
     if (scheduleStaff.length > 0) {
@@ -133,12 +137,24 @@ export default function PosAppointmentsDayGrid({
         const sid = row.staff_id
         return sid == null || sid <= 0 || !staffIdsFromSchedule.has(sid)
       })
-      const cols: ColumnDef[] = sorted.map((s) => ({
-        key: `id:${s.id}`,
-        label: s.name,
-        staffId: s.id,
-        isOff: staffOffTodayIds.includes(s.id),
-      }))
+
+      const activeCols: ColumnDef[] = []
+      const holidayCols: ColumnDef[] = []
+      for (const s of sorted) {
+        const col: ColumnDef = {
+          key: `id:${s.id}`,
+          label: s.name,
+          staffId: s.id,
+          isOff: staffOffTodaySet.has(s.id),
+        }
+        if (col.isOff) holidayCols.push(col)
+        else activeCols.push(col)
+      }
+
+      const cols: ColumnDef[] = showHolidayStaff
+        ? [...activeCols, ...holidayCols]
+        : activeCols
+
       if (needUnassigned) {
         cols.push({
           key: UNASSIGNED_KEY,
@@ -163,7 +179,16 @@ export default function PosAppointmentsDayGrid({
       }
     })
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label))
-  }, [dayRows, scheduleStaff, staffIdsFromSchedule, staffOffTodayIds])
+  }, [dayRows, scheduleStaff, showHolidayStaff, staffIdsFromSchedule, staffOffTodaySet])
+
+  const hiddenHolidayCount = useMemo(() => {
+    if (showHolidayStaff || scheduleStaff.length === 0) return 0
+    let count = 0
+    for (const s of scheduleStaff) {
+      if (staffOffTodaySet.has(s.id)) count += 1
+    }
+    return count
+  }, [scheduleStaff, showHolidayStaff, staffOffTodaySet])
 
   const rowColumnKey = useMemo(() => {
     return (row: PosAppointmentListItem): StaffColumnKey => {
@@ -248,6 +273,11 @@ export default function PosAppointmentsDayGrid({
 
   return (
     <div className="pos-appt-day-grid-root pos-appt-appear flex min-h-[280px] flex-col overflow-visible">
+      {hiddenHolidayCount > 0 ? (
+        <p className="mb-2 shrink-0 text-[11px] text-slate-500">
+          {hiddenHolidayCount} staff on leave hidden · turn on <span className="font-semibold">Show leave</span> above to view them on the right.
+        </p>
+      ) : null}
       <div
         ref={scrollRef}
         className="pos-appt-day-grid-scroll rounded-lg border border-slate-200 bg-white shadow-sm [scrollbar-gutter:stable]"

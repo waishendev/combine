@@ -58,6 +58,50 @@ function filterVisibleMenuChildren(children: MenuChild[], permissions: string[])
     .filter((c): c is MenuChild => c !== null)
 }
 
+/** Shared across Ecommerce + Booking so both workspaces stay aligned. */
+const SHARED_CRM_SETTINGS_CHILDREN: MenuChild[] = [
+  {
+    key: 'crm-logo',
+    label: 'Upload Logo (CRM)',
+    href: '/crm-logo',
+    requiredPermission: 'ecommerce.settings.view',
+  },
+  {
+    key: 'email-notification-settings',
+    label: 'Email / Notifications',
+    href: '/settings/email-notifications',
+    requiredAnyPermissions: ['ecommerce.settings.view', 'booking.settings.view'],
+  },
+  {
+    key: 'thermal-printer-settings',
+    label: 'Thermal Printer',
+    href: '/settings/thermal-printer',
+    requiredPermission: 'ecommerce.thermal-printer-settings.view',
+  },
+  {
+    key: 'pos-payment-methods',
+    label: 'POS Payment Methods',
+    href: '/pos/settings/payment-methods',
+    requiredPermission: 'pos.payment-method-settings.view',
+  },
+  {
+    key: 'branch-limit-settings',
+    label: 'Branch Limit',
+    href: '/settings/branch-limit',
+    requiredAnyPermissions: [
+      'ecommerce.branch-limit.view',
+      'ecommerce.branch-limit.update',
+    ],
+  },
+]
+
+const SHARED_CRM_SETTINGS_MENU: MenuItem = {
+  key: 'crm-settings',
+  label: 'Settings',
+  icon: 'fa-solid fa-sliders',
+  children: SHARED_CRM_SETTINGS_CHILDREN,
+}
+
 export default function Sidebar({ collapsed, permissions, staffId, onToggleSidebar }: SidebarProps) {
   const pathname = usePathname()
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
@@ -111,13 +155,6 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
               icon: 'fa-solid fa-calendar-check',
               href: '/pos/appointments',
               requiredPermission: 'pos.appointments.manage',
-            },
-            {
-              key: 'pos-payment-methods',
-              label: 'POS Payment Methods',
-              icon: 'fa-solid fa-credit-card',
-              href: '/pos/settings/payment-methods',
-              requiredPermission: 'pos.payment-method-settings.view',
             },
           ] as MenuItem[])
         : []),
@@ -570,40 +607,7 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
       // ======================
       // Settings
       // ======================
-      {
-        key: 'crm-settings',
-        label: 'Settings',
-        icon: 'fa-solid fa-sliders',
-        children: [
-          {
-            key: 'crm-logo',
-            label: 'Upload Logo (CRM)',
-            href: '/crm-logo',
-            requiredPermission: 'ecommerce.settings.view',
-          },
-          {
-            key: 'email-notification-settings',
-            label: 'Email / Notifications',
-            href: '/settings/email-notifications',
-            requiredAnyPermissions: ['ecommerce.settings.view', 'booking.settings.view'],
-          },
-          {
-            key: 'thermal-printer-settings',
-            label: 'Thermal Printer',
-            href: '/settings/thermal-printer',
-            requiredPermission: 'ecommerce.thermal-printer-settings.view',
-          },
-          {
-            key: 'branch-limit-settings',
-            label: 'Branch Limit',
-            href: '/settings/branch-limit',
-            requiredAnyPermissions: [
-              'ecommerce.branch-limit.view',
-              'ecommerce.branch-limit.update',
-            ],
-          },
-        ],
-      },
+      SHARED_CRM_SETTINGS_MENU,
 
       // {
       //   key: 'shop-settings',
@@ -915,6 +919,7 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
           },
         ],
       },
+      SHARED_CRM_SETTINGS_MENU,
     ],
     [staffId],
   )

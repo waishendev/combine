@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import { formatPosScheduleTimeLabel, parsePosAppointmentScheduleYmd, posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow, type PosAppointmentScheduleScope } from './posAppointmentHelpers'
 import { formatPosAppointmentScheduleRangeLabel } from './posAppointmentScheduleConfig'
@@ -61,6 +61,18 @@ export default function PosAppointmentsSchedule({
   showBranchContext = false,
   filterSlot,
 }: Props) {
+  /** DAY view only: leave/holiday columns stay closed by default for a clearer schedule. */
+  const [showHolidayStaff, setShowHolidayStaff] = useState(false)
+  const holidayStaffCount = useMemo(() => {
+    if (staffOffTodayIds.length === 0 || scheduleStaff.length === 0) return 0
+    const off = new Set(staffOffTodayIds)
+    let count = 0
+    for (const staff of scheduleStaff) {
+      if (off.has(staff.id)) count += 1
+    }
+    return count
+  }, [scheduleStaff, staffOffTodayIds])
+
   const calendarCells = useMemo(() => {
     const start = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1)
     const end = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0)
@@ -205,6 +217,32 @@ export default function PosAppointmentsSchedule({
             All
           </button>
         </div>
+
+        {viewMode === 'day' ? (
+          <label
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-semibold transition ${
+              showHolidayStaff
+                ? 'border-red-300 bg-red-50 text-red-800'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+            }`}
+            title="When on, staff on approved leave appear on the far right of the day grid"
+          >
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 rounded border-slate-300 text-red-600 focus:ring-red-500"
+              checked={showHolidayStaff}
+              onChange={(event) => setShowHolidayStaff(event.target.checked)}
+            />
+            Show leave
+            {holidayStaffCount > 0 ? (
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                showHolidayStaff ? 'bg-red-200 text-red-900' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {holidayStaffCount}
+              </span>
+            ) : null}
+          </label>
+        ) : null}
 
         {viewMode === 'month' ? (
           <div className="ml-auto flex items-center gap-2">
@@ -399,6 +437,7 @@ export default function PosAppointmentsSchedule({
             onBlockClick={onOpenAppointment}
             scheduleStaff={scheduleStaff}
             staffOffTodayIds={staffOffTodayIds}
+            showHolidayStaff={showHolidayStaff}
             showBranchContext={showBranchContext}
           />
         </div>
