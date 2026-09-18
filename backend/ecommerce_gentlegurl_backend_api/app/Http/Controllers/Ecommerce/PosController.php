@@ -3850,6 +3850,10 @@ class PosController extends Controller
         if (! (bool) ($targetStaff->is_active ?? true)) {
             return $this->respondError(__('Selected staff is inactive.'), 422, ['reason_code' => 'staff_inactive']);
         }
+        $bookingBranchId = $booking->store_location_id ? (int) $booking->store_location_id : null;
+        if ($bookingBranchId && ! $targetStaff->worksAt($bookingBranchId)) {
+            return $this->respondError(__('Selected staff does not work at this Branch.'), 422);
+        }
 
         $policy = SettingService::get('booking_policy', [
             'reschedule' => [
@@ -3884,7 +3888,7 @@ class PosController extends Controller
                 (int) $booking->buffer_min,
                 (int) $booking->id,
                 $booking,
-                $booking->store_location_id ? (int) $booking->store_location_id : null,
+                $bookingBranchId,
             );
             if ($leaveBlock) {
                 return $leaveBlock;
@@ -3895,7 +3899,7 @@ class PosController extends Controller
                 $targetStaffId,
                 $newStart,
                 $newEnd,
-                $booking->store_location_id ? (int) $booking->store_location_id : null,
+                $bookingBranchId,
             );
             $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
             if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
@@ -3913,7 +3917,7 @@ class PosController extends Controller
                 BookingAvailabilityService::SCOPE_CRM,
                 [],
                 [],
-                $booking->store_location_id ? (int) $booking->store_location_id : null,
+                $bookingBranchId,
             );
             if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
                 return $this->respondPosAvailabilityError($conflictDiagnostics);

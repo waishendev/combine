@@ -59,7 +59,18 @@ class HoldController extends Controller
 
         $booking = DB::transaction(function () use ($validated, $customer, $service, $branch, $startAt, $endAt, $holdMinutes) {
             if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt, (int) $branch->id)
-                || $this->availabilityService->hasConflict((int) $validated['staff_id'], $startAt, $endAt, (int) $service->buffer_min)) {
+                || $this->availabilityService->hasConflict(
+                    (int) $validated['staff_id'],
+                    $startAt,
+                    $endAt,
+                    (int) $service->buffer_min,
+                    null,
+                    null,
+                    BookingAvailabilityService::SCOPE_CUSTOMER,
+                    [],
+                    [],
+                    (int) $branch->id,
+                )) {
                 abort(response()->json([
                     'success' => false,
                     'message' => 'Selected slot is no longer available.',

@@ -2004,6 +2004,26 @@ export default function PosAppointmentsWorkspace({
     && appointmentRescheduleSelectedSlot?.is_in_schedule === false,
   )
 
+  const appointmentRescheduleLeaveBlocked = Boolean(
+    appointmentRescheduleSelectedSlot?.unavailable_reason
+    && posAvailabilityShouldHardBlock(appointmentRescheduleSelectedSlot.unavailable_reason, posAvailabilityVerifyMode),
+  )
+
+  const appointmentRescheduleLeaveBlockedMessage = useMemo(() => {
+    if (!appointmentRescheduleLeaveBlocked || !appointmentRescheduleSelectedSlot?.unavailable_reason) return null
+    return formatPosAvailabilityErrorMessage({
+      reasonCode: appointmentRescheduleSelectedSlot.unavailable_reason,
+      staffName: activeStaffs.find((staff) => staff.id === appointmentRescheduleStaffId)?.name,
+      startAt: appointmentRescheduleSelectedSlot.start_at,
+      endAt: appointmentRescheduleSelectedSlot.end_at,
+    })
+  }, [
+    activeStaffs,
+    appointmentRescheduleLeaveBlocked,
+    appointmentRescheduleSelectedSlot,
+    appointmentRescheduleStaffId,
+  ])
+
   const createAppointmentStaffPickerReady = Boolean(createAppointmentDate && createAppointmentSlotValue)
 
   const createAppointmentNoStaffAvailableMessage = useMemo(() => {
@@ -4273,6 +4293,7 @@ export default function PosAppointmentsWorkspace({
     appointmentDetail?.id,
     appointmentDetail?.service?.duration_min,
     appointmentDetail?.service?.id,
+    appointmentDetail?.store_location_id,
     appointmentRescheduleDate,
     appointmentRescheduleOpen,
     appointmentRescheduleStaffId,
@@ -7748,6 +7769,11 @@ export default function PosAppointmentsWorkspace({
                 </select>
                 {/* <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; save still blocks leave, inactive staff, and booking conflicts.</p> */}
               </div>
+              {appointmentRescheduleLeaveBlockedMessage ? (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">
+                  {appointmentRescheduleLeaveBlockedMessage}
+                </div>
+              ) : null}
               {appointmentRescheduleOutsideStaffSchedule ? (
                 <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
                   Selected time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.

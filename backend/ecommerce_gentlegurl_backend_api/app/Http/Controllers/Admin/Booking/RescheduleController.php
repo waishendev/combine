@@ -29,7 +29,8 @@ class RescheduleController extends Controller
         $newStart = Carbon::parse($validated['start_at']);
         $newEnd = $newStart->copy()->addMinutes((int) $booking->service->duration_min);
 
-        if (! $this->availabilityService->isWithinStaffAvailability((int) $booking->staff_id, $newStart, $newEnd)
+        $branchId = $booking->store_location_id ? (int) $booking->store_location_id : null;
+        if (! $this->availabilityService->isWithinStaffAvailability((int) $booking->staff_id, $newStart, $newEnd, $branchId)
             || $this->availabilityService->hasConflict(
                 (int) $booking->staff_id,
                 $newStart,
@@ -38,6 +39,9 @@ class RescheduleController extends Controller
                 (int) $booking->id,
                 $booking,
                 BookingAvailabilityService::SCOPE_CRM,
+                [],
+                [],
+                $branchId,
             )) {
             return $this->respondError('Selected slot is not available.', 409);
         }
