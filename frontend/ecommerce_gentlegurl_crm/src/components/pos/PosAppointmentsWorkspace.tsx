@@ -1927,7 +1927,17 @@ export default function PosAppointmentsWorkspace({
   const createAppointmentStaffPickerOptions = useMemo(() => {
     if (!createAppointmentDate || !createAppointmentSlotValue) return []
     const unavailableReasons = createAppointmentSelectedSlot?.unavailable_staff_reasons ?? {}
-    return createAppointmentAllowedStaffs.filter((staff) => !posAvailabilityStaffIsUnavailable(unavailableReasons[String(staff.id)] ?? '', posAvailabilityVerifyMode))
+    const availableIds = createAppointmentSelectedSlot?.available_staff_ids
+    return createAppointmentAllowedStaffs.filter((staff) => {
+      if (posAvailabilityStaffIsUnavailable(unavailableReasons[String(staff.id)] ?? '', posAvailabilityVerifyMode)) {
+        return false
+      }
+      // Pooled availability already applied Branch leave/conflict filters into available_staff_ids.
+      if (Array.isArray(availableIds)) {
+        return availableIds.includes(staff.id)
+      }
+      return true
+    })
   }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSelectedSlot, createAppointmentSlotValue, posAvailabilityVerifyMode])
 
   const createAppointmentSelectedSlotScheduleIds = useMemo(() => {
@@ -3690,6 +3700,7 @@ export default function PosAppointmentsWorkspace({
         startAt: appointmentDetail.appointment_start_at,
         endAt: appointmentDetail.appointment_end_at,
         ignoreBookingId: appointmentDetail.id,
+        storeLocationId: appointmentDetail.store_location_id ?? selectedBranchId,
         verifyMode: posAvailabilityVerifyMode,
         staffNameById,
       })
@@ -4286,6 +4297,7 @@ export default function PosAppointmentsWorkspace({
             createAppointmentExtraTotals.addonDuration,
           ),
         })
+        if (selectedBranchId) params.set('store_location_id', String(selectedBranchId))
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
         if (json?.data?.verify_mode != null) {
@@ -4344,6 +4356,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentModalOpen,
     createAppointmentServiceDraft?.duration_min,
     createAppointmentServiceDraft?.id,
+    selectedBranchId,
   ])
 
   useEffect(() => {
@@ -4432,6 +4445,9 @@ export default function PosAppointmentsWorkspace({
         to_date: dayYmd,
         per_page: '500',
       })
+      if (selectedBranchIdRef.current) {
+        qs.set('store_location_id', String(selectedBranchIdRef.current))
+      }
       const res = await fetch(`/api/proxy/admin/booking/leave-requests?${qs.toString()}`, { cache: 'no-store' })
       if (!res.ok) {
         if (!cancelled) setStaffOffTodayIds([])
@@ -4454,7 +4470,7 @@ export default function PosAppointmentsWorkspace({
     return () => {
       cancelled = true
     }
-  }, [appointmentDateFilter, posApptViewMode])
+  }, [appointmentDateFilter, posApptViewMode, selectedBranchId])
 
   const scheduleStaffForDayGrid = useMemo(
     () => activeStaffs.map((s) => ({ id: s.id, name: s.name })),
@@ -4678,6 +4694,8 @@ export default function PosAppointmentsWorkspace({
         end_at: editSettlementEstimatedEndAt,
         ignore_booking_id: String(appointmentDetail.id),
       })
+      const branchId = appointmentDetail.store_location_id ?? selectedBranchIdRef.current
+      if (branchId) params.set('store_location_id', String(branchId))
       const res = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {

@@ -4376,6 +4376,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             bookingExtraTotals.addonDuration,
           ),
         })
+        if (selectedBranchId) params.set('store_location_id', String(selectedBranchId))
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
         if (json?.data?.verify_mode != null) {
@@ -4426,7 +4427,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
 
     void loadSlots()
-  }, [bookingAddonDurationTotal, bookingDate, bookingExtraTotals.addonDuration, bookingExtraTotals.baseDuration, bookingModalOpen, bookingServiceDraft?.duration_min, bookingServiceDraft?.id])
+  }, [bookingAddonDurationTotal, bookingDate, bookingExtraTotals.addonDuration, bookingExtraTotals.baseDuration, bookingModalOpen, bookingServiceDraft?.duration_min, bookingServiceDraft?.id, selectedBranchId])
 
   const openPackageModal = useCallback(async (servicePackage: ServicePackageOption) => {
     let staffs = activeStaffs
@@ -5781,6 +5782,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         startAt: cartEditSettlementItem?.appointment_start_at,
         endAt: cartEditSettlementItem ? getSettlementDisplayEndAt(cartEditSettlementItem) : null,
         ignoreBookingId: cartEditSettlementBookingId ?? undefined,
+        storeLocationId: selectedBranchId,
         verifyMode: posAvailabilityVerifyMode,
         staffNameById,
       })

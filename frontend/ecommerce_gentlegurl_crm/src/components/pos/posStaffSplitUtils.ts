@@ -77,6 +77,7 @@ export async function verifyEditSettlementPrimaryStaffAvailability(params: {
   startAt: string | null | undefined
   endAt: string | null | undefined
   ignoreBookingId?: number
+  storeLocationId?: number | null
   verifyMode?: PosAvailabilityVerifyMode
   staffNameById: (id: number) => string | null | undefined
 }): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -100,6 +101,9 @@ export async function verifyEditSettlementPrimaryStaffAvailability(params: {
   })
   if (params.ignoreBookingId) {
     search.set('ignore_booking_id', String(params.ignoreBookingId))
+  }
+  if (params.storeLocationId) {
+    search.set('store_location_id', String(params.storeLocationId))
   }
 
   const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${search.toString()}`, { cache: 'no-store' })

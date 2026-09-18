@@ -213,6 +213,19 @@ class BookingAvailabilityService
     }
 
     /**
+     * Leave / timeoff are Branch-owned. With a Branch, only that Branch's rows apply.
+     * Without Branch context, only legacy NULL attribution applies — never another Branch's leave.
+     */
+    protected function scopeLeaveAttribution(Builder $query, ?int $storeLocationId): Builder
+    {
+        if ($storeLocationId !== null) {
+            return $query->where('store_location_id', $storeLocationId);
+        }
+
+        return $query->whereNull('store_location_id');
+    }
+
+    /**
      * Return exact conflict sources for appointment availability checks.
      *
      * The optional ignored booking is the booking currently being edited/rescheduled. Its own row,
@@ -351,11 +364,9 @@ class BookingAvailabilityService
             ->all();
 
         $timeoffConflicts = BookingStaffTimeoff::where('staff_id', $staffId)
-            // Public booking always supplies an operational Branch. Legacy NULL rows have no
-            // safe Branch attribution and must not make a multi-Branch staff member unavailable
-            // everywhere. They retain their legacy/global meaning only for legacy callers which
-            // do not have Branch context.
-            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
+            // Branch-scoped leave only. Without Branch context, only legacy NULL rows apply —
+            // never another Branch's leave/timeoff.
+            ->tap(fn ($query) => $this->scopeLeaveAttribution($query, $storeLocationId))
             ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
                 $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
             })
@@ -374,7 +385,7 @@ class BookingAvailabilityService
             ->values();
         $fullDayLeaveConflicts = BookingLeaveRequest::query()
             ->where('staff_id', $staffId)
-            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
+            ->tap(fn ($query) => $this->scopeLeaveAttribution($query, $storeLocationId))
             ->where('status', 'approved')
             ->where(function ($query) use ($requestDates) {
                 foreach ($requestDates as $date) {
@@ -556,6 +567,7 @@ class BookingAvailabilityService
         array $ignoreCartItemIds = [],
         array $ignorePosCartServiceItemIds = [],
         bool $holidayOnlyVerify = false,
+        ?int $storeLocationId = null,
     ): array {
         $staffIds = collect($staffIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
         if ($staffIds === []) {
@@ -575,7 +587,7 @@ class BookingAvailabilityService
             ->values()
             ->all();
 
-        $context = $this->prefetchPosDayAvailabilityContext($staffIds, $day, $bufferMin, $conflictScope);
+        $context = $this->prefetchPosDayAvailabilityContext($staffIds, $day, $bufferMin, $conflictScope, $storeLocationId);
         $context['ignore_booking_ids'] = $ignoreBookingIds;
         $context['ignore_booking_code'] = trim((string) ($ignoreBooking?->booking_code ?? ''));
         $context['ignore_booking_start_at'] = $ignoreBooking?->start_at ? $ignoreBooking->start_at->toDateTimeString() : null;
@@ -754,10 +766,10 @@ class BookingAvailabilityService
             ];
         }
 
-        // NEW ENHANCEMENT — booking-shop-query-v1: branch-scope timeoff/leave/blocks when store given (parity with getConflictDiagnostics)
+        // Branch-scope timeoff/leave when store given; without Branch, only legacy NULL rows.
         $timeoffRows = BookingStaffTimeoff::query()
             ->whereIn('staff_id', $staffIds)
-            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
+            ->tap(fn ($query) => $this->scopeLeaveAttribution($query, $storeLocationId))
             ->where('start_at', '<', $queryEnd->toDateTimeString())
             ->where('end_at', '>', $queryStart->toDateTimeString())
             ->get(['id', 'staff_id', 'start_at', 'end_at']);
@@ -776,7 +788,7 @@ class BookingAvailabilityService
 
         $leaveRows = BookingLeaveRequest::query()
             ->whereIn('staff_id', $staffIds)
-            ->when($storeLocationId !== null, fn ($query) => $query->where('store_location_id', $storeLocationId))
+            ->tap(fn ($query) => $this->scopeLeaveAttribution($query, $storeLocationId))
             ->where('status', 'approved')
             ->where(function ($query) use ($requestDates) {
                 foreach ($requestDates as $requestDate) {

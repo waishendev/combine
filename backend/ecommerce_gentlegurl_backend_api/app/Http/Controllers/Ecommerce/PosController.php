@@ -2825,6 +2825,9 @@ class PosController extends Controller
                             (int) $lockedBooking->id,
                             $lockedBooking,
                             BookingAvailabilityService::SCOPE_CRM,
+                            [],
+                            [],
+                            $lockedBooking->store_location_id ? (int) $lockedBooking->store_location_id : null,
                         );
 
                         if ($this->posAvailabilityConflictIsLeaveOnly($conflictDiagnostics)) {
@@ -2845,7 +2848,12 @@ class PosController extends Controller
 
                         $scheduleOverride = $this->resolvePosScheduleOverride($staffId, $startAt, $transactionNewEndAt, ['failure_reason' => null], $request->user()?->id);
                     } else {
-                        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $transactionNewEndAt);
+                        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics(
+                            $staffId,
+                            $startAt,
+                            $transactionNewEndAt,
+                            $lockedBooking->store_location_id ? (int) $lockedBooking->store_location_id : null,
+                        );
                         $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
                         $outsideScheduleOverrideRequested = (bool) $request->boolean('availability_override')
                             && (string) $request->input('availability_override_type') === 'outside_staff_schedule'
@@ -2858,6 +2866,9 @@ class PosController extends Controller
                             (int) $lockedBooking->id,
                             $lockedBooking,
                             BookingAvailabilityService::SCOPE_CRM,
+                            [],
+                            [],
+                            $lockedBooking->store_location_id ? (int) $lockedBooking->store_location_id : null,
                         );
 
                         if (((! (bool) ($scheduleDiagnostics['is_available'] ?? false)) && ! $outsideScheduleOverrideRequested) || (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
@@ -3873,13 +3884,19 @@ class PosController extends Controller
                 (int) $booking->buffer_min,
                 (int) $booking->id,
                 $booking,
+                $booking->store_location_id ? (int) $booking->store_location_id : null,
             );
             if ($leaveBlock) {
                 return $leaveBlock;
             }
             $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, ['failure_reason' => null], $request->user()?->id);
         } else {
-            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($targetStaffId, $newStart, $newEnd);
+            $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics(
+                $targetStaffId,
+                $newStart,
+                $newEnd,
+                $booking->store_location_id ? (int) $booking->store_location_id : null,
+            );
             $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
             if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
                 && ! in_array($scheduleFailureReason, $this->posScheduleSoftFailureReasons(), true)) {
@@ -3894,6 +3911,9 @@ class PosController extends Controller
                 (int) $booking->id,
                 $booking,
                 BookingAvailabilityService::SCOPE_CRM,
+                [],
+                [],
+                $booking->store_location_id ? (int) $booking->store_location_id : null,
             );
             if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
                 return $this->respondPosAvailabilityError($conflictDiagnostics);
@@ -4443,6 +4463,7 @@ class PosController extends Controller
             'end_at' => ['required', 'date'],
             'buffer_min' => ['nullable', 'integer', 'min:0'],
             'ignore_booking_id' => ['nullable', 'integer', 'exists:bookings,id'],
+            'store_location_id' => ['nullable', 'integer', 'exists:store_locations,id'],
         ]);
 
         $staff = Staff::query()->findOrFail((int) $validated['staff_id']);
@@ -4463,7 +4484,23 @@ class PosController extends Controller
             $ignoreBooking = Booking::query()->find((int) $validated['ignore_booking_id']);
         }
 
-        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+        $branchId = (int) ($validated['store_location_id'] ?? 0);
+        if ($branchId <= 0 && $ignoreBooking?->store_location_id) {
+            $branchId = (int) $ignoreBooking->store_location_id;
+        }
+        if ($branchId <= 0) {
+            return $this->respond([
+                'is_available' => false,
+                'is_hard_block' => true,
+                'is_outside_staff_schedule' => false,
+                'reason_code' => 'branch_required',
+                'message' => __('Select a Branch before checking availability.'),
+            ]);
+        }
+        app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId, false);
+        $storeLocationId = $branchId;
+
+        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt, $storeLocationId);
         $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
             (int) $staff->id,
             $startAt,
@@ -4472,6 +4509,9 @@ class PosController extends Controller
             $ignoreBooking?->id,
             $ignoreBooking,
             BookingAvailabilityService::SCOPE_CRM,
+            [],
+            [],
+            $storeLocationId,
         );
         $conflictPayload = array_merge($conflictDiagnostics, [
             'staff_id' => (int) $staff->id,
@@ -4540,6 +4580,7 @@ class PosController extends Controller
             'date' => ['required', 'date_format:Y-m-d'],
             'extra_duration_min' => ['nullable', 'integer', 'min:0'],
             'ignore_booking_id' => ['nullable', 'integer', 'exists:bookings,id'],
+            'store_location_id' => ['nullable', 'integer', 'exists:store_locations,id'],
         ]);
 
         if ($validator->fails()) {
@@ -4555,6 +4596,25 @@ class PosController extends Controller
         }
 
         $validated = $validator->validated();
+        $branchId = (int) ($validated['store_location_id'] ?? 0);
+        if ($branchId <= 0 && ! empty($validated['ignore_booking_id'])) {
+            $ignoreBookingForBranch = Booking::query()->find((int) $validated['ignore_booking_id']);
+            $branchId = (int) ($ignoreBookingForBranch?->store_location_id ?? 0);
+        }
+        if ($branchId <= 0) {
+            return $this->respondError(__('Select a Branch before checking availability.'), 422, [
+                'date' => (string) $validated['date'],
+                'service_id' => (int) $validated['service_id'],
+                'duration_min' => null,
+                'buffer_min' => null,
+                'slot_step_min' => 15,
+                'visible_slots' => [],
+                'reason_code' => 'branch_required',
+            ]);
+        }
+        app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId, false);
+        $storeLocationId = $branchId;
+
         $service = BookingService::query()->with(['allowedStaffs:id', 'primarySlots'])->findOrFail((int) $validated['service_id']);
         $extraDurationMin = (int) ($validated['extra_duration_min'] ?? 0);
         $ignoreBooking = null;
@@ -4562,7 +4622,7 @@ class PosController extends Controller
             $ignoreBooking = Booking::query()->find((int) $validated['ignore_booking_id']);
         }
 
-        $staffIds = $service->allowedStaffs->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $staffIds = $service->allowedStaffsAt($storeLocationId)->pluck('staffs.id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $configuredPrimarySlots = $service->primarySlots
             ->where('is_active', true)
             ->sortBy('sort_order')
@@ -4604,6 +4664,7 @@ class PosController extends Controller
             [],
             [],
             $this->posAvailabilityVerifyHolidayOnly(),
+            $storeLocationId,
         );
 
         return $this->respond([
@@ -4805,7 +4866,7 @@ class PosController extends Controller
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
         if ($this->posAvailabilityVerifyHolidayOnly()) {
-            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed($staff, $startAt, $endAt, $bufferMin);
+            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed($staff, $startAt, $endAt, $bufferMin, null, null, (int) $transactionBranch->id);
             if ($leaveBlock) {
                 return $leaveBlock;
             }
@@ -4825,6 +4886,9 @@ class PosController extends Controller
                 null,
                 null,
                 BookingAvailabilityService::SCOPE_CRM,
+                [],
+                [],
+                (int) $transactionBranch->id,
             );
             if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
                 return $this->respondPosAvailabilityError($conflictDiagnostics);
@@ -5020,6 +5084,9 @@ class PosController extends Controller
                 null,
                 null,
                 BookingAvailabilityService::SCOPE_CRM,
+                [],
+                [],
+                (int) $transactionBranch->id,
             )) {
             return $this->respondError(__('Selected slot is no longer available.'), 409);
         }
@@ -5231,7 +5298,7 @@ class PosController extends Controller
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
         if ($this->posAvailabilityVerifyHolidayOnly()) {
-            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed($staff, $startAt, $endAt, $bufferMin);
+            $leaveBlock = $this->assertPosWriteLeaveOnlyAllowed($staff, $startAt, $endAt, $bufferMin, null, null, (int) $transactionBranch->id);
             if ($leaveBlock) {
                 return $leaveBlock;
             }
@@ -5252,6 +5319,9 @@ class PosController extends Controller
                 null,
                 null,
                 BookingAvailabilityService::SCOPE_CRM,
+                [],
+                [],
+                (int) $transactionBranch->id,
             );
             if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
                 return $this->respondPosAvailabilityError($conflictDiagnostics);
@@ -8384,6 +8454,7 @@ class PosController extends Controller
                             BookingAvailabilityService::SCOPE_CRM,
                             [],
                             [(int) $serviceItem->id],
+                            (int) $cart->store_location_id,
                         );
                         if ($this->posAvailabilityConflictIsLeaveOnly($conflictDiagnostics)) {
                             abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
@@ -8409,6 +8480,7 @@ class PosController extends Controller
                             BookingAvailabilityService::SCOPE_CRM,
                             [],
                             [(int) $serviceItem->id],
+                            (int) $cart->store_location_id,
                         );
                         if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
                             abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
@@ -12138,9 +12210,14 @@ class PosController extends Controller
         int $bufferMin = 0,
         ?int $ignoreBookingId = null,
         ?Booking $ignoreBooking = null,
+        ?int $storeLocationId = null,
     ) {
         if (! (bool) ($staff->is_active ?? true)) {
             return $this->respondError(__('Selected staff is inactive.'), 422, ['reason_code' => 'staff_inactive']);
+        }
+
+        if ($storeLocationId === null && $ignoreBooking?->store_location_id) {
+            $storeLocationId = (int) $ignoreBooking->store_location_id;
         }
 
         $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
@@ -12151,6 +12228,9 @@ class PosController extends Controller
             $ignoreBookingId,
             $ignoreBooking,
             BookingAvailabilityService::SCOPE_CRM,
+            [],
+            [],
+            $storeLocationId,
         );
         $conflictDiagnostics['staff_id'] = (int) $staff->id;
         $conflictDiagnostics['requested_start'] = $startAt->toDateTimeString();
