@@ -676,25 +676,6 @@ export default function StoreEditModal({
                     />
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="edit-code"
-                      className="block text-sm font-medium text-gray-700 mb-1"
-                    >
-                      System Code
-                    </label>
-                    <input
-                      id="edit-code"
-                      name="code"
-                      type="text"
-                      value={form.code}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm text-gray-600"
-                      disabled={disableForm}
-                    />
-                    <p className="mt-1 text-xs text-gray-500">Auto-generated. Used for multi-branch linking; not editable.</p>
-                  </div>
-
                   {(['isPickupAvailable', 'isReviewAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (
                     <div key={field}><label className="block text-sm font-medium text-gray-700 mb-1">{field === 'isPickupAvailable' ? 'Pickup Available' : field === 'isReviewAvailable' ? 'Reviews Available' : field === 'isBookingAvailable' ? 'Booking Available' : 'POS Available'}</label><select name={field} value={form[field]} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" disabled={disableForm}><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
                   ))}

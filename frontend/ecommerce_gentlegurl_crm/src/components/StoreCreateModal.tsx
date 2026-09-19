@@ -492,7 +492,7 @@ export default function StoreCreateModal({
                   placeholder="e.g. KL01"
                   disabled={submitting}
                 />
-                <p className="mt-1 text-xs text-gray-500">Shown on reviews and reports. System code is auto-generated.</p>
+                <p className="mt-1 text-xs text-gray-500">Shown on reviews and reports.</p>
               </div>
 
               {(['isPickupAvailable', 'isReviewAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (
