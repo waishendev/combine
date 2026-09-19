@@ -15,6 +15,15 @@ class StoreLocation extends Model
 
     protected static function booted(): void
     {
+        static::creating(function (StoreLocation $location): void {
+            if (! filled($location->code)) {
+                $location->code = static::generateUniqueSystemCode();
+            }
+            if (! filled($location->display_code)) {
+                $location->display_code = $location->code;
+            }
+        });
+
         static::created(function (StoreLocation $location): void {
             BranchNotificationSetting::query()->firstOrCreate(
                 ['store_location_id' => $location->id],
@@ -53,6 +62,7 @@ class StoreLocation extends Model
     protected $fillable = [
         'name',
         'code',
+        'display_code',
         'address_line1',
         'address_line2',
         'city',
@@ -80,6 +90,40 @@ class StoreLocation extends Model
             'sort_order' => 'integer',
             'opening_hours' => 'array',
         ];
+    }
+
+    /** Public Branch label for UI (falls back to system code). */
+    public function displayCodeLabel(): string
+    {
+        $display = trim((string) ($this->display_code ?? ''));
+
+        return $display !== '' ? $display : (string) $this->code;
+    }
+
+    /** Compact Branch ref for nested API payloads (POS / booking / orders). */
+    public function toBranchRef(): array
+    {
+        return [
+            'id' => (int) $this->id,
+            'name' => (string) $this->name,
+            'code' => (string) $this->code,
+            'display_code' => $this->displayCodeLabel(),
+        ];
+    }
+
+    /** SQL expression for public Branch label (safe in SELECT companions). */
+    public static function sqlDisplayCodeExpr(string $tableAlias = 'branch'): string
+    {
+        return "COALESCE(NULLIF(TRIM({$tableAlias}.display_code), ''), {$tableAlias}.code)";
+    }
+
+    public static function generateUniqueSystemCode(): string
+    {
+        do {
+            $code = 'BR'.strtoupper(\Illuminate\Support\Str::random(8));
+        } while (static::query()->where('code', $code)->exists());
+
+        return $code;
     }
 
     public function images()

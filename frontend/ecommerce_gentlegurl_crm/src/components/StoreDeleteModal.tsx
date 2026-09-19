@@ -112,7 +112,7 @@ export default function StoreDeleteModal({
           </p>
           <div className="rounded-md bg-yellow-100 px-4 py-3">
             <p className="text-sm font-semibold text-yellow-800">{store.name}</p>
-            <p className="text-xs text-yellow-800">{store.code}</p>
+            <p className="text-xs text-yellow-800">{store.displayCode || store.code}</p>
             <p className="text-xs text-yellow-800">
               {store.address_line1}, {store.city}, {store.state}
             </p>

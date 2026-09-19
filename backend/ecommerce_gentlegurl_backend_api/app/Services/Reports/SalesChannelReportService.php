@@ -1166,7 +1166,7 @@ class SalesChannelReportService
         )
             ->where('oi.line_type', 'product')
             ->leftJoin('store_locations as branch', 'branch.id', '=', 'o.store_location_id')
-            ->groupBy('o.id', 'o.order_number', 'c.name', 'o.shipping_name', 'o.billing_name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total', 'o.store_location_id', 'branch.name', 'branch.code', DB::raw($this->orderBillAtSql()))
+            ->groupBy('o.id', 'o.order_number', 'c.name', 'o.shipping_name', 'o.billing_name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total', 'o.store_location_id', 'branch.name', 'branch.code', 'branch.display_code', DB::raw($this->orderBillAtSql()))
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
             ->selectRaw($this->orderBillAtSql() . ' as order_datetime')
@@ -1177,7 +1177,7 @@ class SalesChannelReportService
             ->selectRaw('o.payment_method')
             ->selectRaw('o.grand_total as order_total')
             ->selectRaw('o.status')
-            ->selectRaw('o.store_location_id, branch.name as branch_name, branch.code as branch_code')
+            ->selectRaw('o.store_location_id, branch.name as branch_name, COALESCE(NULLIF(TRIM(branch.display_code), \'\'), branch.code) as branch_code')
             ->selectRaw('COALESCE(SUM(oi.quantity), 0) as item_count')
             ->selectRaw('COALESCE(SUM(oi.line_total), 0) as product_amount')
             ->selectRaw('COALESCE(SUM(oi.discount_amount), 0) as discount')
@@ -1231,7 +1231,7 @@ class SalesChannelReportService
             ->selectRaw('o.payment_method')
             ->selectRaw('o.grand_total as order_total')
             ->selectRaw('o.status')
-            ->selectRaw('o.store_location_id, branch.name as branch_name, branch.code as branch_code')
+            ->selectRaw('o.store_location_id, branch.name as branch_name, COALESCE(NULLIF(TRIM(branch.display_code), \'\'), branch.code) as branch_code')
             ->selectRaw('oi.id AS order_item_id')
             ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' WHEN 'booking_product' THEN 'booking_product' ELSE 'package_purchase' END as type")
             ->selectRaw('oi.booking_id as booking_id')
@@ -1320,7 +1320,7 @@ class SalesChannelReportService
                 'c.name as customer_name',
                 'b.store_location_id',
                 'branch.name as branch_name',
-                'branch.code as branch_code',
+                DB::raw("COALESCE(NULLIF(TRIM(branch.display_code), ''), branch.code) as branch_code"),
             ])
             ->map(function ($row) use ($methodLabels) {
                 $amount = round((float) ($row->amount ?? 0), 2);
@@ -1410,7 +1410,7 @@ class SalesChannelReportService
                 'c.name as customer_name',
                 'o.store_location_id',
                 'branch.name as branch_name',
-                'branch.code as branch_code',
+                DB::raw("COALESCE(NULLIF(TRIM(branch.display_code), ''), branch.code) as branch_code"),
             ])
             ->map(function ($row) use ($methodLabels) {
                 $amount = round((float) ($row->amount ?? 0), 2);
@@ -1536,6 +1536,7 @@ class SalesChannelReportService
             'store_location_id' => $row->store_location_id === null ? null : (int) $row->store_location_id,
             'name' => $row->store_location_id === null ? 'Unassigned' : (string) $row->branch_name,
             'code' => $row->store_location_id === null ? null : (string) $row->branch_code,
+            'display_code' => $row->store_location_id === null ? null : (string) $row->branch_code,
         ];
     }
 

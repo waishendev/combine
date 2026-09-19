@@ -4,6 +4,7 @@ export type StoreApiItem = {
   id: number | string
   name?: string | null
   code?: string | null
+  display_code?: string | null
   opening_hours?: unknown
   images?: {
     id?: number | string | null
@@ -74,6 +75,7 @@ export const mapStoreApiItemToRow = (item: StoreApiItem): StoreRowData => {
     id: normalizedId,
     name: item.name ?? '-',
     code: item.code ?? '-',
+    displayCode: String(item.display_code ?? item.code ?? '').trim() || '-',
     imageUrl: primaryImageUrl,
     images,
     openingHours: formatOpeningHours(item.opening_hours),

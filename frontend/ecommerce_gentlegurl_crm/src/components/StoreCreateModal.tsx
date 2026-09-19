@@ -16,7 +16,7 @@ interface StoreCreateModalProps {
 
 interface FormState {
   name: string
-  code: string
+  display_code: string
   address_line1: string
   address_line2: string
   city: string
@@ -32,7 +32,7 @@ interface FormState {
 
 const initialFormState: FormState = {
   name: '',
-  code: '',
+  display_code: '',
   address_line1: '',
   address_line2: '',
   city: '',
@@ -187,7 +187,7 @@ export default function StoreCreateModal({
     event.preventDefault()
 
     const trimmedName = form.name.trim()
-    const trimmedCode = form.code.trim()
+    const trimmedDisplayCode = form.display_code.trim()
     const trimmedAddressLine1 = form.address_line1.trim()
     const trimmedCity = form.city.trim()
     const trimmedState = form.state.trim()
@@ -197,7 +197,7 @@ export default function StoreCreateModal({
 
     if (
       !trimmedName ||
-      !trimmedCode ||
+      !trimmedDisplayCode ||
       !trimmedAddressLine1 ||
       !trimmedCity ||
       !trimmedState ||
@@ -215,7 +215,7 @@ export default function StoreCreateModal({
     try {
       const formData = new FormData()
       formData.append('name', trimmedName)
-      formData.append('code', trimmedCode)
+      formData.append('display_code', trimmedDisplayCode)
       formData.append('address_line1', trimmedAddressLine1)
       formData.append('address_line2', form.address_line2.trim())
       formData.append('city', trimmedCity)
@@ -263,7 +263,8 @@ export default function StoreCreateModal({
         : {
             id: 0,
             name: trimmedName,
-            code: trimmedCode,
+            code: '-',
+            displayCode: trimmedDisplayCode,
             imageUrl: null,
             images: [],
             openingHours: openingHours
@@ -476,21 +477,22 @@ export default function StoreCreateModal({
 
               <div>
                 <label
-                  htmlFor="code"
+                  htmlFor="display_code"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  Code <span className="text-red-500">*</span>
+                  Display Code <span className="text-red-500">*</span>
                 </label>
                 <input
-                  id="code"
-                  name="code"
+                  id="display_code"
+                  name="display_code"
                   type="text"
-                  value={form.code}
+                  value={form.display_code}
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Branch Code"
+                  placeholder="e.g. KL01"
                   disabled={submitting}
                 />
+                <p className="mt-1 text-xs text-gray-500">Shown on reviews and reports. System code is auto-generated.</p>
               </div>
 
               {(['isPickupAvailable', 'isReviewAvailable', 'isBookingAvailable', 'isPosAvailable'] as const).map((field) => (

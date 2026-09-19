@@ -29,7 +29,7 @@ type Pagination = {
 }
 
 type PaymentBreakdownRow = { method?: string | null; payment_method?: string | null; amount?: number | string | null; reference_no?: string | null }
-type BranchMeta = { store_location_id: number | null; name: string; code?: string | null }
+type BranchMeta = { store_location_id: number | null; name: string; code?: string | null; display_code?: string | null }
 
 type EcommerceRow = {
   order_id: number
@@ -794,7 +794,7 @@ export default function SalesChannelReportPage({
   const showBranch = selectedBranchId === null
   const ecColSpan = showBranch ? 12 : 11
   const bkColSpan = showBranch ? 14 : 13
-  const branchLabel = (branch?: BranchMeta) => branch?.code || branch?.name || 'Unassigned'
+  const branchLabel = (branch?: BranchMeta) => branch?.display_code || branch?.code || branch?.name || 'Unassigned'
 
   return (
     <div className="space-y-6">

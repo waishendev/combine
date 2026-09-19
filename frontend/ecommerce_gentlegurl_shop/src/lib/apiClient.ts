@@ -782,6 +782,7 @@ export type PublicStoreLocation = {
   id: number;
   name: string;
   code?: string | null;
+  display_code?: string | null;
   address_line1: string;
   address_line2?: string | null;
   city: string;

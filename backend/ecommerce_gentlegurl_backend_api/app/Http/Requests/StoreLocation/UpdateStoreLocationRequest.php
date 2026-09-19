@@ -19,6 +19,7 @@ class UpdateStoreLocationRequest extends FormRequest
         return [
             'id' => ['prohibited'],
             'code' => ['sometimes', Rule::in([(string) $location->code])],
+            'display_code' => ['sometimes', 'required', 'string', 'max:50'],
             'name' => ['sometimes', 'string', 'max:150'],
             'address_line1' => ['sometimes', 'string', 'max:255'],
             'address_line2' => ['nullable', 'string', 'max:255'],

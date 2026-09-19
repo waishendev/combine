@@ -15,7 +15,9 @@ class StoreStoreLocationRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:150'],
-            'code' => ['required', 'string', 'max:50', 'unique:store_locations,code'],
+            // System code is auto-generated; clients must not set it.
+            'code' => ['prohibited'],
+            'display_code' => ['required', 'string', 'max:50'],
             'address_line1' => ['required', 'string', 'max:255'],
             'address_line2' => ['nullable', 'string', 'max:255'],
             'city' => ['required', 'string', 'max:100'],

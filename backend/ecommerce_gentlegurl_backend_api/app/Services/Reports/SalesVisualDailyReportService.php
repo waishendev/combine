@@ -710,8 +710,8 @@ class SalesVisualDailyReportService
             ->leftJoin('store_locations as branch', 'branch.id', '=', 'o.store_location_id')
             ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
             ->where('oi.line_type', 'product'))
-            ->groupBy('splits.staff_id', 'o.store_location_id', 'branch.name', 'branch.code')
-            ->selectRaw('splits.staff_id, o.store_location_id, branch.name as branch_name, branch.code as branch_code')
+            ->groupBy('splits.staff_id', 'o.store_location_id', 'branch.name', 'branch.code', 'branch.display_code')
+            ->selectRaw('splits.staff_id, o.store_location_id, branch.name as branch_name, COALESCE(NULLIF(TRIM(branch.display_code), \'\'), branch.code) as branch_code')
             ->selectRaw("COALESCE(SUM({$productSplit}), 0) as amount")
             ->get();
 
@@ -722,8 +722,8 @@ class SalesVisualDailyReportService
             ->leftJoin('store_locations as branch', 'branch.id', '=', 'orders.store_location_id')
             ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end])
             ->whereIn('order_items.line_type', self::BOOKING_LINE_TYPES), 'orders')
-            ->groupBy('order_item_staff_splits.staff_id', 'orders.store_location_id', 'branch.name', 'branch.code')
-            ->selectRaw('order_item_staff_splits.staff_id, orders.store_location_id, branch.name as branch_name, branch.code as branch_code')
+            ->groupBy('order_item_staff_splits.staff_id', 'orders.store_location_id', 'branch.name', 'branch.code', 'branch.display_code')
+            ->selectRaw('order_item_staff_splits.staff_id, orders.store_location_id, branch.name as branch_name, COALESCE(NULLIF(TRIM(branch.display_code), \'\'), branch.code) as branch_code')
             ->selectRaw("COALESCE(SUM({$serviceSplit}), 0) as amount")
             ->get();
 

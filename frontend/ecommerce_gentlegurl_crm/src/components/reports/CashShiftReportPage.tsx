@@ -453,7 +453,7 @@ export default function CashShiftReportPage() {
                     </td>
                     {isAllBranches ? (
                       <td className="whitespace-nowrap px-4 py-3">
-                        {row.store_location ? `${row.store_location.code ? `${row.store_location.code} · ` : ''}${row.store_location.name}` : 'Unassigned'}
+                        {row.store_location ? row.store_location.name : 'Unassigned'}
                       </td>
                     ) : null}
                     <td className="whitespace-nowrap px-4 py-3">{staffName ?? '—'}</td>
@@ -508,7 +508,7 @@ export default function CashShiftReportPage() {
             <section>
               <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600">Pool Snapshot</h4>
               <div className="grid gap-3 sm:grid-cols-2">
-                {isAllBranches ? <DetailField label="Branch" value={selectedRow.store_location ? `${selectedRow.store_location.code ? `${selectedRow.store_location.code} · ` : ''}${selectedRow.store_location.name}` : 'Unassigned'} /> : null}
+                {isAllBranches ? <DetailField label="Branch" value={selectedRow.store_location ? selectedRow.store_location.name : 'Unassigned'} /> : null}
                 <DetailField label="Total Initial Cash" value={currency(selectedRow.total_initial_cash)} valueClassName="text-blue-700" />
                 <DetailField label="Total Withdraw" value={currency(selectedRow.total_withdraw)} valueClassName="text-violet-700" />
               </div>
