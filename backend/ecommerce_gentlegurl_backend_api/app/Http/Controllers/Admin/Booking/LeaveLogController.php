@@ -4,19 +4,54 @@ namespace App\Http\Controllers\Admin\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingLeaveLog;
-use App\Services\Booking\LeaveBranchService;
 use App\Services\StoreLocationAccessService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
 class LeaveLogController extends Controller
 {
     public function __construct(
-        private readonly LeaveBranchService $branches,
         private readonly StoreLocationAccessService $access,
     ) {}
 
     public function index(Request $request)
+    {
+        $query = $this->scopedLogsQuery($request);
+
+        $actionType = (string) $request->input('action_type', '');
+        if ($actionType !== '' && $actionType !== 'generated') {
+            $query->where('action_type', $actionType);
+        } else {
+            $query->where('action_type', '!=', 'generated');
+        }
+
+        if ($request->filled('leave_request_id')) {
+            $query->where('leave_request_id', (int) $request->input('leave_request_id'));
+        }
+
+        $this->applyDateFilters($query, $request);
+
+        $rows = $query
+            ->orderByDesc('created_at')
+            ->paginate((int) $request->input('per_page', 20));
+
+        return $this->respond($rows);
+    }
+
+    public function indexGenerations(Request $request)
+    {
+        $query = $this->scopedLogsQuery($request)->where('action_type', 'generated');
+        $this->applyDateFilters($query, $request);
+
+        $rows = $query
+            ->orderByDesc('created_at')
+            ->paginate((int) $request->input('per_page', 20));
+
+        return $this->respond($rows);
+    }
+
+    private function scopedLogsQuery(Request $request): Builder
     {
         $query = BookingLeaveLog::query()
             ->with([
@@ -54,13 +89,11 @@ class LeaveLogController extends Controller
             $query->where('staff_id', (int) $request->input('staff_id'));
         }
 
-        if ($request->filled('action_type')) {
-            $query->where('action_type', (string) $request->input('action_type'));
-        } else {
-            // Generation batches have their own CRM page; keep this list as leave-only audit.
-            $query->where('action_type', '!=', 'generated');
-        }
+        return $query;
+    }
 
+    private function applyDateFilters(Builder $query, Request $request): void
+    {
         if ($request->filled('from_date')) {
             $query->where('created_at', '>=', Carbon::parse((string) $request->input('from_date'))->startOfDay());
         }
@@ -68,15 +101,5 @@ class LeaveLogController extends Controller
         if ($request->filled('to_date')) {
             $query->where('created_at', '<=', Carbon::parse((string) $request->input('to_date'))->endOfDay());
         }
-
-        if ($request->filled('leave_request_id')) {
-            $query->where('leave_request_id', (int) $request->input('leave_request_id'));
-        }
-
-        $rows = $query
-            ->orderByDesc('created_at')
-            ->paginate((int) $request->input('per_page', 20));
-
-        return $this->respond($rows);
     }
 }

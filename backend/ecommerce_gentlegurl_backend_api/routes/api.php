@@ -1739,7 +1739,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
 
     Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class); // NEW ENHANCEMENT — booking-packages-schedules-crm-query-v1 (per_page + day_of_week)
     // NEW ENHANCEMENT — leave-pages-query-v1
-    // Pages: CRM /booking/leave-requests, /booking/leave-balances, /booking/leave-logs
+    // Pages: CRM /booking/leave-requests, /booking/leave-balances, /booking/leave-logs, /booking/off-day-generations
     // Indexes: (store_location_id, status, created_at DESC), (staff_id, status, leave_type) INCLUDE days,
     //          leave_logs (staff_id, action_type, created_at DESC)
     // Staff filter on requests/logs: GET /staffs/options/query (see staffs block above)
@@ -1756,8 +1756,6 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.schedules.update');
     Route::post('/off-days/cancel-generated', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'cancelGeneratedOffDays'])
         ->middleware('permission:booking.schedules.update');
-    Route::post('/leave-logs/{id}/revert-generation', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'revertGenerationLog'])
-        ->middleware('permission:booking.schedules.update');
     Route::put('/off-days/{id}', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'updateOffDay'])
         ->middleware('permission:booking.schedules.update');
     Route::post('/off-days/{id}/cancel', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'cancelOffDay'])
@@ -1770,6 +1768,10 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.schedules.update');
     Route::get('/leave-logs', [\App\Http\Controllers\Admin\Booking\LeaveLogController::class, 'index'])
         ->middleware('permission:booking.leave.logs.view');
+    Route::get('/off-day-generations', [\App\Http\Controllers\Admin\Booking\LeaveLogController::class, 'indexGenerations'])
+        ->middleware('permission:booking.off_day_generations.view');
+    Route::post('/off-day-generations/{id}/revert', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'revertGenerationLog'])
+        ->middleware('permission:booking.schedules.update');
     // END NEW ENHANCEMENT
 
         

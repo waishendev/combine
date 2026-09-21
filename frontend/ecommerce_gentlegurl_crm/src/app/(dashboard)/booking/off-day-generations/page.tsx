@@ -13,7 +13,7 @@ export default async function Page() {
     redirect('/login')
   }
 
-  if (!user.permissions.includes('booking.schedules.view')) {
+  if (!user.permissions.includes('booking.off_day_generations.view')) {
     redirect('/dashboard')
   }
 

@@ -9,7 +9,7 @@ import { useBranch } from '@/contexts/BranchContext'
 import TableEmptyState from '../TableEmptyState'
 import PaginationControls from '../PaginationControls'
 
-type ActionType = 'created' | 'approved' | 'rejected' | 'cancelled' | 'adjusted' | 'updated' | 'generated'
+type ActionType = 'created' | 'approved' | 'rejected' | 'cancelled' | 'adjusted' | 'updated'
 
 type LeaveLogRow = {
   id: number
@@ -43,7 +43,6 @@ const ACTION_LABEL: Record<ActionType, string> = {
   cancelled: 'Cancelled',
   adjusted: 'Adjusted',
   updated: 'Updated',
-  generated: 'Generated',
 }
 
 const ACTION_BADGE: Record<ActionType, string> = {
@@ -53,7 +52,6 @@ const ACTION_BADGE: Record<ActionType, string> = {
   cancelled: 'bg-amber-100 text-amber-700',
   adjusted: 'bg-violet-100 text-violet-700',
   updated: 'bg-indigo-100 text-indigo-700',
-  generated: 'bg-teal-100 text-teal-800',
 }
 
 const readNumberField = (value: unknown, key: string): number | null => {

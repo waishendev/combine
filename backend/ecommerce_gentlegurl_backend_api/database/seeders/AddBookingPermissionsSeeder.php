@@ -47,6 +47,7 @@ class AddBookingPermissionsSeeder extends Seeder
             'reports.view',
             'logs.view',
             'leave.logs.view',
+            'off_day_generations.view',
             'settings.view',
             'settings.update',
             'seo.view',

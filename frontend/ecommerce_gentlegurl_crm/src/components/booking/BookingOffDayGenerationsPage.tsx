@@ -93,10 +93,9 @@ export default function BookingOffDayGenerationsPage({ permissions = [] }: { per
     const qs = new URLSearchParams()
     qs.set('page', String(page))
     qs.set('per_page', String(pageSize))
-    qs.set('action_type', 'generated')
     if (selectedBranchId !== null) qs.set('store_location_id', String(selectedBranchId))
     try {
-      const res = await fetch(`/api/proxy/admin/booking/leave-logs?${qs.toString()}`, { cache: 'no-store' })
+      const res = await fetch(`/api/proxy/admin/booking/off-day-generations?${qs.toString()}`, { cache: 'no-store' })
       if (!res.ok) {
         setError('Failed to load off-day generations.')
         setRows([])
@@ -147,7 +146,7 @@ export default function BookingOffDayGenerationsPage({ permissions = [] }: { per
     setError(null)
     setRevertingId(row.id)
     try {
-      const res = await fetch(`/api/proxy/admin/booking/leave-logs/${row.id}/revert-generation`, {
+      const res = await fetch(`/api/proxy/admin/booking/off-day-generations/${row.id}/revert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ remark: 'Revert off-day generation.' }),
