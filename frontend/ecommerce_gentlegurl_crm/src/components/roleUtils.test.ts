@@ -15,6 +15,19 @@ test('created role row uses persisted Branch metadata rather than a header place
   assert.notEqual(row.branchName, 'Current Branch')
 })
 
+test('updated role row uses API store_location name rather than Current Branch', () => {
+  const row = mapRoleApiItemToRow({
+    id: 41,
+    name: 'Receptionist Updated',
+    store_location_id: 3,
+    store_location: { id: 3, name: 'Gentlegurls Nail Salon (Georgetown)' },
+    permissions_count: 4,
+  })
+
+  assert.equal(row.branchName, 'Gentlegurls Nail Salon (Georgetown)')
+  assert.notEqual(row.branchName, 'Current Branch')
+})
+
 test('platform-global role rendering retains the established label', () => {
   assert.equal(mapRoleApiItemToRow({ id: 1, name: 'infra_core_x1', store_location: null }).branchName, 'Global / Unassigned')
 })

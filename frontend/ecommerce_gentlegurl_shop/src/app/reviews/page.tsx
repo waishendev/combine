@@ -262,7 +262,7 @@ export default function ReviewsPage() {
           >
             {locations.map((location) => (
               <option key={location.id} value={location.id}>
-                {location.name} {location.display_code || location.code ? `(${location.display_code || location.code})` : ""}
+                {location.name}
               </option>
             ))}
           </select>
@@ -273,7 +273,7 @@ export default function ReviewsPage() {
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--foreground)]">
-                  {storeDetail.name} {storeDetail.display_code || storeDetail.code ? `(${storeDetail.display_code || storeDetail.code})` : ""}
+                  {storeDetail.name}
                 </h3>
               </div>
               <p className="text-sm text-[color:var(--text-muted)]">
