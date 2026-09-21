@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react'
 
+import { branchDisplayCode } from '@/lib/branchDisplay'
 import { formatPosScheduleTimeLabel, parsePosAppointmentScheduleYmd, posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow, type PosAppointmentScheduleScope } from './posAppointmentHelpers'
 import { formatPosAppointmentScheduleRangeLabel } from './posAppointmentScheduleConfig'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
@@ -118,7 +119,7 @@ export default function PosAppointmentsSchedule({
       const t = formatPosScheduleTimeLabel(row.appointment_start_at)
       const who = truncate(row.customer_name.trim() || '—', 10)
       return {
-        text: `${t} · ${who}${showBranchContext ? ` · ${row.store_location?.code || row.store_location?.name || 'Unassigned'}` : ''}`,
+        text: `${t} · ${who}${showBranchContext ? ` · ${branchDisplayCode(row.store_location) || row.store_location?.name || 'Unassigned'}` : ''}`,
         tone: posAppointmentVisualToneFromRow(row),
       }
     })

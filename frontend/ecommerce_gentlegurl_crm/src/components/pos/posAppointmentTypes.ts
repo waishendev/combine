@@ -80,7 +80,7 @@ export type PosAppointmentCurrentUser = {
 export type PosAppointmentListItem = {
   id: number
   store_location_id?: number | null
-  store_location?: { id: number; name: string; code?: string | null } | null
+  store_location?: { id: number; name: string; code?: string | null; display_code?: string | null } | null
   booking_code: string
   customer_id?: number | null
   customer_name: string
@@ -137,7 +137,7 @@ export type PosAppointmentListItem = {
 export type PosAppointmentDetail = {
   id: number
   store_location_id?: number | null
-  store_location?: { id: number; name: string; code?: string | null } | null
+  store_location?: { id: number; name: string; code?: string | null; display_code?: string | null } | null
   booking_code: string
   customer_name?: string | null
   customer_phone?: string | null

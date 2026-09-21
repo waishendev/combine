@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useBranch } from '@/contexts/BranchContext'
+import { branchDisplayCode, branchDisplayLabel } from '@/lib/branchDisplay'
 import { usePosPaymentConfiguration } from '@/hooks/usePosPaymentConfiguration'
 import { applyAutoSplitEdit } from '@/lib/posSplitPayment'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
@@ -2475,7 +2476,7 @@ export default function PosAppointmentsWorkspace({
   }, [appointmentDetail, cashShiftLoading, hasOpenShift, selectedBranchId])
 
   const appointmentBranchLabel = appointmentDetail?.store_location
-    ? (appointmentDetail.store_location.code || appointmentDetail.store_location.name)
+    ? (branchDisplayCode(appointmentDetail.store_location) || appointmentDetail.store_location.name)
     : 'Unassigned'
   const appointmentCashActionDisabled = requiresOpenCashShift && appointmentCashShiftState !== 'open'
   const appointmentCashActionTitle = appointmentCashShiftState === 'unresolved'
@@ -5499,7 +5500,7 @@ export default function PosAppointmentsWorkspace({
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <span className="rounded-md bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800 ring-1 ring-blue-200">
                           {appointmentDetail.store_location
-                            ? `${appointmentDetail.store_location.name}${appointmentDetail.store_location.code ? ` (${appointmentDetail.store_location.code})` : ''}`
+                            ? branchDisplayLabel(appointmentDetail.store_location, 'Legacy / unresolved Branch')
                             : 'Legacy / unresolved Branch'}
                         </span>
                         <BookingStatusBadge

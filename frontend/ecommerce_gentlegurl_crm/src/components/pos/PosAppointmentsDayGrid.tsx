@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react'
 
+import { branchDisplayCode } from '@/lib/branchDisplay'
 import {
   formatPosScheduleTimeLabel,
   getPosAppointmentEndAt,
@@ -366,7 +367,7 @@ export default function PosAppointmentsDayGrid({
                     const leftPct = lane * widthPct
                     const svc = (row.service_names ?? [])[0] ?? ''
                     const startLabel = formatPosScheduleTimeLabel(getPosAppointmentStartAt(row))
-                    const branchLabel = row.store_location?.code || row.store_location?.name || 'Unassigned'
+                    const branchLabel = branchDisplayCode(row.store_location) || row.store_location?.name || 'Unassigned'
                     const title = `${startLabel} · ${row.customer_name} · ${svc}${showBranchContext ? ` · ${branchLabel}` : ''}`
                     const tone = posAppointmentVisualToneFromRow(row)
 

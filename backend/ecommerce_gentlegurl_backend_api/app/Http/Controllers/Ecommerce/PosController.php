@@ -584,7 +584,7 @@ class PosController extends Controller
                     'customer:id,name,phone,email',
                     'service:id,name,cn_name,price_mode,price_range_min,price_range_max',
                     'staff:id,name',
-                    'storeLocation:id,name,code',
+                    'storeLocation:id,name,code,display_code',
                 ]);
             $this->applyPosAppointmentBranchScope($builder, $request);
 
@@ -668,7 +668,7 @@ class PosController extends Controller
                 return [
                     'id' => (int) $booking->id,
                     'store_location_id' => $booking->store_location_id ? (int) $booking->store_location_id : null,
-                    'store_location' => $booking->storeLocation ? ['id' => (int) $booking->storeLocation->id, 'name' => (string) $booking->storeLocation->name, 'code' => (string) $booking->storeLocation->code] : null,
+                    'store_location' => $booking->storeLocation?->toBranchRef(),
                     'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                     'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
                     'customer_name' => str_starts_with(strtoupper($guestName), 'UNKNOWN') ? 'Walk-in / Unknown' : (string) (($booking->customer?->name ?? '') ?: ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
@@ -753,7 +753,7 @@ class PosController extends Controller
         $perPageCap = $hasRange ? 500 : 100;
         $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
-        $builder = Booking::query()->with(['customer:id,name,phone,email', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,deposit_amount,duration_min', 'staff:id,name', 'storeLocation:id,name,code']);
+        $builder = Booking::query()->with(['customer:id,name,phone,email', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,deposit_amount,duration_min', 'staff:id,name', 'storeLocation:id,name,code,display_code']);
         $this->applyPosAppointmentBranchScope($builder, $request);
 
         if ($query !== '') {
@@ -892,11 +892,7 @@ class PosController extends Controller
             $identity = [
                 'id' => (int) $booking->id,
                 'store_location_id' => $booking->store_location_id ? (int) $booking->store_location_id : null,
-                'store_location' => $booking->storeLocation ? [
-                    'id' => (int) $booking->storeLocation->id,
-                    'name' => (string) $booking->storeLocation->name,
-                    'code' => (string) $booking->storeLocation->code,
-                ] : null,
+                'store_location' => $booking->storeLocation?->toBranchRef(),
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
                 'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
@@ -1067,7 +1063,7 @@ class PosController extends Controller
                 'customer:id,name,phone,email',
                 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min',
                 'staff:id,name',
-                'storeLocation:id,name,code',
+                'storeLocation:id,name,code,display_code',
                 'itemPhotos:id,booking_id,file_path,created_at',
                 'servicePhotos:id,booking_id,image_path,caption,sort_order,created_at',
                 'payments',
@@ -1089,11 +1085,7 @@ class PosController extends Controller
         return $this->respond([
             'id' => (int) $booking->id,
             'store_location_id' => $booking->store_location_id ? (int) $booking->store_location_id : null,
-            'store_location' => $booking->storeLocation ? [
-                'id' => (int) $booking->storeLocation->id,
-                'name' => (string) $booking->storeLocation->name,
-                'code' => (string) $booking->storeLocation->code,
-            ] : null,
+            'store_location' => $booking->storeLocation?->toBranchRef(),
             'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
             'status' => (string) $booking->status,
             'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
@@ -6337,7 +6329,7 @@ class PosController extends Controller
         return OrderItem::query()
             ->with([
                 'order.creator.staff:id,name',
-                'order.storeLocation:id,name,code',
+                'order.storeLocation:id,name,code,display_code',
                 'staff:id,name',
                 'product:id,name,cn_name,sku',
                 'productVariant:id,title,cn_name,sku',
