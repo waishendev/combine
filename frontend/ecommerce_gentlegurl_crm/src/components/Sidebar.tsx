@@ -792,6 +792,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             requiredPermission: 'booking.schedules.view',
           },
           {
+            key: 'booking-off-day-generations',
+            label: 'Off Day Generations',
+            href: '/booking/off-day-generations',
+            requiredPermission: 'booking.schedules.view',
+          },
+          {
             key: 'booking-leave-logs',
             label: 'Leave Logs',
             href: '/booking/leave-logs',

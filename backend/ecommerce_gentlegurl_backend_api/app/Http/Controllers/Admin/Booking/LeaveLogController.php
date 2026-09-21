@@ -4,13 +4,17 @@ namespace App\Http\Controllers\Admin\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingLeaveLog;
+use App\Services\Booking\LeaveBranchService;
+use App\Services\StoreLocationAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use App\Services\Booking\LeaveBranchService;
 
 class LeaveLogController extends Controller
 {
-    public function __construct(private readonly LeaveBranchService $branches) {}
+    public function __construct(
+        private readonly LeaveBranchService $branches,
+        private readonly StoreLocationAccessService $access,
+    ) {}
 
     public function index(Request $request)
     {
@@ -18,20 +22,31 @@ class LeaveLogController extends Controller
             ->with([
                 'staff:id,name',
                 'creator:id,name',
+                'storeLocation:id,name',
                 'leaveRequest:id,store_location_id',
                 'leaveRequest.storeLocation:id,name',
             ]);
 
-        if ($request->filled('store_location_id')) {
-            $query->whereHas('leaveRequest', function ($leave) use ($request) {
-                $this->branches->scopeVisible($leave, $request->user(), $request->input('store_location_id'));
+        $user = $request->user();
+        $branchFilter = $request->input('store_location_id');
+
+        if ($branchFilter !== null && $branchFilter !== '') {
+            $branch = $this->access->authorizeStoreLocation($user, (int) $branchFilter);
+            $query->where(function ($logs) use ($branch) {
+                $logs->where('store_location_id', $branch->id)
+                    ->orWhereHas('leaveRequest', fn ($leave) => $leave->where('store_location_id', $branch->id));
             });
         } else {
-            // Balance adjustments are global logs and remain visible only in ALL scope.
-            $query->where(function ($logs) use ($request) {
-                $logs->whereNull('leave_request_id')->orWhereHas('leaveRequest', function ($leave) use ($request) {
-                    $this->branches->scopeVisible($leave, $request->user(), null);
-                });
+            $accessible = $this->access->accessibleStoreLocations($user)->pluck('store_locations.id');
+            $query->where(function ($logs) use ($accessible) {
+                $logs->whereNull('leave_request_id')
+                    ->where(function ($scope) use ($accessible) {
+                        $scope->whereNull('store_location_id')
+                            ->orWhereIn('store_location_id', $accessible);
+                    })
+                    ->orWhereHas('leaveRequest', function ($leave) use ($accessible) {
+                        $leave->whereIn('store_location_id', $accessible)->orWhereNull('store_location_id');
+                    });
             });
         }
 
@@ -41,6 +56,9 @@ class LeaveLogController extends Controller
 
         if ($request->filled('action_type')) {
             $query->where('action_type', (string) $request->input('action_type'));
+        } else {
+            // Generation batches have their own CRM page; keep this list as leave-only audit.
+            $query->where('action_type', '!=', 'generated');
         }
 
         if ($request->filled('from_date')) {

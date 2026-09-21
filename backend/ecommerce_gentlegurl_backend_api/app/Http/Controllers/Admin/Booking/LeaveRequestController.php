@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Booking;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking\BookingLeaveLog;
 use App\Models\Booking\BookingLeaveRequest;
 use App\Models\Booking\BookingStaffTimeoff;
 use App\Services\Booking\BookingLeaveService;
@@ -109,24 +110,69 @@ class LeaveRequestController extends Controller
         $weekdayLabels = $this->leaveService->weekdayLabels();
         $selectedDayNames = array_map(fn (int $day) => $weekdayLabels[$day] ?? (string) $day, $targetWeekdays);
 
-        [$createdDates, $skippedDates] = DB::transaction(fn () => $this->generateOffDaysForWeekdaysInRange(
+        [$createdIds, $createdDates, $skippedDates, $generationLogId] = DB::transaction(function () use (
             $staffId,
             $monthStart,
             $monthEnd,
             $targetWeekdays,
-            $request->user()?->id,
+            $request,
             $branchId,
-        ));
+            $data,
+            $selectedDayNames,
+        ) {
+            [$createdIds, $createdDates, $skippedDates] = $this->generateOffDaysForWeekdaysInRange(
+                $staffId,
+                $monthStart,
+                $monthEnd,
+                $targetWeekdays,
+                $request->user()?->id,
+                $branchId,
+            );
+
+            $generationLog = $this->leaveService->logAction(
+                $staffId,
+                null,
+                'generated',
+                null,
+                [
+                    'scope' => 'month',
+                    'target_month' => $data['target_month'],
+                    'target_year' => null,
+                    'days_of_week' => $targetWeekdays,
+                    'weekday_labels' => $selectedDayNames,
+                    'store_location_id' => $branchId,
+                    'created_ids' => $createdIds,
+                    'created_dates' => $createdDates,
+                    'created_count' => count($createdIds),
+                    'skipped_count' => count($skippedDates),
+                    'skipped_dates' => $skippedDates,
+                    'reverted_at' => null,
+                    'cancelled_ids' => [],
+                ],
+                sprintf(
+                    'Generated %d monthly off day(s) for %s (%s).',
+                    count($createdIds),
+                    $data['target_month'],
+                    implode(', ', $selectedDayNames)
+                ),
+                $request->user()?->id,
+                $branchId,
+            );
+
+            return [$createdIds, $createdDates, $skippedDates, (int) $generationLog->id];
+        });
 
         return $this->respond([
             'staff_id' => $staffId,
             'target_month' => $data['target_month'],
             'days_of_week' => $targetWeekdays,
             'weekday_labels' => $selectedDayNames,
-            'created_count' => count($createdDates),
+            'created_count' => count($createdIds),
             'skipped_count' => count($skippedDates),
+            'created_ids' => $createdIds,
             'created_dates' => $createdDates,
             'skipped_dates' => $skippedDates,
+            'generation_log_id' => $generationLogId,
         ], 'Monthly off days generated for selected weekday(s).');
     }
 
@@ -148,29 +194,74 @@ class LeaveRequestController extends Controller
         $weekdayLabels = $this->leaveService->weekdayLabels();
         $selectedDayNames = array_map(fn (int $day) => $weekdayLabels[$day] ?? (string) $day, $targetWeekdays);
 
-        [$createdDates, $skippedDates] = DB::transaction(fn () => $this->generateOffDaysForWeekdaysInRange(
+        [$createdIds, $createdDates, $skippedDates, $generationLogId] = DB::transaction(function () use (
             $staffId,
             $yearStart,
             $yearEnd,
             $targetWeekdays,
-            $request->user()?->id,
+            $request,
             $branchId,
-        ));
+            $data,
+            $selectedDayNames,
+        ) {
+            [$createdIds, $createdDates, $skippedDates] = $this->generateOffDaysForWeekdaysInRange(
+                $staffId,
+                $yearStart,
+                $yearEnd,
+                $targetWeekdays,
+                $request->user()?->id,
+                $branchId,
+            );
+
+            $generationLog = $this->leaveService->logAction(
+                $staffId,
+                null,
+                'generated',
+                null,
+                [
+                    'scope' => 'year',
+                    'target_month' => null,
+                    'target_year' => (int) $data['target_year'],
+                    'days_of_week' => $targetWeekdays,
+                    'weekday_labels' => $selectedDayNames,
+                    'store_location_id' => $branchId,
+                    'created_ids' => $createdIds,
+                    'created_dates' => $createdDates,
+                    'created_count' => count($createdIds),
+                    'skipped_count' => count($skippedDates),
+                    'skipped_dates' => $skippedDates,
+                    'reverted_at' => null,
+                    'cancelled_ids' => [],
+                ],
+                sprintf(
+                    'Generated %d yearly off day(s) for %d (%s).',
+                    count($createdIds),
+                    (int) $data['target_year'],
+                    implode(', ', $selectedDayNames)
+                ),
+                $request->user()?->id,
+                $branchId,
+            );
+
+            return [$createdIds, $createdDates, $skippedDates, (int) $generationLog->id];
+        });
 
         return $this->respond([
             'staff_id' => $staffId,
             'target_year' => (int) $data['target_year'],
             'days_of_week' => $targetWeekdays,
             'weekday_labels' => $selectedDayNames,
-            'created_count' => count($createdDates),
+            'created_count' => count($createdIds),
             'skipped_count' => count($skippedDates),
+            'created_ids' => $createdIds,
             'created_dates' => $createdDates,
             'skipped_dates' => $skippedDates,
+            'generation_log_id' => $generationLogId,
         ], 'Yearly off days generated for selected weekday(s).');
     }
 
     /**
-     * @return array{0: array<int, string>, 1: array<int, string>}
+     * @return array{0: array<int, int>, 1: array<int, string>, 2: array<int, string>}
      */
     private function generateOffDaysForWeekdaysInRange(
         int $staffId,
@@ -181,6 +272,7 @@ class LeaveRequestController extends Controller
         int $branchId,
     ): array {
         $weekdayLabels = $this->leaveService->weekdayLabels();
+        $createdIds = [];
         $createdDates = [];
         $skippedDates = [];
 
@@ -208,13 +300,150 @@ class LeaveRequestController extends Controller
             );
 
             if ($item) {
+                $createdIds[] = (int) $item->id;
                 $createdDates[] = $dateKey;
             } else {
                 $skippedDates[] = $dateKey;
             }
         }
 
-        return [$createdDates, $skippedDates];
+        return [$createdIds, $createdDates, $skippedDates];
+    }
+
+    public function cancelGeneratedOffDays(Request $request)
+    {
+        $data = $request->validate([
+            'leave_log_id' => ['nullable', 'integer', 'min:1'],
+            'ids' => ['nullable', 'array', 'min:1', 'max:400'],
+            'ids.*' => ['integer', 'distinct', 'min:1'],
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $leaveLogId = isset($data['leave_log_id']) ? (int) $data['leave_log_id'] : null;
+        $ids = array_values(array_unique(array_map('intval', $data['ids'] ?? [])));
+        $remark = $data['remark'] ?? 'Undo off-day generation.';
+
+        if ($leaveLogId) {
+            return $this->revertGenerationLogInternal($request, $leaveLogId, $remark);
+        }
+
+        if ($ids === []) {
+            return $this->respondError('Provide leave_log_id or ids to undo.', 422);
+        }
+
+        [$cancelledIds, $skippedIds] = $this->cancelOffDayIds($request, $ids, $remark);
+
+        return $this->respond([
+            'cancelled_count' => count($cancelledIds),
+            'skipped_count' => count($skippedIds),
+            'cancelled_ids' => $cancelledIds,
+            'skipped_ids' => $skippedIds,
+        ], 'Generated off days undone.');
+    }
+
+    public function revertGenerationLog(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        return $this->revertGenerationLogInternal(
+            $request,
+            $id,
+            $data['remark'] ?? 'Revert off-day generation from leave logs.',
+        );
+    }
+
+    private function revertGenerationLogInternal(Request $request, int $leaveLogId, string $remark)
+    {
+        $log = BookingLeaveLog::query()->findOrFail($leaveLogId);
+        if ((string) $log->action_type !== 'generated') {
+            return $this->respondError('Only generated off-day batches can be reverted.', 422);
+        }
+
+        $after = is_array($log->after_value) ? $log->after_value : [];
+        if (! empty($after['reverted_at'])) {
+            return $this->respondError('This generation batch was already reverted.', 422);
+        }
+
+        $ids = array_values(array_unique(array_map('intval', $after['created_ids'] ?? [])));
+        if ($ids === []) {
+            return $this->respondError('This generation batch has no off days to revert.', 422);
+        }
+
+        if ($log->store_location_id) {
+            app(\App\Services\StoreLocationAccessService::class)
+                ->authorizeStoreLocation($request->user(), (int) $log->store_location_id);
+        }
+
+        [$cancelledIds, $skippedIds] = $this->cancelOffDayIds($request, $ids, $remark);
+
+        $log->after_value = array_merge($after, [
+            'reverted_at' => now()->toIso8601String(),
+            'reverted_by' => $request->user()?->id,
+            'cancelled_ids' => $cancelledIds,
+            'skipped_ids' => $skippedIds,
+            'cancelled_count' => count($cancelledIds),
+            'revert_skipped_count' => count($skippedIds),
+        ]);
+        $log->remark = trim((string) ($log->remark ?? '')).' [Reverted]';
+        $log->save();
+
+        return $this->respond([
+            'leave_log_id' => (int) $log->id,
+            'cancelled_count' => count($cancelledIds),
+            'skipped_count' => count($skippedIds),
+            'cancelled_ids' => $cancelledIds,
+            'skipped_ids' => $skippedIds,
+            'leave_log' => $log->fresh(['staff:id,name', 'creator:id,name', 'storeLocation:id,name']),
+        ], 'Generated off days reverted.');
+    }
+
+    /**
+     * @param  array<int, int>  $ids
+     * @return array{0: array<int, int>, 1: array<int, int>}
+     */
+    private function cancelOffDayIds(Request $request, array $ids, string $remark): array
+    {
+        $cancelledIds = [];
+        $skippedIds = [];
+
+        DB::transaction(function () use ($request, $ids, $remark, &$cancelledIds, &$skippedIds) {
+            $items = BookingLeaveRequest::query()
+                ->whereIn('id', $ids)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            foreach ($ids as $id) {
+                $item = $items->get($id);
+                if (! $item) {
+                    $skippedIds[] = $id;
+                    continue;
+                }
+
+                $this->branches->authorizeRecord($request->user(), $item);
+
+                if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
+                    $skippedIds[] = $id;
+                    continue;
+                }
+
+                $ok = $this->leaveService->cancelApprovedOffDay(
+                    $item,
+                    $request->user()?->id,
+                    $remark
+                );
+
+                if ($ok) {
+                    $cancelledIds[] = $id;
+                } else {
+                    $skippedIds[] = $id;
+                }
+            }
+        });
+
+        return [$cancelledIds, $skippedIds];
     }
 
     public function updateOffDay(Request $request, int $id)

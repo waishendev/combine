@@ -9,12 +9,13 @@ import { useBranch } from '@/contexts/BranchContext'
 import TableEmptyState from '../TableEmptyState'
 import PaginationControls from '../PaginationControls'
 
-type ActionType = 'created' | 'approved' | 'rejected' | 'cancelled' | 'adjusted' | 'updated'
+type ActionType = 'created' | 'approved' | 'rejected' | 'cancelled' | 'adjusted' | 'updated' | 'generated'
 
 type LeaveLogRow = {
   id: number
   created_at: string
   staff_id: number
+  store_location_id?: number | null
   leave_request_id: number | null
   action_type: ActionType
   remark: string | null
@@ -22,6 +23,7 @@ type LeaveLogRow = {
   after_value: unknown
   staff?: { id: number; name: string }
   creator?: { id: number; name: string }
+  store_location?: { id: number; name: string } | null
   leave_request?: { store_location_id: number | null; store_location?: { id: number; name: string } | null } | null
 }
 
@@ -41,6 +43,7 @@ const ACTION_LABEL: Record<ActionType, string> = {
   cancelled: 'Cancelled',
   adjusted: 'Adjusted',
   updated: 'Updated',
+  generated: 'Generated',
 }
 
 const ACTION_BADGE: Record<ActionType, string> = {
@@ -50,6 +53,7 @@ const ACTION_BADGE: Record<ActionType, string> = {
   cancelled: 'bg-amber-100 text-amber-700',
   adjusted: 'bg-violet-100 text-violet-700',
   updated: 'bg-indigo-100 text-indigo-700',
+  generated: 'bg-teal-100 text-teal-800',
 }
 
 const readNumberField = (value: unknown, key: string): number | null => {
@@ -58,6 +62,11 @@ const readNumberField = (value: unknown, key: string): number | null => {
   const n = typeof v === 'number' ? v : Number(v)
   return Number.isFinite(n) ? n : null
 }
+
+const branchNameForLog = (row: LeaveLogRow): string =>
+  row.store_location?.name
+  ?? row.leave_request?.store_location?.name
+  ?? ((row.store_location_id ?? row.leave_request?.store_location_id) ? 'Unknown Branch' : 'Unassigned')
 
 const getAdjustedLabelAndBadge = (row: LeaveLogRow): { label: string; badge: string } => {
   if (row.action_type !== 'adjusted') {
@@ -446,7 +455,7 @@ export default function BookingLeaveLogsPage() {
                 <tr key={row.id} className="border-b border-slate-100 align-top">
                   <td className="px-4 py-2">{formatDateTime12Hour(row.created_at) || '—'}</td>
                   <td className="px-4 py-2">{row.staff?.name ?? `Staff #${row.staff_id}`}</td>
-                  {isAllBranches && <td className="px-4 py-2">{row.leave_request?.store_location?.name ?? (row.leave_request?.store_location_id ? 'Unknown Branch' : 'Unassigned')}</td>}
+                  {isAllBranches && <td className="px-4 py-2">{branchNameForLog(row)}</td>}
                   <td className="px-4 py-2">
                     {(() => {
                       const view = getAdjustedLabelAndBadge(row)
@@ -522,6 +531,10 @@ export default function BookingLeaveLogsPage() {
                       <div>
                         <p className="text-xs text-slate-500">Staff</p>
                         <p className="font-medium">{detailsRow.staff?.name ?? `Staff #${detailsRow.staff_id}`}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Branch</p>
+                        <p className="font-medium">{branchNameForLog(detailsRow)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Leave request</p>

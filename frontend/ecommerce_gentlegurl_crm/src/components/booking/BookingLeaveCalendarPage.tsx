@@ -241,6 +241,16 @@ const monthToTargetValue = (date: Date) =>
 type GenerateOffDaysResponse = {
   created_count?: number
   skipped_count?: number
+  created_ids?: number[]
+}
+
+const formatGenerateSummary = (payload: GenerateOffDaysResponse): string => {
+  const created = Number(payload.created_count ?? 0)
+  const skipped = Number(payload.skipped_count ?? 0)
+  if (created === 0 && skipped === 0) return 'No matching dates in the selected period.'
+  const parts = [`Created ${created} off day(s).`]
+  if (skipped > 0) parts.push(`${skipped} date(s) skipped (already booked).`)
+  return parts.join(' ')
 }
 
 function WeekdayCheckboxGrid({
@@ -282,15 +292,6 @@ function WeekdayCheckboxGrid({
       })}
     </div>
   )
-}
-
-const formatGenerateSummary = (payload: GenerateOffDaysResponse): string => {
-  const created = Number(payload.created_count ?? 0)
-  const skipped = Number(payload.skipped_count ?? 0)
-  if (created === 0 && skipped === 0) return 'No matching dates in the selected period.'
-  const parts = [`Created ${created} off day(s).`]
-  if (skipped > 0) parts.push(`${skipped} date(s) skipped (already booked).`)
-  return parts.join(' ')
 }
 
 type PageToast = { id: string; message: string; title: string }
@@ -492,7 +493,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         return
       }
 
-      setGenerateSummary(formatGenerateSummary(root.data ?? {}))
+      const payload = root.data ?? {}
+      setGenerateSummary(formatGenerateSummary(payload))
       await loadRows()
     } catch {
       setError('Failed to generate off days.')
@@ -536,7 +538,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         return
       }
 
-      setGenerateSummary(formatGenerateSummary(root.data ?? {}))
+      const payload = root.data ?? {}
+      setGenerateSummary(formatGenerateSummary(payload))
       await loadRows()
     } catch {
       setError('Failed to generate off days.')

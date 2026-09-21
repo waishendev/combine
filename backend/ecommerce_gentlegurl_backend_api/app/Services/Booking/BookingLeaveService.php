@@ -164,10 +164,12 @@ class BookingLeaveService
         ?array $beforeValue,
         ?array $afterValue,
         ?string $remark,
-        ?int $createdBy
-    ): void {
-        BookingLeaveLog::query()->create([
+        ?int $createdBy,
+        ?int $storeLocationId = null
+    ): BookingLeaveLog {
+        return BookingLeaveLog::query()->create([
             'staff_id' => $staffId,
+            'store_location_id' => $storeLocationId,
             'leave_request_id' => $leaveRequestId,
             'action_type' => $actionType,
             'before_value' => $beforeValue,

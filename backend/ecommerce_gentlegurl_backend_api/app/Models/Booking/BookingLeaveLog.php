@@ -10,6 +10,7 @@ class BookingLeaveLog extends Model
 {
     protected $fillable = [
         'staff_id',
+        'store_location_id',
         'leave_request_id',
         'action_type',
         'before_value',
@@ -27,6 +28,11 @@ class BookingLeaveLog extends Model
     public function staff()
     {
         return $this->belongsTo(Staff::class, 'staff_id');
+    }
+
+    public function storeLocation()
+    {
+        return $this->belongsTo(\App\Models\Ecommerce\StoreLocation::class, 'store_location_id');
     }
 
     public function creator()
