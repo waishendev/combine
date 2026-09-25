@@ -1701,6 +1701,17 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.services.view|booking.services.create|booking.services.update');
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
 
+    Route::get('/question-presets', [\App\Http\Controllers\Admin\Booking\QuestionPresetController::class, 'index'])
+        ->middleware('permission:booking.question-presets.view');
+    Route::post('/question-presets', [\App\Http\Controllers\Admin\Booking\QuestionPresetController::class, 'store'])
+        ->middleware('permission:booking.question-presets.create');
+    Route::get('/question-presets/{questionPreset}', [\App\Http\Controllers\Admin\Booking\QuestionPresetController::class, 'show'])
+        ->middleware('permission:booking.question-presets.view');
+    Route::put('/question-presets/{questionPreset}', [\App\Http\Controllers\Admin\Booking\QuestionPresetController::class, 'update'])
+        ->middleware('permission:booking.question-presets.update');
+    Route::delete('/question-presets/{questionPreset}', [\App\Http\Controllers\Admin\Booking\QuestionPresetController::class, 'destroy'])
+        ->middleware('permission:booking.question-presets.delete');
+
     Route::get('/products/export', [\App\Http\Controllers\Admin\Booking\BookingProductController::class, 'exportCsv'])
         ->middleware('permission:booking.services.view');
     Route::post('/products/import', [\App\Http\Controllers\Admin\Booking\BookingProductController::class, 'importCsv'])

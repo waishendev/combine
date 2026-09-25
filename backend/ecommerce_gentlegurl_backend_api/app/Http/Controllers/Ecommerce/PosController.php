@@ -4632,13 +4632,13 @@ class PosController extends Controller
             'start_at' => ['required', 'date'],
             'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'selected_option_ids' => ['nullable', 'array'],
-            'selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
+            'selected_option_ids.*' => ['integer'],
             'selected_option_quantities' => ['nullable', 'array'],
             'selected_option_quantities.*' => ['integer', 'min:1', 'max:99'],
             'main_service_items' => ['nullable', 'array', 'min:1'],
             'main_service_items.*.booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'main_service_items.*.selected_option_ids' => ['nullable', 'array'],
-            'main_service_items.*.selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
+            'main_service_items.*.selected_option_ids.*' => ['integer'],
             'main_service_items.*.selected_option_quantities' => ['nullable', 'array'],
             'main_service_items.*.selected_option_quantities.*' => ['integer', 'min:1', 'max:99'],
             'main_service_items.*.staff_splits' => ['nullable', 'array'],
@@ -4679,7 +4679,7 @@ class PosController extends Controller
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
             'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
-            'selected_option_ids' => collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
+            'selected_option_ids' => collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id !== 0)->unique()->values()->all(),
             'selected_option_quantities' => (array) ($item['selected_option_quantities'] ?? []),
             'staff_splits' => collect($item['staff_splits'] ?? [])->values()->all(),
             'addon_staff_splits' => collect($item['addon_staff_splits'] ?? [])->mapWithKeys(fn ($splits, $id) => [(int) $id => collect($splits)->values()->all()])->all(),
@@ -4689,7 +4689,7 @@ class PosController extends Controller
         if ($mainServicePayload->isEmpty()) {
             $mainServicePayload = collect([[
                 'booking_service_id' => (int) $validated['booking_service_id'],
-                'selected_option_ids' => collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
+                'selected_option_ids' => collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id !== 0)->unique()->values()->all(),
                 'selected_option_quantities' => (array) ($validated['selected_option_quantities'] ?? []),
                 'staff_splits' => collect($validated['staff_splits'] ?? [])->values()->all(),
                 'addon_staff_splits' => collect($validated['addon_staff_splits'] ?? [])->mapWithKeys(fn ($splits, $id) => [(int) $id => collect($splits)->values()->all()])->all(),
@@ -4760,7 +4760,7 @@ class PosController extends Controller
 
             $itemStaffSplits = collect($item['staff_splits'] ?? [])->values()->all();
             $addonStaffSplits = (array) ($item['addon_staff_splits'] ?? []);
-            $selectedOptionIds = collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values();
+            $selectedOptionIds = collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id !== 0)->unique()->values();
             $addonBundle = $this->buildPosMainServiceAddonBundle(
                 $service,
                 $selectedOptionIds->all(),
@@ -5064,13 +5064,13 @@ class PosController extends Controller
             'start_at' => ['required', 'date'],
             'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'selected_option_ids' => ['nullable', 'array'],
-            'selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
+            'selected_option_ids.*' => ['integer'],
             'selected_option_quantities' => ['nullable', 'array'],
             'selected_option_quantities.*' => ['integer', 'min:1', 'max:99'],
             'main_service_items' => ['nullable', 'array', 'min:1'],
             'main_service_items.*.booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'main_service_items.*.selected_option_ids' => ['nullable', 'array'],
-            'main_service_items.*.selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
+            'main_service_items.*.selected_option_ids.*' => ['integer'],
             'main_service_items.*.selected_option_quantities' => ['nullable', 'array'],
             'main_service_items.*.selected_option_quantities.*' => ['integer', 'min:1', 'max:99'],
             'main_service_items.*.staff_splits' => ['nullable', 'array'],
@@ -5105,7 +5105,7 @@ class PosController extends Controller
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
             'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
-            'selected_option_ids' => collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
+            'selected_option_ids' => collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id !== 0)->unique()->values()->all(),
             'selected_option_quantities' => (array) ($item['selected_option_quantities'] ?? []),
             'staff_splits' => collect($item['staff_splits'] ?? [])->values()->all(),
             'addon_staff_splits' => collect($item['addon_staff_splits'] ?? [])->mapWithKeys(fn ($splits, $id) => [(int) $id => collect($splits)->values()->all()])->all(),
@@ -5115,7 +5115,7 @@ class PosController extends Controller
         if ($mainServicePayload->isEmpty()) {
             $mainServicePayload = collect([[
                 'booking_service_id' => (int) $validated['booking_service_id'],
-                'selected_option_ids' => collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
+                'selected_option_ids' => collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id !== 0)->unique()->values()->all(),
                 'selected_option_quantities' => (array) ($validated['selected_option_quantities'] ?? []),
                 'staff_splits' => collect($validated['staff_splits'] ?? [])->values()->all(),
                 'addon_staff_splits' => collect($validated['addon_staff_splits'] ?? [])->mapWithKeys(fn ($splits, $id) => [(int) $id => collect($splits)->values()->all()])->all(),
@@ -5183,7 +5183,7 @@ class PosController extends Controller
 
             $itemStaffSplits = collect($item['staff_splits'] ?? [])->values()->all();
             $addonStaffSplits = (array) ($item['addon_staff_splits'] ?? []);
-            $selectedOptionIds = collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values();
+            $selectedOptionIds = collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id !== 0)->unique()->values();
             $addonBundle = $this->buildPosMainServiceAddonBundle(
                 $service,
                 $selectedOptionIds->all(),
@@ -5597,7 +5597,7 @@ class PosController extends Controller
         // If other package lines exist, enforce single-member as well.
         $existingPackageCustomerIds = $cart->packageItems
             ->map(fn (PosCartPackageItem $row) => (int) ($row->customer_id ?? 0))
-            ->filter(fn (int $id) => $id > 0)
+            ->filter(fn (int $id) => $id !== 0)
             ->unique()
             ->values();
         if ($existingPackageCustomerIds->count() > 0) {
@@ -13166,11 +13166,20 @@ class PosController extends Controller
             ->values();
 
         $availableOptions = BookingServiceQuestionOption::query()
-            ->whereIn('id', $selectedIds->all())
+            ->whereIn('id', $selectedIds->filter(fn ($id) => $id > 0)->all())
             ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
             ->with('linkedBookingService:id,name,cn_name,duration_min,service_price,service_type,deposit_amount,price_mode')
             ->get()
             ->keyBy('id');
+        $sharedQuestions = $service->sharedQuestionAssignments()->with(['question.options', 'question.preset'])->get()
+            ->filter(fn ($assignment) => $assignment->question?->is_active && $assignment->question?->preset?->is_active);
+        $sharedOptions = \App\Models\Booking\BookingQuestionPresetOption::query()
+            ->whereIn('id', $selectedIds->filter(fn ($id) => $id < 0)->map(fn ($id) => abs($id)))
+            ->whereIn('booking_question_preset_question_id', $sharedQuestions->pluck('booking_question_preset_question_id'))
+            ->where('is_active', true)->with('linkedBookingService:id,name,cn_name,duration_min,service_price,service_type,deposit_amount,price_mode')
+            ->get()->each(fn ($option) => $option->setAttribute('public_id', -(int) $option->id))
+            ->keyBy(fn ($option) => -(int) $option->id);
+        $availableOptions = $availableOptions->concat($sharedOptions);
 
         foreach ($serviceQuestions as $question) {
             $selectedForQuestion = $availableOptions->filter(
@@ -13186,6 +13195,12 @@ class PosController extends Controller
                     'main_service_items' => __('Single choice question allows only one option.'),
                 ]);
             }
+        }
+        foreach ($sharedQuestions as $assignment) {
+            $question = $assignment->question;
+            $selectedForQuestion = $sharedOptions->filter(fn ($option) => (int) $option->booking_question_preset_question_id === (int) $question->id);
+            if ((bool) $question->is_required && $selectedForQuestion->isEmpty()) throw ValidationException::withMessages(['main_service_items' => __('Please complete required booking questions.')]);
+            if ((string) $question->question_type === 'single_choice' && $selectedForQuestion->count() > 1) throw ValidationException::withMessages(['main_service_items' => __('Single choice question allows only one option.')]);
         }
 
         $addonItems = $this->addonQuantityService->buildSnapshotRowsFromSelection(

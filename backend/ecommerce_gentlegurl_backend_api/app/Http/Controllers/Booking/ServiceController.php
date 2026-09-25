@@ -93,6 +93,8 @@ class ServiceController extends Controller
             'primarySlots',
             'categories' => fn ($query) => $query->where('is_active', true),
             'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount',
+            'sharedQuestionAssignments.question.options.linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount',
+            'sharedQuestionAssignments.question.preset:id,is_active',
         ])->eligibleAtBranch($storeLocationId)->findOrFail($id);
 
         return $this->respond($this->mapService($service, true, null, $storeLocationId));
@@ -252,6 +254,35 @@ class ServiceController extends Controller
                 ->orderBy('id')
                 ->get();
 
+        $mapQuestion = function ($question, int $sortOrder, bool $shared = false): array {
+            return [
+                'id' => $shared ? -(int) $question->id : (int) $question->id,
+                'title' => (string) $question->title, 'cn_title' => $question->cn_title,
+                'description' => $question->description, 'cn_description' => $question->cn_description,
+                'question_type' => (string) $question->question_type, 'is_required' => (bool) $question->is_required,
+                'sort_order' => $sortOrder,
+                'options' => $question->options->where('is_active', true)->map(function ($option) use ($shared) {
+                    $linkedService = $option->linkedBookingService;
+                    return [
+                        'id' => $shared ? -(int) $option->id : (int) $option->id,
+                        'label' => trim((string) $option->label) !== '' ? (string) $option->label : (string) optional($linkedService)->name,
+                        'cn_label' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $linkedService?->cn_name,
+                        'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
+                        'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : (int) ($option->extra_duration_min ?? 0),
+                        'extra_price' => $linkedService ? (float) $linkedService->service_price : (float) ($option->extra_price ?? 0),
+                        'sort_order' => (int) $option->sort_order, 'is_active' => (bool) $option->is_active,
+                    ];
+                })->values()->all(),
+            ];
+        };
+        $questionPayload = $questions->map(fn ($question) => $mapQuestion($question, (int) $question->sort_order));
+        if ($service->relationLoaded('sharedQuestionAssignments')) {
+            $questionPayload = $questionPayload->concat($service->sharedQuestionAssignments
+                ->filter(fn ($assignment) => $assignment->question?->is_active && $assignment->question?->preset?->is_active !== false)
+                ->map(fn ($assignment) => $mapQuestion($assignment->question, (int) $assignment->sort_order, true)))
+                ->sortBy('sort_order')->values();
+        }
+
         $payload = [
             'id' => (int) $service->id,
             'name' => $service->name,
@@ -286,39 +317,7 @@ class ServiceController extends Controller
             'allowed_staff_count' => count($staffs),
             'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
             ...$this->mapCategoryFields($service),
-            'questions' => $questions
-                ->map(fn ($question) => [
-                    'id' => (int) $question->id,
-                    'title' => (string) $question->title,
-                    'cn_title' => $question->cn_title,
-                    'description' => $question->description,
-                    'cn_description' => $question->cn_description,
-                    'question_type' => (string) $question->question_type,
-                    'is_required' => (bool) $question->is_required,
-                    'sort_order' => (int) $question->sort_order,
-                    'options' => $question->options->map(function ($option) {
-                        $linkedService = $option->linkedBookingService;
-                        return [
-                            'id' => (int) $option->id,
-                            'label' => trim((string) $option->label) !== '' ? (string) $option->label : (string) optional($linkedService)->name,
-                            'cn_label' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $linkedService?->cn_name,
-                            'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
-                            'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : (int) $option->extra_duration_min,
-                            'extra_price' => $linkedService ? (float) $linkedService->service_price : (float) $option->extra_price,
-                            'linked_cn_name' => $linkedService?->cn_name,
-                            'linked_price_mode' => $linkedService ? (string) ($linkedService->price_mode ?? 'fixed') : null,
-                            'linked_price_range_min' => $linkedService && $linkedService->price_range_min !== null ? (float) $linkedService->price_range_min : null,
-                            'linked_price_range_max' => $linkedService && $linkedService->price_range_max !== null ? (float) $linkedService->price_range_max : null,
-                            'sort_order' => (int) $option->sort_order,
-                            'is_active' => (bool) $option->is_active,
-                            'image_path' => $linkedService?->image_path,
-                            'image_url' => $linkedService?->image_url,
-                            'linked_description' => $linkedService?->description,
-                            'linked_service_type' => $linkedService?->service_type,
-                            'linked_deposit_amount' => $linkedService ? (float) ($linkedService->deposit_amount ?? 0) : null,
-                        ];
-                    })->values()->all(),
-                ])->values()->all(),
+            'questions' => $questionPayload->all(),
         ];
 
         if ($includeDescription) {
