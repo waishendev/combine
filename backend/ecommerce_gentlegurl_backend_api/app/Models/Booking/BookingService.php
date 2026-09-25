@@ -43,6 +43,12 @@ class BookingService extends Model
             ->orderBy('id');
     }
 
+    public function sharedQuestionAssignments()
+    {
+        return $this->hasMany(BookingServiceQuestionPresetAssignment::class, 'booking_service_id')
+            ->orderBy('sort_order')->orderBy('id');
+    }
+
     public function categories()
     {
         return $this->belongsToMany(

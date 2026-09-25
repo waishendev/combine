@@ -21,6 +21,7 @@ export default function BookingQuestionPresetsPage({ permissions }: { permission
   const [saving, setSaving] = useState(false)
   const [editorLoading, setEditorLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [editQueryHandled, setEditQueryHandled] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -68,6 +69,15 @@ export default function BookingQuestionPresetsPage({ permissions }: { permission
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load preset') }
     finally { setEditorLoading(false) }
   }
+
+  useEffect(() => {
+    if (editQueryHandled) return
+    const id = Number(new URLSearchParams(window.location.search).get('edit'))
+    setEditQueryHandled(true)
+    if (Number.isFinite(id) && id > 0 && permissions.includes('booking.question-presets.update')) void openEdit(id)
+  // openEdit intentionally runs once for the initial deep link.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editQueryHandled, permissions])
 
   const closeEditor = () => { if (!saving) setEditorOpen(false) }
   const save = async (event: FormEvent) => {

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Booking\BookingQuestionPreset;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingServiceQuestion;
+use App\Models\Booking\BookingServiceQuestionPresetAssignment;
 use App\Models\Ecommerce\StoreLocation;
 use App\Models\User;
 use App\Http\Controllers\Admin\Booking\QuestionPresetController;
@@ -18,47 +19,36 @@ class BookingQuestionPresetTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_multiple_questions_copy_as_independent_ordered_snapshots(): void
+    public function test_service_assignment_remains_live_and_removal_does_not_delete_master(): void
     {
         $preset = BookingQuestionPreset::query()->create([
-            'name' => 'Nail consultation', 'title' => 'Preferred shape?', 'question_type' => 'single_choice',
+            'name' => 'Shared master', 'title' => 'Original title', 'question_type' => 'single_choice',
             'is_required' => true, 'is_active' => true,
         ]);
-        $shape = $preset->questions()->create([
-            'title' => 'Preferred shape?', 'cn_title' => '喜欢的形状？', 'description' => 'Choose one',
-            'cn_description' => '请选择', 'question_type' => 'single_choice', 'sort_order' => 1,
+        $question = $preset->questions()->create([
+            'title' => 'Original title', 'question_type' => 'single_choice', 'sort_order' => 0,
             'is_required' => true, 'is_active' => true,
         ]);
-        $removal = $preset->questions()->create([
-            'title' => 'Need removal?', 'question_type' => 'multi_choice', 'sort_order' => 0,
-            'is_required' => false, 'is_active' => true,
-        ]);
-        $shape->options()->create(['booking_question_preset_id' => $preset->id, 'label' => 'Round', 'cn_label' => '圆形', 'sort_order' => 0]);
-        $removal->options()->create(['booking_question_preset_id' => $preset->id, 'label' => 'Gel', 'sort_order' => 0]);
-
+        $question->options()->create(['booking_question_preset_id' => $preset->id, 'label' => 'Original option', 'sort_order' => 0]);
         $service = BookingService::query()->create([
             'name' => 'Manicure', 'service_type' => 'standard', 'duration_min' => 30,
             'service_price' => 50, 'deposit_amount' => 0, 'buffer_min' => 0, 'is_active' => true,
         ]);
-        foreach ($preset->questions as $questionIndex => $template) {
-            $copy = BookingServiceQuestion::query()->create([
-                'booking_service_id' => $service->id, 'title' => $template->title,
-                'cn_title' => $template->cn_title, 'description' => $template->description,
-                'cn_description' => $template->cn_description, 'question_type' => $template->question_type,
-                'sort_order' => $questionIndex, 'is_required' => $template->is_required, 'is_active' => $template->is_active,
-            ]);
-            foreach ($template->options as $optionIndex => $templateOption) {
-                $copy->options()->create($templateOption->only(['label', 'cn_label', 'linked_booking_service_id', 'is_active', 'allow_quantity']) + [
-                    'sort_order' => $optionIndex, 'extra_duration_min' => 0, 'extra_price' => 0,
-                ]);
-            }
-        }
+        $assignment = BookingServiceQuestionPresetAssignment::query()->create([
+            'booking_service_id' => $service->id,
+            'booking_question_preset_question_id' => $question->id,
+            'sort_order' => 0,
+        ]);
 
-        $preset->questions()->first()->update(['title' => 'Changed future template']);
-        $preset->delete();
+        $question->update(['title' => 'Updated everywhere']);
+        $question->options()->first()->update(['label' => 'Updated option']);
 
-        $this->assertSame(['Need removal?', 'Preferred shape?'], $service->questions()->pluck('title')->all());
-        $this->assertDatabaseHas('booking_service_question_options', ['label' => 'Round', 'cn_label' => '圆形']);
+        $this->assertSame('Updated everywhere', $assignment->fresh()->question->title);
+        $this->assertSame('Updated option', $assignment->fresh()->question->options->first()->label);
+        $this->assertDatabaseMissing('booking_service_questions', ['booking_service_id' => $service->id]);
+
+        $assignment->delete();
+        $this->assertDatabaseHas('booking_question_preset_questions', ['id' => $question->id, 'title' => 'Updated everywhere']);
     }
 
     public function test_linked_service_and_null_link_are_supported_with_option_flags(): void

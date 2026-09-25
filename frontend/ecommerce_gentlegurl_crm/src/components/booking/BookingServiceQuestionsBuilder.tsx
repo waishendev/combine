@@ -26,6 +26,10 @@ export type QuestionForm = {
   is_required: boolean
   is_active: boolean
   options: QuestionOptionForm[]
+  source_type?: 'custom' | 'shared'
+  preset_question_id?: number
+  preset_id?: number
+  preset_name?: string
 }
 
 export const emptyQuestionOption = (): QuestionOptionForm => ({
@@ -151,6 +155,7 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
       const preset = json?.data
       if (!res.ok || !preset) return
       const copied = (Array.isArray(preset.questions) ? preset.questions : []).map((question: QuestionForm) => ({
+        source_type: 'shared' as const, preset_question_id: Number(question.id), preset_id: Number(preset.id), preset_name: String(preset.name),
         title: question.title ?? '', cn_title: question.cn_title ?? '', description: question.description ?? '',
         cn_description: question.cn_description ?? '', question_type: question.question_type === 'multi_choice' ? 'multi_choice' as const : 'single_choice' as const,
         sort_order: '0', is_required: Boolean(question.is_required), is_active: question.is_active !== false,
@@ -220,6 +225,28 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
             return next
           })
         }
+
+        if (question.source_type === 'shared') return (
+          <div key={`shared-${question.preset_question_id}-${qIndex}`} className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold text-gray-900">Question #{qIndex + 1}</span><span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700">Shared</span></div>
+                <p className="mt-3 font-semibold text-gray-900">{question.preset_name}</p>
+                <p className="mt-1 text-sm text-gray-700">“{question.title}”</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-600"><span>{question.question_type === 'multi_choice' ? 'Multi Choice' : 'Single Choice'}</span><span>•</span><span>{question.options.length} Options</span>{question.is_required && <><span>•</span><span>Required</span></>}<span>•</span><span>{question.is_active ? 'Active' : 'Inactive'}</span></div>
+                <p className="mt-3 text-xs text-violet-700"><i className="fa-solid fa-link mr-1.5" />Managed by Question Preset. Changes to the master update this service automatically.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" disabled={disabled || qIndex === 0} onClick={() => moveQuestion(qIndex, 'up')} className="rounded border bg-white px-2 py-1 text-xs disabled:opacity-40" aria-label="Move shared question up"><i className="fa-solid fa-arrow-up" /></button>
+                <button type="button" disabled={disabled || qIndex === value.length - 1} onClick={() => moveQuestion(qIndex, 'down')} className="rounded border bg-white px-2 py-1 text-xs disabled:opacity-40" aria-label="Move shared question down"><i className="fa-solid fa-arrow-down" /></button>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-violet-100 pt-3">
+              {question.preset_id && <a href={`/booking/question-presets?edit=${question.preset_id}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-violet-700 hover:underline">View/Edit Preset</a>}
+              <button type="button" disabled={disabled} onClick={() => removeQuestion(qIndex)} className="text-sm font-medium text-red-600 hover:underline disabled:opacity-50">Remove from Service</button>
+            </div>
+          </div>
+        )
 
         return (
           <div key={question.id ?? `question-${qIndex}`} className="rounded-lg border border-gray-200 p-4 space-y-4">

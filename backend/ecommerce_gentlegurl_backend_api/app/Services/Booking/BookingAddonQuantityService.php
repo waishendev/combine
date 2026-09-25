@@ -3,6 +3,7 @@
 namespace App\Services\Booking;
 
 use App\Models\Booking\BookingServiceQuestionOption;
+use App\Models\Booking\BookingQuestionPresetOption;
 use Illuminate\Support\Collection;
 
 class BookingAddonQuantityService
@@ -43,12 +44,12 @@ class BookingAddonQuantityService
 
         foreach ($optionIds as $rawId) {
             $optionId = (int) $rawId;
-            if ($optionId <= 0 || isset($result[$optionId])) {
+            if ($optionId === 0 || isset($result[$optionId])) {
                 continue;
             }
 
             $option = $availableOptionsById->get($optionId);
-            if (! $option instanceof BookingServiceQuestionOption) {
+            if (! $option instanceof BookingServiceQuestionOption && ! $option instanceof BookingQuestionPresetOption) {
                 continue;
             }
 
@@ -62,14 +63,14 @@ class BookingAddonQuantityService
         return $result;
     }
 
-    public function resolveUnitDuration(BookingServiceQuestionOption $option): int
+    public function resolveUnitDuration(BookingServiceQuestionOption|BookingQuestionPresetOption $option): int
     {
         return $option->linkedBookingService
             ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
             : max(0, (int) ($option->extra_duration_min ?? 0));
     }
 
-    public function resolveUnitPrice(BookingServiceQuestionOption $option, ?float $priceOverride = null): float
+    public function resolveUnitPrice(BookingServiceQuestionOption|BookingQuestionPresetOption $option, ?float $priceOverride = null): float
     {
         if ($priceOverride !== null) {
             return round(max(0, $priceOverride), 2);
@@ -86,7 +87,7 @@ class BookingAddonQuantityService
         return round(max(0, (float) ($option->extra_price ?? 0)), 2);
     }
 
-    public function isPriceFinalized(BookingServiceQuestionOption $option, ?float $priceOverride = null): bool
+    public function isPriceFinalized(BookingServiceQuestionOption|BookingQuestionPresetOption $option, ?float $priceOverride = null): bool
     {
         if ($priceOverride !== null) {
             return true;
@@ -96,7 +97,7 @@ class BookingAddonQuantityService
     }
 
     public function buildSnapshotRow(
-        BookingServiceQuestionOption $option,
+        BookingServiceQuestionOption|BookingQuestionPresetOption $option,
         int $quantity,
         array $staffSplits = [],
         ?float $priceOverride = null,
@@ -106,7 +107,7 @@ class BookingAddonQuantityService
         $unitPrice = $this->resolveUnitPrice($option, $priceOverride);
 
         $row = [
-            'id' => (int) $option->id,
+            'id' => (int) ($option->public_id ?? $option->id),
             'name' => (string) ($option->label ?: $option->linkedBookingService?->name ?: 'Add-on'),
             'cn_name' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $option->linkedBookingService?->cn_name,
             'extra_duration_min' => $this->resolveUnitDuration($option),
@@ -160,7 +161,7 @@ class BookingAddonQuantityService
         return collect($normalized)
             ->map(function (int $quantity, int $optionId) use ($availableOptionsById, $addonStaffSplits, $addonPriceOverrides, $addonLineTotalOverrides) {
                 $option = $availableOptionsById->get($optionId);
-                if (! $option instanceof BookingServiceQuestionOption) {
+                if (! $option instanceof BookingServiceQuestionOption && ! $option instanceof BookingQuestionPresetOption) {
                     return null;
                 }
 
@@ -195,10 +196,10 @@ class BookingAddonQuantityService
         return (int) collect($rows)->sum(fn (array $row) => $this->lineDurationMinutes($row));
     }
 
-    public function formatOptionPayload(BookingServiceQuestionOption $option): array
+    public function formatOptionPayload(BookingServiceQuestionOption|BookingQuestionPresetOption $option): array
     {
         return [
-            'id' => (int) $option->id,
+            'id' => (int) ($option->public_id ?? $option->id),
             'label' => (string) $option->label,
             'cn_label' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $option->linkedBookingService?->cn_name,
             'linked_booking_service_id' => $option->linkedBookingService ? (int) $option->linkedBookingService->id : null,

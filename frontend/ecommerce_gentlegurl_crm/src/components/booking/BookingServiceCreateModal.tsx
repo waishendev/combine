@@ -117,6 +117,10 @@ type BookingServiceApiItemWithRelations = BookingServiceApiItem & {
   store_location_ids?: number[]
   questions?: Array<{
     id?: number
+    source_type?: 'custom' | 'shared'
+    preset_question_id?: number
+    preset_id?: number
+    preset_name?: string
     title?: string
     cn_title?: string | null
     description?: string | null
@@ -147,6 +151,10 @@ function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWit
 
   const questions: QuestionForm[] = Array.isArray(service.questions)
     ? (service.questions ?? []).map((question, questionIndex) => ({
+        source_type: question?.source_type ?? 'custom',
+        preset_question_id: question?.preset_question_id,
+        preset_id: question?.preset_id,
+        preset_name: question?.preset_name,
         title: question?.title ?? '',
         cn_title: question?.cn_title ?? '',
         description: question?.description ?? '',
@@ -525,7 +533,7 @@ export default function BookingServiceCreateModal({
       return
     }
     const missingLinkedService = form.questions.some((question) =>
-      question.options.some((option) => !option.linked_booking_service_id.trim()),
+      question.source_type !== 'shared' && question.options.some((option) => !option.linked_booking_service_id.trim()),
     )
     if (missingLinkedService) {
       setError('Each add-on option must select a linked booking service')
@@ -559,6 +567,11 @@ export default function BookingServiceCreateModal({
       form.store_location_ids.forEach((id) => fd.append('store_location_ids[]', String(id)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       form.questions.forEach((question, questionIndex) => {
+        if (question.source_type === 'shared' && question.preset_question_id) {
+          fd.append(`questions[${questionIndex}][preset_question_id]`, String(question.preset_question_id))
+          fd.append(`questions[${questionIndex}][sort_order]`, String(questionIndex))
+          return
+        }
         fd.append(`questions[${questionIndex}][title]`, question.title.trim())
         fd.append(`questions[${questionIndex}][cn_title]`, question.cn_title.trim())
         fd.append(`questions[${questionIndex}][description]`, question.description.trim())
