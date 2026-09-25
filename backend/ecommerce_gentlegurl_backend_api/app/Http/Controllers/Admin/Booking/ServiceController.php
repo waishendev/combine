@@ -201,7 +201,8 @@ class ServiceController extends Controller
             'allowed_staff_ids.*' => ['integer', 'distinct'],
             'allowed_staff_by_store_location' => ['required_without:allowed_staff_ids', 'array'],
             'allowed_staff_by_store_location.*' => ['array', 'min:1'],
-            'allowed_staff_by_store_location.*.*' => ['integer', 'distinct'],
+            // Same staff across branches is valid; Laravel `distinct` on *.*.* falsely rejects that.
+            'allowed_staff_by_store_location.*.*' => ['integer'],
             'store_location_ids' => ['required', 'array', 'min:1'],
             'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
             'primary_slots' => ['nullable', 'array'],
@@ -354,7 +355,8 @@ class ServiceController extends Controller
             'allowed_staff_ids.*' => ['integer', 'distinct'],
             'allowed_staff_by_store_location' => ['required_without:allowed_staff_ids', 'array'],
             'allowed_staff_by_store_location.*' => ['array', 'min:1'],
-            'allowed_staff_by_store_location.*.*' => ['integer', 'distinct'],
+            // Same staff across branches is valid; Laravel `distinct` on *.*.* falsely rejects that.
+            'allowed_staff_by_store_location.*.*' => ['integer'],
             'store_location_ids' => ['required', 'array', 'min:1'],
             'store_location_ids.*' => ['integer', 'distinct', 'exists:store_locations,id'],
             'primary_slots' => ['nullable', 'array'],
@@ -613,7 +615,8 @@ class ServiceController extends Controller
             'allowed_staff_ids.*' => ['integer', 'distinct'],
             'allowed_staff_by_store_location' => ['nullable', 'array'],
             'allowed_staff_by_store_location.*' => ['array', 'min:1'],
-            'allowed_staff_by_store_location.*.*' => ['integer', 'distinct'],
+            // Same staff across branches is valid; Laravel `distinct` on *.*.* falsely rejects that.
+            'allowed_staff_by_store_location.*.*' => ['integer'],
             'primary_slots' => ['nullable', 'array'],
             'primary_slots.*' => ['date_format:H:i'],
 
