@@ -696,6 +696,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             requiredPermission: 'booking.services.view',
           },
           {
+            key: 'booking-question-presets',
+            label: 'Question Presets',
+            href: '/booking/question-presets',
+            requiredPermission: 'booking.services.view',
+          },
+          {
             key: 'booking-categories',
             label: 'Categories',
             href: '/booking/categories',

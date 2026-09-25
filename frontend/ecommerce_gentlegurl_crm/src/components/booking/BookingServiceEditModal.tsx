@@ -68,6 +68,7 @@ interface FormState {
   allowed_staff_by_store_location: Record<number, number[]>
   store_location_ids: number[]
   primary_slots: string
+  question_preset_ids: number[]
   questions: QuestionForm[]
 }
 type BookingServiceOption = { id: number; name: string; cn_name?: string | null; duration_min: number; service_price: number }
@@ -108,6 +109,7 @@ const initialFormState: FormState = {
   allowed_staff_by_store_location: {},
   store_location_ids: [],
   primary_slots: '',
+  question_preset_ids: [],
   questions: [],
 }
 
@@ -130,6 +132,9 @@ export default function BookingServiceEditModal({
   const [staffLoading, setStaffLoading] = useState(true)
   const [linkedBookingProduct, setLinkedBookingProduct] = useState<LinkedBookingProductSummary | null>(null)
   const [productLink, setProductLink] = useState<BookingServiceProductLinkValue>(buildInitialProductLinkValue())
+  const [lockedPresetQuestions, setLockedPresetQuestions] = useState<
+    Array<{ title: string; question_preset_id?: number | null; options?: Array<{ label?: string }> }>
+  >([])
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   useLayoutEffect(() => {
@@ -238,6 +243,27 @@ export default function BookingServiceEditModal({
         setLinkedBookingProduct(linkedProduct)
         setProductLink(buildInitialProductLinkValue(linkedProduct))
 
+        const allQuestions = Array.isArray((service as { questions?: unknown[] }).questions)
+          ? ((service as {
+              questions?: Array<{
+                question_preset_id?: number | null
+                title?: string
+                options?: Array<{ label?: string }>
+              }>
+            }).questions ?? [])
+          : []
+        setLockedPresetQuestions(
+          allQuestions
+            .filter((question) => Boolean(question?.question_preset_id))
+            .map((question) => ({
+              title: question?.title ?? '',
+              question_preset_id: question?.question_preset_id ?? null,
+              options: Array.isArray(question?.options)
+                ? question.options.map((option) => ({ label: option?.label ?? '' }))
+                : [],
+            })),
+        )
+
         setForm({
           name: typeof service.name === 'string' ? service.name : '',
           cn_name: typeof service.cn_name === 'string' ? service.cn_name : '',
@@ -266,10 +292,16 @@ export default function BookingServiceEditModal({
           primary_slots: Array.isArray((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots)
             ? ((service as { primary_slots?: Array<{ start_time?: string }> }).primary_slots ?? []).map((slot) => slot?.start_time ?? '').filter(Boolean).join(', ')
             : '',
+          question_preset_ids: Array.isArray((service as { question_preset_ids?: unknown[] }).question_preset_ids)
+            ? ((service as { question_preset_ids?: unknown[] }).question_preset_ids ?? [])
+                .map((id) => Number(id))
+                .filter((id) => Number.isFinite(id) && id > 0)
+            : [],
           questions: Array.isArray((service as { questions?: unknown[] }).questions)
             ? ((service as {
                 questions?: Array<{
                   id?: number
+                  question_preset_id?: number | null
                   title?: string
                   cn_title?: string | null
                   description?: string | null
@@ -290,7 +322,9 @@ export default function BookingServiceEditModal({
                     allow_quantity?: boolean
                   }>
                 }>
-              }).questions ?? []).map((question, questionIndex) => ({
+              }).questions ?? [])
+                .filter((question) => !question?.question_preset_id)
+                .map((question, questionIndex) => ({
                 id: question?.id,
                 title: question?.title ?? '',
                 cn_title: question?.cn_title ?? '',
@@ -560,6 +594,8 @@ export default function BookingServiceEditModal({
       form.store_location_ids.forEach((locationId) => (form.allowed_staff_by_store_location[locationId] ?? []).forEach((staffId) => fd.append(`allowed_staff_by_store_location[${locationId}][]`, String(staffId))))
       form.store_location_ids.forEach((id) => fd.append('store_location_ids[]', String(id)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
+      form.question_preset_ids.forEach((id) => fd.append('question_preset_ids[]', String(id)))
+      fd.append('question_presets_touched', '1')
       form.questions.forEach((question, questionIndex) => {
         fd.append(`questions[${questionIndex}][title]`, question.title.trim())
         fd.append(`questions[${questionIndex}][cn_title]`, question.cn_title.trim())
@@ -1141,6 +1177,13 @@ export default function BookingServiceEditModal({
                 onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
                 bookingServiceOptions={bookingServiceOptions}
                 disabled={disableForm}
+                enablePresets
+                presetIds={form.question_preset_ids}
+                onPresetIdsChange={(ids) => {
+                  setForm((prev) => ({ ...prev, question_preset_ids: ids }))
+                  setLockedPresetQuestions([])
+                }}
+                lockedPresetQuestions={lockedPresetQuestions}
               />
             </div>
 

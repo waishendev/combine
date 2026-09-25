@@ -43,6 +43,16 @@ class BookingService extends Model
             ->orderBy('id');
     }
 
+    public function questionPresets()
+    {
+        return $this->belongsToMany(
+            BookingQuestionPreset::class,
+            'booking_service_question_presets',
+            'booking_service_id',
+            'booking_question_preset_id'
+        )->withPivot('sort_order')->withTimestamps()->orderByPivot('sort_order');
+    }
+
     public function categories()
     {
         return $this->belongsToMany(

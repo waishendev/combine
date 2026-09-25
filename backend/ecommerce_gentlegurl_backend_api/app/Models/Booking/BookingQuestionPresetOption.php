@@ -1,0 +1,36 @@
+<?php
+
+namespace App\Models\Booking;
+
+use Illuminate\Database\Eloquent\Model;
+
+class BookingQuestionPresetOption extends Model
+{
+    protected $fillable = [
+        'booking_question_preset_question_id',
+        'label',
+        'cn_label',
+        'linked_booking_service_id',
+        'extra_duration_min',
+        'extra_price',
+        'sort_order',
+        'is_active',
+        'allow_quantity',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'allow_quantity' => 'boolean',
+        'extra_price' => 'decimal:2',
+    ];
+
+    public function question()
+    {
+        return $this->belongsTo(BookingQuestionPresetQuestion::class, 'booking_question_preset_question_id');
+    }
+
+    public function linkedBookingService()
+    {
+        return $this->belongsTo(BookingService::class, 'linked_booking_service_id');
+    }
+}

@@ -7,7 +7,7 @@ import BookingServiceAllowedStaffPicker, { type BookingStaffOption } from './Boo
 import BookingServiceCategoriesPicker, {
   type BookingServiceCategoryOption,
 } from './BookingServiceCategoriesPicker'
-import BookingServiceQuestionsBuilder, { emptyQuestion, type QuestionForm } from './BookingServiceQuestionsBuilder'
+import BookingServiceQuestionsBuilder, { type QuestionForm } from './BookingServiceQuestionsBuilder'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 
 type FieldKey =
@@ -81,6 +81,7 @@ export default function BookingServiceBulkUpdateModal({
     Array<{ id: number; name: string; duration_min: number; service_price: number }>
   >([])
   const [questions, setQuestions] = useState<QuestionForm[]>([])
+  const [questionPresetIds, setQuestionPresetIds] = useState<number[]>([])
   const [questionsLoading, setQuestionsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -335,6 +336,7 @@ export default function BookingServiceBulkUpdateModal({
       }
       if (selectedFields.includes('questions')) {
         payload.questions = questions
+        payload.question_preset_ids = questionPresetIds
       }
       if (selectedFields.includes('category_ids')) {
         payload.category_ids = categoryIds
@@ -644,7 +646,10 @@ export default function BookingServiceBulkUpdateModal({
                 <button
                   type="button"
                   className="rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  onClick={() => setQuestions([emptyQuestion()])}
+                  onClick={() => {
+                    setQuestions([])
+                    setQuestionPresetIds([])
+                  }}
                   disabled={isSubmitting}
                 >
                   Start from empty
@@ -658,10 +663,13 @@ export default function BookingServiceBulkUpdateModal({
                   onChange={setQuestions}
                   bookingServiceOptions={bookingServiceOptions}
                   disabled={isSubmitting}
+                  enablePresets
+                  presetIds={questionPresetIds}
+                  onPresetIdsChange={setQuestionPresetIds}
                 />
               )}
               <p className="text-xs text-amber-700">
-                Bulk update will overwrite Add-ons / Questions for all selected services.
+                Bulk update will overwrite Add-ons / Questions (including presets) for all selected services.
               </p>
             </div>
           )}

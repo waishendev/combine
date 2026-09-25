@@ -70,6 +70,7 @@ interface FormState {
   allowed_staff_by_store_location: Record<number, number[]>
   store_location_ids: number[]
   primary_slots: string
+  question_preset_ids: number[]
   questions: QuestionForm[]
 }
 type BookingServiceOption = { id: number; name: string; cn_name?: string | null; duration_min: number; service_price: number }
@@ -110,6 +111,7 @@ const initialFormState: FormState = {
   allowed_staff_by_store_location: {},
   store_location_ids: [],
   primary_slots: '',
+  question_preset_ids: [],
   questions: [],
 }
 
@@ -117,6 +119,7 @@ type BookingServiceApiItemWithRelations = BookingServiceApiItem & {
   store_location_ids?: number[]
   questions?: Array<{
     id?: number
+    question_preset_id?: number | null
     title?: string
     cn_title?: string | null
     description?: string | null
@@ -135,10 +138,11 @@ type BookingServiceApiItemWithRelations = BookingServiceApiItem & {
       allow_quantity?: boolean
     }>
   }>
+  question_preset_ids?: number[]
+  primary_slots?: Array<{ start_time?: string | null }>
   allowed_staff_ids?: unknown[]
   allowed_staffs?: Array<{ id?: unknown }>
   allowed_staff_by_store_location?: Record<string, unknown[]>
-  primary_slots?: Array<{ start_time?: string | null }>
 }
 
 function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWithRelations): FormState {
@@ -146,7 +150,9 @@ function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWit
   const nameWithCopySuffix = rawName ? `${rawName} (Copy)` : 'Untitled (Copy)'
 
   const questions: QuestionForm[] = Array.isArray(service.questions)
-    ? (service.questions ?? []).map((question, questionIndex) => ({
+    ? (service.questions ?? [])
+        .filter((question) => !question?.question_preset_id)
+        .map((question, questionIndex) => ({
         title: question?.title ?? '',
         cn_title: question?.cn_title ?? '',
         description: question?.description ?? '',
@@ -205,6 +211,9 @@ function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWit
     primary_slots: Array.isArray(service.primary_slots)
       ? (service.primary_slots ?? []).map((slot) => slot?.start_time ?? '').filter(Boolean).join(', ')
       : '',
+    question_preset_ids: Array.isArray(service.question_preset_ids)
+      ? service.question_preset_ids.map(Number).filter((id) => Number.isFinite(id) && id > 0)
+      : [],
     questions,
   }
 }
@@ -558,6 +567,8 @@ export default function BookingServiceCreateModal({
       form.store_location_ids.forEach((locationId) => (form.allowed_staff_by_store_location[locationId] ?? []).forEach((staffId) => fd.append(`allowed_staff_by_store_location[${locationId}][]`, String(staffId))))
       form.store_location_ids.forEach((id) => fd.append('store_location_ids[]', String(id)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
+      form.question_preset_ids.forEach((id) => fd.append('question_preset_ids[]', String(id)))
+      fd.append('question_presets_touched', '1')
       form.questions.forEach((question, questionIndex) => {
         fd.append(`questions[${questionIndex}][title]`, question.title.trim())
         fd.append(`questions[${questionIndex}][cn_title]`, question.cn_title.trim())
@@ -1069,12 +1080,17 @@ export default function BookingServiceCreateModal({
           </div>
 
           <div className="mt-6 w-full">
-            <BookingServiceQuestionsBuilder
-              value={form.questions}
-              onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
-              bookingServiceOptions={bookingServiceOptions}
-              disabled={disableForm}
-            />
+            <div className="mt-6 w-full">
+              <BookingServiceQuestionsBuilder
+                value={form.questions}
+                onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
+                bookingServiceOptions={bookingServiceOptions}
+                disabled={disableForm}
+                enablePresets
+                presetIds={form.question_preset_ids}
+                onPresetIdsChange={(ids) => setForm((prev) => ({ ...prev, question_preset_ids: ids }))}
+              />
+            </div>
           </div>
         </form>
       </div>

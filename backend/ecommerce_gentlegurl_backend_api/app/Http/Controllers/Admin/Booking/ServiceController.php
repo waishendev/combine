@@ -11,7 +11,9 @@ use App\Models\Booking\BookingServicePrimarySlot;
 use App\Models\Booking\BookingServiceQuestion;
 use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingServiceStaff;
+use App\Models\Booking\BookingQuestionPreset;
 use App\Models\Staff;
+use App\Services\Booking\BookingQuestionPresetSyncService;
 use App\Services\Booking\BookingServiceProductLinkService;
 use App\Services\StoreLocationAccessService;
 use Illuminate\Database\QueryException;
@@ -27,6 +29,7 @@ class ServiceController extends Controller
     public function __construct(
         private readonly BookingServiceProductLinkService $productLinkService,
         private readonly StoreLocationAccessService $storeLocationAccess,
+        private readonly BookingQuestionPresetSyncService $questionPresetSync,
     ) {
     }
 
@@ -162,7 +165,15 @@ class ServiceController extends Controller
     public function show(int $id)
     {
         $service = BookingService::query()
-            ->with(['allowedStaffs:id,name,position,avatar_path', 'storeLocations:id,name,code', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->with([
+                'allowedStaffs:id,name,position,avatar_path',
+                'storeLocations:id,name,code',
+                'primarySlots',
+                'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
+                'questionPresets:id,name,cn_name,is_active',
+                'categories:id,name,cn_name',
+                'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
+            ])
             ->findOrFail($id);
 
         return $this->respond($this->formatService($service));
@@ -216,6 +227,7 @@ class ServiceController extends Controller
             'questions.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
+            'questions.*.question_preset_id' => ['nullable', 'integer'],
             'questions.*.options' => ['nullable', 'array'],
             'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
             'questions.*.options.*.cn_label' => ['nullable', 'string', 'max:255'],
@@ -226,6 +238,8 @@ class ServiceController extends Controller
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
             'questions.*.options.*.allow_quantity' => ['nullable', 'boolean'],
             'questions_json' => ['nullable', 'string'],
+            'question_preset_ids' => ['nullable', 'array'],
+            'question_preset_ids.*' => ['integer', 'exists:booking_question_presets,id'],
             'create_linked_product' => ['nullable', 'boolean'],
             'linked_booking_product_id' => ['nullable', 'integer', 'exists:booking_products,id'],
         ]);
@@ -252,11 +266,14 @@ class ServiceController extends Controller
         $storeLocationIds = $this->storeLocationAccess->assertCanAssign($request->user(), $data['store_location_ids'] ?? [], false);
         $staffByLocation = $this->resolveAllowedStaffByLocation($data, $storeLocationIds);
         $primarySlots = $data['primary_slots'] ?? [];
-        $questions = $data['questions'] ?? [];
+        $customQuestions = $this->filterCustomQuestionPayloads($data['questions'] ?? []);
+        $questionPresetIds = array_key_exists('question_preset_ids', $data)
+            ? array_values(array_map('intval', $data['question_preset_ids'] ?? []))
+            : [];
         $categoryIds = $this->resolveCategoryIds($request, $data);
         $createLinkedProduct = $request->boolean('create_linked_product');
         $linkedProductId = isset($data['linked_booking_product_id']) ? (int) $data['linked_booking_product_id'] : null;
-        unset($data['store_location_ids'], $data['allowed_staff_ids'], $data['allowed_staff_by_store_location'], $data['primary_slots'], $data['questions'], $data['questions_json'], $data['create_linked_product'], $data['linked_booking_product_id'], $data['category_ids'], $data['category_id']);
+        unset($data['store_location_ids'], $data['allowed_staff_ids'], $data['allowed_staff_by_store_location'], $data['primary_slots'], $data['questions'], $data['questions_json'], $data['question_preset_ids'], $data['create_linked_product'], $data['linked_booking_product_id'], $data['category_ids'], $data['category_id']);
 
         $uploadedServiceImagePath = $data['image_path'] ?? null;
 
@@ -267,7 +284,8 @@ class ServiceController extends Controller
                 $staffByLocation,
                 $storeLocationIds,
                 $primarySlots,
-                $questions,
+                $customQuestions,
+                $questionPresetIds,
                 $categoryIds,
                 $createLinkedProduct,
                 $linkedProductId,
@@ -277,7 +295,7 @@ class ServiceController extends Controller
                 $service->storeLocations()->sync($storeLocationIds);
                 $this->syncAllowedStaffsByLocation($service, $staffByLocation);
                 $this->syncPrimarySlots($service, $primarySlots);
-                $this->syncQuestions($service, $questions);
+                $this->questionPresetSync->syncServiceQuestions($service, $questionPresetIds, $customQuestions);
                 $this->productLinkService->handleCreateLink($service, $createLinkedProduct, $linkedProductId ?: null);
 
                 BookingLog::create([
@@ -299,6 +317,7 @@ class ServiceController extends Controller
                     'storeLocations:id,name,code',
                     'primarySlots',
                     'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
+                    'questionPresets:id,name,cn_name,is_active',
                     'categories:id,name,cn_name',
                     'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
                 ])),
@@ -370,6 +389,7 @@ class ServiceController extends Controller
             'questions.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
+            'questions.*.question_preset_id' => ['nullable', 'integer'],
             'questions.*.options' => ['nullable', 'array'],
             'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
             'questions.*.options.*.cn_label' => ['nullable', 'string', 'max:255'],
@@ -380,6 +400,9 @@ class ServiceController extends Controller
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
             'questions.*.options.*.allow_quantity' => ['nullable', 'boolean'],
             'questions_json' => ['nullable', 'string'],
+            'question_preset_ids' => ['nullable', 'array'],
+            'question_preset_ids.*' => ['integer', 'exists:booking_question_presets,id'],
+            'question_presets_touched' => ['nullable', 'boolean'],
             'create_linked_product' => ['nullable', 'boolean'],
             'unlink_booking_product' => ['nullable', 'boolean'],
             'overwrite_linked_product' => ['nullable', 'boolean'],
@@ -408,7 +431,16 @@ class ServiceController extends Controller
         $storeLocationIds = $this->storeLocationAccess->assertCanAssign($request->user(), $data['store_location_ids'] ?? [], false);
         $staffByLocation = $this->resolveAllowedStaffByLocation($data, $storeLocationIds);
         $primarySlots = $data['primary_slots'] ?? [];
-        $questions = $data['questions'] ?? [];
+        $hasQuestionsInput = $request->has('questions') || $request->filled('questions_json');
+        $customQuestions = $hasQuestionsInput
+            ? $this->filterCustomQuestionPayloads($data['questions'] ?? [])
+            : $this->questionPresetSync->extractCustomQuestionPayloads($service);
+        $hasQuestionPresetIdsInput = $request->boolean('question_presets_touched')
+            || $request->has('question_preset_ids')
+            || array_key_exists('question_preset_ids', $data);
+        $questionPresetIds = $hasQuestionPresetIdsInput
+            ? array_values(array_map('intval', $data['question_preset_ids'] ?? []))
+            : $this->questionPresetSync->orderedPresetIdsForService($service);
         $hasCategoryIdsInput = $request->has('category_ids') || $request->has('category_id');
         $categoryIds = $hasCategoryIdsInput ? $this->resolveCategoryIds($request, $data) : null;
         $createLinkedProduct = $request->boolean('create_linked_product');
@@ -425,6 +457,8 @@ class ServiceController extends Controller
             $data['primary_slots'],
             $data['questions'],
             $data['questions_json'],
+            $data['question_preset_ids'],
+            $data['question_presets_touched'],
             $data['create_linked_product'],
             $data['unlink_booking_product'],
             $data['overwrite_linked_product'],
@@ -448,7 +482,8 @@ class ServiceController extends Controller
                 $staffByLocation,
                 $storeLocationIds,
                 $primarySlots,
-                $questions,
+                $customQuestions,
+                $questionPresetIds,
                 $hasCategoryIdsInput,
                 $categoryIds,
                 $createLinkedProduct,
@@ -464,7 +499,7 @@ class ServiceController extends Controller
                 $service->storeLocations()->sync($storeLocationIds);
                 $this->syncAllowedStaffsByLocation($service, $staffByLocation);
                 $this->syncPrimarySlots($service, $primarySlots);
-                $this->syncQuestions($service, $questions);
+                $this->questionPresetSync->syncServiceQuestions($service, $questionPresetIds, $customQuestions);
 
                 if ($unlinkBookingProduct || $createLinkedProduct || $hasLinkedProductIdInput) {
                     $this->productLinkService->handleUpdateLink(
@@ -513,8 +548,10 @@ class ServiceController extends Controller
 
             return $this->respond($this->formatService($service->fresh([
                 'allowedStaffs:id,name,position,avatar_path',
+                'storeLocations:id,name,code',
                 'primarySlots',
                 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
+                'questionPresets:id,name,cn_name,is_active',
                 'categories:id,name,cn_name',
                 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
             ])));
@@ -638,6 +675,8 @@ class ServiceController extends Controller
             'questions.*.options.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
             'questions.*.options.*.allow_quantity' => ['nullable', 'boolean'],
+            'question_preset_ids' => ['nullable', 'array'],
+            'question_preset_ids.*' => ['integer', 'exists:booking_question_presets,id'],
         ]);
 
         $services = BookingService::query()
@@ -651,6 +690,7 @@ class ServiceController extends Controller
         $hasAllowedStaff = array_key_exists('allowed_staff_ids', $payload);
         $hasPrimarySlots = array_key_exists('primary_slots', $payload);
         $hasQuestions = array_key_exists('questions', $payload);
+        $hasQuestionPresetIds = array_key_exists('question_preset_ids', $payload);
         $hasCategoryIds = array_key_exists('category_ids', $payload) || array_key_exists('category_id', $payload);
         $categoryIds = $hasCategoryIds ? $this->resolveCategoryIds($request, $payload) : null;
         $allowedStaffByLocation = null;
@@ -674,11 +714,15 @@ class ServiceController extends Controller
             : null;
         $primarySlots = $hasPrimarySlots ? ($payload['primary_slots'] ?? []) : null;
         $questions = $hasQuestions ? ($payload['questions'] ?? []) : null;
+        $questionPresetIds = ($hasQuestions || $hasQuestionPresetIds)
+            ? array_values(array_map('intval', $payload['question_preset_ids'] ?? []))
+            : null;
         unset(
             $payload['allowed_staff_ids'],
             $payload['allowed_staff_by_store_location'],
             $payload['primary_slots'],
             $payload['questions'],
+            $payload['question_preset_ids'],
             $payload['category_ids'],
             $payload['category_id'],
         );
@@ -736,7 +780,11 @@ class ServiceController extends Controller
                 $this->syncPrimarySlots($service, $primarySlots);
             }
             if ($hasQuestions && $questions !== null) {
-                $this->syncQuestions($service, $questions);
+                $this->questionPresetSync->syncServiceQuestions(
+                    $service,
+                    $questionPresetIds ?? [],
+                    $this->filterCustomQuestionPayloads($questions),
+                );
             }
         }
 
@@ -1096,7 +1144,11 @@ class ServiceController extends Controller
 
                     $this->syncAllowedStaffs($service, $this->resolveAllowedStaffIds($validated['allowed_staff_ids']));
                     $this->syncPrimarySlots($service, $validated['primary_slots'] ?? []);
-                    $this->syncQuestions($service, $validated['questions'] ?? []);
+                    $this->questionPresetSync->syncServiceQuestions(
+                        $service,
+                        [],
+                        $this->filterCustomQuestionPayloads($validated['questions'] ?? []),
+                    );
                 });
             } catch (\Throwable $throwable) {
                 $summary['failed']++;
@@ -1264,51 +1316,32 @@ class ServiceController extends Controller
         }
     }
 
-    private function syncQuestions(BookingService $service, array $questions): void
+    /**
+     * @param  list<array<string, mixed>>  $questions
+     * @return list<array<string, mixed>>
+     */
+    private function filterCustomQuestionPayloads(array $questions): array
     {
-        BookingServiceQuestion::query()->where('booking_service_id', $service->id)->delete();
-        $linkedServiceIds = collect($questions)
-            ->flatMap(fn ($questionPayload) => $questionPayload['options'] ?? [])
-            ->map(fn ($optionPayload) => (int) ($optionPayload['linked_booking_service_id'] ?? 0))
-            ->filter(fn ($id) => $id > 0)
-            ->unique()
+        return collect($questions)
+            ->filter(function ($question) {
+                if (! is_array($question)) {
+                    return false;
+                }
+                $presetId = $question['question_preset_id'] ?? null;
+
+                return $presetId === null || $presetId === '' || (int) $presetId === 0;
+            })
             ->values()
             ->all();
+    }
 
-        $linkedServices = BookingService::query()
-            ->whereIn('id', $linkedServiceIds)
-            ->get(['id', 'name', 'cn_name', 'duration_min', 'service_price'])
-            ->keyBy('id');
-
-        foreach ($questions as $index => $questionPayload) {
-            $question = BookingServiceQuestion::query()->create([
-                'booking_service_id' => $service->id,
-                'title' => (string) ($questionPayload['title'] ?? ''),
-                'cn_title' => trim((string) ($questionPayload['cn_title'] ?? '')) ?: null,
-                'description' => $questionPayload['description'] ?? null,
-                'cn_description' => trim((string) ($questionPayload['cn_description'] ?? '')) ?: null,
-                'question_type' => (string) ($questionPayload['question_type'] ?? 'single_choice'),
-                // Order is defined by the request array; ignore client-provided sort_order values.
-                'sort_order' => $index,
-                'is_required' => (bool) ($questionPayload['is_required'] ?? false),
-                'is_active' => (bool) ($questionPayload['is_active'] ?? true),
-            ]);
-
-            foreach (($questionPayload['options'] ?? []) as $optionIndex => $optionPayload) {
-                $linkedServiceId = (int) ($optionPayload['linked_booking_service_id'] ?? 0);
-                $linkedService = $linkedServiceId > 0 ? $linkedServices->get($linkedServiceId) : null;
-                $question->options()->create([
-                    'label' => trim((string) ($optionPayload['label'] ?? '')) ?: (string) optional($linkedService)->name,
-                    'cn_label' => trim((string) ($optionPayload['cn_label'] ?? '')) ?: null,
-                    'linked_booking_service_id' => $linkedServiceId ?: null,
-                    'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : max(0, (int) ($optionPayload['extra_duration_min'] ?? 0)),
-                    'extra_price' => $linkedService ? max(0, (float) $linkedService->service_price) : max(0, (float) ($optionPayload['extra_price'] ?? 0)),
-                    'sort_order' => $optionIndex,
-                    'is_active' => (bool) ($optionPayload['is_active'] ?? true),
-                    'allow_quantity' => (bool) ($optionPayload['allow_quantity'] ?? true),
-                ]);
-            }
-        }
+    private function syncQuestions(BookingService $service, array $questions): void
+    {
+        $this->questionPresetSync->syncServiceQuestions(
+            $service,
+            $this->questionPresetSync->orderedPresetIdsForService($service),
+            $this->filterCustomQuestionPayloads($questions),
+        );
     }
 
     private function resolveCategoryIds(Request $request, array $data): array
@@ -1449,6 +1482,10 @@ class ServiceController extends Controller
                 ->values()
                 ->map(fn (BookingServiceQuestion $question) => [
                     'id' => (int) $question->id,
+                    'question_preset_id' => $question->question_preset_id ? (int) $question->question_preset_id : null,
+                    'source_preset_question_id' => $question->source_preset_question_id
+                        ? (int) $question->source_preset_question_id
+                        : null,
                     'title' => (string) $question->title,
                     'cn_title' => $question->cn_title,
                     'description' => $question->description,
@@ -1459,6 +1496,31 @@ class ServiceController extends Controller
                     'is_active' => (bool) $question->is_active,
                     'options' => $question->options->sortBy('sort_order')->values()->map(fn ($option) => $this->formatQuestionOption($option))->all(),
                 ])->all();
+        }
+
+        $questionPresetIds = [];
+        $questionPresets = [];
+        if ($service->exists) {
+            $questionPresetIds = $this->questionPresetSync->orderedPresetIdsForService($service);
+            if ($questionPresetIds !== []) {
+                $presetsById = BookingQuestionPreset::query()
+                    ->whereIn('id', array_values(array_unique($questionPresetIds)))
+                    ->get(['id', 'name', 'cn_name', 'is_active'])
+                    ->keyBy('id');
+                foreach ($questionPresetIds as $index => $presetId) {
+                    $preset = $presetsById->get($presetId);
+                    if (! $preset) {
+                        continue;
+                    }
+                    $questionPresets[] = [
+                        'id' => (int) $preset->id,
+                        'name' => (string) $preset->name,
+                        'cn_name' => $preset->cn_name,
+                        'is_active' => (bool) $preset->is_active,
+                        'sort_order' => $index,
+                    ];
+                }
+            }
         }
 
         return array_merge($service->toArray(), [
@@ -1482,6 +1544,8 @@ class ServiceController extends Controller
             ),
             'linked_booking_product_id' => $service->linked_booking_product_id ? (int) $service->linked_booking_product_id : null,
             'questions' => $questions,
+            'question_preset_ids' => $questionPresetIds,
+            'question_presets' => $questionPresets,
             'primary_slots' => $primarySlots,
         ]);
     }
