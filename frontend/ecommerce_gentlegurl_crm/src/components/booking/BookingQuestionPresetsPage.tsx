@@ -1,34 +1,136 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useState } from 'react'
+import BookingServiceQuestionsBuilder, { emptyQuestion, type QuestionForm } from './BookingServiceQuestionsBuilder'
 import { Switch } from '@/components/ui/switch'
 
-type Option = { label: string; cn_label: string; is_active: boolean; allow_quantity: boolean }
-type Preset = { id: number; name: string; title: string; cn_title?: string | null; description?: string | null; cn_description?: string | null; question_type: 'single_choice' | 'multi_choice'; is_required: boolean; is_active: boolean; options_count?: number; options?: Option[] }
-const blank = (): Omit<Preset, 'id'> => ({ name: '', title: '', cn_title: '', description: '', cn_description: '', question_type: 'single_choice', is_required: false, is_active: true, options: [{ label: '', cn_label: '', is_active: true, allow_quantity: true }] })
+type PresetSummary = { id: number; name: string; is_active: boolean; questions_count: number; updated_at: string }
+type ServiceOption = { id: number; name: string; cn_name?: string | null; duration_min: number; service_price: number }
+type PresetDetail = PresetSummary & { questions: QuestionForm[] }
 
 export default function BookingQuestionPresetsPage({ permissions }: { permissions: string[] }) {
-  const [rows, setRows] = useState<Preset[]>([]), [search, setSearch] = useState(''), [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState<Preset | null>(null), [form, setForm] = useState<Omit<Preset, 'id'>>(blank()), [saving, setSaving] = useState(false)
-  const load = useCallback(async () => { setLoading(true); try { const r = await fetch(`/api/proxy/admin/booking/question-presets?per_page=100&search=${encodeURIComponent(search)}`, { cache: 'no-store' }); const j = await r.json().catch(() => null); setRows(Array.isArray(j?.data?.data) ? j.data.data : []) } finally { setLoading(false) } }, [search])
-  useEffect(() => { const timer = setTimeout(load, 250); return () => clearTimeout(timer) }, [load])
-  const open = async (row?: Preset) => { if (!row) { setEditing(null); setForm(blank()); return } const r = await fetch(`/api/proxy/admin/booking/question-presets/${row.id}`, { cache: 'no-store' }); const j = await r.json(); setEditing(row); setForm({ ...j.data, options: j.data.options.map((o: Option) => ({ label: o.label, cn_label: o.cn_label ?? '', is_active: o.is_active, allow_quantity: o.allow_quantity })) }) }
-  const save = async (e: FormEvent) => { e.preventDefault(); setSaving(true); try { const r = await fetch(`/api/proxy/admin/booking/question-presets${editing ? `/${editing.id}` : ''}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(form) }); if (r.ok) { setEditing(null); setForm(blank()); await load() } else alert((await r.json().catch(() => null))?.message ?? 'Unable to save preset') } finally { setSaving(false) } }
-  const remove = async (row: Preset) => { if (!confirm(`Delete preset “${row.name}”? Previously copied service questions will not be affected.`)) return; const r = await fetch(`/api/proxy/admin/booking/question-presets/${row.id}`, { method: 'DELETE' }); if (r.ok) load() }
-  const showForm = editing !== null || form.name !== '' || form.title !== ''
-  return <div className="space-y-5">
-    <div className="flex flex-col gap-3 sm:flex-row sm:justify-between"><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search preset name or question title…" className="w-full max-w-md rounded-lg border px-3 py-2" />{permissions.includes('booking.question-presets.create') && <button onClick={() => { setEditing(null); setForm({ ...blank(), name: ' ' }) }} className="rounded-lg bg-blue-600 px-4 py-2 text-white"><i className="fa-solid fa-plus mr-2" />Create Preset</button>}</div>
-    {showForm && <form onSubmit={save} className="rounded-xl border bg-white p-5 shadow-sm space-y-4">
-      <div className="flex justify-between"><h3 className="text-lg font-semibold">{editing ? 'Edit' : 'Create'} Question Preset</h3><button type="button" onClick={() => { setEditing(null); setForm(blank()) }}><i className="fa-solid fa-xmark" /></button></div>
-      <div className="grid gap-3 md:grid-cols-2">{([['name','Preset Name'],['title','Question Title'],['cn_title','Chinese Question Title'],['description','Description'],['cn_description','Chinese Description']] as const).map(([key,label]) => <label key={key} className={key === 'name' ? 'md:col-span-2' : ''}><span className="mb-1 block text-sm font-medium">{label}</span><input required={key === 'name' || key === 'title'} value={String(form[key] ?? '').trimStart()} onChange={(e) => setForm((p) => ({ ...p, [key]: e.target.value }))} className="w-full rounded border px-3 py-2" /></label>)}</div>
-      <select value={form.question_type} onChange={(e) => setForm((p) => ({ ...p, question_type: e.target.value as Preset['question_type'] }))} className="w-full rounded border px-3 py-2"><option value="single_choice">Single choice</option><option value="multi_choice">Multi choice</option></select>
-      <div className="grid gap-3 sm:grid-cols-2"><Toggle label="Required" value={form.is_required} onChange={(v) => setForm((p) => ({ ...p, is_required: v }))} /><Toggle label="Status" value={form.is_active} onChange={(v) => setForm((p) => ({ ...p, is_active: v }))} /></div>
-      <div className="rounded-lg border bg-gray-50 p-4 space-y-3"><div className="flex justify-between"><div><b>Options</b><p className="text-xs text-gray-500">Add-on services are selected after applying this preset.</p></div><button type="button" onClick={() => setForm((p) => ({ ...p, options: [...(p.options ?? []), { label: '', cn_label: '', is_active: true, allow_quantity: true }] }))} className="rounded border bg-white px-3 py-1 text-sm">Add option</button></div>
-        {(form.options ?? []).map((option, i) => <div key={i} className="rounded border bg-white p-3 space-y-2"><div className="flex justify-between"><b className="text-sm">Option #{i+1}</b><div className="space-x-2"><button type="button" disabled={i===0} onClick={() => setForm((p) => ({...p, options: move(p.options ?? [], i, i-1)}))}>↑</button><button type="button" disabled={i===(form.options?.length ?? 0)-1} onClick={() => setForm((p) => ({...p, options: move(p.options ?? [], i, i+1)}))}>↓</button><button type="button" className="text-red-600" onClick={() => setForm((p) => ({...p, options: p.options?.filter((_,x)=>x!==i)}))}>Delete</button></div></div><div className="grid gap-2 md:grid-cols-2"><input required value={option.label} placeholder="Label" onChange={(e)=>setForm((p)=>({...p,options:p.options?.map((o,x)=>x===i?{...o,label:e.target.value}:o)}))} className="rounded border px-3 py-2"/><input value={option.cn_label} placeholder="Chinese label" onChange={(e)=>setForm((p)=>({...p,options:p.options?.map((o,x)=>x===i?{...o,cn_label:e.target.value}:o)}))} className="rounded border px-3 py-2"/></div><div className="grid gap-2 sm:grid-cols-2"><Toggle label="Status" value={option.is_active} onChange={(v)=>setForm((p)=>({...p,options:p.options?.map((o,x)=>x===i?{...o,is_active:v}:o)}))}/><Toggle label="Allow quantity in POS" value={option.allow_quantity} onChange={(v)=>setForm((p)=>({...p,options:p.options?.map((o,x)=>x===i?{...o,allow_quantity:v}:o)}))}/></div></div>)}
-      </div><button disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2 text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save Preset'}</button>
-    </form>}
-    <div className="overflow-hidden rounded-xl border bg-white"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="p-3 text-left">Preset Name</th><th className="p-3 text-left">Question</th><th className="p-3">Type</th><th className="p-3">Options</th><th className="p-3">Status</th><th className="p-3">Actions</th></tr></thead><tbody>{loading ? <tr><td colSpan={6} className="p-8 text-center">Loading…</td></tr> : rows.map((row)=><tr key={row.id} className="border-t"><td className="p-3 font-medium">{row.name}</td><td className="p-3">{row.title}</td><td className="p-3 text-center">{row.question_type==='multi_choice'?'Multi':'Single'}</td><td className="p-3 text-center">{row.options_count}</td><td className="p-3 text-center">{row.is_active?'Active':'Inactive'}</td><td className="p-3 text-center space-x-3">{permissions.includes('booking.question-presets.update')&&<button onClick={()=>open(row)} className="text-blue-600">Edit</button>}{permissions.includes('booking.question-presets.delete')&&<button onClick={()=>remove(row)} className="text-red-600">Delete</button>}</td></tr>)}</tbody></table></div>
-  </div>
+  const [rows, setRows] = useState<PresetSummary[]>([])
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [name, setName] = useState('')
+  const [active, setActive] = useState(true)
+  const [questions, setQuestions] = useState<QuestionForm[]>([emptyQuestion()])
+  const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([])
+  const [saving, setSaving] = useState(false)
+  const [editorLoading, setEditorLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await fetch(`/api/proxy/admin/booking/question-presets?per_page=100&search=${encodeURIComponent(search)}`, { cache: 'no-store' })
+      const json = await response.json().catch(() => null)
+      setRows(response.ok && Array.isArray(json?.data?.data) ? json.data.data : [])
+    } finally { setLoading(false) }
+  }, [search])
+
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 250); return () => window.clearTimeout(timer) }, [load])
+
+  const loadServiceOptions = async () => {
+    const response = await fetch('/api/proxy/admin/booking/services/options?limit=2000&is_active=true', { cache: 'no-store' })
+    const json = await response.json().catch(() => null)
+    setServiceOptions(response.ok && Array.isArray(json?.data) ? json.data.map((row: ServiceOption) => ({ ...row, service_price: Number(row.service_price) })) : [])
+  }
+
+  const openCreate = async () => {
+    setEditingId(null); setName(''); setActive(true); setQuestions([emptyQuestion()]); setError(null); setEditorOpen(true)
+    await loadServiceOptions()
+  }
+
+  const openEdit = async (id: number) => {
+    setEditorOpen(true); setEditorLoading(true); setError(null)
+    try {
+      const [response] = await Promise.all([
+        fetch(`/api/proxy/admin/booking/question-presets/${id}`, { cache: 'no-store' }),
+        loadServiceOptions(),
+      ])
+      const json = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(json?.message ?? 'Unable to load preset')
+      const preset = json.data as PresetDetail
+      setEditingId(preset.id); setName(preset.name); setActive(preset.is_active)
+      setQuestions((preset.questions ?? []).map((question, questionIndex) => ({
+        title: question.title ?? '', cn_title: question.cn_title ?? '', description: question.description ?? '',
+        cn_description: question.cn_description ?? '', question_type: question.question_type === 'multi_choice' ? 'multi_choice' : 'single_choice',
+        sort_order: String(questionIndex), is_required: Boolean(question.is_required), is_active: question.is_active !== false,
+        options: (question.options ?? []).map((option, optionIndex) => ({
+          label: option.label ?? '', cn_label: option.cn_label ?? '',
+          linked_booking_service_id: option.linked_booking_service_id ? String(option.linked_booking_service_id) : '',
+          sort_order: String(optionIndex), is_active: option.is_active !== false, allow_quantity: option.allow_quantity !== false,
+        })),
+      })))
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load preset') }
+    finally { setEditorLoading(false) }
+  }
+
+  const closeEditor = () => { if (!saving) setEditorOpen(false) }
+  const save = async (event: FormEvent) => {
+    event.preventDefault(); setSaving(true); setError(null)
+    try {
+      const response = await fetch(`/api/proxy/admin/booking/question-presets${editingId ? `/${editingId}` : ''}`, {
+        method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(), is_active: active,
+          questions: questions.map((question) => ({ ...question, options: question.options.map((option) => ({
+            ...option, linked_booking_service_id: option.linked_booking_service_id ? Number(option.linked_booking_service_id) : null,
+          })) })),
+        }),
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(json?.message ?? Object.values(json?.errors ?? {}).flat().join(' ') ?? 'Unable to save preset')
+      setEditorOpen(false); await load()
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save preset') }
+    finally { setSaving(false) }
+  }
+
+  const remove = async (row: PresetSummary) => {
+    if (!window.confirm(`Delete “${row.name}”? Questions already copied to Booking Services will not be changed.`)) return
+    const response = await fetch(`/api/proxy/admin/booking/question-presets/${row.id}`, { method: 'DELETE' })
+    if (response.ok) await load()
+  }
+
+  return <>
+    <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-4 border-b border-gray-100 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full max-w-md">
+          <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search presets…" className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm" />
+        </div>
+        {permissions.includes('booking.question-presets.create') && <button type="button" onClick={() => void openCreate()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"><i className="fa-solid fa-plus" /> Create Preset</button>}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500"><tr><th className="px-5 py-3">Preset Name</th><th className="px-5 py-3">Questions</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Last updated</th><th className="px-5 py-3 text-right">Actions</th></tr></thead>
+          <tbody className="divide-y divide-gray-100">
+            {loading ? <tr><td colSpan={5} className="px-5 py-12 text-center text-gray-500"><i className="fa-solid fa-spinner fa-spin mr-2" />Loading presets…</td></tr>
+              : rows.length === 0 ? <tr><td colSpan={5} className="px-5 py-14 text-center"><i className="fa-regular fa-clipboard block text-3xl text-gray-300" /><p className="mt-3 font-medium text-gray-700">No question presets found</p><p className="mt-1 text-gray-500">Create a reusable set of Booking Service questions.</p></td></tr>
+              : rows.map((row) => <tr key={row.id} className="hover:bg-gray-50/70"><td className="px-5 py-4 font-medium text-gray-900">{row.name}</td><td className="px-5 py-4 text-gray-600">{row.questions_count}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${row.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{row.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-4 text-gray-500">{new Date(row.updated_at).toLocaleString()}</td><td className="px-5 py-4 text-right space-x-3">{permissions.includes('booking.question-presets.update') && <button onClick={() => void openEdit(row.id)} className="font-medium text-blue-600 hover:text-blue-800">Edit</button>}{permissions.includes('booking.question-presets.delete') && <button onClick={() => void remove(row)} className="font-medium text-red-600 hover:text-red-800">Delete</button>}</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {editorOpen && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="preset-editor-title">
+      <form onSubmit={save} className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <header className="flex shrink-0 items-start justify-between border-b border-gray-200 px-5 py-4 sm:px-7">
+          <div><h2 id="preset-editor-title" className="text-xl font-semibold text-gray-900">{editingId ? 'Edit Question Preset' : 'Create Question Preset'}</h2><p className="mt-1 text-sm text-gray-500">Build a reusable set of questions. Applying it creates an independent copy.</p></div>
+          <button type="button" onClick={closeEditor} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close"><i className="fa-solid fa-xmark" /></button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
+          {editorLoading ? <div className="py-20 text-center text-gray-500"><i className="fa-solid fa-spinner fa-spin mr-2" />Loading preset…</div> : <div className="space-y-6">
+            {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+            <section className="rounded-xl border border-gray-200 bg-gray-50/60 p-4"><h3 className="mb-4 font-semibold text-gray-900">Preset details</h3><div className="grid gap-4 sm:grid-cols-[1fr_220px]"><label><span className="mb-1.5 block text-sm font-medium text-gray-700">Preset Name <span className="text-red-500">*</span></span><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Nail appointment questions" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm" /></label><div><span className="mb-1.5 block text-sm font-medium text-gray-700">Status</span><div className="flex h-[42px] items-center justify-between rounded-lg border border-gray-300 bg-white px-3"><span className="text-sm">{active ? 'Active' : 'Inactive'}</span><Switch checked={active} onCheckedChange={setActive} /></div></div></div></section>
+            <BookingServiceQuestionsBuilder value={questions} onChange={setQuestions} bookingServiceOptions={serviceOptions} allowPresetSelection={false} />
+          </div>}
+        </div>
+        <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-gray-200 bg-white px-5 py-4 sm:px-7"><button type="button" onClick={closeEditor} className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button><button type="submit" disabled={saving || editorLoading} className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{saving ? <><i className="fa-solid fa-spinner fa-spin mr-2" />Saving…</> : 'Save Preset'}</button></footer>
+      </form>
+    </div>}
+  </>
 }
-function Toggle({label,value,onChange}:{label:string,value:boolean,onChange:(v:boolean)=>void}) { return <div className="flex items-center justify-between rounded border bg-white px-3 py-2"><span className="text-sm font-medium">{label}</span><Switch checked={value} onCheckedChange={onChange}/></div> }
-function move<T>(rows:T[],from:number,to:number){const copy=[...rows];const [item]=copy.splice(from,1);copy.splice(to,0,item);return copy}

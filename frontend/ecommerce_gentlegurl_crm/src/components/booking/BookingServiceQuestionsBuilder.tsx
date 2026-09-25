@@ -63,14 +63,15 @@ interface Props {
   onChange: (next: QuestionForm[]) => void
   bookingServiceOptions: Array<{ id: number; name: string; duration_min: number; service_price: number }>
   disabled?: boolean
+  allowPresetSelection?: boolean
 }
 
-export default function BookingServiceQuestionsBuilder({ value, onChange, bookingServiceOptions, disabled }: Props) {
+export default function BookingServiceQuestionsBuilder({ value, onChange, bookingServiceOptions, disabled, allowPresetSelection = true }: Props) {
   const [collapsedQuestions, setCollapsedQuestions] = useState<boolean[]>([])
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [presetPickerOpen, setPresetPickerOpen] = useState(false)
   const [presetSearch, setPresetSearch] = useState('')
-  const [presets, setPresets] = useState<Array<{ id: number; name: string; title: string; question_type: string; options_count: number }>>([])
+  const [presets, setPresets] = useState<Array<{ id: number; name: string; questions_count: number }>>([])
   const [presetLoading, setPresetLoading] = useState(false)
 
   useEffect(() => {
@@ -149,16 +150,17 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
       const json = await res.json().catch(() => null)
       const preset = json?.data
       if (!res.ok || !preset) return
-      const copied: QuestionForm = {
-        title: preset.title ?? '', cn_title: preset.cn_title ?? '', description: preset.description ?? '',
-        cn_description: preset.cn_description ?? '', question_type: preset.question_type === 'multi_choice' ? 'multi_choice' : 'single_choice',
-        sort_order: String(value.length), is_required: Boolean(preset.is_required), is_active: preset.is_active !== false,
-        options: (Array.isArray(preset.options) ? preset.options : []).map((option: QuestionOptionForm) => ({
-          label: option.label ?? '', cn_label: option.cn_label ?? '', linked_booking_service_id: '',
-          sort_order: option.sort_order ?? '0', is_active: option.is_active !== false, allow_quantity: option.allow_quantity !== false,
+      const copied = (Array.isArray(preset.questions) ? preset.questions : []).map((question: QuestionForm) => ({
+        title: question.title ?? '', cn_title: question.cn_title ?? '', description: question.description ?? '',
+        cn_description: question.cn_description ?? '', question_type: question.question_type === 'multi_choice' ? 'multi_choice' as const : 'single_choice' as const,
+        sort_order: '0', is_required: Boolean(question.is_required), is_active: question.is_active !== false,
+        options: (Array.isArray(question.options) ? question.options : []).map((option) => ({
+          label: option.label ?? '', cn_label: option.cn_label ?? '',
+          linked_booking_service_id: option.linked_booking_service_id && bookingServiceOptions.some((service) => String(service.id) === String(option.linked_booking_service_id)) ? String(option.linked_booking_service_id) : '',
+          sort_order: '0', is_active: option.is_active !== false, allow_quantity: option.allow_quantity !== false,
         })),
-      }
-      onChange(normalizeSortOrders([...value, copied]))
+      }))
+      onChange(normalizeSortOrders([...value, ...copied]))
       setPresetPickerOpen(false)
     } finally { setPresetLoading(false) }
   }
@@ -177,7 +179,7 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
             Configure optional questions and link each choice to a booking service add-on.
           </p>
         </div>
-        <div className="relative">
+        {allowPresetSelection ? <div className="relative">
           <button type="button" disabled={disabled} onClick={() => setAddMenuOpen((open) => !open)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
             <i className="fa-solid fa-plus" /> Add Question <i className="fa-solid fa-chevron-down text-xs" />
           </button>
@@ -185,7 +187,7 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
             <button type="button" onClick={() => { setAddMenuOpen(false); addQuestion() }} className="w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-50">Create Manually</button>
             <button type="button" onClick={openPresetPicker} className="w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-50">Add from Preset</button>
           </div>}
-        </div>
+        </div> : <button type="button" disabled={disabled} onClick={addQuestion} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"><i className="fa-solid fa-plus" /> Add Question</button>}
       </div>
 
       {presetPickerOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
@@ -193,12 +195,12 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
           <div className="mb-4 flex items-center justify-between"><h3 className="text-lg font-semibold">Add from Question Preset</h3><button type="button" onClick={() => setPresetPickerOpen(false)} aria-label="Close"><i className="fa-solid fa-xmark" /></button></div>
           <input value={presetSearch} onChange={(e) => setPresetSearch(e.target.value)} placeholder="Search presets or question titles…" className="mb-3 w-full rounded border px-3 py-2 text-sm" />
           <div className="max-h-96 space-y-2 overflow-y-auto">
-            {presetLoading ? <p className="p-6 text-center text-sm text-gray-500">Loading…</p> : presets.filter((p) => `${p.name} ${p.title}`.toLowerCase().includes(presetSearch.toLowerCase())).map((preset) =>
+            {presetLoading ? <p className="p-6 text-center text-sm text-gray-500">Loading…</p> : presets.filter((p) => p.name.toLowerCase().includes(presetSearch.toLowerCase())).map((preset) =>
               <button key={preset.id} type="button" onClick={() => applyPreset(preset.id)} className="w-full rounded-lg border p-3 text-left hover:border-blue-400 hover:bg-blue-50">
-                <div className="font-medium">{preset.name}</div><div className="text-sm text-gray-600">{preset.title}</div><div className="mt-1 text-xs text-gray-500">{preset.question_type === 'multi_choice' ? 'Multi choice' : 'Single choice'} · {preset.options_count} options</div>
+                <div className="font-medium">{preset.name}</div><div className="mt-1 text-xs text-gray-500">{preset.questions_count} {preset.questions_count === 1 ? 'question' : 'questions'}</div>
               </button>)}
           </div>
-          <p className="mt-3 text-xs text-amber-700">Add-on services are branch-specific and must be selected after applying a preset.</p>
+          <p className="mt-3 text-xs text-gray-500">Preset questions are copied into this service and remain independently editable.</p>
         </div>
       </div>}
 

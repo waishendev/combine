@@ -14,4 +14,9 @@ class BookingQuestionPreset extends Model
     {
         return $this->hasMany(BookingQuestionPresetOption::class)->orderBy('sort_order')->orderBy('id');
     }
+
+    public function questions()
+    {
+        return $this->hasMany(BookingQuestionPresetQuestion::class)->orderBy('sort_order')->orderBy('id');
+    }
 }
