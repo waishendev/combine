@@ -142,6 +142,7 @@ export default function BookingServiceQuestionsBuilder({
       return {
         id,
         name: `Preset #${id}`,
+        cn_name: null,
         questions: lockedPresetQuestions
           .filter((question) => question.question_preset_id === id)
           .map((question) => ({
