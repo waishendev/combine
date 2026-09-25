@@ -10,6 +10,7 @@ use App\Models\Booking\BookingServiceCategory;
 use App\Models\Booking\BookingServicePrimarySlot;
 use App\Models\Booking\BookingServiceQuestion;
 use App\Models\Booking\BookingServiceQuestionOption;
+use App\Models\Booking\BookingServiceQuestionPresetAssignment;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
 use App\Services\Booking\BookingServiceProductLinkService;
@@ -162,7 +163,7 @@ class ServiceController extends Controller
     public function show(int $id)
     {
         $service = BookingService::query()
-            ->with(['allowedStaffs:id,name,position,avatar_path', 'storeLocations:id,name,code', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->with(['allowedStaffs:id,name,position,avatar_path', 'storeLocations:id,name,code', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'sharedQuestionAssignments.question.preset:id,name', 'sharedQuestionAssignments.question.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
             ->findOrFail($id);
 
         return $this->respond($this->formatService($service));
@@ -208,11 +209,12 @@ class ServiceController extends Controller
             'primary_slots' => ['nullable', 'array'],
             'primary_slots.*' => ['date_format:H:i'],
             'questions' => ['nullable', 'array'],
-            'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+            'questions.*.preset_question_id' => ['nullable', 'integer', 'distinct', 'exists:booking_question_preset_questions,id'],
+            'questions.*.title' => ['required_without:questions.*.preset_question_id', 'nullable', 'string', 'max:255'],
             'questions.*.cn_title' => ['nullable', 'string', 'max:255'],
             'questions.*.description' => ['nullable', 'string'],
             'questions.*.cn_description' => ['nullable', 'string'],
-            'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
+            'questions.*.question_type' => ['required_without:questions.*.preset_question_id', 'nullable', 'in:single_choice,multi_choice'],
             'questions.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
@@ -299,6 +301,8 @@ class ServiceController extends Controller
                     'storeLocations:id,name,code',
                     'primarySlots',
                     'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
+                    'sharedQuestionAssignments.question.preset:id,name',
+                    'sharedQuestionAssignments.question.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
                     'categories:id,name,cn_name',
                     'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
                 ])),
@@ -362,11 +366,12 @@ class ServiceController extends Controller
             'primary_slots' => ['nullable', 'array'],
             'primary_slots.*' => ['date_format:H:i'],
             'questions' => ['nullable', 'array'],
-            'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+            'questions.*.preset_question_id' => ['nullable', 'integer', 'distinct', 'exists:booking_question_preset_questions,id'],
+            'questions.*.title' => ['required_without:questions.*.preset_question_id', 'nullable', 'string', 'max:255'],
             'questions.*.cn_title' => ['nullable', 'string', 'max:255'],
             'questions.*.description' => ['nullable', 'string'],
             'questions.*.cn_description' => ['nullable', 'string'],
-            'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
+            'questions.*.question_type' => ['required_without:questions.*.preset_question_id', 'nullable', 'in:single_choice,multi_choice'],
             'questions.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
@@ -480,6 +485,8 @@ class ServiceController extends Controller
                     $service = $service->fresh([
                         'linkedBookingProduct',
                         'questions.options.linkedBookingService',
+                        'sharedQuestionAssignments.question.preset',
+                        'sharedQuestionAssignments.question.options.linkedBookingService',
                         'categories:id,name,cn_name',
                     ]);
                     if ($service->linkedBookingProduct) {
@@ -515,6 +522,8 @@ class ServiceController extends Controller
                 'allowedStaffs:id,name,position,avatar_path',
                 'primarySlots',
                 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
+                'sharedQuestionAssignments.question.preset:id,name',
+                'sharedQuestionAssignments.question.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
                 'categories:id,name,cn_name',
                 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
             ])));
@@ -621,11 +630,12 @@ class ServiceController extends Controller
             'primary_slots.*' => ['date_format:H:i'],
 
             'questions' => ['nullable', 'array'],
-            'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+            'questions.*.preset_question_id' => ['nullable', 'integer', 'distinct', 'exists:booking_question_preset_questions,id'],
+            'questions.*.title' => ['required_without:questions.*.preset_question_id', 'nullable', 'string', 'max:255'],
             'questions.*.cn_title' => ['nullable', 'string', 'max:255'],
             'questions.*.description' => ['nullable', 'string'],
             'questions.*.cn_description' => ['nullable', 'string'],
-            'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
+            'questions.*.question_type' => ['required_without:questions.*.preset_question_id', 'nullable', 'in:single_choice,multi_choice'],
             'questions.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
@@ -943,11 +953,12 @@ class ServiceController extends Controller
                 'primary_slots' => ['nullable', 'array'],
                 'primary_slots.*' => ['date_format:H:i'],
                 'questions' => ['nullable', 'array'],
-                'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+                'questions.*.preset_question_id' => ['nullable', 'integer', 'distinct', 'exists:booking_question_preset_questions,id'],
+            'questions.*.title' => ['required_without:questions.*.preset_question_id', 'nullable', 'string', 'max:255'],
                 'questions.*.cn_title' => ['nullable', 'string', 'max:255'],
                 'questions.*.description' => ['nullable', 'string'],
                 'questions.*.cn_description' => ['nullable', 'string'],
-                'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
+                'questions.*.question_type' => ['required_without:questions.*.preset_question_id', 'nullable', 'in:single_choice,multi_choice'],
                 'questions.*.is_required' => ['nullable', 'boolean'],
                 'questions.*.is_active' => ['nullable', 'boolean'],
                 'questions.*.options' => ['nullable', 'array'],
@@ -1267,6 +1278,15 @@ class ServiceController extends Controller
     private function syncQuestions(BookingService $service, array $questions): void
     {
         BookingServiceQuestion::query()->where('booking_service_id', $service->id)->delete();
+        BookingServiceQuestionPresetAssignment::query()->where('booking_service_id', $service->id)->delete();
+        $presetQuestionIds = collect($questions)->pluck('preset_question_id')->filter()->map(fn ($id) => (int) $id)->unique();
+        if ($presetQuestionIds->isNotEmpty()) {
+            $activeCount = \App\Models\Booking\BookingQuestionPresetQuestion::query()
+                ->whereIn('id', $presetQuestionIds)->whereHas('preset', fn ($query) => $query->where('is_active', true))->count();
+            if ($activeCount !== $presetQuestionIds->count()) {
+                throw ValidationException::withMessages(['questions' => 'One or more shared questions are no longer active.']);
+            }
+        }
         $linkedServiceIds = collect($questions)
             ->flatMap(fn ($questionPayload) => $questionPayload['options'] ?? [])
             ->map(fn ($optionPayload) => (int) ($optionPayload['linked_booking_service_id'] ?? 0))
@@ -1281,6 +1301,14 @@ class ServiceController extends Controller
             ->keyBy('id');
 
         foreach ($questions as $index => $questionPayload) {
+            if (! empty($questionPayload['preset_question_id'])) {
+                BookingServiceQuestionPresetAssignment::query()->create([
+                    'booking_service_id' => $service->id,
+                    'booking_question_preset_question_id' => (int) $questionPayload['preset_question_id'],
+                    'sort_order' => $index,
+                ]);
+                continue;
+            }
             $question = BookingServiceQuestion::query()->create([
                 'booking_service_id' => $service->id,
                 'title' => (string) ($questionPayload['title'] ?? ''),
@@ -1460,6 +1488,29 @@ class ServiceController extends Controller
                     'options' => $question->options->sortBy('sort_order')->values()->map(fn ($option) => $this->formatQuestionOption($option))->all(),
                 ])->all();
         }
+        if ($service->relationLoaded('sharedQuestionAssignments')) {
+            $shared = $service->sharedQuestionAssignments->map(function ($assignment) {
+                $question = $assignment->question;
+                return [
+                    'id' => null,
+                    'source_type' => 'shared',
+                    'preset_question_id' => (int) $question->id,
+                    'preset_id' => (int) $question->booking_question_preset_id,
+                    'preset_name' => (string) $question->preset->name,
+                    'title' => (string) $question->title,
+                    'cn_title' => $question->cn_title,
+                    'description' => $question->description,
+                    'cn_description' => $question->cn_description,
+                    'question_type' => (string) $question->question_type,
+                    'sort_order' => (int) $assignment->sort_order,
+                    'is_required' => (bool) $question->is_required,
+                    'is_active' => (bool) $question->is_active,
+                    'options' => $question->options->map(fn ($option) => $this->formatQuestionOption($option))->all(),
+                ];
+            })->all();
+            $questions = collect($questions)->map(fn ($question) => ['source_type' => 'custom'] + $question)
+                ->concat($shared)->sortBy('sort_order')->values()->all();
+        }
 
         return array_merge($service->toArray(), [
             'allowed_staffs' => $allowedStaffs,
@@ -1486,7 +1537,7 @@ class ServiceController extends Controller
         ]);
     }
 
-    private function formatQuestionOption(BookingServiceQuestionOption $option): array
+    private function formatQuestionOption($option): array
     {
         $linkedService = $option->linkedBookingService;
         $extraDuration = $linkedService ? (int) $linkedService->duration_min : (int) $option->extra_duration_min;

@@ -58,7 +58,7 @@ class CartController extends Controller
             'staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'start_at' => ['required', 'date'],
             'selected_option_ids' => ['nullable', 'array'],
-            'selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
+            'selected_option_ids.*' => ['integer'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -87,14 +87,22 @@ class CartController extends Controller
             return $this->respondError($message, 422);
         }
         $selectedOptionIds = collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $customOptionIds = collect($selectedOptionIds)->filter(fn ($id) => $id > 0)->values();
+        $sharedOptionIds = collect($selectedOptionIds)->filter(fn ($id) => $id < 0)->map(fn ($id) => abs($id))->values();
         $customerRemarks = isset($validated['notes']) ? trim((string) $validated['notes']) : '';
         $serviceQuestions = $service->questions()->where('is_active', true)->with(['options' => fn ($q) => $q->where('is_active', true)])->get();
         $selectedOptions = BookingServiceQuestionOption::query()
-            ->whereIn('id', $selectedOptionIds)
+            ->whereIn('id', $customOptionIds)
             ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
             ->where('is_active', true)
             ->with('linkedBookingService:id,name,cn_name,duration_min,service_price,service_type,deposit_amount')
             ->get();
+        $sharedQuestions = $service->sharedQuestionAssignments()->with(['question.options' => fn ($q) => $q->where('is_active', true), 'question.preset'])->get()
+            ->filter(fn ($assignment) => $assignment->question?->is_active && $assignment->question?->preset?->is_active);
+        $selectedSharedOptions = \App\Models\Booking\BookingQuestionPresetOption::query()
+            ->whereIn('id', $sharedOptionIds)->whereIn('booking_question_preset_question_id', $sharedQuestions->pluck('booking_question_preset_question_id'))
+            ->where('is_active', true)->with('linkedBookingService:id,name,cn_name,duration_min,service_price,service_type,deposit_amount')->get()
+            ->each(fn ($option) => $option->setAttribute('public_id', -(int) $option->id));
 
         foreach ($serviceQuestions as $question) {
             $selectedForQuestion = $selectedOptions->where('booking_service_question_id', $question->id)->values();
@@ -105,13 +113,20 @@ class CartController extends Controller
                 return $this->respondError('Single choice question allows only one option.', 422);
             }
         }
+        foreach ($sharedQuestions as $assignment) {
+            $question = $assignment->question;
+            $selectedForQuestion = $selectedSharedOptions->where('booking_question_preset_question_id', $question->id);
+            if ((bool) $question->is_required && $selectedForQuestion->isEmpty()) return $this->respondError('Please complete required booking questions.', 422);
+            if ((string) $question->question_type === 'single_choice' && $selectedForQuestion->count() > 1) return $this->respondError('Single choice question allows only one option.', 422);
+        }
+        $selectedOptions = $selectedOptions->concat($selectedSharedOptions);
 
-        $addonDurationMin = (int) $selectedOptions->sum(function (BookingServiceQuestionOption $option): int {
+        $addonDurationMin = (int) $selectedOptions->sum(function ($option): int {
             return $option->linkedBookingService
                 ? (int) $option->linkedBookingService->duration_min
                 : (int) $option->extra_duration_min;
         });
-        $addonPrice = round((float) $selectedOptions->sum(function (BookingServiceQuestionOption $option): float {
+        $addonPrice = round((float) $selectedOptions->sum(function ($option): float {
             return $option->linkedBookingService
                 ? (float) $option->linkedBookingService->service_price
                 : (float) $option->extra_price;
@@ -176,8 +191,8 @@ class CartController extends Controller
                     'addon_price' => $addonPrice,
                     'question_answers_json' => [
                         'selected_option_ids' => $selectedOptionIds,
-                        'selected_options' => $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
-                            'id' => (int) $option->id,
+                        'selected_options' => $selectedOptions->map(fn ($option) => [
+                            'id' => (int) ($option->public_id ?? $option->id),
                             'label' => trim((string) $option->label) !== ''
                                 ? (string) $option->label
                                 : (string) optional($option->linkedBookingService)->name,
@@ -186,10 +201,10 @@ class CartController extends Controller
                                 : $option->linkedBookingService?->cn_name,
                             'extra_duration_min' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->duration_min
-                                : (int) $option->extra_duration_min,
+                                : (int) ($option->extra_duration_min ?? 0),
                             'extra_price' => $option->linkedBookingService
                                 ? (float) $option->linkedBookingService->service_price
-                                : (float) $option->extra_price,
+                                : (float) ($option->extra_price ?? 0),
                             'linked_booking_service_id' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->id
                                 : null,

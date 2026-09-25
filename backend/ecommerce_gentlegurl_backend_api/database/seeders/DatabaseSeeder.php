@@ -37,6 +37,7 @@ class DatabaseSeeder extends Seeder
             AddBookingPermissionsSeeder::class,
             OffDayGenerationsPermissionSeeder::class,
             SuperAdminRoleSeeder::class,
+            BookingQuestionPresetPermissionSeeder::class,
             SuperAdminSeeder::class,
             StoreLocationsSeederReal::class,
             BranchAccessDefaultStoreLocationSeeder::class,

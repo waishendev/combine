@@ -26,6 +26,10 @@ export type QuestionForm = {
   is_required: boolean
   is_active: boolean
   options: QuestionOptionForm[]
+  source_type?: 'custom' | 'shared'
+  preset_question_id?: number
+  preset_id?: number
+  preset_name?: string
 }
 
 export const emptyQuestionOption = (): QuestionOptionForm => ({
@@ -63,10 +67,16 @@ interface Props {
   onChange: (next: QuestionForm[]) => void
   bookingServiceOptions: Array<{ id: number; name: string; duration_min: number; service_price: number }>
   disabled?: boolean
+  allowPresetSelection?: boolean
 }
 
-export default function BookingServiceQuestionsBuilder({ value, onChange, bookingServiceOptions, disabled }: Props) {
+export default function BookingServiceQuestionsBuilder({ value, onChange, bookingServiceOptions, disabled, allowPresetSelection = true }: Props) {
   const [collapsedQuestions, setCollapsedQuestions] = useState<boolean[]>([])
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const [presetPickerOpen, setPresetPickerOpen] = useState(false)
+  const [presetSearch, setPresetSearch] = useState('')
+  const [presets, setPresets] = useState<Array<{ id: number; name: string; questions_count: number }>>([])
+  const [presetLoading, setPresetLoading] = useState(false)
 
   useEffect(() => {
     setCollapsedQuestions((prev) => {
@@ -124,6 +134,42 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
     setCollapsedQuestions((prev) => [...prev, false])
   }
 
+  const openPresetPicker = async () => {
+    setAddMenuOpen(false)
+    setPresetPickerOpen(true)
+    setPresetLoading(true)
+    try {
+      const res = await fetch('/api/proxy/admin/booking/question-presets?all=1&is_active=true&limit=500', { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      setPresets(res.ok && Array.isArray(json?.data) ? json.data : [])
+    } finally {
+      setPresetLoading(false)
+    }
+  }
+
+  const applyPreset = async (id: number) => {
+    setPresetLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/admin/booking/question-presets/${id}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      const preset = json?.data
+      if (!res.ok || !preset) return
+      const copied = (Array.isArray(preset.questions) ? preset.questions : []).map((question: QuestionForm) => ({
+        source_type: 'shared' as const, preset_question_id: Number(question.id), preset_id: Number(preset.id), preset_name: String(preset.name),
+        title: question.title ?? '', cn_title: question.cn_title ?? '', description: question.description ?? '',
+        cn_description: question.cn_description ?? '', question_type: question.question_type === 'multi_choice' ? 'multi_choice' as const : 'single_choice' as const,
+        sort_order: '0', is_required: Boolean(question.is_required), is_active: question.is_active !== false,
+        options: (Array.isArray(question.options) ? question.options : []).map((option) => ({
+          label: option.label ?? '', cn_label: option.cn_label ?? '',
+          linked_booking_service_id: option.linked_booking_service_id && bookingServiceOptions.some((service) => String(service.id) === String(option.linked_booking_service_id)) ? String(option.linked_booking_service_id) : '',
+          sort_order: '0', is_active: option.is_active !== false, allow_quantity: option.allow_quantity !== false,
+        })),
+      }))
+      onChange(normalizeSortOrders([...value, ...copied]))
+      setPresetPickerOpen(false)
+    } finally { setPresetLoading(false) }
+  }
+
   const removeQuestion = (qIndex: number) => {
     onChange(normalizeSortOrders(value.filter((_, index) => index !== qIndex)))
     setCollapsedQuestions((prev) => prev.filter((_, i) => i !== qIndex))
@@ -138,16 +184,30 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
             Configure optional questions and link each choice to a booking service add-on.
           </p>
         </div>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={addQuestion}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 md:w-auto w-full shrink-0"
-        >
-          <i className="fa-solid fa-plus" />
-          Add Question
-        </button>
+        {allowPresetSelection ? <div className="relative">
+          <button type="button" disabled={disabled} onClick={() => setAddMenuOpen((open) => !open)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            <i className="fa-solid fa-plus" /> Add Question <i className="fa-solid fa-chevron-down text-xs" />
+          </button>
+          {addMenuOpen && <div className="absolute right-0 z-20 mt-2 w-48 rounded-lg border bg-white p-1 shadow-lg">
+            <button type="button" onClick={() => { setAddMenuOpen(false); addQuestion() }} className="w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-50">Create Manually</button>
+            <button type="button" onClick={openPresetPicker} className="w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-50">Add from Preset</button>
+          </div>}
+        </div> : <button type="button" disabled={disabled} onClick={addQuestion} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"><i className="fa-solid fa-plus" /> Add Question</button>}
       </div>
+
+      {presetPickerOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
+        <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
+          <div className="mb-4 flex items-center justify-between"><h3 className="text-lg font-semibold">Add from Question Preset</h3><button type="button" onClick={() => setPresetPickerOpen(false)} aria-label="Close"><i className="fa-solid fa-xmark" /></button></div>
+          <input value={presetSearch} onChange={(e) => setPresetSearch(e.target.value)} placeholder="Search presets or question titles…" className="mb-3 w-full rounded border px-3 py-2 text-sm" />
+          <div className="max-h-96 space-y-2 overflow-y-auto">
+            {presetLoading ? <p className="p-6 text-center text-sm text-gray-500">Loading…</p> : presets.filter((p) => p.name.toLowerCase().includes(presetSearch.toLowerCase())).map((preset) =>
+              <button key={preset.id} type="button" onClick={() => applyPreset(preset.id)} className="w-full rounded-lg border p-3 text-left hover:border-blue-400 hover:bg-blue-50">
+                <div className="font-medium">{preset.name}</div><div className="mt-1 text-xs text-gray-500">{preset.questions_count} {preset.questions_count === 1 ? 'question' : 'questions'}</div>
+              </button>)}
+          </div>
+          <p className="mt-3 text-xs text-gray-500">Preset questions are copied into this service and remain independently editable.</p>
+        </div>
+      </div>}
 
       {value.length === 0 && (
         <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
@@ -165,6 +225,28 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
             return next
           })
         }
+
+        if (question.source_type === 'shared') return (
+          <div key={`shared-${question.preset_question_id}-${qIndex}`} className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold text-gray-900">Question #{qIndex + 1}</span><span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700">Shared</span></div>
+                <p className="mt-3 font-semibold text-gray-900">{question.preset_name}</p>
+                <p className="mt-1 text-sm text-gray-700">“{question.title}”</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-600"><span>{question.question_type === 'multi_choice' ? 'Multi Choice' : 'Single Choice'}</span><span>•</span><span>{question.options.length} Options</span>{question.is_required && <><span>•</span><span>Required</span></>}<span>•</span><span>{question.is_active ? 'Active' : 'Inactive'}</span></div>
+                <p className="mt-3 text-xs text-violet-700"><i className="fa-solid fa-link mr-1.5" />Managed by Question Preset. Changes to the master update this service automatically.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" disabled={disabled || qIndex === 0} onClick={() => moveQuestion(qIndex, 'up')} className="rounded border bg-white px-2 py-1 text-xs disabled:opacity-40" aria-label="Move shared question up"><i className="fa-solid fa-arrow-up" /></button>
+                <button type="button" disabled={disabled || qIndex === value.length - 1} onClick={() => moveQuestion(qIndex, 'down')} className="rounded border bg-white px-2 py-1 text-xs disabled:opacity-40" aria-label="Move shared question down"><i className="fa-solid fa-arrow-down" /></button>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-violet-100 pt-3">
+              {question.preset_id && <a href={`/booking/question-presets?edit=${question.preset_id}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-violet-700 hover:underline">View/Edit Preset</a>}
+              <button type="button" disabled={disabled} onClick={() => removeQuestion(qIndex)} className="text-sm font-medium text-red-600 hover:underline disabled:opacity-50">Remove from Service</button>
+            </div>
+          </div>
+        )
 
         return (
           <div key={question.id ?? `question-${qIndex}`} className="rounded-lg border border-gray-200 p-4 space-y-4">
