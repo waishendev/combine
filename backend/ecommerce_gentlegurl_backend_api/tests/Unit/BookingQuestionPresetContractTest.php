@@ -53,6 +53,8 @@ class BookingQuestionPresetContractTest extends TestCase
         $this->assertStringContainsString('fa-eye', $picker);
         $this->assertStringContainsString('Create new preset', $picker);
         $this->assertStringContainsString('Select presets to add', $picker);
+        $this->assertStringContainsString('copyFromPresetId', $this->frontend('BookingQuestionPresetUpsertModal.tsx'));
+        $this->assertStringContainsString('fa-copy', $this->frontend('BookingQuestionPresetsTable.tsx'));
         $this->assertStringContainsString('Full preset details', $view);
         $this->assertStringContainsString('Linked add-on', $view);
         $this->assertStringContainsString('Option label', $view);

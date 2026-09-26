@@ -147,7 +147,6 @@ type BookingServiceApiItemWithRelations = BookingServiceApiItem & {
 
 function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWithRelations): FormState {
   const rawName = typeof service.name === 'string' ? service.name.trim() : ''
-  const nameWithCopySuffix = rawName ? `${rawName} (Copy)` : 'Untitled (Copy)'
 
   const questions: QuestionForm[] = Array.isArray(service.questions)
     ? (service.questions ?? [])
@@ -184,7 +183,7 @@ function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWit
       : []
 
   return {
-    name: nameWithCopySuffix,
+    name: rawName,
     cn_name: typeof service.cn_name === 'string' ? service.cn_name : '',
     description: typeof service.description === 'string' ? service.description : '',
     service_type:
@@ -630,7 +629,7 @@ export default function BookingServiceCreateModal({
             <p className="mt-1 max-w-xl text-xs font-normal text-gray-500">
               {isWaitingForCopySource
                 ? 'Retrieving the selected service — please wait.'
-                : 'Prefilled from the selected service (name ends with (Copy)). Upload a cover file if you want that image on the new record — preview is for reference only.'}
+                : 'Prefilled from the selected service. Upload a cover file if you want that image on the new record — preview is for reference only.'}
             </p>
           ) : null}
         </div>

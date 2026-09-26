@@ -48,6 +48,7 @@ export default function BookingQuestionPresetsTable({ permissions }: Props) {
   const [pageSize, setPageSize] = useState(50)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [copyFromPresetId, setCopyFromPresetId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [viewingPreset, setViewingPreset] = useState<QuestionPresetOption | null>(null)
   const [viewLoadingId, setViewLoadingId] = useState<number | null>(null)
@@ -270,6 +271,17 @@ export default function BookingQuestionPresetsTable({ permissions }: Props) {
                             <i className="fa-solid fa-pen-to-square" />
                           </button>
                         ) : null}
+                        {canCreate ? (
+                          <button
+                            type="button"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded bg-violet-600 text-white hover:bg-violet-700"
+                            onClick={() => setCopyFromPresetId(row.id)}
+                            aria-label="Clone preset"
+                            title="Clone"
+                          >
+                            <i className="fa-solid fa-copy" />
+                          </button>
+                        ) : null}
                         {canDelete ? (
                           <button
                             type="button"
@@ -306,6 +318,15 @@ export default function BookingQuestionPresetsTable({ permissions }: Props) {
         <BookingQuestionPresetUpsertModal
           mode="create"
           onClose={() => setIsCreateOpen(false)}
+          onSuccess={() => void load()}
+        />
+      ) : null}
+      {copyFromPresetId != null ? (
+        <BookingQuestionPresetUpsertModal
+          key={`copy-${copyFromPresetId}`}
+          mode="create"
+          copyFromPresetId={copyFromPresetId}
+          onClose={() => setCopyFromPresetId(null)}
           onSuccess={() => void load()}
         />
       ) : null}

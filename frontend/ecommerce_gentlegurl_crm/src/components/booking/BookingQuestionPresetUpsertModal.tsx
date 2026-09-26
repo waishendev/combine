@@ -28,18 +28,20 @@ type BookingServiceOption = {
 interface Props {
   mode: 'create' | 'edit'
   presetId?: number | null
+  /** When create: open prefilled from this preset; Save POSTs a new row. */
+  copyFromPresetId?: number | null
   onClose: () => void
   onSuccess: (createdId?: number) => void
 }
 
 const formId = 'booking-question-preset-form'
 
-function mapApiQuestions(raw: unknown[]): QuestionForm[] {
+function mapApiQuestions(raw: unknown[], stripIds = false): QuestionForm[] {
   return raw.map((item, questionIndex) => {
     const question = item as Record<string, unknown>
     const options = Array.isArray(question.options) ? question.options : []
     return {
-      id: question.id != null ? Number(question.id) : undefined,
+      id: stripIds || question.id == null ? undefined : Number(question.id),
       title: String(question.title ?? ''),
       cn_title: String(question.cn_title ?? ''),
       description: String(question.description ?? ''),
@@ -53,7 +55,7 @@ function mapApiQuestions(raw: unknown[]): QuestionForm[] {
           ? options.map((opt, optionIndex) => {
               const option = opt as Record<string, unknown>
               return {
-                id: option.id != null ? Number(option.id) : undefined,
+                id: stripIds || option.id == null ? undefined : Number(option.id),
                 label: String(option.label ?? ''),
                 cn_label: String(option.cn_label ?? ''),
                 linked_booking_service_id: option.linked_booking_service_id
@@ -69,13 +71,25 @@ function mapApiQuestions(raw: unknown[]): QuestionForm[] {
   })
 }
 
-export default function BookingQuestionPresetUpsertModal({ mode, presetId, onClose, onSuccess }: Props) {
+export default function BookingQuestionPresetUpsertModal({
+  mode,
+  presetId,
+  copyFromPresetId = null,
+  onClose,
+  onSuccess,
+}: Props) {
+  const copySourceId = (() => {
+    if (mode !== 'create') return null
+    const n = Number(copyFromPresetId)
+    return Number.isFinite(n) && n > 0 ? n : null
+  })()
+
   const [name, setName] = useState('')
   const [cnName, setCnName] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [questions, setQuestions] = useState<QuestionForm[]>([emptyQuestion()])
   const [bookingServiceOptions, setBookingServiceOptions] = useState<BookingServiceOption[]>([])
-  const [loading, setLoading] = useState(mode === 'edit')
+  const [loading, setLoading] = useState(mode === 'edit' || copySourceId != null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -110,32 +124,51 @@ export default function BookingQuestionPresetUpsertModal({ mode, presetId, onClo
   }, [])
 
   useEffect(() => {
-    if (mode !== 'edit' || !presetId) return
+    if (mode === 'edit') {
+      if (!presetId) return
+    } else if (copySourceId == null) {
+      return
+    }
+
+    const sourceId = mode === 'edit' ? presetId : copySourceId
+    if (!sourceId) return
+
     let cancelled = false
     const load = async () => {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/proxy/admin/booking/question-presets/${presetId}`, {
+        const res = await fetch(`/api/proxy/admin/booking/question-presets/${sourceId}`, {
           cache: 'no-store',
           headers: { Accept: 'application/json' },
         })
         const data = await res.json().catch(() => null)
         if (!res.ok || data?.success === false) {
-          throw new Error(data?.message || 'Failed to load preset')
+          throw new Error(
+            data?.message || (mode === 'edit' ? 'Failed to load preset' : 'Failed to load preset to copy'),
+          )
         }
         const preset = data?.data ?? {}
         if (cancelled) return
-        setName(String(preset.name ?? ''))
+        const rawName = String(preset.name ?? '').trim()
+        setName(mode === 'edit' ? rawName : rawName || '')
         setCnName(String(preset.cn_name ?? ''))
         setIsActive(preset.is_active !== false)
         setQuestions(
           Array.isArray(preset.questions) && preset.questions.length > 0
-            ? mapApiQuestions(preset.questions)
+            ? mapApiQuestions(preset.questions, mode === 'create')
             : [emptyQuestion()],
         )
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load preset')
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : mode === 'edit'
+                ? 'Failed to load preset'
+                : 'Failed to load preset to copy',
+          )
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -144,7 +177,7 @@ export default function BookingQuestionPresetUpsertModal({ mode, presetId, onClo
     return () => {
       cancelled = true
     }
-  }, [mode, presetId])
+  }, [mode, presetId, copySourceId])
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -207,9 +240,7 @@ export default function BookingQuestionPresetUpsertModal({ mode, presetId, onClo
             : null
         throw new Error(firstError || data?.message || 'Save failed')
       }
-      onSuccess(
-        mode === 'create' && data?.data?.id != null ? Number(data.data.id) : undefined,
-      )
+      onSuccess(mode === 'create' && data?.data?.id != null ? Number(data.data.id) : undefined)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
@@ -218,18 +249,33 @@ export default function BookingQuestionPresetUpsertModal({ mode, presetId, onClo
     }
   }
 
+  const modalTitle = mode === 'edit' ? 'Edit Question Preset' : 'Create Question Preset'
+  const submitLabel = submitting ? 'Saving…' : mode === 'edit' ? 'Save preset' : 'Create preset'
+  const disableForm = submitting || loading
+
   return (
     <CrmFormModalShell
-      title={mode === 'edit' ? 'Edit Question Preset' : 'Create Question Preset'}
+      title={
+        <div>
+          <div>{modalTitle}</div>
+          {copySourceId != null ? (
+            <p className="mt-1 text-xs font-normal text-gray-500">
+              {loading
+                ? 'Loading preset…'
+                : 'Prefilled from the selected preset. Save to create a new preset.'}
+            </p>
+          ) : null}
+        </div>
+      }
       onClose={onClose}
-      closeDisabled={submitting}
+      closeDisabled={disableForm}
       size="xl"
       footer={
         <>
           <button
             type="button"
             onClick={onClose}
-            disabled={submitting}
+            disabled={disableForm}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
           >
             Cancel
@@ -237,10 +283,10 @@ export default function BookingQuestionPresetUpsertModal({ mode, presetId, onClo
           <button
             type="submit"
             form={formId}
-            disabled={submitting || loading}
+            disabled={disableForm}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {submitting ? 'Saving…' : mode === 'edit' ? 'Save preset' : 'Create preset'}
+            {submitLabel}
           </button>
         </>
       }
