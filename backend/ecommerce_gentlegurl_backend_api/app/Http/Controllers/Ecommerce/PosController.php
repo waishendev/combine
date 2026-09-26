@@ -408,6 +408,7 @@ class PosController extends Controller
                 'email' => $member->email,
                 'member_code' => (string) $member->id,
                 'join_date' => optional($member->created_at)->toDateTimeString(),
+                'date_of_birth' => optional($member->date_of_birth)?->toDateString(),
                 'customer_type' => $member->customerType?->name,
                 'total_orders' => $totalOrders,
                 'total_spent' => $totalSpent,

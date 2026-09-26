@@ -1344,6 +1344,7 @@ type MemberDetail = {
   email?: string | null
   member_code?: string | null
   join_date?: string | null
+  date_of_birth?: string | null
   customer_type?: string | null
   total_orders?: number
   total_spent?: number
@@ -13822,6 +13823,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           <p><span className="font-semibold text-gray-900">Full Name:</span> {memberDetail.name || '—'}</p>
                           {/* <p><span className="font-semibold text-gray-900">Phone:</span> {memberDetail.phone || '—'}</p>
                           <p><span className="font-semibold text-gray-900">Email:</span> {memberDetail.email || '—'}</p> */}
+                          <p>
+                            <span className="font-semibold text-gray-900">Birthday:</span>{' '}
+                            {memberDetail.date_of_birth
+                              ? new Date(`${memberDetail.date_of_birth}T00:00:00`).toLocaleDateString()
+                              : '—'}
+                          </p>
                           <p><span className="font-semibold text-gray-900">Join Date:</span> {memberDetail.join_date ? new Date(memberDetail.join_date).toLocaleString() : '—'}</p>
                           <p><span className="font-semibold text-gray-900">Customer Type:</span> {memberDetail.customer_type || '—'}</p>
                           <p><span className="font-semibold text-gray-900">Total Orders:</span> {memberDetail.total_orders ?? 0}</p>
