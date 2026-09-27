@@ -65,7 +65,8 @@ class PaymentGatewaySeeder extends Seeder
             );
 
             // firstOrCreate preserves the business's post-deployment enablement choice.
-            PaymentGateway::firstOrCreate(
+            // Category must stay internal_wallet so checkout can read the customer wallet.
+            $customerBalance = PaymentGateway::firstOrCreate(
                 ['type' => $type, 'key' => 'customer_balance'],
                 [
                     'name' => 'Customer Balance',
@@ -77,6 +78,9 @@ class PaymentGatewaySeeder extends Seeder
                     'sort_order' => 4,
                 ]
             );
+            if ($customerBalance->category !== 'internal_wallet') {
+                $customerBalance->forceFill(['category' => 'internal_wallet'])->save();
+            }
         }
     }
 }

@@ -274,9 +274,9 @@ class PublicHomepageController extends Controller
         // Wallet eligibility is customer-specific, so it must be applied after the shared homepage cache.
         $customer = $this->currentCustomer();
         $data['payment_gateways'] = collect($data['payment_gateways'] ?? [])
-            ->reject(fn ($gateway) => data_get($gateway, 'category') === 'internal_wallet' && (! $customer || ! $customer->is_active))
+            ->reject(fn ($gateway) => $this->gatewayUsesCustomerWallet($gateway) && (! $customer || ! $customer->is_active))
             ->map(function ($gateway) use ($customer) {
-                if (data_get($gateway, 'category') === 'internal_wallet') {
+                if ($this->gatewayUsesCustomerWallet($gateway)) {
                     $gateway['wallet_balance'] = $customer?->wallet_balance ?? '0.00';
                 }
                 return $gateway;
@@ -314,7 +314,7 @@ class PublicHomepageController extends Controller
             ]);
 
         $gateways = $gateways
-            ->reject(fn ($gateway) => $gateway->category === 'internal_wallet' && (! $customer || ! $customer->is_active))
+            ->reject(fn ($gateway) => $this->gatewayUsesCustomerWallet($gateway) && (! $customer || ! $customer->is_active))
             ->map(function ($gateway) use ($customer) {
                 $row = [
                     'id' => $gateway->id,
@@ -325,7 +325,7 @@ class PublicHomepageController extends Controller
                     'allow_checkout' => (bool) $gateway->allow_checkout,
                     'is_default' => (bool) $gateway->is_default,
                 ];
-                if ($gateway->category === 'internal_wallet') {
+                if ($this->gatewayUsesCustomerWallet($gateway)) {
                     $row['wallet_balance'] = $customer?->wallet_balance ?? '0.00';
                 }
 
@@ -340,6 +340,12 @@ class PublicHomepageController extends Controller
             'success' => true,
             'message' => null,
         ]);
+    }
+
+    protected function gatewayUsesCustomerWallet(mixed $gateway): bool
+    {
+        return data_get($gateway, 'category') === 'internal_wallet'
+            || data_get($gateway, 'key') === 'customer_balance';
     }
 
     protected function resolveType(Request $request): string

@@ -13,6 +13,7 @@ import {
   getBookingCart,
   getBookingDepositTncSettings,
   getBookingPaymentGateways,
+  getCustomerWallet,
   getBillplzPaymentGatewayOptions,
   getMyServicePackages,
   getPublicBookingStoreLocations,
@@ -146,6 +147,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [packagePickerBusyId, setPackagePickerBusyId] = useState<number | null>(null);
   const [claimedPackageNames, setClaimedPackageNames] = useState<Record<number, string>>({});
   const [gateways, setGateways] = useState<PublicBookingPaymentGateway[]>([]);
+  const [customerWalletBalance, setCustomerWalletBalance] = useState<number | null>(null);
   const [bankAccounts, setBankAccounts] = useState<PublicBookingBankAccount[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"manual_transfer" | "billplz_online_banking" | "billplz_credit_card" | "customer_balance">("manual_transfer");
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
@@ -203,6 +205,9 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       });
       if (user) {
         setIsLoggedIn(true);
+        void getCustomerWallet()
+          .then((wallet) => setCustomerWalletBalance(Number(wallet.wallet_balance ?? wallet.balance ?? 0)))
+          .catch(() => setCustomerWalletBalance(null));
         setCustomerId(user.id);
         setAllowNoDepositBooking(Boolean(user.allow_booking_without_deposit));
         setGuestName((prev) => prev || user.name || "");
@@ -210,6 +215,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         setGuestEmail((prev) => prev || user.email || "");
       } else {
         setIsLoggedIn(false);
+        setCustomerWalletBalance(null);
         setCustomerId(null);
         setAllowNoDepositBooking(false);
       }
@@ -639,7 +645,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   const paymentOptions = gateways
     .filter((gateway) => ["manual_transfer", "billplz_online_banking", "billplz_credit_card", "customer_balance"].includes(gateway.key))
-    .map((gateway) => ({ key: gateway.key as "manual_transfer" | "billplz_online_banking" | "billplz_credit_card" | "customer_balance", name: gateway.name, disabled: gateway.key === "customer_balance" && Number(gateway.wallet_balance ?? 0) < Number(cart?.cart_total ?? 0) }));
+    .map((gateway) => {
+      const payable = Number(cart?.cart_total ?? 0);
+      const knownBalance = customerWalletBalance ?? (gateway.wallet_balance != null && gateway.wallet_balance !== "" ? Number(gateway.wallet_balance) : null);
+      const disabled = gateway.key === "customer_balance" && knownBalance != null && Number.isFinite(knownBalance) && knownBalance < payable;
+      return { key: gateway.key as "manual_transfer" | "billplz_online_banking" | "billplz_credit_card" | "customer_balance", name: gateway.name, disabled };
+    });
 
   const itemCount = (cart?.items?.length || 0) + (cart?.package_items?.length || 0);
   const hasItems = itemCount > 0;

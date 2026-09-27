@@ -32,6 +32,7 @@ import {
   getBillplzPaymentGatewayOptions,
   getPickupStoreLocations,
   getCustomerVouchers,
+  getCustomerWallet,
   getPromotions,
   Promotion,
   makeDefaultCustomerAddress,
@@ -39,6 +40,7 @@ import {
   updateCustomerAddress,
 } from "@/lib/apiClient";
 import { calculatePromotionDiscounts } from "@/lib/promotionCalculator";
+import { clearCachedWalletBalance } from "@/lib/walletSharedCache";
 
 const COUNTRY_OPTIONS = [
   { value: "MY", label: "Malaysia" },
@@ -175,6 +177,7 @@ export default function CheckoutForm() {
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [tempSelectedAddressId, setTempSelectedAddressId] = useState<number | null>(null);
   const isLoggedIn = !!customer;
+  const [customerWalletBalance, setCustomerWalletBalance] = useState<number | null>(null);
   const [isLoadingAddresses, setIsLoadingAddresses] = useState(isLoggedIn); // Initialize as true if logged in
   const [isConfirmingAddress, setIsConfirmingAddress] = useState(false);
   const [isLoadingStoreLocations, setIsLoadingStoreLocations] = useState(true);
@@ -573,6 +576,24 @@ export default function CheckoutForm() {
   }, [appliedVoucher]);
 
   useEffect(() => {
+    if (!isLoggedIn) {
+      setCustomerWalletBalance(null);
+      return;
+    }
+    let cancelled = false;
+    getCustomerWallet()
+      .then((wallet) => {
+        if (!cancelled) setCustomerWalletBalance(Number(wallet.wallet_balance ?? wallet.balance ?? 0));
+      })
+      .catch(() => {
+        if (!cancelled) setCustomerWalletBalance(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn]);
+
+  useEffect(() => {
     setIsLoadingPaymentGateways(true);
     Promise.all([
       getPaymentGateways(),
@@ -908,7 +929,7 @@ export default function CheckoutForm() {
       setSelectedVoucherId(null);
 
       if (paymentMethod === "customer_balance" && String(order.payment_status ?? "").toLowerCase() === "paid") {
-        // Revalidate the header's existing authoritative wallet query after backend settlement.
+        clearCachedWalletBalance();
         window.dispatchEvent(new CustomEvent("walletBalanceUpdated"));
       }
 
@@ -1766,7 +1787,9 @@ export default function CheckoutForm() {
                 <p className="text-xs text-[var(--foreground)]/70">No payment methods available.</p>
               ) : (
                 paymentGateways.map((gateway) => {
-                  const walletUnavailable = gateway.key === "customer_balance" && Number(gateway.wallet_balance ?? 0) < Number(shippingPreview?.grand_total ?? totals.grand_total ?? 0);
+                  const payable = Number(shippingPreview?.grand_total ?? totals.grand_total ?? 0);
+                  const knownBalance = customerWalletBalance ?? (gateway.wallet_balance != null && gateway.wallet_balance !== "" ? Number(gateway.wallet_balance) : null);
+                  const walletUnavailable = gateway.key === "customer_balance" && knownBalance != null && Number.isFinite(knownBalance) && knownBalance < payable;
                   return (
                   <div key={gateway.id} className="space-y-2">
                     <label className="flex items-center gap-2">

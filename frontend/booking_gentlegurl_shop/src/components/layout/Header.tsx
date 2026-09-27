@@ -44,8 +44,15 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
   useEffect(() => {
     if (!user) { const id = window.setTimeout(() => setWalletBalance(null), 0); return () => window.clearTimeout(id); }
     let cancelled = false;
+    let requestSeq = 0;
     const loadWallet = async () => {
-      try { const wallet = await getCustomerWallet(); if (!cancelled) setWalletBalance(wallet.wallet_balance ?? wallet.balance ?? "0.00"); } catch { if (!cancelled) setWalletBalance(null); }
+      const ticket = ++requestSeq;
+      try {
+        const wallet = await getCustomerWallet();
+        if (!cancelled && ticket === requestSeq) setWalletBalance(wallet.wallet_balance ?? wallet.balance ?? "0.00");
+      } catch {
+        if (!cancelled && ticket === requestSeq) setWalletBalance(null);
+      }
     };
     void loadWallet();
     window.addEventListener("walletBalanceUpdated", loadWallet);

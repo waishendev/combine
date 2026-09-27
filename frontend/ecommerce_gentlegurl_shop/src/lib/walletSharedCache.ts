@@ -9,6 +9,7 @@ type WalletCacheEntry = {
 const TTL_MS = 30_000;
 let entry: WalletCacheEntry | null = null;
 let inflight: Promise<string> | null = null;
+let generation = 0;
 
 export function peekCachedWalletBalance(customerId: number): string | null {
   if (!entry || entry.customerId !== customerId) return null;
@@ -23,6 +24,7 @@ export function setCachedWalletBalance(customerId: number, balance: string): voi
 export function clearCachedWalletBalance(): void {
   entry = null;
   inflight = null;
+  generation += 1;
 }
 
 export async function loadSharedWalletBalance(
@@ -34,14 +36,18 @@ export async function loadSharedWalletBalance(
 
   if (inflight) return inflight;
 
-  inflight = loader()
+  const gen = generation;
+  const pending = loader()
     .then((balance) => {
-      setCachedWalletBalance(customerId, balance);
+      if (gen === generation) {
+        setCachedWalletBalance(customerId, balance);
+      }
       return balance;
     })
     .finally(() => {
-      inflight = null;
+      if (inflight === pending) inflight = null;
     });
 
-  return inflight;
+  inflight = pending;
+  return pending;
 }

@@ -155,15 +155,20 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
     const customerId = Number(customer.profile?.id ?? 0);
     if (!customerId) return;
     let cancelled = false;
-    const loadWallet = async () => {
+    let requestSeq = 0;
+    const loadWallet = async (event?: Event) => {
+      const ticket = ++requestSeq;
+      if (event?.type === "walletBalanceUpdated") {
+        clearCachedWalletBalance();
+      }
       try {
         const balance = await loadSharedWalletBalance(customerId, async () => {
           const wallet = await getCustomerWallet();
           return wallet.wallet_balance ?? wallet.balance ?? "0.00";
         });
-        if (!cancelled) setWalletBalance(balance);
+        if (!cancelled && ticket === requestSeq) setWalletBalance(balance);
       } catch {
-        if (!cancelled) setWalletBalance(null);
+        if (!cancelled && ticket === requestSeq) setWalletBalance(null);
       }
     };
     void loadWallet();
