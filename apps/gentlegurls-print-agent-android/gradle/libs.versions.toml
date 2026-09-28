@@ -15,7 +15,10 @@ datastore = "1.1.7"
 room = "2.8.4"
 work = "2.11.0"
 lifecycle = "2.9.4"
-ksp = "2.2.10-2.0.2"
+# KSP 2.3.4 is the first release line compatible with AGP 9 built-in Kotlin.
+# Older Kotlin-coupled KSP releases register generated directories through
+# kotlin.sourceSets, which AGP 9 intentionally rejects.
+ksp = "2.3.4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
