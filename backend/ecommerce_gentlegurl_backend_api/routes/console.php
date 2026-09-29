@@ -65,3 +65,8 @@ Schedule::command('booking:send-feedback-emails')
     ->everyMinute()
     ->onOneServer()
     ->withoutOverlapping();
+
+Schedule::command('print-jobs:release-expired-claims')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping();

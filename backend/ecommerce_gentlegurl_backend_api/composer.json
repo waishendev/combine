@@ -11,6 +11,7 @@
         "barryvdh/laravel-snappy": "^1.0",
         "jomweb/billplz": "^4.1",
         "laravel/framework": "^12.0",
+        "laravel/reverb": "^1.6",
         "laravel/sanctum": "^4.1.1",
         "laravel/tinker": "^2.10.1",
         "mailgun/mailgun-php": "^4.3",

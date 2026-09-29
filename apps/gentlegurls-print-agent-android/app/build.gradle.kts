@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -32,6 +34,11 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+    defaultConfig {
+        buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("PRINT_AGENT_API_URL") ?: "http://10.0.2.2:8000/api/"}\"")
+        buildConfigField("String", "REVERB_WS_URL", "\"${project.findProperty("PRINT_AGENT_WS_URL") ?: "ws://10.0.2.2:8080/app/change-me"}\"")
     }
 }
 
@@ -44,6 +51,15 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.work.runtime.ktx)
+    ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
