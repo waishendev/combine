@@ -6268,11 +6268,11 @@ class PosController extends Controller
         );
         $this->applyStaffConsumableLogFilters($query, $request);
 
-        $priceExpr = 'COALESCE(NULLIF(order_items.line_total_snapshot, 0), COALESCE(order_items.unit_price_snapshot, order_items.price_snapshot, 0) * order_items.quantity)';
+        $costExpr = 'COALESCE(order_items.cost_amount_snapshot, COALESCE(order_items.cost_price_snapshot, order_items.variant_cost_snapshot, 0) * order_items.quantity)';
         $summaryRow = (clone $query)
             ->toBase()
             ->reorder()
-            ->selectRaw('COUNT(*) as total_logs, COALESCE(SUM(order_items.quantity), 0) as total_qty, COALESCE(SUM('.$priceExpr.'), 0) as total_price')
+            ->selectRaw('COUNT(*) as total_logs, COALESCE(SUM(order_items.quantity), 0) as total_qty, COALESCE(SUM('.$costExpr.'), 0) as total_cost')
             ->first();
 
         $total = (int) ($summaryRow->total_logs ?? 0);
@@ -6298,7 +6298,7 @@ class PosController extends Controller
             'summary' => [
                 'total_logs' => $total,
                 'total_qty' => (int) ($summaryRow->total_qty ?? 0),
-                'total_price' => (float) ($summaryRow->total_price ?? 0),
+                'total_cost' => (float) ($summaryRow->total_cost ?? 0),
             ],
         ]);
     }
@@ -6402,16 +6402,18 @@ class PosController extends Controller
         }
     }
 
-    protected function staffConsumableClaimTotalPrice(OrderItem $item): float
+    protected function staffConsumableClaimTotalCost(OrderItem $item): float
     {
-        $snapshot = (float) ($item->line_total_snapshot ?? 0);
-        if ($snapshot > 0) {
-            return $snapshot;
+        if ($item->cost_amount_snapshot !== null) {
+            return round((float) $item->cost_amount_snapshot, 2);
         }
 
-        $unitPrice = (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0);
+        $unitCost = $item->cost_price_snapshot ?? $item->variant_cost_snapshot;
+        if ($unitCost === null) {
+            return 0.0;
+        }
 
-        return round($unitPrice * (int) $item->quantity, 2);
+        return round((float) $unitCost * (int) $item->quantity, 2);
     }
 
     protected function serializeStaffConsumableClaim(OrderItem $item): array
@@ -6440,9 +6442,10 @@ class PosController extends Controller
             'variant_cn_name' => $item->displayVariantCnName(),
             'sku' => (string) ($item->variant_sku_snapshot ?: $item->sku_snapshot ?: $item->productVariant?->sku ?: $item->product?->sku ?: '-'),
             'qty' => (int) $item->quantity,
-            'original_price' => (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
-            'line_total_snapshot' => (float) ($item->line_total_snapshot ?? 0),
-            'total_price' => $this->staffConsumableClaimTotalPrice($item),
+            'unit_cost' => $item->cost_price_snapshot !== null
+                ? (float) $item->cost_price_snapshot
+                : ($item->variant_cost_snapshot !== null ? (float) $item->variant_cost_snapshot : null),
+            'total_cost' => $this->staffConsumableClaimTotalCost($item),
             'final_amount' => (float) ($item->effective_line_total ?? $item->line_total ?? 0),
         ];
     }

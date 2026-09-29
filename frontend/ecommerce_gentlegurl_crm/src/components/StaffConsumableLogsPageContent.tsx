@@ -17,15 +17,14 @@ type LogRow = BranchAttribution & {
   variant_cn_name?: string | null
   sku?: string | null
   qty: number
-  original_price?: number
-  line_total_snapshot?: number
-  total_price?: number
+  unit_cost?: number | null
+  total_cost?: number | null
 }
 
 type LogSummary = {
   total_logs: number
   total_qty: number
-  total_price: number
+  total_cost: number
 }
 
 type StaffOption = {
@@ -47,7 +46,7 @@ type Meta = {
   total: number
 }
 
-const EMPTY_SUMMARY: LogSummary = { total_logs: 0, total_qty: 0, total_price: 0 }
+const EMPTY_SUMMARY: LogSummary = { total_logs: 0, total_qty: 0, total_cost: 0 }
 
 const formatCurrency = (value: number | string | null | undefined) => {
   const numeric = Number(value ?? 0)
@@ -59,12 +58,14 @@ const formatCount = (value: number | string | null | undefined) => {
   return new Intl.NumberFormat('en-MY').format(Number.isFinite(numeric) ? numeric : 0)
 }
 
-const rowTotalPrice = (row: LogRow) => {
-  const total = Number(row.total_price)
-  if (Number.isFinite(total) && total > 0) return total
-  const snapshot = Number(row.line_total_snapshot)
-  if (Number.isFinite(snapshot) && snapshot > 0) return snapshot
-  return Number(row.original_price ?? 0) * Number(row.qty ?? 0)
+const rowTotalCost = (row: LogRow) => {
+  if (row.total_cost != null && Number.isFinite(Number(row.total_cost))) {
+    return Number(row.total_cost)
+  }
+  if (row.unit_cost != null && Number.isFinite(Number(row.unit_cost))) {
+    return Number(row.unit_cost) * Number(row.qty ?? 0)
+  }
+  return 0
 }
 
 const extractRows = <T,>(json: unknown): T[] => {
@@ -119,7 +120,7 @@ const extractSummary = (json: unknown, totalLogs: number): LogSummary => {
   return {
     total_logs: Number(source?.total_logs ?? totalLogs) || 0,
     total_qty: Number(source?.total_qty ?? 0) || 0,
-    total_price: Number(source?.total_price ?? 0) || 0,
+    total_cost: Number(source?.total_cost ?? 0) || 0,
   }
 }
 
@@ -288,7 +289,7 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <SummaryCard label="Total qty" value={formatCount(summary.total_qty)} hint="Pieces claimed" accent="blue" />
-        <SummaryCard label="Total price" value={formatCurrency(summary.total_price)} hint="Retail value of free claims" accent="emerald" />
+        <SummaryCard label="Total cost" value={formatCurrency(summary.total_cost)} hint="Cost price of free claims" accent="emerald" />
       </div>
 
       <div className="mb-4 flex items-center justify-end gap-3">
@@ -320,7 +321,7 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
                 {showBranch ? <th className="px-4 py-3">Branch</th> : null}
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3 text-right">Qty</th>
-                <th className="px-4 py-3 text-right">Total price</th>
+                <th className="px-4 py-3 text-right">Total cost</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -356,7 +357,7 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
                     <span className="mt-0.5 block font-mono text-xs text-slate-500">{row.sku ?? '-'}</span>
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.qty}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(rowTotalPrice(row))}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(rowTotalCost(row))}</td>
                 </tr>
               ))}
             </tbody>
