@@ -841,19 +841,28 @@ class ProductController extends Controller
         return $this->respond($product->fresh()->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren', 'storeLocations']), __('Product created successfully.'));
     }
 
-    public function show(Product $product)
+    public function show(Request $request, Product $product)
     {
+        $branchId = $request->integer('branch_store_location_id') ?: null;
+        if ($branchId && $request->user()) {
+            app(StoreLocationAccessService::class)->authorizeStoreLocation($request->user(), $branchId);
+        }
+
         $product->load(['categories', 'images', 'video', 'variants.bundleItems.componentVariant', 'packageChildren.childProduct', 'storeLocations']);
 
-        $activeInventoryBranchIds = BranchInventoryCutoverState::query()
-            ->where('status', BranchInventoryCutoverState::ACTIVE)
-            ->pluck('store_location_id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+        // POS / branch-scoped detail: always use that Branch's inventory (same source as /pos/products/catalog).
+        // Without a Branch, keep the all-active-branch sum used by product admin screens.
+        $inventoryBranchIds = $branchId
+            ? [$branchId]
+            : BranchInventoryCutoverState::query()
+                ->where('status', BranchInventoryCutoverState::ACTIVE)
+                ->pluck('store_location_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
 
-        if ($activeInventoryBranchIds !== []) {
+        if ($inventoryBranchIds !== []) {
             $product->load(['branchInventories' => fn ($inventory) => $inventory
-                ->whereIn('store_location_id', $activeInventoryBranchIds)
+                ->whereIn('store_location_id', $inventoryBranchIds)
                 ->with('storeLocation:id,name,code')]);
 
             $inventory = $product->branchInventories->groupBy(fn ($row) => (int) ($row->product_variant_id ?? 0));

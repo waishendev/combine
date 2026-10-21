@@ -118,6 +118,7 @@ import {
   type StaffSplitPayload,
 } from '@/components/pos/staffSplitCore'
 import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
+import { getApiErrorMessage } from '@/lib/api-errors'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import { getThermalPrinterAvailability } from '@/lib/thermalPrinterSettings'
@@ -2915,7 +2916,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         return false
       }
 
-      showMsg(typeof json?.message === 'string' ? json.message : `Unable to add barcode ${trimmed}.`, 'error')
+      showMsg(getApiErrorMessage(json, `Unable to add barcode ${trimmed}.`), 'error')
       return false
     } catch (err) {
       showMsg(err instanceof Error ? err.message : `Unable to add barcode ${trimmed}.`, 'error')
@@ -2952,7 +2953,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       return true
     }
 
-    showMsg(json?.message ?? 'Unable to add selected product.', 'error')
+    showMsg(getApiErrorMessage(json, 'Unable to add selected product.'), 'error')
     return false
   }
 
@@ -3190,6 +3191,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
   }
 
+  /** Product detail for POS modal / cart — scoped to the selected Branch so Available matches catalog OOS. */
+  const buildPosProductDetailUrl = useCallback((productId: number) => {
+    const params = new URLSearchParams()
+    if (selectedBranchId) {
+      params.set('branch_store_location_id', String(selectedBranchId))
+    }
+    const qs = params.toString()
+    return `/api/proxy/ecommerce/products/${productId}${qs ? `?${qs}` : ''}`
+  }, [selectedBranchId])
+
   const hydrateProductVariants = async (item: ProductOption) => {
     const productId = Number(item.product_id || item.id)
     if (!Number.isFinite(productId) || productId <= 0) return
@@ -3197,7 +3208,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setProductVariantLoading(true)
 
     try {
-      const res = await fetch(`/api/proxy/ecommerce/products/${productId}`, { cache: 'no-store' })
+      const res = await fetch(buildPosProductDetailUrl(productId), { cache: 'no-store' })
       const json = await res.json()
 
       if (!res.ok) return
@@ -6654,7 +6665,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       const productId = Number(selectedProduct.product_id || selectedProduct.id)
       if (Number.isFinite(productId) && productId > 0) {
         try {
-          const res = await fetch(`/api/proxy/ecommerce/products/${productId}`, { cache: 'no-store' })
+          const res = await fetch(buildPosProductDetailUrl(productId), { cache: 'no-store' })
           const json = await res.json()
           if (res.ok) {
             const payload = json?.data?.product ?? json?.data ?? json?.product
@@ -6712,7 +6723,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setCartVariantLoading((prev) => ({ ...prev, [item.id]: true }))
 
     try {
-      const res = await fetch(`/api/proxy/ecommerce/products/${item.product_id}`, { cache: 'no-store' })
+      const res = await fetch(buildPosProductDetailUrl(item.product_id), { cache: 'no-store' })
       const json = await res.json()
       const payload = json?.data?.product ?? json?.data ?? json?.product
 
@@ -7172,7 +7183,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     const json = await res.json()
 
     if (!res.ok) {
-      reportCheckoutError(json?.message ?? 'Checkout failed. Please try again.')
+      reportCheckoutError(getApiErrorMessage(json, 'Checkout failed. Please try again.'))
       setCheckingOut(false)
       return
     }
@@ -11537,7 +11548,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ref={checkoutErrorRef}
                   role="alert"
                   tabIndex={-1}
-                  className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+                  className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 whitespace-pre-line"
                 >
                   {checkoutError}
                 </div>
@@ -14263,7 +14274,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               </h4>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4">
-              <p ref={checkoutStandaloneErrorRef} role="alert" tabIndex={-1} className="text-gray-700">{checkoutError}</p>
+              <p ref={checkoutStandaloneErrorRef} role="alert" tabIndex={-1} className="whitespace-pre-line text-gray-700">{checkoutError}</p>
               <button
                 onClick={() => {
                   reportCheckoutError(null)
