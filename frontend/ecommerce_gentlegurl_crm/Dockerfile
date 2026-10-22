@@ -1,5 +1,6 @@
 # ---- Base ----
-FROM mirror.gcr.io/library/node:20-bookworm-slim AS base
+# Pin Node 22 LTS patch for Oct 2026 Node security releases (Node 20 is EOL / unpatched).
+FROM mirror.gcr.io/library/node:22.23.4-bookworm-slim AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -33,7 +34,7 @@ RUN mkdir -p public \
     && npm cache clean --force
 
 # ---- runner: 生产运行（standalone + 纯运行时依赖）----
-FROM mirror.gcr.io/library/node:20-bookworm-slim AS runner
+FROM mirror.gcr.io/library/node:22.23.4-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
