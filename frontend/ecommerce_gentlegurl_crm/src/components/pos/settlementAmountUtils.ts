@@ -361,6 +361,13 @@ export type AddedMainSettlementLineSeedRow = AddedMainServiceSeedRow & {
   gross_amount?: number | string | null
   balance_due?: number | string | null
   is_original?: boolean
+  line_key?: string | null
+  staff_splits?: Array<{
+    staff_id?: number | null
+    share_percent?: number | null
+    share_amount?: number | null
+    split_mode?: string | null
+  }> | null
 }
 
 export function matchAddedMainSettlementLine(

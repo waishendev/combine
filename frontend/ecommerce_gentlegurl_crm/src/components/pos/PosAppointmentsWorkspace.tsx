@@ -304,10 +304,12 @@ type AppointmentPriceEditTarget =
   | { kind: 'addedAddon'; tmpId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
   | { kind: 'createMainAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
   | { kind: 'createBlockAddon'; blockId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
+  | { kind: 'checkoutService'; lineKey: string; isOriginal?: boolean; linkedBookingServiceId?: number | null; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
+  | { kind: 'checkoutAddon'; lineKey: string; optionId: number; serviceRef?: string | null; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
 
 type AppointmentAddonPriceEditTarget = Extract<
   AppointmentPriceEditTarget,
-  { kind: 'originalAddon' | 'addedAddon' | 'createMainAddon' | 'createBlockAddon' }
+  { kind: 'originalAddon' | 'addedAddon' | 'createMainAddon' | 'createBlockAddon' | 'checkoutAddon' }
 >
 
 function getAppointmentAddonPriceEditTarget(target: AppointmentPriceEditTarget): AppointmentAddonPriceEditTarget | null {
@@ -316,6 +318,7 @@ function getAppointmentAddonPriceEditTarget(target: AppointmentPriceEditTarget):
     || target.kind === 'addedAddon'
     || target.kind === 'createMainAddon'
     || target.kind === 'createBlockAddon'
+    || target.kind === 'checkoutAddon'
   ) {
     return target
   }
@@ -659,18 +662,6 @@ export default function PosAppointmentsWorkspace({
   const [appointmentLineDiscountTypeDraft, setAppointmentLineDiscountTypeDraft] = useState<'percentage' | 'fixed'>('fixed')
   const [appointmentLineDiscountValueDraft, setAppointmentLineDiscountValueDraft] = useState('')
   const [appointmentLineDiscountRemarkDraft, setAppointmentLineDiscountRemarkDraft] = useState('')
-  const [appointmentCheckoutPriceModal, setAppointmentCheckoutPriceModal] = useState<null | {
-    lineKey: string
-    kind: 'service' | 'addon'
-    name: string
-    currentPrice: number
-    isOriginal?: boolean
-    optionId?: number | null
-    linkedBookingServiceId?: number | null
-    serviceRef?: string | null
-    quantity?: number
-  }>(null)
-  const [appointmentCheckoutPriceDraft, setAppointmentCheckoutPriceDraft] = useState('')
   const [appointmentCheckoutPriceSaving, setAppointmentCheckoutPriceSaving] = useState(false)
   const [appointmentQrProofFile, setAppointmentQrProofFile] = useState<File | null>(null)
   const [appointmentQrProofFileName, setAppointmentQrProofFileName] = useState<string | null>(null)
@@ -3783,12 +3774,21 @@ export default function PosAppointmentsWorkspace({
       .filter((item) => item.booking_service_id > 0)
   ), [])
 
-  const applyAppointmentCheckoutLinePrice = useCallback(async () => {
-    if (!appointmentDetail?.id || !appointmentCheckoutPriceModal) return
-    const nextPrice = Math.max(0, Number(appointmentCheckoutPriceDraft || 0))
+  const persistAppointmentCheckoutLinePrice = useCallback(async (input: {
+    lineKey: string
+    kind: 'service' | 'addon'
+    nextPrice: number
+    isOriginal?: boolean
+    optionId?: number | null
+    linkedBookingServiceId?: number | null
+    serviceRef?: string | null
+    quantity?: number
+  }) => {
+    if (!appointmentDetail?.id) return false
+    const nextPrice = Math.max(0, Number(input.nextPrice || 0))
     if (!Number.isFinite(nextPrice) || nextPrice < 0) {
       reportAppointmentCheckoutError('Price must be 0 or higher.')
-      return
+      return false
     }
 
     const payload: Record<string, unknown> = {
@@ -3796,44 +3796,43 @@ export default function PosAppointmentsWorkspace({
       availability_override_type: 'outside_staff_schedule',
       availability_override_reason: null,
     }
-    const modal = appointmentCheckoutPriceModal
 
-    if (modal.kind === 'service' && modal.isOriginal) {
+    if (input.kind === 'service' && input.isOriginal) {
       if (appointmentDetail.requires_settled_amount || appointmentDetail.is_range_priced) {
         payload.settled_service_amount = nextPrice
       } else {
         payload.original_service_price = nextPrice
       }
-    } else if (modal.kind === 'service') {
-      const serviceId = Number(modal.linkedBookingServiceId ?? 0)
+    } else if (input.kind === 'service') {
+      const serviceId = Number(input.linkedBookingServiceId ?? 0)
       if (serviceId <= 0) {
         reportAppointmentCheckoutError('Unable to update this service price from checkout.')
-        return
+        return false
       }
       const mainServiceItems = buildCheckoutAddedMainServiceItemsPayload(appointmentDetail, { serviceId, price: nextPrice })
       payload.main_service_items = mainServiceItems
       payload.main_service_ids = mainServiceItems.map((item) => item.booking_service_id)
     } else {
-      const optionId = Number(modal.optionId ?? 0)
+      const optionId = Number(input.optionId ?? 0)
       if (optionId <= 0) {
         reportAppointmentCheckoutError('Unable to update this add-on price from checkout.')
-        return
+        return false
       }
       const ownerAdded = (appointmentDetail.main_services ?? []).find((service) => (
         !service.is_original
         && (service.add_ons ?? []).some((addon) => Number(addon.id) === optionId)
       )) ?? (appointmentDetail.main_services ?? []).find((service) => (
         !service.is_original
-        && String(service.name ?? '') === String(modal.serviceRef ?? '')
-        && modal.serviceRef != null
-        && modal.serviceRef !== 'original'
-        && modal.serviceRef !== ''
+        && String(service.name ?? '') === String(input.serviceRef ?? '')
+        && input.serviceRef != null
+        && input.serviceRef !== 'original'
+        && input.serviceRef !== ''
       ))
       if (ownerAdded) {
         const serviceId = Number(ownerAdded.linked_booking_service_id ?? ownerAdded.id ?? 0)
         if (serviceId <= 0) {
           reportAppointmentCheckoutError('Unable to update this add-on price from checkout.')
-          return
+          return false
         }
         const mainServiceItems = buildCheckoutAddedMainServiceItemsPayload(appointmentDetail, {
           serviceId,
@@ -3848,12 +3847,12 @@ export default function PosAppointmentsWorkspace({
         const addonIds = getSelectedAddonIds(addonSelection)
         if (!addonIds.includes(optionId)) {
           reportAppointmentCheckoutError('Unable to update this add-on price from checkout.')
-          return
+          return false
         }
         const unitOverrides = seedFinalizedAddonPriceOverrides(addons)
         const lineTotalOverrides = seedAddonLineTotalOverrides(addons)
         lineTotalOverrides[optionId] = nextPrice
-        const qty = Number(addons.find((addon) => Number(addon.id) === optionId)?.quantity ?? modal.quantity ?? 1) || 1
+        const qty = Number(addons.find((addon) => Number(addon.id) === optionId)?.quantity ?? input.quantity ?? 1) || 1
         unitOverrides[optionId] = qty > 0 ? Number((nextPrice / qty).toFixed(2)) : nextPrice
         const overrides = buildAddonSettlementSaveOverrides(addonIds, addonSelection, unitOverrides, lineTotalOverrides)
         payload.addon_option_ids = addonIds
@@ -3874,37 +3873,31 @@ export default function PosAppointmentsWorkspace({
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         reportAppointmentCheckoutError(json?.message ?? 'Failed to update price.')
-        return
+        return false
       }
       applyAppointmentDetailFromEditSettlementResponse(json)
       await refreshOpenedAppointmentDetail()
       await fetchAppointments({ silent: true })
 
       const nextDiscounts = { ...appointmentLineDiscounts }
-      delete nextDiscounts[modal.lineKey]
+      delete nextDiscounts[input.lineKey]
       setAppointmentLineDiscounts(nextDiscounts)
-      setAppointmentCheckoutPriceModal(null)
-      setAppointmentCheckoutPriceDraft('')
       showMsg('Price updated.', 'success')
 
       const responseDue = Number(json?.data?.amount_due_now ?? json?.data?.balance_due ?? Number.NaN)
       if (Number.isFinite(responseDue)) {
-        // Keep remaining line discounts against the refreshed gross due when syncing cash.
         const remainingDiscount = Object.values(nextDiscounts).reduce((sum, draft) => {
           if (!draft || !draft.discount_type || !(draft.discount_value > 0)) return sum
-          // Percentage discounts will be recalculated against new line totals in the UI;
-          // for cash sync, approximate with prior fixed totals only when fixed.
           if (draft.discount_type === 'fixed') return sum + draft.discount_value
           return sum
         }, 0)
         syncCheckoutCashToDue(Math.max(0, responseDue - remainingDiscount))
       }
+      return true
     } finally {
       setAppointmentCheckoutPriceSaving(false)
     }
   }, [
-    appointmentCheckoutPriceDraft,
-    appointmentCheckoutPriceModal,
     appointmentDetail,
     appointmentLineDiscounts,
     applyAppointmentDetailFromEditSettlementResponse,
@@ -4117,11 +4110,87 @@ export default function PosAppointmentsWorkspace({
     setAppointmentPriceEditReasonDraft('')
   }, [])
 
-  const submitAppointmentPriceEditModal = useCallback(() => {
+  const openCheckoutLinePriceEditor = useCallback((line: {
+    lineKey: string
+    kind: 'service' | 'addon'
+    name: string
+    editPrice: number
+    quantity?: number
+    isOriginal?: boolean
+    optionId?: number | null
+    linkedBookingServiceId?: number | null
+    serviceRef?: string | null
+    needsFinalPrice?: boolean
+  }) => {
+    if (!appointmentDetail) return
+    if (line.kind === 'service') {
+      const serviceIdx = appointmentDisplayMainServices.findIndex((service) => {
+        if (line.isOriginal) return Boolean(service.is_original)
+        return Number(service.linked_booking_service_id ?? service.id ?? 0) === Number(line.linkedBookingServiceId ?? 0)
+      })
+      const service = serviceIdx >= 0 ? appointmentDisplayMainServices[serviceIdx] : null
+      const priceSource = service
+        ? buildAppointmentMainServicePriceSource(service, serviceIdx)
+        : null
+      openAppointmentPriceEditModal({
+        kind: 'checkoutService',
+        lineKey: line.lineKey,
+        isOriginal: line.isOriginal,
+        linkedBookingServiceId: line.linkedBookingServiceId,
+        name: line.name,
+        currentUnitPrice: line.needsFinalPrice ? 0 : line.editPrice,
+        originalUnitPrice: Number(
+          priceSource?.price_range_min
+          ?? priceSource?.service_price_range_min
+          ?? service?.extra_price
+          ?? line.editPrice
+          ?? 0,
+        ),
+        quantity: 1,
+        priceSource,
+      })
+      return
+    }
+
+    const optionId = Number(line.optionId ?? 0)
+    let addon: NonNullable<PosAppointmentDetail['add_ons']>[number] | null = null
+    for (const service of appointmentDisplayMainServices) {
+      const match = (service.add_ons ?? []).find((row) => Number(row.id) === optionId)
+      if (match) {
+        addon = match
+        break
+      }
+    }
+    if (!addon) {
+      addon = (appointmentDetail.add_ons ?? []).find((row) => Number(row.id) === optionId) ?? null
+    }
+    const qty = Number(line.quantity ?? addon?.quantity ?? 1) || 1
+    const priceSource = addon ? (posPriceDisplayForAddonLine(addon) ?? addon) : null
+    openAppointmentPriceEditModal({
+      kind: 'checkoutAddon',
+      lineKey: line.lineKey,
+      optionId,
+      serviceRef: line.serviceRef,
+      name: line.name,
+      currentUnitPrice: line.needsFinalPrice ? 0 : (qty > 0 ? line.editPrice / qty : line.editPrice),
+      originalUnitPrice: Number(
+        addon?.price_range_min
+        ?? addon?.extra_price
+        ?? (qty > 0 ? line.editPrice / qty : line.editPrice)
+        ?? 0,
+      ),
+      quantity: qty,
+      priceSource,
+    })
+  }, [appointmentDetail, appointmentDisplayMainServices, buildAppointmentMainServicePriceSource, openAppointmentPriceEditModal])
+
+  const submitAppointmentPriceEditModal = useCallback(async () => {
     if (!appointmentPriceEditTarget) return
     const reportPriceEditError = (message: string | null) => {
       if (appointmentPriceEditTarget.kind === 'createMainAddon' || appointmentPriceEditTarget.kind === 'createBlockAddon') {
         reportCreateAppointmentError(message)
+      } else if (appointmentPriceEditTarget.kind === 'checkoutService' || appointmentPriceEditTarget.kind === 'checkoutAddon') {
+        reportAppointmentCheckoutError(message)
       } else {
         reportEditSettlementError(message)
       }
@@ -4146,14 +4215,33 @@ export default function PosAppointmentsWorkspace({
               createAppointmentExtraServiceBlocks.find((block) => block.id === appointmentPriceEditTarget.blockId)?.addonQuantities ?? {},
               appointmentPriceEditTarget.optionId,
             ))
-            : resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)
+            : appointmentPriceEditTarget.kind === 'checkoutAddon'
+              ? resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)
+              : resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)
     const unitPrice = appointmentPriceEditMode === 'line' ? amount / qty : amount
     if (!Number.isFinite(unitPrice) || unitPrice < 0) {
       reportPriceEditError('Price cannot be negative.')
       return
     }
     const rounded = Number(unitPrice.toFixed(2))
-    const roundedLineTotal = appointmentPriceEditMode === 'line' ? Number(amount.toFixed(2)) : null
+    const roundedLineTotal = appointmentPriceEditMode === 'line' ? Number(amount.toFixed(2)) : Number((rounded * qty).toFixed(2))
+    if (appointmentPriceEditTarget.kind === 'checkoutService' || appointmentPriceEditTarget.kind === 'checkoutAddon') {
+      const ok = await persistAppointmentCheckoutLinePrice({
+        lineKey: appointmentPriceEditTarget.lineKey,
+        kind: appointmentPriceEditTarget.kind === 'checkoutService' ? 'service' : 'addon',
+        nextPrice: roundedLineTotal,
+        isOriginal: appointmentPriceEditTarget.kind === 'checkoutService' ? appointmentPriceEditTarget.isOriginal : undefined,
+        optionId: appointmentPriceEditTarget.kind === 'checkoutAddon' ? appointmentPriceEditTarget.optionId : null,
+        linkedBookingServiceId: appointmentPriceEditTarget.kind === 'checkoutService' ? appointmentPriceEditTarget.linkedBookingServiceId : null,
+        serviceRef: appointmentPriceEditTarget.kind === 'checkoutAddon' ? appointmentPriceEditTarget.serviceRef : null,
+        quantity: qty,
+      })
+      if (ok) {
+        reportPriceEditError(null)
+        setAppointmentPriceEditTarget(null)
+      }
+      return
+    }
     if (appointmentPriceEditTarget.kind === 'originalService') {
       setEditOriginalServicePriceOverride(rounded)
       if (settlementNeedsSettledAmount(editOriginalSettlementSource)) {
@@ -4163,7 +4251,7 @@ export default function PosAppointmentsWorkspace({
       setEditAddonPriceOverrides((prev) => ({ ...prev, [appointmentPriceEditTarget.optionId]: rounded }))
       setEditAddonLineTotalOverrides((prev) => {
         const next = { ...prev }
-        if (roundedLineTotal != null) next[appointmentPriceEditTarget.optionId] = roundedLineTotal
+        if (appointmentPriceEditMode === 'line') next[appointmentPriceEditTarget.optionId] = roundedLineTotal
         else delete next[appointmentPriceEditTarget.optionId]
         return next
       })
@@ -4175,7 +4263,7 @@ export default function PosAppointmentsWorkspace({
         addon_price_overrides: { ...block.addon_price_overrides, [appointmentPriceEditTarget.optionId]: rounded },
         addon_line_total_overrides: (() => {
           const next = { ...block.addon_line_total_overrides }
-          if (roundedLineTotal != null) next[appointmentPriceEditTarget.optionId] = roundedLineTotal
+          if (appointmentPriceEditMode === 'line') next[appointmentPriceEditTarget.optionId] = roundedLineTotal
           else delete next[appointmentPriceEditTarget.optionId]
           return next
         })(),
@@ -4184,7 +4272,7 @@ export default function PosAppointmentsWorkspace({
       setCreateAppointmentAddonPriceOverrides((prev) => ({ ...prev, [appointmentPriceEditTarget.optionId]: rounded }))
       setCreateAppointmentAddonLineTotalOverrides((prev) => {
         const next = { ...prev }
-        if (roundedLineTotal != null) next[appointmentPriceEditTarget.optionId] = roundedLineTotal
+        if (appointmentPriceEditMode === 'line') next[appointmentPriceEditTarget.optionId] = roundedLineTotal
         else delete next[appointmentPriceEditTarget.optionId]
         return next
       })
@@ -4194,7 +4282,7 @@ export default function PosAppointmentsWorkspace({
         addon_price_overrides: { ...block.addon_price_overrides, [appointmentPriceEditTarget.optionId]: rounded },
         addon_line_total_overrides: (() => {
           const next = { ...block.addon_line_total_overrides }
-          if (roundedLineTotal != null) next[appointmentPriceEditTarget.optionId] = roundedLineTotal
+          if (appointmentPriceEditMode === 'line') next[appointmentPriceEditTarget.optionId] = roundedLineTotal
           else delete next[appointmentPriceEditTarget.optionId]
           return next
         })(),
@@ -4202,7 +4290,7 @@ export default function PosAppointmentsWorkspace({
     }
     reportPriceEditError(null)
     setAppointmentPriceEditTarget(null)
-  }, [appointmentPriceEditLineTotalDraft, appointmentPriceEditMode, appointmentPriceEditTarget, appointmentPriceEditValueDraft, createAppointmentAddonQuantities, createAppointmentExtraServiceBlocks, editAddedMainBlocks, editAddonQuantities, editOriginalSettlementSource, reportCreateAppointmentError, reportEditSettlementError])
+  }, [appointmentPriceEditLineTotalDraft, appointmentPriceEditMode, appointmentPriceEditTarget, appointmentPriceEditValueDraft, createAppointmentAddonQuantities, createAppointmentExtraServiceBlocks, editAddedMainBlocks, editAddonQuantities, editOriginalSettlementSource, persistAppointmentCheckoutLinePrice, reportCreateAppointmentError, reportEditSettlementError])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -5299,10 +5387,12 @@ export default function PosAppointmentsWorkspace({
     linkedBookingServiceId?: number | null
     serviceRef?: string | null
     staffSplits: AppointmentLineStaffSplit[]
+    needsFinalPrice?: boolean
+    priceLabel?: string | null
   }
   const appointmentCheckoutPayableLines = useMemo(() => {
     if (!appointmentDetail) return [] as AppointmentCheckoutPayableLine[]
-    const mapSplitRows = (splits: Array<{ staff_id?: number | null; share_percent?: number | null; share_amount?: number | null; split_mode?: StaffSplitMode | null }> | undefined): AppointmentLineStaffSplit[] => (
+    const mapSplitRows = (splits: Array<{ staff_id?: number | null; share_percent?: number | null; share_amount?: number | null; split_mode?: StaffSplitMode | string | null }> | undefined | null): AppointmentLineStaffSplit[] => (
       (splits ?? [])
         .filter((split) => Number(split.staff_id) > 0 && (Number(split.share_percent) > 0 || Number(split.share_amount) > 0))
         .map((split) => ({
@@ -5313,69 +5403,122 @@ export default function PosAppointmentsWorkspace({
         }))
     )
     const fallbackSplits = mapSplitRows(appointmentDetail.staff_splits)
-    const mains = (appointmentDetail.main_service_settlement_items ?? []).flatMap((line, idx) => {
-      const lineTotal = Math.max(0, Number(line.balance_due ?? 0))
-      if (lineTotal <= 0.0001) return []
+    const settlementMains = appointmentDetail.main_service_settlement_items ?? []
+    const settlementAddons = appointmentDetail.addon_settlement_items ?? []
+    const lines: AppointmentCheckoutPayableLine[] = []
+    const seenKeys = new Set<string>()
+
+    const pushLine = (row: AppointmentCheckoutPayableLine) => {
+      if (seenKeys.has(row.lineKey)) return
+      seenKeys.add(row.lineKey)
+      lines.push(row)
+    }
+
+    appointmentDisplayMainServices.forEach((service, serviceIdx) => {
+      const isOriginal = Boolean(service.is_original ?? serviceIdx === 0)
+      const priceSource = buildAppointmentMainServicePriceSource(service, serviceIdx)
+      const needsFinalPrice = posPriceDisplayHasRange(priceSource) && !posPriceDisplayHasFinalPrice(priceSource)
+      const settlementLine = isOriginal
+        ? settlementMains.find((line) => line.is_original)
+          ?? settlementMains.find((line) => Number(line.linked_booking_service_id ?? 0) === Number(service.linked_booking_service_id ?? service.id ?? 0))
+        : matchAddedMainSettlementLine(service, settlementMains)
+      const lineTotal = Math.max(0, Number(settlementLine?.balance_due ?? (needsFinalPrice ? 0 : service.extra_price ?? 0)))
+      if (lineTotal > 0.0001 || needsFinalPrice) {
+        const lineKey = String(settlementLine?.line_key ?? `service:${service.linked_booking_service_id ?? service.id ?? serviceIdx}`)
+        const lineSplits = mapSplitRows(settlementLine?.staff_splits ?? service.staff_splits)
+        pushLine({
+          lineKey,
+          kind: 'service',
+          name: String(service.name ?? 'Service'),
+          cnName: service.cn_name ?? null,
+          lineTotal,
+          editPrice: Math.max(0, Number(settlementLine?.extra_price ?? service.extra_price ?? lineTotal)),
+          isOriginal,
+          linkedBookingServiceId: service.linked_booking_service_id != null ? Number(service.linked_booking_service_id) : null,
+          staffSplits: lineSplits.length ? lineSplits : fallbackSplits,
+          needsFinalPrice,
+          priceLabel: needsFinalPrice ? formatPosCurrentOrRangeDisplay(priceSource) : null,
+        })
+      }
+
+      const serviceRef = isOriginal ? 'original' : String(service.name ?? service.linked_booking_service_id ?? service.id ?? '')
+      ;(service.add_ons ?? []).forEach((addon, addonIdx) => {
+        const addonSource = posPriceDisplayForAddonLine(addon) ?? addon
+        const needsAddonFinalPrice = posPriceDisplayHasRange(addon)
+          && !posPriceDisplayHasFinalPrice(addon)
+          && !posAddonHasStoredLineTotal(addon)
+        const optionId = addon.id != null ? Number(addon.id) : null
+        const settlementAddon = settlementAddons.find((row) => (
+          (optionId != null && Number(row.id) === optionId)
+          || (addon.line_key != null && row.line_key != null && String(row.line_key) === String(addon.line_key))
+        ))
+        const storedTotal = storedAddonLinePrice(addon)
+        const lineTotal = Math.max(0, Number(
+          settlementAddon?.balance_due != null
+            ? settlementAddon.balance_due
+            : (needsAddonFinalPrice ? 0 : (settlementAddon?.gross_amount ?? storedTotal)),
+        ))
+        if (lineTotal <= 0.0001 && !needsAddonFinalPrice) return
+        const lineKey = String(settlementAddon?.line_key ?? addon.line_key ?? `addon:${optionId ?? addonIdx}`)
+        const lineSplits = mapSplitRows(settlementAddon?.staff_splits ?? addon.staff_splits)
+        pushLine({
+          lineKey,
+          kind: 'addon',
+          name: String(addon.name ?? 'Add-on'),
+          cnName: addon.cn_name ?? null,
+          lineTotal,
+          editPrice: Math.max(0, Number(settlementAddon?.gross_amount ?? (storedTotal > 0 ? storedTotal : lineTotal))),
+          quantity: Number(addon.quantity ?? 1) || 1,
+          optionId,
+          serviceRef: addon.service_ref ?? serviceRef,
+          staffSplits: lineSplits.length ? lineSplits : fallbackSplits,
+          needsFinalPrice: needsAddonFinalPrice,
+          priceLabel: needsAddonFinalPrice ? formatPosCurrentOrRangeDisplay(addonSource) : null,
+        })
+      })
+    })
+
+    // Fallback: settlement rows not already represented (e.g. detail missing nested main_services add-ons).
+    settlementMains.forEach((line, idx) => {
       const lineKey = String(line.line_key ?? `service:${line.id ?? idx}`)
-      const editPrice = Math.max(0, Number(line.extra_price ?? line.balance_due ?? 0))
+      if (seenKeys.has(lineKey)) return
+      const lineTotal = Math.max(0, Number(line.balance_due ?? 0))
+      if (lineTotal <= 0.0001) return
       const lineSplits = mapSplitRows(line.staff_splits)
-      const row: AppointmentCheckoutPayableLine = {
+      pushLine({
         lineKey,
         kind: 'service',
         name: String(line.name ?? 'Service'),
         cnName: line.cn_name ?? null,
         lineTotal,
-        editPrice,
+        editPrice: Math.max(0, Number(line.extra_price ?? line.balance_due ?? 0)),
         isOriginal: Boolean(line.is_original),
         linkedBookingServiceId: line.linked_booking_service_id != null ? Number(line.linked_booking_service_id) : null,
         staffSplits: lineSplits.length ? lineSplits : fallbackSplits,
-      }
-      return [row]
+      })
     })
-    const addons = (appointmentDetail.addon_settlement_items ?? appointmentDetail.add_ons ?? []).flatMap((addon, idx) => {
-      const addonAny = addon as {
-        balance_due?: number | null
-        gross_amount?: number | null
-        line_gross_amount?: number | null
-        extra_price?: number | null
-        line_key?: string | null
-        id?: number | null
-        name?: string | null
-        cn_name?: string | null
-        quantity?: number | null
-        service_ref?: string | null
-        staff_splits?: AppointmentLineStaffSplit[]
-      }
-      const lineTotal = Math.max(0, Number(
-        addonAny.balance_due != null
-          ? addonAny.balance_due
-          : (addonAny.gross_amount ?? addonAny.line_gross_amount ?? addonAny.extra_price ?? 0),
-      ))
-      if (lineTotal <= 0.0001) return []
-      const lineKey = String(addonAny.line_key ?? `addon:${addonAny.id ?? idx}`)
-      const editPrice = Math.max(0, Number(
-        addonAny.gross_amount
-        ?? addonAny.line_gross_amount
-        ?? addonAny.extra_price
-        ?? lineTotal,
-      ))
-      const lineSplits = mapSplitRows(addonAny.staff_splits)
-      const row: AppointmentCheckoutPayableLine = {
+    settlementAddons.forEach((addon, idx) => {
+      const lineKey = String(addon.line_key ?? `addon:${addon.id ?? idx}`)
+      if (seenKeys.has(lineKey)) return
+      const lineTotal = Math.max(0, Number(addon.balance_due ?? addon.gross_amount ?? addon.extra_price ?? 0))
+      if (lineTotal <= 0.0001) return
+      const lineSplits = mapSplitRows(addon.staff_splits)
+      pushLine({
         lineKey,
         kind: 'addon',
-        name: String(addonAny.name ?? 'Add-on'),
-        cnName: addonAny.cn_name ?? null,
+        name: String(addon.name ?? 'Add-on'),
+        cnName: addon.cn_name ?? null,
         lineTotal,
-        editPrice,
-        quantity: Number(addonAny.quantity ?? 1) || 1,
-        optionId: addonAny.id != null ? Number(addonAny.id) : null,
-        serviceRef: addonAny.service_ref ?? 'original',
+        editPrice: Math.max(0, Number(addon.gross_amount ?? addon.extra_price ?? lineTotal)),
+        quantity: Number(addon.quantity ?? 1) || 1,
+        optionId: addon.id != null ? Number(addon.id) : null,
+        serviceRef: addon.service_ref ?? 'original',
         staffSplits: lineSplits.length ? lineSplits : fallbackSplits,
-      }
-      return [row]
+      })
     })
-    return [...mains, ...addons]
-  }, [appointmentDetail])
+
+    return lines
+  }, [appointmentDetail, appointmentDisplayMainServices, buildAppointmentMainServicePriceSource])
 
   const resolveAppointmentLineDiscountAmount = useCallback((lineKey: string, lineTotal: number) => {
     const draft = appointmentLineDiscounts[lineKey]
@@ -5394,6 +5537,65 @@ export default function PosAppointmentsWorkspace({
     [appointmentCheckoutPayableLines, resolveAppointmentLineDiscountAmount],
   )
   const appointmentDueAfterDiscount = Math.max(0, appointmentDueAmount - appointmentDiscountAmount)
+
+  /** Checkout header: fixed due, or min–max when any unsettled range pricing remains. */
+  const appointmentCheckoutAmountToPayDisplay = useMemo(() => {
+    const discount = appointmentDiscountAmount
+    if (!appointmentHasUnsettledRangePricing) {
+      return {
+        label: 'Amount Due' as const,
+        text: `RM ${appointmentDueAfterDiscount.toFixed(2)}`,
+      }
+    }
+
+    const nestedAddonSources = appointmentDisplayMainServices.flatMap((service) =>
+      (service.add_ons ?? []).map((addon) => ({
+        source: posPriceDisplayForAddonLine(addon) ?? addon,
+      })),
+    )
+    const hasNestedAddons = nestedAddonSources.length > 0
+    const addonBounds = hasNestedAddons
+      ? accumulatePosPriceBounds(nestedAddonSources)
+      : displayAppointmentAddonBounds
+    const addonPaid = Number(appointmentDetail?.addon_paid_online ?? 0)
+    const addonMin = addonBounds.hasRange
+      ? Math.max(0, addonBounds.min - addonPaid)
+      : appointmentAddonDueForBreakdown
+    const addonMax = addonBounds.hasRange
+      ? Math.max(0, addonBounds.max - addonPaid)
+      : appointmentAddonDueForBreakdown
+    const serviceMin = appointmentServiceValueBounds.min
+    const serviceMax = appointmentServiceValueBounds.max
+    const totalMin = Math.max(
+      0,
+      serviceMin + addonMin - appointmentDepositTotalForBreakdown - appointmentPackageCoveredBounds.min - discount,
+    )
+    const totalMax = Math.max(
+      0,
+      serviceMax + addonMax - appointmentDepositTotalForBreakdown - appointmentPackageCoveredBounds.max - discount,
+    )
+    return {
+      label: 'Amount Due' as const,
+      text:
+        Math.abs(totalMin - totalMax) < 0.0001
+          ? `RM ${totalMin.toFixed(2)}`
+          : `RM ${totalMin.toFixed(2)} - ${totalMax.toFixed(2)}`,
+    }
+  }, [
+    appointmentAddonDueForBreakdown,
+    appointmentDepositTotalForBreakdown,
+    appointmentDetail?.addon_paid_online,
+    appointmentDiscountAmount,
+    appointmentDisplayMainServices,
+    appointmentDueAfterDiscount,
+    appointmentHasUnsettledRangePricing,
+    appointmentPackageCoveredBounds.max,
+    appointmentPackageCoveredBounds.min,
+    appointmentServiceValueBounds.max,
+    appointmentServiceValueBounds.min,
+    displayAppointmentAddonBounds,
+  ])
+
   const appointmentSettlementPaymentRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(appointmentSettlementPaymentAmounts[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [appointmentSettlementPaymentAmounts])
   const appointmentSettlementTotalPaid = useMemo(() => appointmentSettlementPaymentRows.reduce((sum, row) => sum + row.amount, 0), [appointmentSettlementPaymentRows])
   const appointmentSettlementCashCents = toPaymentCents(appointmentSettlementPaymentAmounts.cash)
@@ -6222,7 +6424,7 @@ export default function PosAppointmentsWorkspace({
                             <p className="text-xs font-semibold text-amber-900">{UNSETTLED_RANGE_CHECKOUT_MESSAGE}</p>
                             {canAppointmentCheckoutAndPackage ? (
                               <p className="mt-1 text-[11px] leading-snug text-amber-800">
-                                You can save settlement changes first. Checkout stays disabled until every range-priced service and add-on has a final price.
+                                You can open Checkout and set final prices there (Edit Price), or save them in Edit Settlement first. Confirm Checkout stays blocked until every range-priced line is finalized.
                               </p>
                             ) : (
                               <p className="mt-1 text-[11px] leading-snug text-amber-800">
@@ -6376,27 +6578,8 @@ export default function PosAppointmentsWorkspace({
                       <div className="-mx-4 flex items-center justify-between gap-3 border-t-2 border-slate-200 bg-emerald-50/50 px-4 py-4">
                         <span className="text-base font-bold text-slate-900">Amount To Pay</span>
                         <span className="text-xl font-bold tabular-nums text-emerald-800">
-                          {appointmentDetail.is_range_priced && appointmentDetail.settled_service_amount == null
-                            || displayAppointmentAddonBounds.hasRange
-                            ? (() => {
-                                const rangeMin = appointmentDetail.is_range_priced && appointmentDetail.settled_service_amount == null
-                                  ? Number(appointmentDetail.service?.price_range_min ?? 0)
-                                  : appointmentServiceAmount
-                                const rangeMax = appointmentDetail.is_range_priced && appointmentDetail.settled_service_amount == null
-                                  ? Number(appointmentDetail.service?.price_range_max ?? 0)
-                                  : appointmentServiceAmount
-                                const addonMin = displayAppointmentAddonBounds.hasRange
-                                  ? displayAppointmentAddonBounds.min
-                                  : appointmentAddonDueForBreakdown
-                                const addonMax = displayAppointmentAddonBounds.hasRange
-                                  ? displayAppointmentAddonBounds.max
-                                  : appointmentAddonDueForBreakdown
-                                const totalMin = Math.max(0, rangeMin + addonMin - appointmentDepositTotalForBreakdown - appointmentPackageCoveredBounds.min)
-                                const totalMax = Math.max(0, rangeMax + addonMax - appointmentDepositTotalForBreakdown - appointmentPackageCoveredBounds.max)
-                                return totalMin === totalMax
-                                  ? `RM ${totalMin.toFixed(2)}`
-                                  : `RM ${totalMin.toFixed(2)} - ${totalMax.toFixed(2)}`
-                              })()
+                          {appointmentHasUnsettledRangePricing
+                            ? appointmentCheckoutAmountToPayDisplay.text
                             : `RM ${appointmentDueAmountNow.toFixed(2)}`}
                         </span>
                       </div>
@@ -6436,12 +6619,11 @@ export default function PosAppointmentsWorkspace({
                             disabled={
                               appointmentCashActionDisabled ||
                               appointmentActionLoading ||
-                              appointmentHasUnsettledRangePricing ||
-                              (appointmentDueAmountNow <= 0.0001 && !checkoutZeroBalanceSettlement)
+                              (appointmentDueAmountNow <= 0.0001 && !checkoutZeroBalanceSettlement && !appointmentHasUnsettledRangePricing)
                             }
                             onClick={() => {
                               const due = appointmentDueAmountNow
-                              if (checkoutZeroBalanceSettlement) {
+                              if (checkoutZeroBalanceSettlement && !appointmentHasUnsettledRangePricing) {
                                 setAppointmentPaymentMethod('qrpay')
                                 setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', customer_balance: '' })
                               } else {
@@ -6454,8 +6636,6 @@ export default function PosAppointmentsWorkspace({
                               setAppointmentLineDiscountTypeDraft('fixed')
                               setAppointmentLineDiscountValueDraft('')
                               setAppointmentLineDiscountRemarkDraft('')
-                              setAppointmentCheckoutPriceModal(null)
-                              setAppointmentCheckoutPriceDraft('')
                               reportAppointmentCheckoutError(null)
                               setAppointmentCheckoutAutoPrint(
                                 thermalPrinterSettings.auto_print_receipt && getThermalPrinterAvailability(thermalPrinterSettings).available,
@@ -6467,7 +6647,7 @@ export default function PosAppointmentsWorkspace({
                               appointmentCashActionDisabled
                                 ? appointmentCashActionTitle
                                 : appointmentHasUnsettledRangePricing
-                                ? UNSETTLED_RANGE_CHECKOUT_MESSAGE
+                                ? 'Open checkout to set final range prices before confirming'
                                 : checkoutZeroBalanceSettlement
                                   ? 'Confirm checkout and receipt'
                                   : undefined
@@ -6501,7 +6681,9 @@ export default function PosAppointmentsWorkspace({
                           <p className="text-[11px] font-medium text-amber-700">{appointmentPackageDisabledReason}</p>
                         ) : null}
                         {appointmentHasUnsettledRangePricing ? (
-                          <p className="text-[11px] font-medium text-amber-700">{UNSETTLED_RANGE_CHECKOUT_MESSAGE}</p>
+                          <p className="text-[11px] font-medium text-amber-700">
+                            {UNSETTLED_RANGE_CHECKOUT_MESSAGE} Open Checkout to set final prices with Edit Price, then Confirm Checkout.
+                          </p>
                         ) : null}
                       </div>
                     ) : null}
@@ -9334,7 +9516,25 @@ export default function PosAppointmentsWorkspace({
             <div className="mt-4"><label className="text-xs font-semibold text-gray-600">Reason / remark</label><textarea value={appointmentPriceEditReasonDraft} onChange={(event) => setAppointmentPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" /></div>
             </div>
             <div className="flex shrink-0 gap-3 border-t border-gray-200 p-5">
-              <button type="button" onClick={() => setAppointmentPriceEditTarget(null)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button><button type="button" onClick={() => submitAppointmentPriceEditModal()} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Save</button>
+              <button
+                type="button"
+                disabled={appointmentCheckoutPriceSaving}
+                onClick={() => setAppointmentPriceEditTarget(null)}
+                className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={appointmentCheckoutPriceSaving}
+                onClick={() => void submitAppointmentPriceEditModal()}
+                className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {appointmentCheckoutPriceSaving
+                  && (appointmentPriceEditTarget.kind === 'checkoutService' || appointmentPriceEditTarget.kind === 'checkoutAddon')
+                  ? 'Saving…'
+                  : 'Save'}
+              </button>
             </div>
           </div>
         </div>
@@ -9430,6 +9630,11 @@ export default function PosAppointmentsWorkspace({
                   {appointmentCheckoutError}
                 </div>
               ) : null}
+              {appointmentHasUnsettledRangePricing ? (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+                  {UNSETTLED_RANGE_CHECKOUT_MESSAGE} Use Edit Price on each range line below, then Confirm Checkout.
+                </div>
+              ) : null}
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
                   <div className="min-w-0">
@@ -9465,35 +9670,6 @@ export default function PosAppointmentsWorkspace({
                     </button>
                   ) : null}
                 </div>
-                <div className="bg-gradient-to-br from-slate-50 to-orange-50/60 px-4 py-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                    Amount Due
-                  </p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-orange-700">
-                    RM {(appointmentDiscountAmount > 0 ? appointmentDueAfterDiscount : appointmentDueAmount).toFixed(2)}
-                  </p>
-                  {appointmentDiscountAmount > 0 ? (
-                    <p className="mt-2 text-sm text-slate-600">
-                      <span className="tabular-nums text-slate-400 line-through">
-                        RM {appointmentDueAmount.toFixed(2)}
-                      </span>
-                      <span className="mx-1.5 text-slate-300">·</span>
-                      Discount{' '}
-                      <span className="font-semibold tabular-nums text-amber-700">
-                        − RM {appointmentDiscountAmount.toFixed(2)}
-                      </span>
-                    </p>
-                  ) : null}
-                  {checkoutZeroBalanceSettlement ? (
-                    <p className="mt-2 text-xs text-slate-500">
-                      {packageReservedPendingRegister
-                        ? 'Covered by package — RM 0 to collect at checkout.'
-                        : Number(appointmentDetail.deposit_paid ?? 0) > 0.0001
-                          ? 'Covered by deposit — RM 0 to collect at checkout.'
-                          : 'RM 0 to collect at checkout.'}
-                    </p>
-                  ) : null}
-                </div>
               </div>
               {!checkoutZeroBalanceSettlement && appointmentCheckoutPayableLines.length > 0 ? (
                 <div className="overflow-hidden rounded-xl border border-gray-200">
@@ -9503,93 +9679,117 @@ export default function PosAppointmentsWorkspace({
                       const lineNet = Math.max(0, line.lineTotal - lineDiscount)
                       const hasStaffSplitOverride = Boolean(appointmentLineStaffSplits[line.lineKey]?.length)
                       return (
-                        <div key={line.lineKey} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
-                          <div className="min-w-0 flex-1 space-y-2">
+                        <div key={line.lineKey} className="space-y-2 px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                              {line.kind === 'service' ? 'Services Block' : 'Add-on'}
+                            </p>
+                            <p className="mt-0.5 text-sm font-semibold text-gray-900">
+                              {line.kind === 'addon' ? `+ ${line.name}` : line.name}
+                              {line.quantity && line.quantity > 1 ? ` ×${line.quantity}` : ''}
+                            </p>
+                            {line.cnName ? <p className="text-xs text-gray-500">{line.cnName}</p> : null}
+                          </div>
+                          {renderAppointmentLineSplitStack(line.lineKey, line.staffSplits)}
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void openAppointmentLineSplitEditor(
+                                  line.lineKey,
+                                  line.name,
+                                  appointmentLineStaffSplits[line.lineKey] ?? line.staffSplits,
+                                  line.editPrice,
+                                )
+                              }}
+                              className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"
+                            >
+                              {hasStaffSplitOverride || line.staffSplits.length ? 'Edit Staff Split' : 'Assign Staff Split'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={Boolean(line.needsFinalPrice) || line.lineTotal <= 0.0001}
+                              onClick={() => {
+                                const existing = appointmentLineDiscounts[line.lineKey]
+                                setAppointmentLineDiscountModal({
+                                  lineKey: line.lineKey,
+                                  name: line.name,
+                                  lineTotal: line.lineTotal,
+                                })
+                                setAppointmentLineDiscountTypeDraft(existing?.discount_type ?? 'fixed')
+                                setAppointmentLineDiscountValueDraft(
+                                  existing && existing.discount_value > 0 ? String(existing.discount_value) : '',
+                                )
+                                setAppointmentLineDiscountRemarkDraft(existing?.discount_remark ?? '')
+                                reportAppointmentCheckoutError(null)
+                              }}
+                              className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {lineDiscount > 0 ? 'Edit Discount' : 'Discount'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                reportAppointmentCheckoutError(null)
+                                openCheckoutLinePriceEditor(line)
+                              }}
+                              className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                            >
+                              Edit Price
+                            </button>
+                          </div>
+                          {line.needsFinalPrice ? (
                             <div>
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                                {line.kind === 'service' ? 'Services Block' : 'Add-on'}
-                              </p>
-                              <p className="mt-0.5 text-sm font-semibold text-gray-900">
-                                {line.kind === 'addon' ? `+ ${line.name}` : line.name}
-                                {line.quantity && line.quantity > 1 ? ` ×${line.quantity}` : ''}
-                              </p>
-                              {line.cnName ? <p className="text-xs text-gray-500">{line.cnName}</p> : null}
+                              <p className="text-sm font-bold tabular-nums text-amber-800">{line.priceLabel ?? 'Set final price'}</p>
+                              <p className="text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</p>
                             </div>
-                            {renderAppointmentLineSplitStack(line.lineKey, line.staffSplits)}
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void openAppointmentLineSplitEditor(
-                                    line.lineKey,
-                                    line.name,
-                                    appointmentLineStaffSplits[line.lineKey] ?? line.staffSplits,
-                                    line.editPrice,
-                                  )
-                                }}
-                                className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"
-                              >
-                                {hasStaffSplitOverride || line.staffSplits.length ? 'Edit Staff Split' : 'Assign Staff Split'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const existing = appointmentLineDiscounts[line.lineKey]
-                                  setAppointmentLineDiscountModal({
-                                    lineKey: line.lineKey,
-                                    name: line.name,
-                                    lineTotal: line.lineTotal,
-                                  })
-                                  setAppointmentLineDiscountTypeDraft(existing?.discount_type ?? 'fixed')
-                                  setAppointmentLineDiscountValueDraft(
-                                    existing && existing.discount_value > 0 ? String(existing.discount_value) : '',
-                                  )
-                                  setAppointmentLineDiscountRemarkDraft(existing?.discount_remark ?? '')
-                                  reportAppointmentCheckoutError(null)
-                                }}
-                                className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800"
-                              >
-                                {lineDiscount > 0 ? 'Edit Discount' : 'Discount'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAppointmentCheckoutPriceModal({
-                                    lineKey: line.lineKey,
-                                    kind: line.kind,
-                                    name: line.name,
-                                    currentPrice: line.editPrice,
-                                    isOriginal: line.isOriginal,
-                                    optionId: line.optionId,
-                                    linkedBookingServiceId: line.linkedBookingServiceId,
-                                    serviceRef: line.serviceRef,
-                                    quantity: line.quantity,
-                                  })
-                                  setAppointmentCheckoutPriceDraft(line.editPrice > 0 ? line.editPrice.toFixed(2) : '')
-                                  reportAppointmentCheckoutError(null)
-                                }}
-                                className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
-                              >
-                                Edit Price
-                              </button>
+                          ) : lineDiscount > 0 ? (
+                            <div>
+                              <p className="text-xs text-gray-400 line-through">RM {line.lineTotal.toFixed(2)}</p>
+                              <p className="text-sm font-bold tabular-nums text-orange-700">RM {lineNet.toFixed(2)}</p>
                             </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                            {lineDiscount > 0 ? (
-                              <div className="text-right">
-                                <p className="text-xs text-gray-400 line-through">RM {line.lineTotal.toFixed(2)}</p>
-                                <p className="text-sm font-bold text-orange-700">RM {lineNet.toFixed(2)}</p>
-                              </div>
-                            ) : (
-                              <p className="text-sm font-bold text-orange-700">RM {line.lineTotal.toFixed(2)}</p>
-                            )}
-                          </div>
+                          ) : (
+                            <p className="text-sm font-bold tabular-nums text-orange-700">RM {line.lineTotal.toFixed(2)}</p>
+                          )}
                         </div>
                       )
                     })}
                   </div>
                 </div>
               ) : null}
+              <div className="overflow-hidden rounded-xl border border-orange-200 bg-gradient-to-br from-slate-50 to-orange-50/60 px-4 py-4 shadow-sm">
+                <div className="flex items-end justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      {appointmentCheckoutAmountToPayDisplay.label}
+                    </p>
+                    {appointmentDiscountAmount > 0 && !appointmentHasUnsettledRangePricing ? (
+                      <p className="mt-1 text-sm text-slate-600">
+                        <span className="tabular-nums text-slate-400 line-through">
+                          RM {appointmentDueAmount.toFixed(2)}
+                        </span>
+                        <span className="mx-1.5 text-slate-300">·</span>
+                        Discount{' '}
+                        <span className="font-semibold tabular-nums text-amber-700">
+                          − RM {appointmentDiscountAmount.toFixed(2)}
+                        </span>
+                      </p>
+                    ) : null}
+                    {checkoutZeroBalanceSettlement ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {packageReservedPendingRegister
+                          ? 'Covered by package — RM 0 to collect at checkout.'
+                          : Number(appointmentDetail.deposit_paid ?? 0) > 0.0001
+                            ? 'Covered by deposit — RM 0 to collect at checkout.'
+                            : 'RM 0 to collect at checkout.'}
+                      </p>
+                    ) : null}
+                  </div>
+                  <p className="shrink-0 text-2xl font-bold tabular-nums tracking-tight text-orange-700">
+                    {appointmentCheckoutAmountToPayDisplay.text}
+                  </p>
+                </div>
+              </div>
               {checkoutZeroBalanceSettlement && appointmentRefundNeededAmount > 0.0001 && !appointmentDetail?.refund_handled ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
                   <p className="text-sm font-bold text-rose-900">Refund / Credit Required</p>
@@ -9701,7 +9901,9 @@ export default function PosAppointmentsWorkspace({
                     })}
                   </div>
                   <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700 sm:grid-cols-3">
-                    <span>Amount Due: RM {appointmentDueAfterDiscount.toFixed(2)}</span>
+                    <span>
+                      {appointmentCheckoutAmountToPayDisplay.label}: {appointmentCheckoutAmountToPayDisplay.text}
+                    </span>
                     <span>Total Paid: RM {appointmentSettlementTotalPaid.toFixed(2)}</span>
                     <span className={appointmentSettlementMixedOverpaid ? 'text-rose-700' : appointmentSettlementMatchesDue || appointmentSettlementCashOnlyOverpaid ? 'text-emerald-700' : 'text-amber-700'}>
                       {appointmentSettlementCashOnlyOverpaid
@@ -9760,11 +9962,16 @@ export default function PosAppointmentsWorkspace({
                   disabled={
                     appointmentCashActionDisabled ||
                     appointmentActionLoading ||
+                    appointmentHasUnsettledRangePricing ||
                     (checkoutZeroBalanceSettlement && appointmentRefundNeededAmount > 0.0001 && !appointmentDetail?.refund_handled) ||
                     (!checkoutZeroBalanceSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementPaymentValid))
                   }
                   onClick={() => void settleAppointmentPayment()}
-                  title={appointmentCashActionTitle}
+                  title={
+                    appointmentHasUnsettledRangePricing
+                      ? UNSETTLED_RANGE_CHECKOUT_MESSAGE
+                      : appointmentCashActionTitle
+                  }
                   className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   Confirm Checkout
@@ -9773,71 +9980,6 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
       ) : null,
-        bodyModalRoot,
-      )}
-
-      {renderPosBodyModalPortal(
-        appointmentCheckoutPriceModal ? (
-          <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
-            <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-                <div>
-                  <h4 className="text-base font-bold text-gray-900">Edit Price</h4>
-                  <p className="mt-0.5 text-xs text-gray-500">{appointmentCheckoutPriceModal.name}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (appointmentCheckoutPriceSaving) return
-                    setAppointmentCheckoutPriceModal(null)
-                  }}
-                  className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="space-y-3 px-5 py-4">
-                <p className="text-xs text-gray-600">
-                  Current price:{' '}
-                  <span className="font-semibold text-gray-900">RM {appointmentCheckoutPriceModal.currentPrice.toFixed(2)}</span>
-                </p>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                  New Price (RM)
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={appointmentCheckoutPriceDraft}
-                    onChange={(event) => setAppointmentCheckoutPriceDraft(event.target.value)}
-                    className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm text-gray-900"
-                    placeholder="0.00"
-                    disabled={appointmentCheckoutPriceSaving}
-                  />
-                </label>
-              </div>
-              <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
-                <button
-                  type="button"
-                  disabled={appointmentCheckoutPriceSaving}
-                  onClick={() => setAppointmentCheckoutPriceModal(null)}
-                  className="rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={appointmentCheckoutPriceSaving}
-                  onClick={() => void applyAppointmentCheckoutLinePrice()}
-                  className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {appointmentCheckoutPriceSaving ? 'Saving…' : 'Save Price'}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null,
         bodyModalRoot,
       )}
 

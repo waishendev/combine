@@ -29,14 +29,14 @@ export function priceEditTargetUsesQuantityBreakdown(kind: string, quantity?: nu
   if (priceEditTargetUsesSimpleServicePriceLayout(kind)) {
     return false
   }
-  if (['originalAddon', 'addedAddon', 'createMainAddon', 'createBlockAddon', 'cartEditSettlementAddon', 'cartEditSettlementBlockAddon', 'bookingMainAddon', 'bookingBlockAddon'].includes(kind)) {
+  if (['originalAddon', 'addedAddon', 'createMainAddon', 'createBlockAddon', 'checkoutAddon', 'cartEditSettlementAddon', 'cartEditSettlementBlockAddon', 'bookingMainAddon', 'bookingBlockAddon'].includes(kind)) {
     return true
   }
   return resolvePriceEditQuantity(quantity) > 1
 }
 
 export function priceEditTargetUsesSimpleServicePriceLayout(kind: string): boolean {
-  return ['originalService', 'addedService', 'cartEditSettlementAddedService'].includes(kind)
+  return ['originalService', 'addedService', 'checkoutService', 'cartEditSettlementAddedService'].includes(kind)
 }
 
 export function formatPriceEditOriginalUnitDisplay(
