@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { topWishlistCardContent, topWishlistSummary, wishlistStockDisplay } from '../../lib/wishlistReport.ts'
+import { topWishlistCardContent, topWishlistSummary, wishlistStockDisplay } from '../../lib/wishlistReport'
 
 const summary = (count: number, products: number, tie: boolean, name: string | null = null) => ({
   total_wishlisted_products: products,

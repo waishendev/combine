@@ -5313,69 +5313,67 @@ export default function PosAppointmentsWorkspace({
         }))
     )
     const fallbackSplits = mapSplitRows(appointmentDetail.staff_splits)
-    const mains: AppointmentCheckoutPayableLine[] = (appointmentDetail.main_service_settlement_items ?? [])
-      .map((line, idx) => {
-        const lineTotal = Math.max(0, Number(line.balance_due ?? 0))
-        if (lineTotal <= 0.0001) return null
-        const lineKey = String(line.line_key ?? `service:${line.id ?? idx}`)
-        const editPrice = Math.max(0, Number(line.extra_price ?? line.balance_due ?? 0))
-        const lineSplits = mapSplitRows(line.staff_splits)
-        return {
-          lineKey,
-          kind: 'service' as const,
-          name: String(line.name ?? 'Service'),
-          cnName: line.cn_name ?? null,
-          lineTotal,
-          editPrice,
-          isOriginal: Boolean(line.is_original),
-          linkedBookingServiceId: line.linked_booking_service_id != null ? Number(line.linked_booking_service_id) : null,
-          staffSplits: lineSplits.length ? lineSplits : fallbackSplits,
-        } satisfies AppointmentCheckoutPayableLine
-      })
-      .filter((row): row is AppointmentCheckoutPayableLine => Boolean(row))
-    const addons: AppointmentCheckoutPayableLine[] = (appointmentDetail.addon_settlement_items ?? appointmentDetail.add_ons ?? [])
-      .map((addon, idx) => {
-        const addonAny = addon as {
-          balance_due?: number | null
-          gross_amount?: number | null
-          line_gross_amount?: number | null
-          extra_price?: number | null
-          line_key?: string | null
-          id?: number | null
-          name?: string | null
-          cn_name?: string | null
-          quantity?: number | null
-          service_ref?: string | null
-          staff_splits?: AppointmentLineStaffSplit[]
-        }
-        const lineTotal = Math.max(0, Number(
-          addonAny.balance_due != null
-            ? addonAny.balance_due
-            : (addonAny.gross_amount ?? addonAny.line_gross_amount ?? addonAny.extra_price ?? 0),
-        ))
-        if (lineTotal <= 0.0001) return null
-        const lineKey = String(addonAny.line_key ?? `addon:${addonAny.id ?? idx}`)
-        const editPrice = Math.max(0, Number(
-          addonAny.gross_amount
-          ?? addonAny.line_gross_amount
-          ?? addonAny.extra_price
-          ?? lineTotal,
-        ))
-        const lineSplits = mapSplitRows(addonAny.staff_splits)
-        return {
-          lineKey,
-          kind: 'addon' as const,
-          name: String(addonAny.name ?? 'Add-on'),
-          cnName: addonAny.cn_name ?? null,
-          lineTotal,
-          editPrice,
-          quantity: Number(addonAny.quantity ?? 1) || 1,
-          optionId: addonAny.id != null ? Number(addonAny.id) : null,
-          serviceRef: addonAny.service_ref ?? 'original',
-          staffSplits: lineSplits.length ? lineSplits : fallbackSplits,
-        } satisfies AppointmentCheckoutPayableLine
-      })
-      .filter((row): row is AppointmentCheckoutPayableLine => Boolean(row))
+    const mains = (appointmentDetail.main_service_settlement_items ?? []).flatMap((line, idx) => {
+      const lineTotal = Math.max(0, Number(line.balance_due ?? 0))
+      if (lineTotal <= 0.0001) return []
+      const lineKey = String(line.line_key ?? `service:${line.id ?? idx}`)
+      const editPrice = Math.max(0, Number(line.extra_price ?? line.balance_due ?? 0))
+      const lineSplits = mapSplitRows(line.staff_splits)
+      const row: AppointmentCheckoutPayableLine = {
+        lineKey,
+        kind: 'service',
+        name: String(line.name ?? 'Service'),
+        cnName: line.cn_name ?? null,
+        lineTotal,
+        editPrice,
+        isOriginal: Boolean(line.is_original),
+        linkedBookingServiceId: line.linked_booking_service_id != null ? Number(line.linked_booking_service_id) : null,
+        staffSplits: lineSplits.length ? lineSplits : fallbackSplits,
+      }
+      return [row]
+    })
+    const addons = (appointmentDetail.addon_settlement_items ?? appointmentDetail.add_ons ?? []).flatMap((addon, idx) => {
+      const addonAny = addon as {
+        balance_due?: number | null
+        gross_amount?: number | null
+        line_gross_amount?: number | null
+        extra_price?: number | null
+        line_key?: string | null
+        id?: number | null
+        name?: string | null
+        cn_name?: string | null
+        quantity?: number | null
+        service_ref?: string | null
+        staff_splits?: AppointmentLineStaffSplit[]
+      }
+      const lineTotal = Math.max(0, Number(
+        addonAny.balance_due != null
+          ? addonAny.balance_due
+          : (addonAny.gross_amount ?? addonAny.line_gross_amount ?? addonAny.extra_price ?? 0),
+      ))
+      if (lineTotal <= 0.0001) return []
+      const lineKey = String(addonAny.line_key ?? `addon:${addonAny.id ?? idx}`)
+      const editPrice = Math.max(0, Number(
+        addonAny.gross_amount
+        ?? addonAny.line_gross_amount
+        ?? addonAny.extra_price
+        ?? lineTotal,
+      ))
+      const lineSplits = mapSplitRows(addonAny.staff_splits)
+      const row: AppointmentCheckoutPayableLine = {
+        lineKey,
+        kind: 'addon',
+        name: String(addonAny.name ?? 'Add-on'),
+        cnName: addonAny.cn_name ?? null,
+        lineTotal,
+        editPrice,
+        quantity: Number(addonAny.quantity ?? 1) || 1,
+        optionId: addonAny.id != null ? Number(addonAny.id) : null,
+        serviceRef: addonAny.service_ref ?? 'original',
+        staffSplits: lineSplits.length ? lineSplits : fallbackSplits,
+      }
+      return [row]
+    })
     return [...mains, ...addons]
   }, [appointmentDetail])
 
