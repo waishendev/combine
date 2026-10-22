@@ -662,6 +662,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentLineDiscountTypeDraft, setAppointmentLineDiscountTypeDraft] = useState<'percentage' | 'fixed'>('fixed')
   const [appointmentLineDiscountValueDraft, setAppointmentLineDiscountValueDraft] = useState('')
   const [appointmentLineDiscountRemarkDraft, setAppointmentLineDiscountRemarkDraft] = useState('')
+  const [appointmentLineDiscountModalError, setAppointmentLineDiscountModalError] = useState<string | null>(null)
   const [appointmentCheckoutPriceSaving, setAppointmentCheckoutPriceSaving] = useState(false)
   const [appointmentQrProofFile, setAppointmentQrProofFile] = useState<File | null>(null)
   const [appointmentQrProofFileName, setAppointmentQrProofFileName] = useState<string | null>(null)
@@ -860,6 +861,7 @@ export default function PosAppointmentsWorkspace({
   const createAppointmentErrorRef = useRef<HTMLDivElement>(null)
   const editSettlementErrorRef = useRef<HTMLDivElement>(null)
   const appointmentCheckoutErrorRef = useRef<HTMLDivElement>(null)
+  const appointmentLineDiscountModalErrorRef = useRef<HTMLDivElement>(null)
   const appointmentRescheduleErrorRef = useRef<HTMLDivElement>(null)
   const appointmentLineSplitErrorRef = useRef<HTMLDivElement>(null)
   const cancellationRequestsErrorRef = useRef<HTMLDivElement>(null)
@@ -894,6 +896,14 @@ export default function PosAppointmentsWorkspace({
     [scrollToModalError],
   )
 
+  const reportAppointmentLineDiscountError = useCallback(
+    (message: string | null) => {
+      setAppointmentLineDiscountModalError(message)
+      if (message) scrollToModalError(appointmentLineDiscountModalErrorRef)
+    },
+    [scrollToModalError],
+  )
+
   const reportAppointmentRescheduleError = useCallback(
     (message: string | null) => {
       setAppointmentRescheduleError(message)
@@ -921,6 +931,10 @@ export default function PosAppointmentsWorkspace({
   const showMsg = useCallback(
     (text: string, kind: ToastKind = 'info') => {
       if (kind === 'error') {
+        if (appointmentLineDiscountModal) {
+          reportAppointmentLineDiscountError(text)
+          return
+        }
         if (appointmentLineSplitTarget) {
           reportAppointmentLineSplitError(text)
           return
@@ -950,6 +964,7 @@ export default function PosAppointmentsWorkspace({
     },
     [
       appointmentCheckoutConfirmationOpen,
+      appointmentLineDiscountModal,
       appointmentLineSplitTarget,
       appointmentRescheduleOpen,
       cancellationRequestsModalOpen,
@@ -957,6 +972,7 @@ export default function PosAppointmentsWorkspace({
       editSettlementOpen,
       pushToast,
       reportAppointmentCheckoutError,
+      reportAppointmentLineDiscountError,
       reportAppointmentLineSplitError,
       reportAppointmentRescheduleError,
       reportCancellationRequestsError,
@@ -5038,6 +5054,30 @@ export default function PosAppointmentsWorkspace({
     return `RM ${amount.toFixed(2)}`
   }, [appointmentServiceAmount, appointmentServiceValueBounds])
 
+  /** Checkout line discounts persisted on settlement order items (shown after reopen). */
+  const appointmentSettlementDiscountTotal = useMemo(() => {
+    const fromApi = Number(appointmentDetail?.settlement_discount_total ?? 0)
+    if (fromApi > 0.0001) return fromApi
+    const serviceDiscount = (appointmentDetail?.main_services ?? []).reduce(
+      (sum, service) => sum + Number(service.discount_amount ?? 0),
+      0,
+    )
+    const addonDiscount = (appointmentDetail?.main_services ?? []).reduce(
+      (sum, service) => sum + (service.add_ons ?? []).reduce((inner, addon) => inner + Number(addon.discount_amount ?? 0), 0),
+      0,
+    )
+    const flatAddonDiscount = (appointmentDetail?.add_ons ?? []).reduce(
+      (sum, addon) => sum + Number(addon.discount_amount ?? 0),
+      0,
+    )
+    // Prefer nested main_services add-ons; fall back to flat add_ons when nested is empty.
+    const nestedAddonCount = (appointmentDetail?.main_services ?? []).reduce(
+      (sum, service) => sum + (service.add_ons?.length ?? 0),
+      0,
+    )
+    return Math.max(0, serviceDiscount + (nestedAddonCount > 0 ? addonDiscount : flatAddonDiscount))
+  }, [appointmentDetail?.add_ons, appointmentDetail?.main_services, appointmentDetail?.settlement_discount_total])
+
   const appointmentSettlementDurationMin = useMemo(
     () => durationMinutesFromRange(appointmentDetail?.appointment_start_at, appointmentDetail?.appointment_end_at),
     [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at],
@@ -6264,6 +6304,10 @@ export default function PosAppointmentsWorkspace({
                                 ...(service.price_finalized ? { price_finalized: true } : {}),
                               }
                               const servicePrice = Number(servicePriceSource.extra_price ?? 0)
+                              const serviceDiscount = Number(service.discount_amount ?? 0)
+                              const serviceNetPrice = serviceDiscount > 0.0001
+                                ? Math.max(0, Number(service.line_total_after_discount ?? servicePrice - serviceDiscount))
+                                : servicePrice
                               const serviceBookingServiceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
                               const serviceIsRangePriced = posPriceDisplayHasRange(servicePriceSource) && !posPriceDisplayHasFinalPrice(servicePriceSource)
                               const packageCoversMainService = hasPerLineClaims
@@ -6293,6 +6337,12 @@ export default function PosAppointmentsWorkspace({
                                         <>
                                           <span className="block text-slate-400 line-through">{formatPosCurrentOrRangeDisplay(servicePriceSource)}</span>
                                           <span className="block text-emerald-800">RM 0.00</span>
+                                        </>
+                                      ) : serviceDiscount > 0.0001 && !serviceIsRangePriced ? (
+                                        <>
+                                          <span className="block text-slate-400 line-through">RM {servicePrice.toFixed(2)}</span>
+                                          <span className="block text-[10px] font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</span>
+                                          <span className="block">RM {serviceNetPrice.toFixed(2)}</span>
                                         </>
                                       ) : (
                                         <>
@@ -6364,6 +6414,10 @@ export default function PosAppointmentsWorkspace({
                                         const packageCoversAddon = hasPerLineClaims
                                           ? claims.some((c) => c.booking_service_id === Number(addon.linked_booking_service_id ?? addon.id ?? 0))
                                           : false
+                                        const addonDiscount = Number(addon.discount_amount ?? 0)
+                                        const addonNetPrice = addonDiscount > 0.0001
+                                          ? Math.max(0, Number(addon.line_total_after_discount ?? addonLinePrice - addonDiscount))
+                                          : addonLinePrice
 
                                         return (
                                           <li key={`appt-main-addon-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex items-start justify-between gap-3">
@@ -6388,6 +6442,12 @@ export default function PosAppointmentsWorkspace({
                                                 <>
                                                   <span className="block text-slate-400 line-through">{formatPosCurrentOrRangeDisplay(addonPriceSource)}</span>
                                                   <span className="block font-semibold text-emerald-800">RM 0.00</span>
+                                                </>
+                                              ) : addonDiscount > 0.0001 && !showAddonUnsettledRange ? (
+                                                <>
+                                                  <span className="block text-slate-400 line-through">RM {addonLinePrice.toFixed(2)}</span>
+                                                  <span className="block text-[10px] font-semibold text-amber-700">- RM {addonDiscount.toFixed(2)}</span>
+                                                  <span className="block font-semibold">RM {addonNetPrice.toFixed(2)}</span>
                                                 </>
                                               ) : (
                                                 <>
@@ -6546,6 +6606,14 @@ export default function PosAppointmentsWorkspace({
                           </p>
                         ) : null}
                       </div>
+                      {appointmentSettlementDiscountTotal > 0.0001 ? (
+                        <div className="flex items-center justify-between gap-3 py-3.5">
+                          <span className="text-slate-600"> Discount</span>
+                          <span className="font-medium tabular-nums text-amber-700">
+                            − RM {appointmentSettlementDiscountTotal.toFixed(2)}
+                          </span>
+                        </div>
+                      ) : null}
                       {/* <div className="flex items-center justify-between gap-3 border-t border-dashed border-slate-200 py-3.5">
                         <span className="font-semibold text-slate-800">Subtotal</span>
                         <span className="font-semibold tabular-nums text-slate-900">RM {appointmentSubtotalBeforeCredits.toFixed(2)}</span>
@@ -9721,6 +9789,7 @@ export default function PosAppointmentsWorkspace({
                                   existing && existing.discount_value > 0 ? String(existing.discount_value) : '',
                                 )
                                 setAppointmentLineDiscountRemarkDraft(existing?.discount_remark ?? '')
+                                reportAppointmentLineDiscountError(null)
                                 reportAppointmentCheckoutError(null)
                               }}
                               className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
@@ -9763,18 +9832,6 @@ export default function PosAppointmentsWorkspace({
                     <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                       {appointmentCheckoutAmountToPayDisplay.label}
                     </p>
-                    {appointmentDiscountAmount > 0 && !appointmentHasUnsettledRangePricing ? (
-                      <p className="mt-1 text-sm text-slate-600">
-                        <span className="tabular-nums text-slate-400 line-through">
-                          RM {appointmentDueAmount.toFixed(2)}
-                        </span>
-                        <span className="mx-1.5 text-slate-300">·</span>
-                        Discount{' '}
-                        <span className="font-semibold tabular-nums text-amber-700">
-                          − RM {appointmentDiscountAmount.toFixed(2)}
-                        </span>
-                      </p>
-                    ) : null}
                     {checkoutZeroBalanceSettlement ? (
                       <p className="mt-1 text-xs text-slate-500">
                         {packageReservedPendingRegister
@@ -9994,7 +10051,10 @@ export default function PosAppointmentsWorkspace({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setAppointmentLineDiscountModal(null)}
+                  onClick={() => {
+                    reportAppointmentLineDiscountError(null)
+                    setAppointmentLineDiscountModal(null)
+                  }}
                   className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -10003,6 +10063,16 @@ export default function PosAppointmentsWorkspace({
                 </button>
               </div>
               <div className="space-y-3 px-5 py-4">
+                {appointmentLineDiscountModalError ? (
+                  <div
+                    ref={appointmentLineDiscountModalErrorRef}
+                    role="alert"
+                    tabIndex={-1}
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+                  >
+                    {appointmentLineDiscountModalError}
+                  </div>
+                ) : null}
                 <p className="text-xs text-gray-600">
                   Line total:{' '}
                   <span className="font-semibold text-gray-900">RM {appointmentLineDiscountModal.lineTotal.toFixed(2)}</span>
@@ -10070,6 +10140,7 @@ export default function PosAppointmentsWorkspace({
                       return prev
                     })
                     setAppointmentLineDiscountModal(null)
+                    reportAppointmentLineDiscountError(null)
                     reportAppointmentCheckoutError(null)
                   }}
                   className="rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
@@ -10079,7 +10150,10 @@ export default function PosAppointmentsWorkspace({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setAppointmentLineDiscountModal(null)}
+                    onClick={() => {
+                      reportAppointmentLineDiscountError(null)
+                      setAppointmentLineDiscountModal(null)
+                    }}
                     className="rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     Cancel
@@ -10090,15 +10164,15 @@ export default function PosAppointmentsWorkspace({
                       if (!appointmentLineDiscountModal) return
                       const value = Number(appointmentLineDiscountValueDraft || 0)
                       if (!Number.isFinite(value) || value < 0) {
-                        reportAppointmentCheckoutError('Discount value must be 0 or higher.')
+                        reportAppointmentLineDiscountError('Discount value must be 0 or higher.')
                         return
                       }
                       if (appointmentLineDiscountTypeDraft === 'percentage' && value > 100) {
-                        reportAppointmentCheckoutError('Percentage discount must be between 0 and 100.')
+                        reportAppointmentLineDiscountError('Percentage discount must be between 0 and 100.')
                         return
                       }
                       if (appointmentLineDiscountTypeDraft === 'fixed' && value > appointmentLineDiscountModal.lineTotal + 0.0001) {
-                        reportAppointmentCheckoutError('Fixed discount must not exceed line total.')
+                        reportAppointmentLineDiscountError('Fixed discount must not exceed line total.')
                         return
                       }
                       const nextDiscounts = { ...appointmentLineDiscounts }
@@ -10135,6 +10209,7 @@ export default function PosAppointmentsWorkspace({
                       })
 
                       setAppointmentLineDiscountModal(null)
+                      reportAppointmentLineDiscountError(null)
                       reportAppointmentCheckoutError(null)
                     }}
                     className="rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"

@@ -105,6 +105,37 @@ class ProductVariant extends Model
         return min($limits);
     }
 
+    /**
+     * Overwrite component (and this bundle's) stock attributes from Branch inventory so
+     * derived_available_qty / POS Available match PickupFulfillmentService validation.
+     *
+     * @param  array<int, int>  $componentVariantQtyById  product_variant_id => branch quantity
+     */
+    public function applyBranchComponentStockQuantities(array $componentVariantQtyById): void
+    {
+        if (! $this->is_bundle) {
+            return;
+        }
+
+        $this->loadMissing('bundleItems.componentVariant');
+
+        foreach ($this->bundleItems as $bundleItem) {
+            $component = $bundleItem->componentVariant;
+            if (! $component) {
+                continue;
+            }
+            $component->setAttribute(
+                'stock',
+                (int) ($componentVariantQtyById[(int) $component->id] ?? 0),
+            );
+        }
+
+        $derived = $this->derivedAvailableQty();
+        if ($derived !== null) {
+            $this->setAttribute('stock', $derived);
+        }
+    }
+
     public function derivedCostPrice(): ?float
     {
         if (! $this->is_bundle) {

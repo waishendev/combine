@@ -23,6 +23,7 @@ use App\Models\Ecommerce\PosCartItem;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductStockMovement;
 use App\Models\Ecommerce\ProductVariant;
+use App\Models\Ecommerce\StoreLocationProductInventory;
 use App\Models\Booking\Booking;
 use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageBalance;
@@ -1159,6 +1160,7 @@ class PosController extends Controller
             'addon_total_duration_min' => (int) $summary['addon_total_duration_min'],
             'estimated_duration_min' => (int) ($summary['estimated_duration_min'] ?? $this->recalculateAppointmentDurationMin($booking)),
             'addon_total_price' => (float) $summary['addon_total_price'],
+            'settlement_discount_total' => (float) ($summary['settlement_discount_total'] ?? 0),
             'addon_paid_online' => (float) $summary['addon_paid_online'],
             'addon_paid_settlement' => (float) $summary['addon_paid_settlement'],
             'addon_balance_due' => (float) $summary['addon_balance_due'],
@@ -6146,10 +6148,39 @@ class PosController extends Controller
             ->with(['product.branchInventories' => fn ($inventory) => $inventory->where('store_location_id', $branch->id)])
             ->paginate($perPage, ['*'], 'page', $page);
 
+        $pageVariants = collect($variants->items());
+        foreach ($pageVariants as $pageVariant) {
+            if ($pageVariant instanceof ProductVariant && $pageVariant->is_bundle) {
+                $pageVariant->loadMissing('bundleItems.componentVariant');
+            }
+        }
+        $componentVariantIds = $pageVariants
+            ->filter(fn (ProductVariant $variant) => (bool) $variant->is_bundle)
+            ->flatMap(fn (ProductVariant $variant) => $variant->bundleItems->pluck('component_variant_id'))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        $componentQtyById = $componentVariantIds === []
+            ? []
+            : StoreLocationProductInventory::query()
+                ->where('store_location_id', (int) $branch->id)
+                ->whereIn('product_variant_id', $componentVariantIds)
+                ->get()
+                ->mapWithKeys(fn ($row) => [(int) $row->product_variant_id => (int) $row->quantity])
+                ->all();
+        $pageVariants
+            ->filter(fn (ProductVariant $variant) => (bool) $variant->is_bundle)
+            ->each(fn (ProductVariant $variant) => $variant->applyBranchComponentStockQuantities($componentQtyById));
+
         return $this->respond([
-            'data' => collect($variants->items())->map(function (ProductVariant $variant) use ($branch) {
+            'data' => $pageVariants->map(function (ProductVariant $variant) use ($branch) {
                 $product = $variant->product;
                 $pricing = ProductPricing::build($product, $variant);
+                $branchStock = $variant->is_bundle
+                    ? $variant->derivedAvailableQty()
+                    : (int) ($product?->branchInventories->firstWhere('product_variant_id', $variant->id)?->quantity ?? 0);
 
                 return [
                     'id' => $variant->id,
@@ -6176,7 +6207,7 @@ class PosController extends Controller
                         'is_active' => (bool) $variant->is_active,
                         'is_bundle' => (bool) $variant->is_bundle,
                         'track_stock' => (bool) $variant->track_stock,
-                        'stock' => (int) ($product?->branchInventories->firstWhere('product_variant_id', $variant->id)?->quantity ?? 0),
+                        'stock' => $branchStock,
                         'derived_available_qty' => $variant->is_bundle ? $variant->derivedAvailableQty() : null,
                     ]],
                 ];
@@ -6200,15 +6231,39 @@ class PosController extends Controller
             ->when($categoryId > 0, fn ($query) => $query->whereHas('categories', fn ($categories) => $categories->whereKey($categoryId)))
             ->with([
                 'images',
-                'variants' => fn ($variants) => $variants->where('is_active', true),
+                'variants' => fn ($variants) => $variants->where('is_active', true)->with('bundleItems.componentVariant'),
                 'branchInventories' => fn ($inventory) => $inventory->where('store_location_id', $branch->id),
             ])->orderBy('name')->orderBy('id')->paginate($perPage, ['*'], 'page', $page);
 
-        $products->getCollection()->transform(function (Product $product) {
+        $bundleVariants = $products->getCollection()
+            ->flatMap(fn (Product $product) => $product->variants->where('is_bundle', true))
+            ->values();
+        $componentVariantIds = $bundleVariants
+            ->flatMap(fn (ProductVariant $variant) => $variant->bundleItems->pluck('component_variant_id'))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        $componentQtyById = $componentVariantIds === []
+            ? []
+            : StoreLocationProductInventory::query()
+                ->where('store_location_id', (int) $branch->id)
+                ->whereIn('product_variant_id', $componentVariantIds)
+                ->get()
+                ->mapWithKeys(fn ($row) => [(int) $row->product_variant_id => (int) $row->quantity])
+                ->all();
+
+        $products->getCollection()->transform(function (Product $product) use ($componentQtyById) {
             $inventory = $product->branchInventories->keyBy(fn ($row) => $row->product_variant_id === null ? 'product' : 'variant:'.$row->product_variant_id);
             $product->stock = (int) ($inventory->get('product')?->quantity ?? 0);
             $product->stock_quantity = $product->stock;
-            $product->variants->each(function (ProductVariant $variant) use ($inventory) {
+            $product->variants->each(function (ProductVariant $variant) use ($inventory, $componentQtyById) {
+                if ($variant->is_bundle) {
+                    $variant->applyBranchComponentStockQuantities($componentQtyById);
+
+                    return;
+                }
                 $variant->stock = (int) ($inventory->get('variant:'.$variant->id)?->quantity ?? 0);
             });
             return $product;
@@ -11306,7 +11361,13 @@ class PosController extends Controller
                     ];
                 })->values();
             }
-            $lineTotal = round(
+            // Per-line discounts are already in each row's line_total_after_discount — do not subtract again.
+            $grossPayable = round(
+                (float) $mainSettlementItems->sum(fn (array $row) => (float) ($row['balance_due'] ?? 0))
+                + (float) $addonSettlementItems->sum(fn (array $row) => (float) ($row['balance_due'] ?? 0)),
+                2,
+            );
+            $netFromLines = round(
                 (float) $mainSettlementItems->sum(fn (array $row) => (float) ($row['line_total_after_discount'] ?? $row['balance_due'] ?? 0))
                 + (float) $addonSettlementItems->sum(fn (array $row) => (float) ($row['line_total_after_discount'] ?? $row['balance_due'] ?? 0)),
                 2,
@@ -11314,10 +11375,11 @@ class PosController extends Controller
             $hasPerLineDiscounts = ! empty($this->normalizeAppointmentSettlementDiscountLines($item->discount_lines ?? []));
             $discountAmount = $hasPerLineDiscounts
                 ? round((float) $mainSettlementItems->sum('discount_amount') + (float) $addonSettlementItems->sum('discount_amount'), 2)
-                : $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
+                : $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $grossPayable);
             $netLineTotal = $hasPerLineDiscounts
-                ? max(0.0, $lineTotal - $discountAmount)
-                : max(0.0, $lineTotal - $discountAmount);
+                ? max(0.0, $netFromLines)
+                : max(0.0, $grossPayable - $discountAmount);
+            $lineTotal = $grossPayable;
 
             return [
                 'id' => (int) $item->id,
@@ -12743,6 +12805,7 @@ class PosController extends Controller
             'add_ons' => $summary['add_ons'],
             'addon_total_duration_min' => (int) $summary['addon_total_duration_min'],
             'addon_total_price' => (float) $summary['addon_total_price'],
+            'settlement_discount_total' => (float) ($summary['settlement_discount_total'] ?? 0),
             'addon_paid_online' => (float) $summary['addon_paid_online'],
             'addon_paid_settlement' => (float) $summary['addon_paid_settlement'],
             'addon_balance_due' => (float) $summary['addon_balance_due'],
@@ -13307,6 +13370,118 @@ class PosController extends Controller
         }
 
         return round($lineTotal, 2);
+    }
+
+    /**
+     * Checkout line discounts live on order_items; appointment financial summary re-reads them for Settlement UI.
+     *
+     * @return array{discount_type:?string,discount_value:float,discount_amount:float,line_total_after_discount:float,discount_remark:?string}
+     */
+    protected function resolveOrderItemSettlementDiscountFields(OrderItem|array $item): array
+    {
+        $discountAmount = round(max(0.0, (float) (is_array($item) ? ($item['discount_amount'] ?? 0) : ($item->discount_amount ?? 0))), 2);
+        $gross = $this->resolveOrderItemSettlementGrossAmount($item);
+        $rawNet = is_array($item)
+            ? ($item['line_total_after_discount'] ?? $item['effective_line_total'] ?? null)
+            : ($item->line_total_after_discount ?? $item->effective_line_total ?? null);
+        $net = $rawNet !== null ? round(max(0.0, (float) $rawNet), 2) : null;
+        if ($discountAmount <= 0.0001 && $net !== null && $gross > $net + 0.0001) {
+            $discountAmount = round($gross - $net, 2);
+        }
+        if ($net === null) {
+            $net = round(max(0.0, $gross - $discountAmount), 2);
+        }
+
+        return [
+            'discount_type' => $discountAmount > 0.0001
+                ? (is_array($item) ? ($item['discount_type'] ?? null) : ($item->discount_type ?? null))
+                : null,
+            'discount_value' => $discountAmount > 0.0001
+                ? (float) (is_array($item) ? ($item['discount_value'] ?? 0) : ($item->discount_value ?? 0))
+                : 0.0,
+            'discount_amount' => $discountAmount,
+            'line_total_after_discount' => $net,
+            'discount_remark' => $discountAmount > 0.0001
+                ? (is_array($item) ? ($item['discount_remark'] ?? null) : ($item->discount_remark ?? null))
+                : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array{discount_type:?string,discount_value:float,discount_amount:float,line_total_after_discount:float,discount_remark:?string}  $discount
+     * @return array<string, mixed>
+     */
+    protected function mergeSettlementDiscountFieldsIntoRow(array $row, array $discount): array
+    {
+        return [
+            ...$row,
+            'discount_type' => $discount['discount_type'],
+            'discount_value' => $discount['discount_value'],
+            'discount_amount' => $discount['discount_amount'],
+            'line_total_after_discount' => $discount['line_total_after_discount'],
+            'discount_remark' => $discount['discount_remark'],
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, OrderItem>  $rows
+     * @return list<array{discount_type:?string,discount_value:float,discount_amount:float,line_total_after_discount:float,discount_remark:?string,booking_service_id:int,name_key:string}>
+     */
+    protected function collectSettlementOrderItemDiscountPools($rows): array
+    {
+        return $rows->map(function (OrderItem $row) {
+            $fields = $this->resolveOrderItemSettlementDiscountFields($row);
+            $label = (string) ($row->display_name_snapshot ?: $row->product_name_snapshot ?: '');
+            $label = trim((string) preg_replace('/^Final Settlement\s*-\s*/i', '', $label));
+            if (str_contains($label, '::')) {
+                $label = trim((string) substr($label, (int) strrpos($label, '::') + 2));
+            }
+
+            return [
+                ...$fields,
+                'booking_service_id' => (int) ($row->booking_service_id ?? 0),
+                'name_key' => mb_strtolower($label),
+            ];
+        })->values()->all();
+    }
+
+    /**
+     * @param  list<array{discount_type:?string,discount_value:float,discount_amount:float,line_total_after_discount:float,discount_remark:?string,booking_service_id:int,name_key:string}>  $pool
+     * @return array{discount_type:?string,discount_value:float,discount_amount:float,line_total_after_discount:float,discount_remark:?string}|null
+     */
+    protected function takeSettlementOrderItemDiscountFromPool(array &$pool, int $bookingServiceId, string $name): ?array
+    {
+        $nameKey = mb_strtolower(trim($name));
+        $matchIndex = null;
+        foreach ($pool as $index => $candidate) {
+            if ($bookingServiceId > 0 && (int) ($candidate['booking_service_id'] ?? 0) === $bookingServiceId) {
+                $matchIndex = $index;
+                break;
+            }
+        }
+        if ($matchIndex === null && $nameKey !== '') {
+            foreach ($pool as $index => $candidate) {
+                if ((string) ($candidate['name_key'] ?? '') === $nameKey) {
+                    $matchIndex = $index;
+                    break;
+                }
+            }
+        }
+        if ($matchIndex === null) {
+            return null;
+        }
+
+        $matched = $pool[$matchIndex];
+        array_splice($pool, $matchIndex, 1);
+
+        return [
+            'discount_type' => $matched['discount_type'],
+            'discount_value' => (float) $matched['discount_value'],
+            'discount_amount' => (float) $matched['discount_amount'],
+            'line_total_after_discount' => (float) $matched['line_total_after_discount'],
+            'discount_remark' => $matched['discount_remark'],
+        ];
     }
 
     /**
@@ -13947,6 +14122,109 @@ class PosController extends Controller
         $refundHandledAmount = round((float) $refundRows->where('status', 'completed')->sum('amount'), 2);
         $refundPendingAmount = round((float) $refundRows->where('status', 'pending')->sum('amount'), 2);
 
+        // Re-attach checkout line discounts from settlement order items (receipt source of truth).
+        $serviceDiscountPool = $this->collectSettlementOrderItemDiscountPools($mainSettlementPaidRows);
+        $addonDiscountPool = $this->collectSettlementOrderItemDiscountPools(
+            $addonPaidRows->filter(
+                fn (OrderItem $row) => strcasecmp((string) ($row->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0
+            )->values()
+        );
+
+        $mainServices = $mainServices->map(function (array $service) use (&$serviceDiscountPool, &$addonDiscountPool) {
+            $serviceDiscount = $this->takeSettlementOrderItemDiscountFromPool(
+                $serviceDiscountPool,
+                (int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0),
+                (string) ($service['name'] ?? 'Service'),
+            );
+            $next = $serviceDiscount ? $this->mergeSettlementDiscountFieldsIntoRow($service, $serviceDiscount) : $service;
+            $nextAddons = collect($next['add_ons'] ?? [])->map(function (array $addon) use (&$addonDiscountPool) {
+                // Cart checkout stores booking_service_id as the main service for all add-ons — match by name.
+                $addonDiscount = $this->takeSettlementOrderItemDiscountFromPool(
+                    $addonDiscountPool,
+                    0,
+                    (string) ($addon['name'] ?? 'Add-on'),
+                );
+
+                return $addonDiscount ? $this->mergeSettlementDiscountFieldsIntoRow($addon, $addonDiscount) : $addon;
+            })->values()->all();
+
+            return [
+                ...$next,
+                'add_ons' => $nextAddons,
+            ];
+        })->values();
+
+        // Rebuild flat addon list discounts from nested main_services (already consumed from pool above).
+        // Remaining unmatched flat rows (edge cases) still try the leftover pool.
+        $addonItems = $addonItems->map(function (array $addon) use ($mainServices, &$addonDiscountPool) {
+            $nestedMatch = collect($mainServices)->flatMap(fn (array $service) => collect($service['add_ons'] ?? []))
+                ->first(function (array $nested) use ($addon) {
+                    return (string) ($nested['name'] ?? '') === (string) ($addon['name'] ?? '')
+                        && (int) ($nested['id'] ?? 0) === (int) ($addon['id'] ?? 0)
+                        && (float) ($nested['discount_amount'] ?? 0) > 0.0001;
+                });
+            if (is_array($nestedMatch)) {
+                return $this->mergeSettlementDiscountFieldsIntoRow($addon, [
+                    'discount_type' => $nestedMatch['discount_type'] ?? null,
+                    'discount_value' => (float) ($nestedMatch['discount_value'] ?? 0),
+                    'discount_amount' => (float) ($nestedMatch['discount_amount'] ?? 0),
+                    'line_total_after_discount' => (float) ($nestedMatch['line_total_after_discount'] ?? 0),
+                    'discount_remark' => $nestedMatch['discount_remark'] ?? null,
+                ]);
+            }
+            $addonDiscount = $this->takeSettlementOrderItemDiscountFromPool(
+                $addonDiscountPool,
+                0,
+                (string) ($addon['name'] ?? 'Add-on'),
+            );
+
+            return $addonDiscount ? $this->mergeSettlementDiscountFieldsIntoRow($addon, $addonDiscount) : $addon;
+        })->values();
+
+        $serviceOutstandingRows = $serviceOutstandingRows->map(function (array $item) use ($mainServices) {
+            $matched = $mainServices->first(function (array $service) use ($item) {
+                return (int) ($service['linked_booking_service_id'] ?? $service['id'] ?? 0)
+                    === (int) ($item['linked_booking_service_id'] ?? $item['id'] ?? 0)
+                    && (string) ($service['name'] ?? '') === (string) ($item['name'] ?? '');
+            });
+            if (! is_array($matched) || (float) ($matched['discount_amount'] ?? 0) <= 0.0001) {
+                return $item;
+            }
+
+            return $this->mergeSettlementDiscountFieldsIntoRow($item, [
+                'discount_type' => $matched['discount_type'] ?? null,
+                'discount_value' => (float) ($matched['discount_value'] ?? 0),
+                'discount_amount' => (float) ($matched['discount_amount'] ?? 0),
+                'line_total_after_discount' => (float) ($matched['line_total_after_discount'] ?? 0),
+                'discount_remark' => $matched['discount_remark'] ?? null,
+            ]);
+        })->values();
+
+        $addonSettlementItems = $addonSettlementItems->map(function (array $addon) use ($addonItems) {
+            $matched = $addonItems->first(function (array $row) use ($addon) {
+                return (string) ($row['name'] ?? '') === (string) ($addon['name'] ?? '')
+                    && (int) ($row['id'] ?? 0) === (int) ($addon['id'] ?? 0)
+                    && (float) ($row['discount_amount'] ?? 0) > 0.0001;
+            });
+            if (! is_array($matched)) {
+                return $addon;
+            }
+
+            return $this->mergeSettlementDiscountFieldsIntoRow($addon, [
+                'discount_type' => $matched['discount_type'] ?? null,
+                'discount_value' => (float) ($matched['discount_value'] ?? 0),
+                'discount_amount' => (float) ($matched['discount_amount'] ?? 0),
+                'line_total_after_discount' => (float) ($matched['line_total_after_discount'] ?? 0),
+                'discount_remark' => $matched['discount_remark'] ?? null,
+            ]);
+        })->values();
+
+        $settlementDiscountTotal = round(
+            (float) $mainServices->sum(fn (array $row) => (float) ($row['discount_amount'] ?? 0))
+            + (float) $addonItems->sum(fn (array $row) => (float) ($row['discount_amount'] ?? 0)),
+            2,
+        );
+
         return [
             'service_total' => round($serviceTotal, 2),
             'main_services' => $mainServices->all(),
@@ -13957,6 +14235,7 @@ class PosController extends Controller
             'has_pending_range_pricing' => $hasUnsettledRangePricing,
             'add_ons' => $addonItems->all(),
             'addon_settlement_items' => $addonSettlementItems->all(),
+            'settlement_discount_total' => $settlementDiscountTotal,
             'addon_total_duration_min' => $addonTotalDurationMin,
             'estimated_duration_min' => $this->recalculateAppointmentDurationMin($booking),
             'addon_total_price' => round($addonTotalPrice, 2),

@@ -871,6 +871,33 @@ class ProductController extends Controller
             $product->variants->each(fn (ProductVariant $variant) => ! $variant->is_bundle
                 ? $variant->setAttribute('stock', (int) ($inventory->get((int) $variant->id)?->sum('quantity') ?? 0))
                 : null);
+
+            // Bundles have no independent Branch stock — Available must follow component Branch qty
+            // (same source as POS add-to-cart / PickupFulfillmentService).
+            if ($branchId) {
+                $componentVariantIds = $product->variants
+                    ->filter(fn (ProductVariant $variant) => (bool) $variant->is_bundle)
+                    ->flatMap(fn (ProductVariant $variant) => $variant->bundleItems->pluck('component_variant_id'))
+                    ->map(fn ($id) => (int) $id)
+                    ->filter(fn (int $id) => $id > 0)
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                $componentQtyById = $componentVariantIds === []
+                    ? []
+                    : StoreLocationProductInventory::query()
+                        ->where('store_location_id', $branchId)
+                        ->whereIn('product_variant_id', $componentVariantIds)
+                        ->get()
+                        ->mapWithKeys(fn ($row) => [(int) $row->product_variant_id => (int) $row->quantity])
+                        ->all();
+
+                $product->variants
+                    ->filter(fn (ProductVariant $variant) => (bool) $variant->is_bundle)
+                    ->each(fn (ProductVariant $variant) => $variant->applyBranchComponentStockQuantities($componentQtyById));
+            }
+
             $product->setAttribute('branch_inventory_breakdown', $product->branchInventories->map(fn ($row) => [
                 'store_location_id' => (int) $row->store_location_id,
                 'branch_name' => $row->storeLocation?->name,

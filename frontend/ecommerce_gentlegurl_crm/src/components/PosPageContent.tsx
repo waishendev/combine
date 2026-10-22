@@ -1731,6 +1731,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [productLoading, setProductLoading] = useState(false)
   const [productHighlighted, setProductHighlighted] = useState(0)
   const [productSelectModalOpen, setProductSelectModalOpen] = useState(false)
+  const [productSelectModalError, setProductSelectModalError] = useState<string | null>(null)
   const [catalogTab, setCatalogTab] = useState<PosCatalogTab>('products')
   const [categories, setCategories] = useState<CategoryOption[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
@@ -2517,6 +2518,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const checkoutStandaloneErrorRef = useRef<HTMLDivElement>(null)
   const itemSplitErrorRef = useRef<HTMLDivElement>(null)
   const discountModalErrorRef = useRef<HTMLDivElement>(null)
+  const productSelectModalErrorRef = useRef<HTMLDivElement>(null)
   const priceEditErrorRef = useRef<HTMLDivElement>(null)
   const voucherModalErrorRef = useRef<HTMLDivElement>(null)
 
@@ -2576,6 +2578,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     [scrollToModalError],
   )
 
+  const reportProductSelectModalError = useCallback(
+    (message: string | null) => {
+      setProductSelectModalError(message)
+      if (message) scrollToModalError(productSelectModalErrorRef)
+    },
+    [scrollToModalError],
+  )
+
   const reportPriceEditError = useCallback(
     (message: string | null) => {
       setPriceEditError(message)
@@ -2605,6 +2615,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         }
         if (discountModalOpen) {
           reportDiscountModalError(text)
+          return
+        }
+        if (productSelectModalOpen) {
+          reportProductSelectModalError(text)
           return
         }
         if (cartEditSettlementOpen) {
@@ -2638,6 +2652,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       itemSplitEditorOpen,
       packageModalOpen,
       priceEditTarget,
+      productSelectModalOpen,
       pushToast,
       reportBookingModalError,
       reportCartEditSettlementError,
@@ -2646,6 +2661,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       reportItemSplitError,
       reportPackageModalError,
       reportPriceEditError,
+      reportProductSelectModalError,
       reportVoucherModalError,
       voucherModalOpen,
     ],
@@ -6639,6 +6655,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setSelectedProduct(item)
     setSelectedVariantId(hasPreferredVariant ? resolvedPreferredVariantId : (item.variants.length === 1 ? item.variants[0].id : null))
     setSelectedProductQty(1)
+    setProductSelectModalError(null)
     setProductSelectModalOpen(true)
     void hydrateProductVariants(item)
   }
@@ -6693,6 +6710,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setModalPreviewImageUrl(null)
     setProductVariantLoading(false)
     setFullProductData(null)
+    setProductSelectModalError(null)
     focusScanner()
   }
 
@@ -10059,6 +10077,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         pkgOffset,
                                       )
                                     : fullPrice
+                                  const displayNetPrice = coveredByPackage
+                                    ? 0
+                                    : Math.max(0, displayFullPrice - discount)
                                   return (
                                     <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-800">
@@ -10081,15 +10102,27 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                               <span className="block text-[10px] text-gray-400 line-through">{formatPosCurrentOrRangeDisplay(servicePriceSource)}</span>
                                               <span className="block text-emerald-800">RM 0.00</span>
                                             </>
+                                          ) : posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) && discount <= 0.0001 ? (
+                                            <>
+                                              <span className="block">{formatPosCurrentOrRangeDisplay(servicePriceSource)}</span>
+                                              <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span>
+                                            </>
                                           ) : (
                                             <>
-                                              {discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: displayFullPrice })}</span> : null}
-                                              {discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                              <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayFullPrice })}</span>
-                                              {amountDue + 0.0001 < displayFullPrice && !settlementShowsSeparateDepositCredit(settlement) ? (
+                                              {discount > 0 ? (
+                                                <span className="block text-[10px] text-gray-400 line-through">
+                                                  RM {displayFullPrice.toFixed(2)}
+                                                </span>
+                                              ) : null}
+                                              {discount > 0 ? (
+                                                <span className="block text-[10px] font-semibold text-amber-700">
+                                                  - RM {discount.toFixed(2)}
+                                                </span>
+                                              ) : null}
+                                              <span className="block">RM {displayNetPrice.toFixed(2)}</span>
+                                              {amountDue + 0.0001 < displayNetPrice && !settlementShowsSeparateDepositCredit(settlement) ? (
                                                 <span className="block text-[10px] font-medium text-gray-500">Due now: RM {amountDue.toFixed(2)}</span>
                                               ) : null}
-                                              {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                             </>
                                           )}
                                         </span>
@@ -10100,12 +10133,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                 {addonRows.map((addon, idx) => {
                                   const gross = resolveSettlementAddonLineGross(addon)
                                   const discount = Number(addon.discount_amount ?? 0)
-                                  const net = resolveSettlementAddonLineDue(addon)
                                   const addonUnitReference = Number(addon.extra_price ?? 0)
                                   const addonReference = gross > 0.0001 ? gross : addonUnitReference * storedAddonQuantity(addon)
                                   const coveredByPackage = settlementAddonLineCoveredByPackage(settlement, addon, originalServiceReference)
                                   const displayGross = coveredByPackage ? addonReference : gross
-                                  const displayNet = coveredByPackage ? 0 : net
+                                  const displayNet = coveredByPackage ? 0 : Math.max(0, displayGross - discount)
                                   const addonPriceSource = posPriceDisplayForAddonLine(addon)
                                   return (
                                     <div key={`settlement-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
@@ -10126,12 +10158,24 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                               <span className="block text-[10px] text-gray-400 line-through">{formatPosCurrentOrRangeDisplay(addonPriceSource)}</span>
                                               <span className="block text-emerald-800">RM 0.00</span>
                                             </>
+                                          ) : posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) && discount <= 0.0001 ? (
+                                            <>
+                                              <span className="block">{formatPosCurrentOrRangeDisplay(addonPriceSource)}</span>
+                                              <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span>
+                                            </>
                                           ) : (
                                             <>
-                                              {discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: displayGross })}</span> : null}
-                                              {discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                              <span className="block">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: displayNet })}</span>
-                                              {posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
+                                              {discount > 0 ? (
+                                                <span className="block text-[10px] text-gray-400 line-through">
+                                                  RM {displayGross.toFixed(2)}
+                                                </span>
+                                              ) : null}
+                                              {discount > 0 ? (
+                                                <span className="block text-[10px] font-semibold text-amber-700">
+                                                  - RM {discount.toFixed(2)}
+                                                </span>
+                                              ) : null}
+                                              <span className="block">RM {displayNet.toFixed(2)}</span>
                                             </>
                                           )}
                                         </span>
@@ -10348,6 +10392,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   setModalPreviewImageUrl(null)
                   setProductVariantLoading(false)
                   setFullProductData(null)
+                  setProductSelectModalError(null)
                 }}
                 className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
               >
@@ -10356,6 +10401,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             </div>
 
             <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto p-6 md:grid-cols-2">
+              {productSelectModalError ? (
+                <div
+                  ref={productSelectModalErrorRef}
+                  role="alert"
+                  tabIndex={-1}
+                  className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+                >
+                  {productSelectModalError}
+                </div>
+              ) : null}
               {/* Left: Product Images */}
               <div className="space-y-4">
                 {selectedProductDisplayImage ? (
@@ -10483,6 +10538,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               if (!isActive || outOfStock) return
                               setSelectedVariantId(variant.id)
                               setModalPreviewImageUrl(resolvePosVariantOwnImageUrl(variant))
+                              setProductSelectModalError(null)
                             }}
                             disabled={!isActive || outOfStock}
                             className={`rounded-xl border-2 p-4 text-left transition-all ${
@@ -10585,7 +10641,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         <div className="flex items-center gap-3">
                           <button
                             className="rounded-lg border-2 border-gray-300 w-12 h-12 flex items-center justify-center bg-white hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95 font-bold text-gray-700"
-                            onClick={() => setSelectedProductQty((prev) => clampQty(prev - 1))}
+                            onClick={() => {
+                              setProductSelectModalError(null)
+                              setSelectedProductQty((prev) => clampQty(prev - 1))
+                            }}
                           >
                             <span className="text-xl">−</span>
                           </button>
@@ -10595,13 +10654,17 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             value={selectedProductQty}
                             onChange={(e) => {
                               const raw = Number(e.target.value || 1)
+                              setProductSelectModalError(null)
                               setSelectedProductQty(clampQty(Number.isFinite(raw) ? raw : 1))
                             }}
                             className="w-28 rounded-lg border-2 border-gray-300 bg-white px-3 py-3 text-center font-bold text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                           />
                           <button
                             className="rounded-lg border-2 border-gray-300 w-12 h-12 flex items-center justify-center bg-white hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95 font-bold text-gray-700"
-                            onClick={() => setSelectedProductQty((prev) => clampQty(prev + 1))}
+                            onClick={() => {
+                              setProductSelectModalError(null)
+                              setSelectedProductQty((prev) => clampQty(prev + 1))
+                            }}
                           >
                             <span className="text-xl">+</span>
                           </button>
@@ -11516,8 +11579,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         </div>
       ) : null}
 
-      {checkoutConfirmationOpen && hasCartItems ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-md p-4">
+      {renderPosBodyModalPortal(
+        checkoutConfirmationOpen && hasCartItems ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-md p-4">
           <div className="relative mx-auto flex w-full max-w-6xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50 px-8 py-6">
               <div className="flex items-center gap-3">
@@ -12061,7 +12125,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                           {renderCheckoutLineSplitSummary(serviceSettlementSplitKey, settlementInheritedSplits)}
                                           <div className="flex flex-wrap gap-2">
                                           {renderCheckoutStaffSplitButtons(serviceSettlementSplitKey, service.name ?? 'Settlement service', settlementInheritedSplits)}
-                                          <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: serviceDue, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
+                                          <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: Number(service.balance_due ?? serviceFullPrice), discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
                                           {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                         </button>
                                         {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: serviceFullPrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? serviceFullPrice), priceSource: service })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
@@ -12083,7 +12147,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                           <PosPackageIncludedAmount originalAmount={packageOriginalPrice} />
                                         ) : serviceDiscount > 0 ? (
                                           <div className="space-y-0.5">
-                                            <p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: serviceFullPrice })}</p>
+                                            <p className="text-xs text-gray-400 line-through">RM {serviceFullPrice.toFixed(2)}</p>
                                             <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceDue.toFixed(2)}</p>
                                           </div>
                                         ) : (
@@ -12141,7 +12205,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                       </div>
                                     </td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <span className="block">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: due })}</span>}</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: gross })}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: due })}</p></div>)}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: due })}</p></div>)}</td>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                   </tr>
                                 )
@@ -12683,10 +12747,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
-      {itemSplitEditorOpen && itemSplitEditorTarget ? (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      {renderPosBodyModalPortal(
+        itemSplitEditorOpen && itemSplitEditorTarget ? (
+        <div className="pos-body-stack-modal-top flex items-center justify-center overflow-y-auto bg-black/50 p-4">
           <div className="relative mx-auto flex w-full max-w-2xl lg:max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3">
               <h5 className="text-lg font-bold text-gray-900">{itemSplitEditorTarget.type === 'settlement' ? 'Edit Worker' : itemSplitEditorTarget.type === 'bulk' ? `Apply Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : itemSplitEditorTarget.type === 'line' ? `Line Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : 'Item Staff Split'}</h5>
@@ -12776,7 +12843,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
 
       {renderPosBodyModalPortal(
@@ -12870,8 +12939,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         bodyModalRoot,
       )}
 
-      {discountModalOpen && discountTarget ? (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/45 p-4">
+      {renderPosBodyModalPortal(
+        discountModalOpen && discountTarget ? (
+        <div className="pos-body-stack-modal-top flex items-center justify-center overflow-y-auto bg-black/45 p-4">
           <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
             {discountModalError ? (
@@ -12918,7 +12988,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {packageModalOpen && packageDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
@@ -14084,8 +14156,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       )}
 
       {/* Checkout Success Modal with QR Code */}
-      {checkoutResult && (
-        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4`}>
+      {renderPosBodyModalPortal(
+        checkoutResult ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
           <div className={`relative mx-auto flex w-full max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden ${checkoutResultHasCashChange ? 'max-w-4xl lg:max-w-6xl' : 'max-w-lg'} rounded-2xl border-2 border-gray-100 bg-white shadow-2xl`}>
             <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-green-600 to-green-700 px-6 py-5">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
@@ -14230,12 +14303,15 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             </div>
           </div>
         </div>
+      ) : null,
+        bodyModalRoot,
       )}
 
       {/* QR Code Fullscreen Modal */}
-      {qrCodeFullscreen && checkoutResult?.receipt_public_url && (
+      {renderPosBodyModalPortal(
+        qrCodeFullscreen && checkoutResult?.receipt_public_url ? (
         <div 
-          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/90 backdrop-blur-sm p-4"
+          className="pos-body-stack-modal-top flex items-center justify-center overflow-y-auto bg-black/90 backdrop-blur-sm p-4"
           onClick={() => setQrCodeFullscreen(false)}
         >
           <div className="relative">
@@ -14259,11 +14335,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             <p className="text-center text-white mt-4 text-sm">Tap anywhere to close</p>
           </div>
         </div>
+      ) : null,
+        bodyModalRoot,
       )}
 
       {/* Checkout Error Modal (when confirmation modal is not open) */}
-      {checkoutError && !checkoutConfirmationOpen ? (
-        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4`}>
+      {renderPosBodyModalPortal(
+        checkoutError && !checkoutConfirmationOpen ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
           <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="shrink-0 bg-gradient-to-r from-red-600 to-red-700 px-6 py-5">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
@@ -14287,11 +14366,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {/* Bottom-right Toasts (commercial POS style) */}
       {toasts.length > 0 && (
-        <div className={`fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3`}>
+        <div className={`fixed bottom-5 right-5 z-[230] flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3`}>
           {toasts.map((toast) => {
             const styles =
               toast.kind === 'success'

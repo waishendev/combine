@@ -766,6 +766,8 @@ export type SettlementCartItemLike = {
     extra_price?: number | string | null
     gross_amount?: number | string | null
     balance_due?: number | string | null
+    discount_amount?: number | string | null
+    line_total_after_discount?: number | string | null
     price_mode?: string | null
     price_range_min?: number | null
     price_range_max?: number | null
@@ -815,6 +817,18 @@ export function buildSettlementCartMainServicePriceSource(
   }
 }
 
+export function resolveSettlementLineNetPrice(line?: {
+  gross_amount?: number | string | null
+  extra_price?: number | string | null
+  balance_due?: number | string | null
+  discount_amount?: number | string | null
+} | null): number {
+  if (!line) return 0
+  const fullPrice = resolveSettlementLineFullPrice(line)
+  const discount = Number(line.discount_amount ?? 0)
+  return Math.max(0, fullPrice - discount)
+}
+
 export function computeSettlementCartItemServiceValueBounds(
   settlement?: SettlementCartItemLike | null,
 ): PosPriceBounds {
@@ -833,11 +847,33 @@ export function computeSettlementCartItemServiceValueBounds(
     return { min: amount, max: amount, hasRange: false }
   }
 
-  return accumulatePosPriceBounds(
-    blocks.map((service, idx) => ({
-      source: buildSettlementCartMainServicePriceSource(settlement, service, idx),
-    })),
-  )
+  // Match cart line display: Service Value is net of manual discount (full − discount),
+  // not gross. Unsettled range lines still contribute their range bounds.
+  const pricedSources: Array<{ source?: PosPriceDisplaySource | null }> = []
+  let fixedNetTotal = 0
+  let hasFixedNet = false
+
+  blocks.forEach((service, idx) => {
+    const source = buildSettlementCartMainServicePriceSource(settlement, service, idx)
+    if (posPriceDisplayHasRange(source) && !posPriceDisplayHasFinalPrice(source)) {
+      pricedSources.push({ source })
+      return
+    }
+    fixedNetTotal += resolveSettlementLineNetPrice(service)
+    hasFixedNet = true
+  })
+
+  if (pricedSources.length === 0) {
+    return { min: fixedNetTotal, max: fixedNetTotal, hasRange: false }
+  }
+
+  const rangeBounds = accumulatePosPriceBounds(pricedSources)
+  if (!hasFixedNet) return rangeBounds
+  return {
+    min: rangeBounds.min + fixedNetTotal,
+    max: rangeBounds.max + fixedNetTotal,
+    hasRange: rangeBounds.hasRange || Math.abs(rangeBounds.min - rangeBounds.max) > 0.0001,
+  }
 }
 
 export function settlementPackageApplied(settlement?: SettlementCartItemLike | null): boolean {
@@ -1132,11 +1168,35 @@ export function computeSettlementCartPackageCoveredBounds(settlement: Settlement
 }
 
 export function computeSettlementCartAddonValueBounds(settlement: SettlementCartItemLike): PosPriceBounds {
-  return accumulatePosPriceBounds(
-    (settlement.addon_settlement_items ?? []).map((addon) => ({
-      source: posPriceDisplayForAddonLine(addon) ?? addon,
-    })),
-  )
+  const addons = settlement.addon_settlement_items ?? []
+  const pricedSources: Array<{ source?: PosPriceDisplaySource | null }> = []
+  let fixedNetTotal = 0
+  let hasFixedNet = false
+
+  for (const addon of addons) {
+    const source = posPriceDisplayForAddonLine(addon) ?? addon
+    if (posPriceDisplayHasRange(source) && !posPriceDisplayHasFinalPrice(source)) {
+      pricedSources.push({ source })
+      continue
+    }
+    // Match cart line display: add-on row net = gross − discount (not deposit-adjusted due).
+    const gross = resolveSettlementAddonLineGross(addon)
+    const discount = Number(addon.discount_amount ?? 0)
+    fixedNetTotal += Math.max(0, gross - discount)
+    hasFixedNet = true
+  }
+
+  if (pricedSources.length === 0) {
+    return { min: fixedNetTotal, max: fixedNetTotal, hasRange: false }
+  }
+
+  const rangeBounds = accumulatePosPriceBounds(pricedSources)
+  if (!hasFixedNet) return rangeBounds
+  return {
+    min: rangeBounds.min + fixedNetTotal,
+    max: rangeBounds.max + fixedNetTotal,
+    hasRange: rangeBounds.hasRange || Math.abs(rangeBounds.min - rangeBounds.max) > 0.0001,
+  }
 }
 
 export type SettlementRefundIssuedLine = {

@@ -108,8 +108,15 @@ class PickupFulfillmentService
     {
         $assessment = $this->assessAtBranch($storeLocationId, $items, $lockInventory);
         if (! $assessment['available']) {
+            $messages = [__('The selected Branch cannot fulfil all Product quantities.')];
+            foreach ($assessment['unavailable_items'] as $unavailable) {
+                $detail = trim((string) ($unavailable['message'] ?? ''));
+                if ($detail !== '' && ! in_array($detail, $messages, true)) {
+                    $messages[] = $detail;
+                }
+            }
             throw ValidationException::withMessages([
-                'inventory' => [__('The selected Branch cannot fulfil all Product quantities.')],
+                'inventory' => $messages,
                 'unavailable_items' => $assessment['unavailable_items'],
             ])->status(422);
         }
