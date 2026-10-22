@@ -693,13 +693,11 @@
                     Original: {{ $currency }} {{ number_format(max(0, (float) $lineTotalForOriginal - ($bookingProductOptionUnitTotal * (int) ($item['quantity'] ?? 1))), 2) }}
                   </div>
                   <div class="sku" style="color:#92400e;">
-                    Discount
                     <?php if(($item['discount_type'] ?? '') === 'percentage'): ?>
-                      ({{ number_format((float) ($item['discount_value'] ?? 0), 2) }}%)
-                    <?php elseif(($item['discount_type'] ?? '') === 'fixed'): ?>
-                      ({{ $currency }} {{ number_format((float) ($item['discount_value'] ?? 0), 2) }})
+                      Discount ({{ rtrim(rtrim(number_format((float) ($item['discount_value'] ?? 0), 2), '0'), '.') }}% · {{ $currency }} {{ number_format($mainLineDiscountAmount, 2) }})
+                    <?php else: ?>
+                      Discount ({{ $currency }} {{ number_format($mainLineDiscountAmount, 2) }})
                     <?php endif; ?>
-                    : - {{ $currency }} {{ number_format($mainLineDiscountAmount, 2) }}
                   </div>
                 <?php endif; ?>
                 <?php if(!empty($item['is_staff_free_applied'])): ?>

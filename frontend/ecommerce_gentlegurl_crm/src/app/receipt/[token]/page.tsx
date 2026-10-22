@@ -292,15 +292,9 @@ export default async function PublicReceiptPage({ params }: Props) {
                     <div className="mt-1 space-y-0.5 text-xs text-amber-700">
                       <p>Original: {money(gross)}</p>
                       <p>
-                        Discount:{' '}
                         {'discount_type' in item && item.discount_type === 'percentage'
-                          ? `${Number(('discount_value' in item ? (item as { discount_value?: number | string | null }).discount_value : 0) ?? 0)}%`
-                          : money(
-                              Number(
-                                ('discount_value' in item ? (item as { discount_value?: number | string | null }).discount_value : 0) ?? 0,
-                              ),
-                            )}{' '}
-                        ({money(discountAmount)})
+                          ? `Discount (${Number(('discount_value' in item ? (item as { discount_value?: number | string | null }).discount_value : 0) ?? 0)}% · ${money(discountAmount)})`
+                          : `Discount (${money(discountAmount)})`}
                       </p>
                       {/* {'discount_remark' in item && item.discount_remark ? <p>Remark: {item.discount_remark}</p> : null} */}
                     </div>

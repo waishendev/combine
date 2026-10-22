@@ -1154,6 +1154,8 @@ class PosController extends Controller
             'balance_due' => (float) $summary['balance_due'],
             'amount_due_now' => (float) $summary['amount_due_now'],
             'add_ons' => $summary['add_ons'],
+            // Same settlement rows collect-payment discounts against (includes line_key + balance_due).
+            'addon_settlement_items' => $summary['addon_settlement_items'] ?? [],
             'addon_total_duration_min' => (int) $summary['addon_total_duration_min'],
             'estimated_duration_min' => (int) ($summary['estimated_duration_min'] ?? $this->recalculateAppointmentDurationMin($booking)),
             'addon_total_price' => (float) $summary['addon_total_price'],
@@ -1878,6 +1880,12 @@ class PosController extends Controller
             'discount_type' => ['nullable', 'in:percentage,fixed'],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
             'discount_remark' => ['nullable', 'string', 'max:255'],
+            // Per-service / per-addon discounts (POS appointments checkout). When present, whole-settlement discount is ignored.
+            'discount_lines' => ['nullable', 'array'],
+            'discount_lines.*.line_key' => ['required', 'string', 'max:180'],
+            'discount_lines.*.discount_type' => ['nullable', 'in:percentage,fixed'],
+            'discount_lines.*.discount_value' => ['nullable', 'numeric', 'min:0'],
+            'discount_lines.*.discount_remark' => ['nullable', 'string', 'max:255'],
             'settlement_line_staff_splits' => ['nullable', 'array'],
             'settlement_line_staff_splits.*.line_key' => ['nullable', 'string', 'max:255'],
             'settlement_line_staff_splits.*.line_type' => ['required_with:settlement_line_staff_splits', 'string', 'max:80'],
@@ -1920,9 +1928,22 @@ class PosController extends Controller
             return $this->respondError(__('No balance due for this appointment.'), 422);
         }
 
+        $requestedDiscountLines = collect($validated['discount_lines'] ?? [])
+            ->filter(fn ($row) => is_array($row) && trim((string) ($row['line_key'] ?? '')) !== '')
+            ->mapWithKeys(function (array $row) {
+                $lineKey = trim((string) $row['line_key']);
+
+                return [$lineKey => [
+                    'discount_type' => $row['discount_type'] ?? null,
+                    'discount_value' => (float) ($row['discount_value'] ?? 0),
+                    'discount_remark' => isset($row['discount_remark']) ? trim((string) $row['discount_remark']) : null,
+                ]];
+            });
+        $usePerLineDiscounts = $requestedDiscountLines->isNotEmpty();
+
         $discountType = $validated['discount_type'] ?? null;
         $discountValue = (float) ($validated['discount_value'] ?? 0);
-        if (! $discountType || $discountValue <= 0) {
+        if ($usePerLineDiscounts || ! $discountType || $discountValue <= 0) {
             $discountType = null;
             $discountValue = 0.0;
         }
@@ -1936,7 +1957,101 @@ class PosController extends Controller
         }
 
         $discountRemark = isset($validated['discount_remark']) ? trim((string) $validated['discount_remark']) : null;
-        $totalDiscount = $this->resolveManualDiscountAmount((string) $discountType, $discountValue, $balanceDue);
+
+        $mainSettlementItemsForDiscount = collect((array) ($summary['main_service_settlement_items'] ?? []));
+        $addonSettlementItemsForDiscount = collect((array) ($summary['addon_settlement_items'] ?? []));
+        $payableLineGrossRows = collect();
+        foreach ($mainSettlementItemsForDiscount as $mainIdx => $mainLine) {
+            $lineGross = max(0, (float) ($mainLine['balance_due'] ?? 0));
+            if ($lineGross <= 0.0001) {
+                continue;
+            }
+            $payableLineGrossRows->push([
+                'type' => 'service',
+                'line' => $mainLine,
+                'gross' => $lineGross,
+                'line_key' => (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, (int) $mainIdx)),
+            ]);
+        }
+        foreach ($addonSettlementItemsForDiscount as $addonIdx => $addon) {
+            $lineGross = max(0, (float) ($addon['balance_due'] ?? 0));
+            if ($lineGross <= 0.0001) {
+                continue;
+            }
+            $payableLineGrossRows->push([
+                'type' => 'addon',
+                'line' => $addon,
+                'gross' => $lineGross,
+                'line_key' => (string) ($addon['line_key'] ?? $this->appointmentSettlementLineKey('addon', (array) $addon, (int) $addonIdx)),
+            ]);
+        }
+
+        $lineDiscountsByIndex = [];
+        $lineDiscountMetaByIndex = [];
+        $totalDiscount = 0.0;
+
+        if ($usePerLineDiscounts) {
+            foreach ($payableLineGrossRows as $index => $lineGrossRow) {
+                $lineGross = max(0, round((float) ($lineGrossRow['gross'] ?? 0), 2));
+                $lineKey = (string) ($lineGrossRow['line_key'] ?? '');
+                $draft = $requestedDiscountLines->get($lineKey);
+                $lineType = $draft['discount_type'] ?? null;
+                $lineValue = (float) ($draft['discount_value'] ?? 0);
+                if (! $lineType || $lineValue <= 0) {
+                    $lineDiscountsByIndex[$index] = 0.0;
+                    $lineDiscountMetaByIndex[$index] = [
+                        'discount_type' => null,
+                        'discount_value' => 0.0,
+                        'discount_remark' => null,
+                    ];
+                    continue;
+                }
+                if ($lineType === 'percentage' && $lineValue > 100) {
+                    return $this->respondError(__('Percentage discount must be between 0 and 100.'), 422);
+                }
+                if ($lineType === 'fixed' && $lineValue > $lineGross + 0.0001) {
+                    return $this->respondError(__('Fixed discount must not exceed line total.'), 422);
+                }
+                $lineDiscount = min($lineGross, $this->resolveManualDiscountAmount((string) $lineType, $lineValue, $lineGross));
+                $lineDiscountsByIndex[$index] = $lineDiscount;
+                $lineDiscountMetaByIndex[$index] = [
+                    'discount_type' => $lineType,
+                    'discount_value' => $lineValue,
+                    'discount_remark' => $draft['discount_remark'] ?? null,
+                ];
+                $totalDiscount = round($totalDiscount + $lineDiscount, 2);
+            }
+            if ($totalDiscount > $balanceDue + 0.0001) {
+                return $this->respondError(__('Fixed discount must not exceed settlement amount due.'), 422);
+            }
+        } else {
+            $totalDiscount = $this->resolveManualDiscountAmount((string) $discountType, $discountValue, $balanceDue);
+            $remaining = $totalDiscount;
+            $lineCount = $payableLineGrossRows->count();
+            foreach ($payableLineGrossRows as $index => $lineGrossRow) {
+                $lineGross = max(0, round((float) ($lineGrossRow['gross'] ?? 0), 2));
+                if ($lineCount <= 1 || $index === $lineCount - 1) {
+                    $lineDiscount = min($lineGross, max(0, round($remaining, 2)));
+                } else {
+                    $lineDiscount = min($lineGross, round($totalDiscount * ($lineGross / max($balanceDue, 0.0001)), 2));
+                }
+                $lineDiscountsByIndex[$index] = $lineDiscount;
+                $lineDiscountMetaByIndex[$index] = [
+                    'discount_type' => $lineDiscount > 0 ? $discountType : null,
+                    'discount_value' => $lineDiscount > 0 ? $discountValue : 0.0,
+                    'discount_remark' => $lineDiscount > 0 ? $discountRemark : null,
+                ];
+                $remaining = max(0, round($remaining - $lineDiscount, 2));
+            }
+            if ($remaining > 0.0001 && $lineCount > 0) {
+                $lastIndex = $lineCount - 1;
+                $lineDiscountsByIndex[$lastIndex] = min(
+                    (float) ($payableLineGrossRows[$lastIndex]['gross'] ?? 0),
+                    round(($lineDiscountsByIndex[$lastIndex] ?? 0) + $remaining, 2)
+                );
+            }
+        }
+
         $amount = max(0, round($balanceDue - $totalDiscount, 2));
         if ($amount <= 0) {
             return $this->respondError(__('Payment amount must be greater than 0.'), 422);
@@ -1962,23 +2077,9 @@ class PosController extends Controller
             ->map(fn ($rate) => (float) $rate)
             ->all();
 
-        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary, $discountType, $discountValue, $discountRemark, $totalDiscount, $balanceDue, $paymentRows, $lineSplitPayloads, $staffCommissionRates) {
+        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary, $totalDiscount, $balanceDue, $paymentRows, $lineSplitPayloads, $staffCommissionRates, $lineDiscountsByIndex, $lineDiscountMetaByIndex) {
             $mainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
             $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
-            $lineGrossRows = collect();
-
-            foreach ($mainSettlementItems as $mainLine) {
-                $lineGross = max(0, (float) ($mainLine['balance_due'] ?? 0));
-                if ($lineGross > 0.0001) {
-                    $lineGrossRows->push(['type' => 'service', 'line' => $mainLine, 'gross' => $lineGross]);
-                }
-            }
-            foreach ($addonSettlementItems as $addon) {
-                $lineGross = max(0, (float) ($addon['balance_due'] ?? 0));
-                if ($lineGross > 0.0001) {
-                    $lineGrossRows->push(['type' => 'addon', 'line' => $addon, 'gross' => $lineGross]);
-                }
-            }
 
             $normalizeSplits = function ($splits) {
                 return collect($splits ?? [])
@@ -2048,27 +2149,8 @@ class PosController extends Controller
                 }
             };
 
-            $lineDiscounts = [];
-            $remaining = $totalDiscount;
-            $lineCount = $lineGrossRows->count();
-            foreach ($lineGrossRows as $index => $lineGrossRow) {
-                $lineGross = (float) ($lineGrossRow['gross'] ?? 0);
-                $lineGross = max(0, round((float) $lineGross, 2));
-                if ($lineCount <= 1 || $index === $lineCount - 1) {
-                    $lineDiscount = min($lineGross, max(0, round($remaining, 2)));
-                } else {
-                    $lineDiscount = min($lineGross, round($totalDiscount * ($lineGross / max($balanceDue, 0.0001)), 2));
-                }
-                $lineDiscounts[$index] = $lineDiscount;
-                $remaining = max(0, round($remaining - $lineDiscount, 2));
-            }
-            if ($remaining > 0.0001 && $lineCount > 0) {
-                $lastIndex = $lineCount - 1;
-                $lineDiscounts[$lastIndex] = min(
-                    (float) ($lineGrossRows[$lastIndex]['gross'] ?? 0),
-                    round(($lineDiscounts[$lastIndex] ?? 0) + $remaining, 2)
-                );
-            }
+            $lineDiscounts = $lineDiscountsByIndex;
+            $lineDiscountMeta = $lineDiscountMetaByIndex;
 
             $order = Order::query()->create([
                 'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -2099,6 +2181,9 @@ class PosController extends Controller
                 if ($serviceBalanceDue <= 0.0001 && ! $isPackageCoveredLine) {
                     continue;
                 }
+                $serviceDiscountMeta = $isPackageCoveredLine
+                    ? ['discount_type' => null, 'discount_value' => 0.0, 'discount_remark' => null]
+                    : ($lineDiscountMeta[$discountCursor] ?? ['discount_type' => null, 'discount_value' => 0.0, 'discount_remark' => null]);
                 $serviceDiscount = $isPackageCoveredLine ? 0.0 : (float) ($lineDiscounts[$discountCursor++] ?? 0);
                 $serviceLineNet = $isPackageCoveredLine ? 0.0 : max(0, round($serviceBalanceDue - $serviceDiscount, 2));
                 $serviceName = (string) ($mainLine['name'] ?? ($booking->service?->name ?: 'Service'));
@@ -2115,11 +2200,11 @@ class PosController extends Controller
                     'line_total_snapshot' => $serviceGross,
                     'effective_unit_price' => $serviceLineNet,
                     'effective_line_total' => $serviceLineNet,
-                    'discount_type' => $serviceDiscount > 0 ? $discountType : null,
-                    'discount_value' => $serviceDiscount > 0 ? $discountValue : 0,
+                    'discount_type' => $serviceDiscount > 0 ? ($serviceDiscountMeta['discount_type'] ?? null) : null,
+                    'discount_value' => $serviceDiscount > 0 ? (float) ($serviceDiscountMeta['discount_value'] ?? 0) : 0,
                     'discount_amount' => $serviceDiscount,
                     'line_total_after_discount' => $serviceLineNet,
-                    'discount_remark' => $serviceDiscount > 0 ? $discountRemark : null,
+                    'discount_remark' => $serviceDiscount > 0 ? ($serviceDiscountMeta['discount_remark'] ?? null) : null,
                     'locked' => true,
                     'booking_id' => (int) $booking->id,
                     'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id),
@@ -2164,6 +2249,9 @@ class PosController extends Controller
                 if ($addonAmount <= 0.0001 && ! $isPackageCoveredLine) {
                     continue;
                 }
+                $addonDiscountMeta = $isPackageCoveredLine
+                    ? ['discount_type' => null, 'discount_value' => 0.0, 'discount_remark' => null]
+                    : ($lineDiscountMeta[$discountCursor] ?? ['discount_type' => null, 'discount_value' => 0.0, 'discount_remark' => null]);
                 $addonDiscount = $isPackageCoveredLine ? 0.0 : (float) ($lineDiscounts[$discountCursor++] ?? 0);
                 $addonLineNet = $isPackageCoveredLine ? 0.0 : max(0, round($addonAmount - $addonDiscount, 2));
                 $addonQty = max(1, (int) ($addon['quantity'] ?? 1));
@@ -2182,11 +2270,11 @@ class PosController extends Controller
                     'line_total_snapshot' => $addonGross,
                     'effective_unit_price' => $addonUnitNet,
                     'effective_line_total' => $addonLineNet,
-                    'discount_type' => $addonDiscount > 0 ? $discountType : null,
-                    'discount_value' => $addonDiscount > 0 ? $discountValue : 0,
+                    'discount_type' => $addonDiscount > 0 ? ($addonDiscountMeta['discount_type'] ?? null) : null,
+                    'discount_value' => $addonDiscount > 0 ? (float) ($addonDiscountMeta['discount_value'] ?? 0) : 0,
                     'discount_amount' => $addonDiscount,
                     'line_total_after_discount' => $addonLineNet,
-                    'discount_remark' => $addonDiscount > 0 ? $discountRemark : null,
+                    'discount_remark' => $addonDiscount > 0 ? ($addonDiscountMeta['discount_remark'] ?? null) : null,
                     'locked' => true,
                     'booking_id' => (int) $booking->id,
                     'booking_service_id' => (int) ($addon['linked_booking_service_id'] ?? 0) ?: null,
