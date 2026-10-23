@@ -104,6 +104,8 @@ use App\Http\Controllers\Payments\BillplzCallbackController;
 use App\Http\Controllers\PublicServicesController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Ecommerce\PublicHomepageController;
+use App\Http\Controllers\PrintPlatform\PrintAgentController;
+use App\Http\Controllers\PrintPlatform\PrintDeviceManagementController;
 
 
 Route::prefix('/public/auth')->middleware('api.session')->group(function () {
@@ -290,8 +292,28 @@ Route::middleware('api.session')->group(function () {
 // 🔑 token 登录（给 Postman / 其他服务用）
 Route::post('/login/token', [AuthController::class, 'loginWithToken']);
 
+Route::post('/print-agent/pair', [PrintAgentController::class, 'pair'])->middleware('throttle:10,1');
+Route::prefix('/print-agent')->middleware(['auth:sanctum', 'print.device'])->group(function () {
+    Route::get('/me', [PrintAgentController::class, 'me'])->middleware('print.device:print-device:connect');
+    Route::post('/heartbeat', [PrintAgentController::class, 'heartbeat'])->middleware('print.device:print-device:heartbeat');
+    Route::get('/jobs/pending', [PrintAgentController::class, 'pending'])->middleware('print.device:print-device:jobs');
+    Route::post('/jobs/claim-next', [PrintAgentController::class, 'claim'])->middleware('print.device:print-device:jobs');
+    Route::post('/jobs/{job}/processing', [PrintAgentController::class, 'processing'])->middleware('print.device:print-device:jobs');
+    Route::post('/jobs/{job}/succeeded', [PrintAgentController::class, 'succeeded'])->middleware('print.device:print-device:jobs');
+    Route::post('/jobs/{job}/failed', [PrintAgentController::class, 'failed'])->middleware('print.device:print-device:jobs');
+    Route::post('/token/rotate', [PrintAgentController::class, 'rotate'])->middleware('print.device:print-device:connect');
+});
+
 // ✅ 所有需要权限控制的受保护路由，抽成一个 closure
 $protectedRoutes = function () {
+
+    Route::get('/print/devices', [PrintDeviceManagementController::class, 'index'])->middleware('permission:print.devices.view');
+    Route::post('/print/devices', [PrintDeviceManagementController::class, 'store'])->middleware('permission:print.devices.create');
+    Route::post('/print/devices/{device}/pairing-code', [PrintDeviceManagementController::class, 'pairingCode'])->middleware('permission:print.devices.create');
+    Route::post('/print/devices/{device}/revoke', [PrintDeviceManagementController::class, 'revoke'])->middleware('permission:print.devices.revoke');
+    Route::post('/print/devices/{device}/test-jobs', [PrintDeviceManagementController::class, 'testJob'])->middleware('permission:print.jobs.create-test');
+    Route::get('/print/devices/{device}/jobs', [PrintDeviceManagementController::class, 'deviceJobs'])->middleware('permission:print.jobs.view');
+    Route::post('/print/jobs/{job}/retry', [PrintDeviceManagementController::class, 'retry'])->middleware('permission:print.jobs.retry');
 
     Route::get('/profile', [AuthController::class, 'profile']);
 

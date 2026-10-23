@@ -79,6 +79,12 @@ const SHARED_CRM_SETTINGS_CHILDREN: MenuChild[] = [
     requiredPermission: 'ecommerce.thermal-printer-settings.view',
   },
   {
+    key: 'printers-devices',
+    label: 'Printers & Devices',
+    href: '/settings/printers-devices',
+    requiredPermission: 'print.devices.view',
+  },
+  {
     key: 'pos-payment-methods',
     label: 'POS Payment Methods',
     href: '/pos/settings/payment-methods',
