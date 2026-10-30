@@ -3,7 +3,7 @@ import { getOrderDetail } from "@/lib/server/getOrderDetail";
 import { ReturnCreateFormClient } from "./ReturnCreateFormClient";
 
 type ReturnCreatePageProps = {
-  searchParams?: Promise<{ [key: string]: string | string[] | undefined }> | { [key: string]: string | string[] | undefined };
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
 const isWithinReturnWindow = (completedAt?: string | null, windowDays?: number | null) => {
@@ -16,7 +16,7 @@ const isWithinReturnWindow = (completedAt?: string | null, windowDays?: number |
 };
 
 export default async function ReturnCreatePage({ searchParams }: ReturnCreatePageProps) {
-  const resolvedSearchParams = searchParams ? await Promise.resolve(searchParams) : {};
+  const resolvedSearchParams = (await searchParams) ?? {};
   const orderIdParam = resolvedSearchParams.order_id;
   const normalizedOrderId = Array.isArray(orderIdParam) ? orderIdParam[0] : orderIdParam;
   const orderId = normalizedOrderId ? Number.parseInt(normalizedOrderId, 10) : Number.NaN;

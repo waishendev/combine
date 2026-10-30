@@ -4,17 +4,18 @@ import { getOrderDetail } from "@/lib/server/getOrderDetail";
 import { getUser } from "@/lib/server/getUser";
 
 type OrderPageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export default async function OrderDetailPage({ params }: OrderPageProps) {
+  const { id } = await params;
   const user = await getUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  const order = await getOrderDetail(Number(params.id));
+  const order = await getOrderDetail(Number(id));
 
   if (!order) {
     notFound();
