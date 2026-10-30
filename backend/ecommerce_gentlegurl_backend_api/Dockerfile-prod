@@ -161,6 +161,8 @@
 
     # 配置上传文件大小
     COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+    # Silence php-fpm access.log on container stdout (errors still go to stderr)
+    COPY docker/php/zz-no-access-log.conf /usr/local/etc/php-fpm.d/zz-no-access-log.conf
 
     # 复制 entrypoint 脚本
     COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
