@@ -131,8 +131,8 @@ async function handleRequest(
         fetchHeaders['Cookie'] = cookieHeader;
       }
       
-      console.log(`[API Proxy] Fetch headers:`, Object.keys(fetchHeaders));
-      console.log(`[API Proxy] Cookie header being sent:`, cookieHeader ? cookieHeader.substring(0, 200) + '...' : 'None');
+      // console.log(`[API Proxy] Fetch headers:`, Object.keys(fetchHeaders));
+      // console.log(`[API Proxy] Cookie header being sent:`, cookieHeader ? cookieHeader.substring(0, 200) + '...' : 'None');
       
       response = await fetch(fullUrl, {
         method,
@@ -154,15 +154,15 @@ async function handleRequest(
     
     const responseText = await response.text();
    // console.log(`[API Proxy] Response text length: ${responseText.length}`);
-    console.log(`[API Proxy] Response text (first 1000 chars):`, responseText.substring(0, 1000));
+    // console.log(`[API Proxy] Response text (first 1000 chars):`, responseText.substring(0, 1000));
     
     if (contentType.includes('application/json') || responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
       try {
         data = responseText ? JSON.parse(responseText) : {};
-        console.log(`[API Proxy] Successfully parsed JSON`);
+        // console.log(`[API Proxy] Successfully parsed JSON`);
       } catch (parseError) {
         console.error('[API Proxy] JSON parse error:', parseError);
-        console.error('[API Proxy] Response text that failed to parse:', responseText);
+        console.error('[API Proxy] Response text that failed to parse:', responseText.substring(0, 500));
         // Even if JSON parsing fails, return the text as error
         return NextResponse.json(
           { 

@@ -9,14 +9,14 @@ export async function fetchJson(url: string, init?: RequestInit) {
   });
 
   const contentType = res.headers.get("content-type") || "";
-  console.info(
-    "[fetchJson]",
-    url,
-    "status=",
-    res.status,
-    "content-type=",
-    contentType,
-  );
+  // console.info(
+  //   "[fetchJson]",
+  //   url,
+  //   "status=",
+  //   res.status,
+  //   "content-type=",
+  //   contentType,
+  // );
 
   if (!contentType.includes("application/json")) {
     const text = await res.text();

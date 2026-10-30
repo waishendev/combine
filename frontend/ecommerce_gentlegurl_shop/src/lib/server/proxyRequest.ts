@@ -15,9 +15,25 @@ function buildTargetUrl(request: NextRequest, pathSegments?: string[]) {
   return `${normalizedBase}/${path}${search}`;
 }
 
+/** Hop-by-hop headers undici/fetch reject (e.g. Connection → UND_ERR_INVALID_ARG). */
+const HOP_BY_HOP_HEADERS = [
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host",
+] as const;
+
 async function createProxyResponse(targetUrl: string, request: NextRequest) {
   const headers = new Headers(request.headers);
-  headers.delete("host");
+  for (const name of HOP_BY_HOP_HEADERS) {
+    headers.delete(name);
+  }
 
   const init: RequestInit = {
     method: request.method,
