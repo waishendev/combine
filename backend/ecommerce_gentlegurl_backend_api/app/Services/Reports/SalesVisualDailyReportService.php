@@ -715,31 +715,214 @@ class SalesVisualDailyReportService
             ->selectRaw("COALESCE(SUM({$productSplit}), 0) as amount")
             ->get();
 
-        $serviceSplit = StaffSplitNormalizer::splitSalesSql('order_item_staff_splits', $this->effectiveBookingLineTotalExpr());
-        $serviceRows = $this->applyOrderScope(DB::table('order_item_staff_splits')
-            ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
-            ->join('orders', 'orders.id', '=', 'order_items.order_id')
-            ->leftJoin('store_locations as branch', 'branch.id', '=', 'orders.store_location_id')
-            ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end])
-            ->whereIn('order_items.line_type', self::BOOKING_LINE_TYPES), 'orders')
-            ->groupBy('order_item_staff_splits.staff_id', 'orders.store_location_id', 'branch.name', 'branch.code', 'branch.display_code')
-            ->selectRaw('order_item_staff_splits.staff_id, orders.store_location_id, branch.name as branch_name, COALESCE(NULLIF(TRIM(branch.display_code), \'\'), branch.code) as branch_code')
-            ->selectRaw("COALESCE(SUM({$serviceSplit}), 0) as amount")
-            ->get();
+        // Services breakdown MUST use the same settlement-day attribution as bookingStaffCommissionSales
+        // (prior deposits count when the booking settles). Bill-date-only grouping under-counts vs bold totals.
+        $serviceByStaff = $this->bookingStaffServiceBranchBreakdown($start, $end);
 
-        $format = fn ($rows) => $rows->groupBy('staff_id')->map(fn ($staffRows) => $staffRows->map(fn ($row) => [
-            'store_location_id' => $row->store_location_id === null ? null : (int) $row->store_location_id,
-            'branch_name' => $row->store_location_id === null ? 'Unassigned' : (string) $row->branch_name,
-            'branch_code' => $row->store_location_id === null ? null : (string) $row->branch_code,
-            'amount' => round((float) $row->amount, 2),
-        ])->values()->all());
+        $format = fn ($rows) => $rows->groupBy('staff_id')->map(fn ($staffRows) => $staffRows
+            ->filter(fn ($row) => abs((float) $row->amount) > 0.0001)
+            ->map(fn ($row) => [
+                'store_location_id' => $row->store_location_id === null ? null : (int) $row->store_location_id,
+                'branch_name' => $row->store_location_id === null ? 'Unassigned' : (string) ($row->branch_name ?: 'Unassigned'),
+                'branch_code' => $row->store_location_id === null
+                    ? 'Unassigned'
+                    : (string) ($row->branch_code ?: $row->branch_name ?: 'Unassigned'),
+                'amount' => round((float) $row->amount, 2),
+            ])->values()->all());
         $productByStaff = $format($productRows);
-        $serviceByStaff = $format($serviceRows);
 
         $sales = array_map(fn ($row) => [...$row, 'branch_breakdown' => $productByStaff->get($row['staff_id'], [])], $sales);
-        $services = array_map(fn ($row) => [...$row, 'branch_breakdown' => $serviceByStaff->get($row['staff_id'], [])], $services);
+        $services = array_map(fn ($row) => [...$row, 'branch_breakdown' => $serviceByStaff[(int) $row['staff_id']] ?? []], $services);
 
         return [$sales, $services];
+    }
+
+    /**
+     * Per-staff × branch amounts for Services, matching bookingStaffCommissionSales rules.
+     *
+     * @return array<int, list<array{store_location_id: ?int, branch_name: string, branch_code: string, amount: float}>>
+     */
+    private function bookingStaffServiceBranchBreakdown(Carbon $start, Carbon $end): array
+    {
+        $amounts = []; // staff_id => [branchKey => amount]
+        $meta = []; // branchKey => [store_location_id, branch_name, branch_code]
+
+        $add = function (int $staffId, $storeLocationId, ?string $branchName, ?string $branchCode, float $amount) use (&$amounts, &$meta): void {
+            if (abs($amount) <= 0.0001) {
+                return;
+            }
+            $branchKey = $storeLocationId === null || $storeLocationId === '' ? 'unassigned' : (string) (int) $storeLocationId;
+            if (! isset($meta[$branchKey])) {
+                $meta[$branchKey] = [
+                    'store_location_id' => $branchKey === 'unassigned' ? null : (int) $storeLocationId,
+                    'branch_name' => $branchKey === 'unassigned' ? 'Unassigned' : (string) ($branchName ?: 'Unassigned'),
+                    'branch_code' => $branchKey === 'unassigned'
+                        ? 'Unassigned'
+                        : (string) ($branchCode ?: $branchName ?: 'Unassigned'),
+                ];
+            }
+            $amounts[$staffId][$branchKey] = ($amounts[$staffId][$branchKey] ?? 0.0) + $amount;
+        };
+
+        $settledBookingIds = $this->settledBookingIdsInRange($start, $end);
+        if ($settledBookingIds !== []) {
+            $packageClaimBookingIds = $this->bookingIdsWithPackageClaimRedemption($settledBookingIds);
+            $bookingSplitSalesSql = StaffSplitNormalizer::splitSalesSql(
+                'order_item_staff_splits',
+                $this->effectiveBookingLineTotalExpr(),
+            );
+
+            $splitRowsQuery = $this->applyOrderScope(
+                DB::table('order_item_staff_splits')
+                    ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
+                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                    ->leftJoin('store_locations as branch', 'branch.id', '=', 'orders.store_location_id')
+                    ->whereIn('order_items.booking_id', $settledBookingIds)
+                    ->whereIn('order_items.line_type', self::BOOKING_STAFF_SALES_LINE_TYPES),
+                'orders'
+            );
+            $this->excludePackageRefundedBookingDeposits($splitRowsQuery, 'order_items', $packageClaimBookingIds);
+            $splitRows = $splitRowsQuery
+                ->selectRaw('order_item_staff_splits.staff_id as staff_id')
+                ->selectRaw('orders.store_location_id as store_location_id')
+                ->selectRaw('branch.name as branch_name')
+                ->selectRaw("COALESCE(NULLIF(TRIM(branch.display_code), ''), branch.code) as branch_code")
+                ->selectRaw("({$bookingSplitSalesSql}) as split_amount")
+                ->get();
+
+            foreach ($splitRows as $row) {
+                $add(
+                    (int) $row->staff_id,
+                    $row->store_location_id,
+                    $row->branch_name !== null ? (string) $row->branch_name : null,
+                    $row->branch_code !== null ? (string) $row->branch_code : null,
+                    (float) $row->split_amount,
+                );
+            }
+
+            $lineTotal = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+            $fallbackLineTotal = "GREATEST($lineTotal, ".$this->packageRedemptionLineValueExpr('order_items').')';
+            $fallbackItemsQuery = $this->applyOrderScope(
+                DB::table('order_items')
+                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                    ->leftJoin('store_locations as branch', 'branch.id', '=', 'orders.store_location_id')
+                    ->whereIn('order_items.booking_id', $settledBookingIds)
+                    ->whereIn('order_items.line_type', self::BOOKING_STAFF_SALES_LINE_TYPES)
+                    ->whereNotExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('order_item_staff_splits')
+                            ->whereColumn('order_item_staff_splits.order_item_id', 'order_items.id');
+                    }),
+                'orders'
+            );
+            $this->excludePackageRefundedBookingDeposits($fallbackItemsQuery, 'order_items', $packageClaimBookingIds);
+            $fallbackItems = $fallbackItemsQuery
+                ->selectRaw('order_items.id as order_item_id')
+                ->selectRaw('order_items.booking_id as booking_id')
+                ->selectRaw('orders.store_location_id as store_location_id')
+                ->selectRaw('branch.name as branch_name')
+                ->selectRaw("COALESCE(NULLIF(TRIM(branch.display_code), ''), branch.code) as branch_code")
+                ->selectRaw("$fallbackLineTotal as line_amount")
+                ->get();
+
+            if ($fallbackItems->isNotEmpty()) {
+                $fallbackBookingIds = $fallbackItems->pluck('booking_id')->unique()->values()->all();
+                $bookingSplits = DB::table('booking_service_staff_splits')
+                    ->whereIn('booking_service_staff_splits.booking_id', $fallbackBookingIds)
+                    ->get(['booking_id', 'staff_id', 'split_percent', 'share_amount'])
+                    ->groupBy('booking_id');
+                $bookingStaffFallback = ReportBranchScope::applyCurrent(DB::table('bookings'), 'bookings.store_location_id')
+                    ->whereIn('bookings.id', $fallbackBookingIds)
+                    ->whereNotNull('bookings.staff_id')
+                    ->get(['bookings.id as booking_id', 'bookings.staff_id'])
+                    ->keyBy('booking_id');
+
+                foreach ($fallbackItems as $item) {
+                    $bookingId = (int) $item->booking_id;
+                    $lineAmount = (float) $item->line_amount;
+                    $splits = $bookingSplits->get($bookingId);
+                    if ($splits && $splits->isNotEmpty()) {
+                        foreach ($splits as $split) {
+                            $shareAmount = (float) ($split->share_amount ?? 0);
+                            $sharePercent = (float) $split->split_percent;
+                            $splitAmount = $shareAmount > 0
+                                ? $shareAmount
+                                : $lineAmount * ($sharePercent / 100);
+                            $add(
+                                (int) $split->staff_id,
+                                $item->store_location_id,
+                                $item->branch_name !== null ? (string) $item->branch_name : null,
+                                $item->branch_code !== null ? (string) $item->branch_code : null,
+                                $splitAmount,
+                            );
+                        }
+                    } elseif (isset($bookingStaffFallback[$bookingId])) {
+                        $add(
+                            (int) $bookingStaffFallback[$bookingId]->staff_id,
+                            $item->store_location_id,
+                            $item->branch_name !== null ? (string) $item->branch_name : null,
+                            $item->branch_code !== null ? (string) $item->branch_code : null,
+                            $lineAmount,
+                        );
+                    }
+                }
+            }
+        }
+
+        $bookingProductSplitSalesSql = StaffSplitNormalizer::splitSalesSql(
+            'order_item_staff_splits',
+            $this->effectiveBookingLineTotalExpr(),
+        );
+        $productRows = $this->applyOrderScope(
+            DB::table('order_item_staff_splits')
+                ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->leftJoin('store_locations as branch', 'branch.id', '=', 'orders.store_location_id')
+                ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end])
+                ->where('order_items.line_type', 'booking_product'),
+            'orders'
+        )
+            ->groupBy(
+                'order_item_staff_splits.staff_id',
+                'orders.store_location_id',
+                'branch.name',
+                'branch.code',
+                'branch.display_code',
+            )
+            ->selectRaw('order_item_staff_splits.staff_id as staff_id')
+            ->selectRaw('orders.store_location_id as store_location_id')
+            ->selectRaw('branch.name as branch_name')
+            ->selectRaw("COALESCE(NULLIF(TRIM(branch.display_code), ''), branch.code) as branch_code")
+            ->selectRaw("COALESCE(SUM({$bookingProductSplitSalesSql}), 0) as amount")
+            ->get();
+
+        foreach ($productRows as $row) {
+            $add(
+                (int) $row->staff_id,
+                $row->store_location_id,
+                $row->branch_name !== null ? (string) $row->branch_name : null,
+                $row->branch_code !== null ? (string) $row->branch_code : null,
+                (float) $row->amount,
+            );
+        }
+
+        $out = [];
+        foreach ($amounts as $staffId => $byBranch) {
+            $rows = [];
+            foreach ($byBranch as $branchKey => $amount) {
+                $info = $meta[$branchKey];
+                $rows[] = [
+                    'store_location_id' => $info['store_location_id'],
+                    'branch_name' => $info['branch_name'],
+                    'branch_code' => $info['branch_code'],
+                    'amount' => round((float) $amount, 2),
+                ];
+            }
+            usort($rows, fn ($a, $b) => $b['amount'] <=> $a['amount']);
+            $out[(int) $staffId] = $rows;
+        }
+
+        return $out;
     }
 
     /**

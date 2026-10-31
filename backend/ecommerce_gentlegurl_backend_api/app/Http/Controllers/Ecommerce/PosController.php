@@ -6011,19 +6011,6 @@ class PosController extends Controller
             return $this->respondError(__('Product is not available at this Branch.'), 422);
         }
 
-        $this->validateActiveBranchItem($cart, $resolvedProduct, $variant, $qty);
-
-        if ($variant) {
-            $availableQty = $this->resolveVariantAvailableQty($variant);
-            if ($availableQty !== null && $availableQty < $qty) {
-                return $this->respondError(__('Insufficient stock.'), 422);
-            }
-        }
-
-        if (! $variant && $resolvedProduct->track_stock && (int) $resolvedProduct->stock < $qty) {
-            return $this->respondError(__('Insufficient stock.'), 422);
-        }
-
         $pricing = ProductPricing::build($resolvedProduct, $variant);
         $unitPrice = (float) ($pricing['effective_price'] ?? $variant?->sale_price ?? $variant?->price ?? $resolvedProduct->sale_price ?? $resolvedProduct->price ?? 0);
 
@@ -6039,18 +6026,14 @@ class PosController extends Controller
         $item->variant_id = $variant?->id;
         $item->product_id = $variant ? null : $resolvedProduct->id;
 
-        $this->validateActiveBranchItem($cart, $resolvedProduct, $variant, (int) $item->qty);
-
-        if ($variant) {
-            $availableQty = $this->resolveVariantAvailableQty($variant);
-            if ($availableQty !== null && $item->qty > $availableQty) {
-                return $this->respondError(__('Insufficient stock.'), 422);
-            }
-        }
-
-        if (! $variant && $resolvedProduct->track_stock && $item->qty > (int) $resolvedProduct->stock) {
-            return $this->respondError(__('Insufficient stock.'), 422);
-        }
+        // Whole-cart check: bundle component demand + regular SKUs share stock.
+        $this->validateCartStockForProposedLine(
+            $cart,
+            $resolvedProduct,
+            $variant,
+            (int) $item->qty,
+            $item->exists ? (int) $item->id : null,
+        );
 
         Log::debug('POS addResolvedToCart branch', [
             'flow' => $flow,
@@ -6930,10 +6913,17 @@ class PosController extends Controller
 
             $finalQty = $qty + (int) ($duplicateItem?->qty ?? 0);
 
-            $targetAvailableQty = $this->resolveVariantAvailableQty($targetVariant);
-            if ($targetAvailableQty !== null && $finalQty > $targetAvailableQty) {
-                return $this->respondError(__('Insufficient stock.'), 422);
-            }
+            // Exclude the line being edited (and any duplicate merge target) from the base cart,
+            // then project the merged qty onto the target variant for whole-cart stock checks.
+            $excludeIds = array_values(array_filter([(int) $item->id, $duplicateItem ? (int) $duplicateItem->id : null]));
+            $this->validateCartStockForProposedLine(
+                $cart,
+                $targetVariant->product,
+                $targetVariant,
+                $finalQty,
+                null,
+                $excludeIds,
+            );
 
             $pricing = ProductPricing::build($targetVariant->product, $targetVariant);
             $unitPrice = (float) ($pricing['effective_price'] ?? $targetVariant->sale_price ?? $targetVariant->price ?? $targetVariant->product->sale_price ?? $targetVariant->product->price ?? 0);
@@ -6963,18 +6953,7 @@ class PosController extends Controller
 
         $resolvedProduct = $item->variant?->product ?? $item->product;
         if ($resolvedProduct) {
-            $this->validateActiveBranchItem($cart, $resolvedProduct, $item->variant, $qty);
-        }
-
-        if ($item->variant) {
-            $availableQty = $this->resolveVariantAvailableQty($item->variant);
-            if ($availableQty !== null && $qty > $availableQty) {
-                return $this->respondError(__('Insufficient stock.'), 422);
-            }
-        }
-
-        if (! $item->variant && $item->product?->track_stock && $qty > (int) $item->product->stock) {
-            return $this->respondError(__('Insufficient stock.'), 422);
+            $this->validateCartStockForProposedLine($cart, $resolvedProduct, $item->variant, $qty, (int) $item->id);
         }
 
         $item->qty = $qty;
@@ -9199,7 +9178,10 @@ class PosController extends Controller
                 }
             }
 
-            if (! app(\App\Services\Ecommerce\PosBranchInventoryService::class)->deduct($cart, $order, (int) $request->user()->id)) {
+            $posBranchInventory = app(\App\Services\Ecommerce\PosBranchInventoryService::class);
+            if (! $posBranchInventory->deduct($cart, $order, (int) $request->user()->id)) {
+                // Legacy global stock: still aggregate bundle components + regulars before deducting.
+                $posBranchInventory->validateCart($cart, false);
                 $this->deductPosCheckoutStock($cart, (int) $request->user()->id);
             }
             $this->replaceOrderPayments($order, $paymentRows, 'pos_checkout');
@@ -10653,16 +10635,30 @@ class PosController extends Controller
         }
     }
 
-    protected function validateActiveBranchItem(PosCart $cart, Product $product, ?ProductVariant $variant, int $quantity): void
-    {
-        if (! app(\App\Services\Ecommerce\OrderBranchInventoryService::class)->isActive((int) $cart->store_location_id)) {
-            return;
-        }
-        app(\App\Services\Ecommerce\PickupFulfillmentService::class)->validateAtBranch((int) $cart->store_location_id, [[
-            'product_id' => (int) $product->id,
-            'product_variant_id' => $variant?->id,
-            'quantity' => $quantity,
-        ]]);
+    /**
+     * Validate stock for the cart after applying one product line change.
+     * Aggregates bundle component demand with regular SKUs (shared physical stock).
+     *
+     * @param  list<int>  $excludeCartItemIds  extra cart lines to omit from the base projection
+     */
+    protected function validateCartStockForProposedLine(
+        PosCart $cart,
+        Product $product,
+        ?ProductVariant $variant,
+        int $quantity,
+        ?int $replaceCartItemId = null,
+        array $excludeCartItemIds = [],
+    ): void {
+        app(\App\Services\Ecommerce\PosBranchInventoryService::class)->validateCartWithProposedLine(
+            $cart,
+            [
+                'product_id' => (int) $product->id,
+                'product_variant_id' => $variant?->id,
+                'quantity' => $quantity,
+            ],
+            $replaceCartItemId,
+            $excludeCartItemIds,
+        );
     }
 
     public function sendReceiptEmail(Request $request, int $orderId)

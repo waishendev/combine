@@ -55,6 +55,52 @@ class Phase8CInventoryWriterConversionTest extends TestCase
         catch (ValidationException) { $this->assertSame(1, $this->qty($a, $product, $one)); $this->assertSame(0, $this->qty($a, $product, $two)); }
     }
 
+    public function test_add_to_cart_rejects_when_bundle_and_component_share_insufficient_stock(): void
+    {
+        $branch = $this->branch('A');
+        $product = $this->product('KIT');
+        $component = $this->variant($product, 'ONE');
+        $bundle = $this->variant($product, 'BUNDLE', true);
+        ProductVariantBundleItem::create([
+            'bundle_variant_id' => $bundle->id,
+            'component_variant_id' => $component->id,
+            'quantity' => 1,
+        ]);
+        $this->sellAt($product, $branch);
+        $this->stock($branch, $product, 5, $component);
+
+        $user = User::factory()->create();
+        $cart = PosCart::create(['staff_user_id' => $user->id, 'store_location_id' => $branch->id]);
+        PosCartItem::create([
+            'pos_cart_id' => $cart->id,
+            'variant_id' => $bundle->id,
+            'qty' => 5,
+            'price_snapshot' => 1,
+        ]);
+
+        $service = app(PosBranchInventoryService::class);
+
+        // 5 bundles already claim all 5 component units — adding 1 regular must fail.
+        try {
+            $service->validateCartWithProposedLine($cart, [
+                'product_id' => (int) $product->id,
+                'product_variant_id' => (int) $component->id,
+                'quantity' => 1,
+            ]);
+            $this->fail('Expected shared component stock to block add.');
+        } catch (ValidationException $exception) {
+            $this->assertNotEmpty($exception->errors()['inventory'] ?? $exception->errors()['unavailable_items'] ?? []);
+        }
+
+        // After lowering bundles to 4, one regular unit fits exactly.
+        $cart->items()->first()->update(['qty' => 4]);
+        $service->validateCartWithProposedLine($cart, [
+            'product_id' => (int) $product->id,
+            'product_variant_id' => (int) $component->id,
+            'quantity' => 1,
+        ]);
+    }
+
     public function test_canonical_adjustment_projection_and_replay_do_not_create_stock(): void
     {
         [$a, $b] = [$this->branch('A'), $this->branch('B')]; $product = $this->product('P');
