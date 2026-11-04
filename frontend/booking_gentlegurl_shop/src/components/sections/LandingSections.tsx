@@ -156,7 +156,6 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
   const [lightboxImages, setLightboxImages] = useState<LandingGalleryItem[] | null>(null);
   const [loadedLightboxSrcs, setLoadedLightboxSrcs] = useState<Set<string>>(() => new Set());
   const [lightboxImageError, setLightboxImageError] = useState(false);
-  const [openFaqId, setOpenFaqId] = useState<string | null>(null);
   const [isLightboxMounted, setIsLightboxMounted] = useState(false);
 
   const activeLightboxSrc =
@@ -246,7 +245,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
           <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
             <Image
               src={image.src || "/images/dummy.webp"}
-              alt={image.caption || `Image ${idx + 1}`}
+              alt={asDisplayText(image.caption) || ""}
               fill
               className="object-cover transition duration-300 group-hover:scale-[1.02]"
               sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw"
@@ -401,7 +400,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
                     >
                       <Image
                         src={imageSrc}
-                        alt={image.caption || `Image ${index + 1}`}
+                        alt={asDisplayText(image.caption) || ""}
                         fill
                         className={`object-contain transition-opacity duration-300 ${isVisible ? "opacity-100" : "opacity-0"}`}
                         sizes="100vw"
@@ -480,7 +479,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
                   >
                     <Image
                       src={artist.src || "/images/dummy.webp"}
-                      alt={artist.caption || `Artist ${idx + 1}`}
+                      alt={asDisplayText(artist.caption) || ""}
                       fill
                       className="object-cover transition duration-300 group-hover:scale-[1.02]"
                       sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw"
@@ -518,21 +517,21 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
             </p>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid items-stretch gap-6 md:grid-cols-3">
             {nailItems.map((course, idx) => (
               <article
                 key={`nail-academy-${idx}`}
-                className="flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-[0_16px_40px_-32px_rgba(17,24,39,0.45)]"
+                className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-[0_16px_40px_-32px_rgba(17,24,39,0.45)]"
               >
                 <button
                   type="button"
                   onClick={() => openLightbox(idx, nailLightboxItems)}
-                  className="group relative aspect-square w-full cursor-zoom-in overflow-hidden bg-[var(--background-soft)] text-left transition hover:opacity-95"
+                  className="group relative aspect-square w-full shrink-0 cursor-zoom-in overflow-hidden bg-[var(--background-soft)] text-left transition hover:opacity-95"
                   aria-label={`Zoom ${course.title || `Course ${idx + 1}`}`}
                 >
                   <Image
                     src={course.src || "/images/dummy.webp"}
-                    alt={course.title || `Course ${idx + 1}`}
+                    alt={course.title || ""}
                     fill
                     className="object-cover transition duration-300 group-hover:scale-[1.02]"
                     sizes="(min-width: 1024px) 33vw, 100vw"
@@ -544,38 +543,40 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
                   ) : null}
                 </button>
 
-                <div className={`flex flex-1 flex-col gap-4 p-5 pt-6 ${getTextAlignClass(course.text_align)}`}>
+                <div className={`flex min-h-0 flex-1 flex-col gap-4 p-5 pt-6 ${getTextAlignClass(course.text_align)}`}>
                   {course.title ? (
-                    <h3 className="font-serif text-xl font-semibold leading-snug text-[var(--foreground)]">{course.title}</h3>
+                    <h3 className="shrink-0 font-serif text-xl font-semibold leading-snug text-[var(--foreground)]">{course.title}</h3>
                   ) : null}
 
-                  {course.target_audience ? (
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                        {asDisplayText(nailAcademy.target_label) || "面向对象"}
-                      </p>
-                      <p className="text-sm leading-relaxed text-[var(--foreground)]/85">{course.target_audience}</p>
-                    </div>
-                  ) : null}
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin] max-h-[18rem] sm:max-h-[20rem]">
+                    {course.target_audience ? (
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                          {asDisplayText(nailAcademy.target_label) || "面向对象"}
+                        </p>
+                        <p className="text-sm leading-relaxed text-[var(--foreground)]/85">{course.target_audience}</p>
+                      </div>
+                    ) : null}
 
-                  {course.curriculum.length > 0 ? (
-                    <div className="space-y-2">
-                      <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                        {asDisplayText(nailAcademy.curriculum_label) || "教学核心"}
-                      </p>
-                      <ul className="space-y-2 text-sm leading-relaxed text-[var(--foreground)]/80">
-                        {course.curriculum.map((line, lineIdx) => (
-                          <li key={lineIdx} className="flex gap-2">
-                            <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]" />
-                            <span>{line}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
+                    {course.curriculum.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                          {asDisplayText(nailAcademy.curriculum_label) || "教学核心"}
+                        </p>
+                        <ul className="space-y-2 text-sm leading-relaxed text-[var(--foreground)]/80">
+                          {course.curriculum.map((line, lineIdx) => (
+                            <li key={lineIdx} className="flex gap-2">
+                              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]" />
+                              <span>{line}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
 
                   {course.details_link ? (
-                    <div className="mt-auto border-t border-[var(--card-border)] pt-4">
+                    <div className="mt-auto shrink-0 border-t border-[var(--card-border)] pt-4">
                       <Link
                         href={course.details_link}
                         className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)] underline-offset-4 hover:underline"
@@ -596,10 +597,9 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
         <section className="space-y-6">
           {renderSectionHeading(sections.faqs.heading ?? { label: "FAQ", title: "You might be wondering", align: "left" }, "accent")}
 
-          <div className="grid gap-4 sm:grid-cols-2 items-start">
+          <div className="grid items-start gap-4 sm:grid-cols-2">
             {faqItems.map((item, index) => {
               const faqId = `faq-${index}`;
-              const isOpen = openFaqId === faqId;
               const hasBulletPoints = item.answer.includes("•") || item.answer.includes("-");
               const answerLines = hasBulletPoints
                 ? item.answer
@@ -616,38 +616,23 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
               return (
                 <div
                   key={faqId}
-                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1"
+                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-5 shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)]"
                 >
-                  <button
-                    type="button"
-                    onClick={() => setOpenFaqId(isOpen ? null : faqId)}
-                    className="flex w-full cursor-pointer items-center justify-between gap-3 text-left text-sm font-semibold text-[var(--foreground)]"
-                  >
-                    <span>{item.question}</span>
-                    <span
-                      className={`rounded-full bg-[var(--badge-background)] px-3 py-1 text-xs text-[var(--foreground)]/70 transition ${
-                        isOpen ? "rotate-45" : ""
-                      }`}
-                    >
-                      +
-                    </span>
-                  </button>
-                  {isOpen && (
-                    <div className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">
-                      {hasBulletPoints && answerLines.length > 1 ? (
-                        <ul className="space-y-2">
-                          {answerLines.map((line, lineIndex) => (
-                            <li key={lineIndex} className="flex items-start gap-2">
-                              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]/70" />
-                              <span>{line}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p>{item.answer}</p>
-                      )}
-                    </div>
-                  )}
+                  <h3 className="text-sm font-semibold text-[var(--foreground)]">{item.question}</h3>
+                  <div className="mt-3 text-sm leading-relaxed text-[var(--foreground)]/70">
+                    {hasBulletPoints && answerLines.length > 1 ? (
+                      <ul className="space-y-2">
+                        {answerLines.map((line, lineIndex) => (
+                          <li key={lineIndex} className="flex items-start gap-2">
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]/70" />
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>{item.answer}</p>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -850,14 +835,22 @@ function normalizeVisitStudioHours(raw: unknown): LandingVisitStudioHoursRow[] {
 }
 
 function normalizeCurriculumLines(raw: unknown): string[] {
+  const isMeaningful = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    // Placeholder leftovers from incomplete CMS cards
+    if (trimmed === "." || trimmed.toLowerCase() === "null") return false;
+    return true;
+  };
+
   if (Array.isArray(raw)) {
-    return raw.map((x) => asDisplayText(x)).filter((x) => x.length > 0);
+    return raw.map((x) => asDisplayText(x)).filter(isMeaningful);
   }
   if (typeof raw === "string") {
     return raw
       .split("\n")
       .map((s) => asDisplayText(s))
-      .filter((s) => s.length > 0);
+      .filter(isMeaningful);
   }
   return [];
 }

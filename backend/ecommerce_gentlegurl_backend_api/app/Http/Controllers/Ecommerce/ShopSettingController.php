@@ -77,7 +77,7 @@ class ShopSettingController extends Controller
             'footer' => SettingService::get('footer', $this->defaultFooterSetting(), $type),
             'invoice_profile' => SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfileSetting(), $type),
             'page_reviews' => SettingService::get('page_reviews', [
-                'enabled' => true,
+                'enabled' => false,
             ], $type),
             'product_reviews' => SettingService::get('product_reviews', [
                 'enabled' => true,
@@ -134,7 +134,7 @@ class ShopSettingController extends Controller
             'footer' => $this->defaultFooterSetting(),
             'invoice_profile' => $this->defaultInvoiceProfileSetting(),
             'page_reviews' => [
-                'enabled' => true,
+                'enabled' => false,
             ],
             'product_reviews' => [
                 'enabled' => true,

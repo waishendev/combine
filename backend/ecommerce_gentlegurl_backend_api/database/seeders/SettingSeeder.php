@@ -23,7 +23,7 @@ class SettingSeeder extends Seeder
             ],
             ['key' => 'new_products', 'value' => ['days' => 30]],
             ['key' => 'best_sellers', 'value' => ['days' => 60]],
-            ['key' => 'page_reviews', 'value' => ['enabled' => true]],
+            ['key' => 'page_reviews', 'value' => ['enabled' => false]],
             ['key' => 'product_reviews', 'value' => ['enabled' => true, 'review_window_days' => 30]],
             ['key' => 'ecommerce.return_window_days', 'value' => 7],
             ['key' => 'ecommerce.return_tracking_submit_days', 'value' => 7],

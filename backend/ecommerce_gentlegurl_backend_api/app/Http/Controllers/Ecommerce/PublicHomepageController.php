@@ -195,7 +195,7 @@ class PublicHomepageController extends Controller
                 'homepage_products' => SettingService::get('homepage_products', $this->defaultHomepageProducts(), $type),
                 'shipping' => SettingService::get('shipping', $this->defaultShippingSetting(), $type),
                 'footer' => SettingService::get('footer', $this->defaultFooterSetting(), $type),
-                'page_reviews' => SettingService::get('page_reviews', ['enabled' => true], $type),
+                'page_reviews' => SettingService::get('page_reviews', ['enabled' => false], $type),
             ];
 
             // Booking-only settings needed by booking frontend (public).

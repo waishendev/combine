@@ -6,6 +6,22 @@ const nextConfig: NextConfig = {
 
   reactCompiler: true,
 
+  // Store Reviews retired — keep old /reviews URLs from indexing as an empty review page.
+  async redirects() {
+    return [
+      {
+        source: "/reviews",
+        destination: "/",
+        permanent: true,
+      },
+      {
+        source: "/reviews/:path*",
+        destination: "/",
+        permanent: true,
+      },
+    ];
+  },
+
   images: {
     remotePatterns: [
       {

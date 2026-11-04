@@ -18,7 +18,7 @@ class PublicPageReviewController extends Controller
 
     public function settings(): JsonResponse
     {
-        $config = SettingService::get('page_reviews', ['enabled' => true]);
+        $config = SettingService::get('page_reviews', ['enabled' => false]);
 
         return $this->respond([
             'enabled' => (bool) data_get($config, 'enabled', false),
@@ -57,7 +57,7 @@ class PublicPageReviewController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $config = SettingService::get('page_reviews', ['enabled' => true]);
+        $config = SettingService::get('page_reviews', ['enabled' => false]);
 
         if (!data_get($config, 'enabled', false)) {
             return $this->respond(null, 'Page reviews are disabled.', false, 403);
