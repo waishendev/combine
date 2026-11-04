@@ -29,8 +29,8 @@ export default async function HomePage() {
       : "Effortless silhouettes, luxe textures, everyday confidence.";
 
   return (
-    <main className="bg-gradient-to-b from-transparent via-[var(--card)]/60 to-transparent pb-16">
-      <div className="mx-auto max-w-6xl space-y-14 px-4 pt-8 sm:px-6 lg:px-8">
+    <main className="bg-gradient-to-b from-transparent via-[var(--card)]/60 to-transparent pb-8">
+      <div className="mx-auto max-w-6xl space-y-14 px-4 pt-8 pb-0 sm:px-6 lg:px-8">
         {data.sliders && data.sliders.length > 0 && (
           <section className="space-y-6">
             {sliderIntro?.is_active !== false ? (

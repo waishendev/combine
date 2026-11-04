@@ -150,22 +150,28 @@ class LandingPageController extends Controller
                 'visit_studio' => [
                     'is_active' => true,
                     'heading' => ['label' => '', 'title' => 'Visit Our Studio', 'align' => 'left'],
-                    'studio_name' => '',
-                    'address' => '',
-                    'google_maps_url' => '',
-                    'waze_url' => '',
-                    'whatsapp_phone' => '',
-                    'whatsapp_message' => 'Hi! I would like to get in touch about your salon services.',
-                    'google_maps_label' => 'GOOGLE MAPS',
-                    'waze_label' => 'OPEN WAZE',
-                    'whatsapp_label' => 'MESSAGE US ON WHATSAPP',
-                    'opening_hours_heading' => 'Opening Hours',
-                    'opening_hours' => [
-                        ['day_range' => 'Monday — Friday', 'time_range' => '11:00 AM — 6:30 PM'],
-                        ['day_range' => 'Saturday — Sunday', 'time_range' => '9:00 AM — 4:30 PM'],
+                    'locations' => [
+                        [
+                            'is_active' => true,
+                            'tab_label' => 'Location 1',
+                            'studio_name' => '',
+                            'address' => '',
+                            'google_maps_url' => '',
+                            'waze_url' => '',
+                            'whatsapp_phone' => '',
+                            'whatsapp_message' => 'Hi! I would like to get in touch about your salon services.',
+                            'google_maps_label' => 'GOOGLE MAPS',
+                            'waze_label' => 'OPEN WAZE',
+                            'whatsapp_label' => 'MESSAGE US ON WHATSAPP',
+                            'opening_hours_heading' => 'Opening Hours',
+                            'opening_hours' => [
+                                ['day_range' => 'Monday — Friday', 'time_range' => '11:00 AM — 6:30 PM'],
+                                ['day_range' => 'Saturday — Sunday', 'time_range' => '9:00 AM — 4:30 PM'],
+                            ],
+                            'bottom_label' => '',
+                            'column_order' => 'contact_left',
+                        ],
                     ],
-                    'bottom_label' => '',
-                    'column_order' => 'contact_left',
                 ],
             ],
         ];
@@ -327,15 +333,108 @@ class LandingPageController extends Controller
             if (isset($value['items']) && is_array($value['items'])) {
                 $sections[$key]['items'] = array_values(is_array($sections[$key]['items'] ?? null) ? $sections[$key]['items'] : []);
             }
-            if ($key === 'visit_studio' && isset($sections[$key]['opening_hours']) && is_array($sections[$key]['opening_hours'])) {
-                $sections[$key]['opening_hours'] = array_values($sections[$key]['opening_hours']);
-            }
             if ($key === 'visit_studio') {
-                $co = $sections[$key]['column_order'] ?? 'contact_left';
-                $sections[$key]['column_order'] = $co === 'hours_left' ? 'hours_left' : 'contact_left';
+                $sections[$key] = $this->normalizeVisitStudioSection($sections[$key], is_array($value) ? $value : []);
             }
         }
         return $sections;
+    }
+
+    /**
+     * @param  array<string, mixed>  $section
+     * @param  array<string, mixed>  $defaults
+     * @return array<string, mixed>
+     */
+    private function normalizeVisitStudioSection(array $section, array $defaults): array
+    {
+        $defaultLocation = is_array($defaults['locations'][0] ?? null) ? $defaults['locations'][0] : [
+            'is_active' => true,
+            'tab_label' => 'Location 1',
+            'studio_name' => '',
+            'address' => '',
+            'google_maps_url' => '',
+            'waze_url' => '',
+            'whatsapp_phone' => '',
+            'whatsapp_message' => 'Hi! I would like to get in touch about your salon services.',
+            'google_maps_label' => 'GOOGLE MAPS',
+            'waze_label' => 'OPEN WAZE',
+            'whatsapp_label' => 'MESSAGE US ON WHATSAPP',
+            'opening_hours_heading' => 'Opening Hours',
+            'opening_hours' => [],
+            'bottom_label' => '',
+            'column_order' => 'contact_left',
+        ];
+
+        $locations = [];
+        if (isset($section['locations']) && is_array($section['locations']) && $section['locations'] !== []) {
+            foreach (array_values($section['locations']) as $index => $rawLocation) {
+                if (! is_array($rawLocation)) {
+                    continue;
+                }
+                $locations[] = $this->normalizeVisitStudioLocation($rawLocation, $defaultLocation, $index);
+            }
+        } else {
+            // Legacy flat single-studio payload.
+            $locations[] = $this->normalizeVisitStudioLocation($section, $defaultLocation, 0);
+        }
+
+        if ($locations === []) {
+            $locations[] = $defaultLocation;
+        }
+
+        return [
+            'is_active' => (bool) ($section['is_active'] ?? $defaults['is_active'] ?? true),
+            'heading' => is_array($section['heading'] ?? null)
+                ? array_merge(is_array($defaults['heading'] ?? null) ? $defaults['heading'] : [], $section['heading'])
+                : ($defaults['heading'] ?? ['label' => '', 'title' => 'Visit Our Studio', 'align' => 'left']),
+            'locations' => $locations,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     * @param  array<string, mixed>  $defaults
+     * @return array<string, mixed>
+     */
+    private function normalizeVisitStudioLocation(array $raw, array $defaults, int $index): array
+    {
+        $merged = array_merge($defaults, $raw);
+        $hours = [];
+        if (isset($merged['opening_hours']) && is_array($merged['opening_hours'])) {
+            foreach (array_values($merged['opening_hours']) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $hours[] = [
+                    'day_range' => (string) ($row['day_range'] ?? ''),
+                    'time_range' => (string) ($row['time_range'] ?? ''),
+                ];
+            }
+        }
+
+        $studioName = (string) ($merged['studio_name'] ?? '');
+        $tabLabel = trim((string) ($merged['tab_label'] ?? ''));
+        if ($tabLabel === '') {
+            $tabLabel = $studioName !== '' ? $studioName : 'Location '.($index + 1);
+        }
+
+        return [
+            'is_active' => array_key_exists('is_active', $merged) ? (bool) $merged['is_active'] : true,
+            'tab_label' => $tabLabel,
+            'studio_name' => $studioName,
+            'address' => (string) ($merged['address'] ?? ''),
+            'google_maps_url' => (string) ($merged['google_maps_url'] ?? ''),
+            'waze_url' => (string) ($merged['waze_url'] ?? ''),
+            'whatsapp_phone' => (string) ($merged['whatsapp_phone'] ?? ''),
+            'whatsapp_message' => (string) ($merged['whatsapp_message'] ?? $defaults['whatsapp_message'] ?? ''),
+            'google_maps_label' => (string) ($merged['google_maps_label'] ?? $defaults['google_maps_label'] ?? 'GOOGLE MAPS'),
+            'waze_label' => (string) ($merged['waze_label'] ?? $defaults['waze_label'] ?? 'OPEN WAZE'),
+            'whatsapp_label' => (string) ($merged['whatsapp_label'] ?? $defaults['whatsapp_label'] ?? 'MESSAGE US ON WHATSAPP'),
+            'opening_hours_heading' => (string) ($merged['opening_hours_heading'] ?? $defaults['opening_hours_heading'] ?? 'Opening Hours'),
+            'opening_hours' => $hours,
+            'bottom_label' => (string) ($merged['bottom_label'] ?? ''),
+            'column_order' => (($merged['column_order'] ?? 'contact_left') === 'hours_left') ? 'hours_left' : 'contact_left',
+        ];
     }
 
     private function normalizeAlign(?string $align): string

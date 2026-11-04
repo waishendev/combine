@@ -500,9 +500,12 @@ export type LandingVisitStudioHoursRow = {
   time_range: string;
 };
 
-export type LandingVisitStudio = {
-  is_active: boolean;
-  heading: LandingHeading;
+/** One physical branch/studio card inside Visit Our Studio. */
+export type LandingVisitStudioLocation = {
+  /** When false, location is hidden on the shop (kept in CRM). Defaults to true. */
+  is_active?: boolean;
+  /** Short branch label, e.g. George Town */
+  tab_label: string;
   studio_name: string;
   address: string;
   google_maps_url: string;
@@ -519,6 +522,41 @@ export type LandingVisitStudio = {
   /** Two lines of small footer copy under opening hours (paste line break between lines). */
   bottom_label: string;
   column_order: "contact_left" | "hours_left";
+};
+
+export type LandingVisitStudio = {
+  is_active: boolean;
+  heading: LandingHeading;
+  /** Preferred multi-branch shape. Legacy flat fields below are wrapped into locations[0] on read. */
+  locations: LandingVisitStudioLocation[];
+  /** @deprecated use locations[] */
+  studio_name?: string;
+  /** @deprecated use locations[] */
+  address?: string;
+  /** @deprecated use locations[] */
+  google_maps_url?: string;
+  /** @deprecated use locations[] */
+  waze_url?: string;
+  /** @deprecated use locations[] */
+  whatsapp_phone?: string;
+  /** @deprecated use locations[] */
+  whatsapp_message?: string;
+  /** @deprecated use locations[] */
+  whatsapp_url?: string;
+  /** @deprecated use locations[] */
+  google_maps_label?: string;
+  /** @deprecated use locations[] */
+  waze_label?: string;
+  /** @deprecated use locations[] */
+  whatsapp_label?: string;
+  /** @deprecated use locations[] */
+  opening_hours_heading?: string;
+  /** @deprecated use locations[] */
+  opening_hours?: LandingVisitStudioHoursRow[];
+  /** @deprecated use locations[] */
+  bottom_label?: string;
+  /** @deprecated use locations[] */
+  column_order?: "contact_left" | "hours_left";
 };
 
 export type LandingSections = {

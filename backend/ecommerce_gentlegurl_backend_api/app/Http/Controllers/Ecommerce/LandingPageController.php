@@ -111,6 +111,17 @@ class LandingPageController extends Controller
         return [
             'is_active' => true,
             'heading' => ['label' => '', 'title' => 'Visit Our Studio', 'align' => 'left'],
+            'locations' => [
+                $this->defaultVisitStudioLocation(0),
+            ],
+        ];
+    }
+
+    private function defaultVisitStudioLocation(int $index = 0): array
+    {
+        return [
+            'is_active' => true,
+            'tab_label' => 'Location '.($index + 1),
             'studio_name' => '',
             'address' => '',
             'google_maps_url' => '',
@@ -177,9 +188,37 @@ class LandingPageController extends Controller
             ? $heading['align']
             : 'left';
 
+        $rawLocations = $visitStudio['locations'] ?? null;
+        if (! is_array($rawLocations) || $rawLocations === []) {
+            $rawLocations = [$visitStudio];
+        }
+
+        $locations = [];
+        foreach (array_values($rawLocations) as $index => $raw) {
+            if (! is_array($raw)) {
+                continue;
+            }
+            $locations[] = $this->normalizeVisitStudioLocation($raw, $index);
+        }
+
+        if ($locations === []) {
+            $locations[] = $this->defaultVisitStudioLocation(0);
+        }
+
+        return [
+            'is_active' => (bool) ($visitStudio['is_active'] ?? $defaults['is_active']),
+            'heading' => $heading,
+            'locations' => array_values($locations),
+        ];
+    }
+
+    private function normalizeVisitStudioLocation(array $location, int $index): array
+    {
+        $defaults = $this->defaultVisitStudioLocation($index);
+
         $openingHours = [];
-        if (isset($visitStudio['opening_hours']) && is_array($visitStudio['opening_hours'])) {
-            foreach ($visitStudio['opening_hours'] as $row) {
+        if (isset($location['opening_hours']) && is_array($location['opening_hours'])) {
+            foreach ($location['opening_hours'] as $row) {
                 if (! is_array($row)) {
                     continue;
                 }
@@ -189,10 +228,13 @@ class LandingPageController extends Controller
                 ];
             }
         }
+        if ($openingHours === []) {
+            $openingHours = $defaults['opening_hours'];
+        }
 
-        $legacyUrl = trim((string) ($visitStudio['whatsapp_url'] ?? ''));
-        $phone = trim((string) ($visitStudio['whatsapp_phone'] ?? ''));
-        $message = trim((string) ($visitStudio['whatsapp_message'] ?? ''));
+        $legacyUrl = trim((string) ($location['whatsapp_url'] ?? ''));
+        $phone = trim((string) ($location['whatsapp_phone'] ?? ''));
+        $message = trim((string) ($location['whatsapp_message'] ?? ''));
 
         if ($phone === '' && $legacyUrl !== '') {
             $phone = $this->extractPhoneFromWhatsAppUrl($legacyUrl);
@@ -202,25 +244,32 @@ class LandingPageController extends Controller
             $message = $fromUrl !== '' ? $fromUrl : $defaults['whatsapp_message'];
         }
 
-        $columnOrder = ($visitStudio['column_order'] ?? 'contact_left') === 'hours_left'
+        $bottomLabel = trim((string) ($location['bottom_label'] ?? ''));
+
+        $tabLabel = trim((string) ($location['tab_label'] ?? ''));
+        if ($tabLabel === '') {
+            $tabLabel = $defaults['tab_label'];
+        }
+
+        $columnOrder = ($location['column_order'] ?? 'contact_left') === 'hours_left'
             ? 'hours_left'
             : 'contact_left';
 
         return [
-            'is_active' => (bool) ($visitStudio['is_active'] ?? $defaults['is_active']),
-            'heading' => $heading,
-            'studio_name' => trim((string) ($visitStudio['studio_name'] ?? '')),
-            'address' => trim((string) ($visitStudio['address'] ?? '')),
-            'google_maps_url' => trim((string) ($visitStudio['google_maps_url'] ?? '')),
-            'waze_url' => trim((string) ($visitStudio['waze_url'] ?? '')),
+            'is_active' => array_key_exists('is_active', $location) ? (bool) $location['is_active'] : true,
+            'tab_label' => $tabLabel,
+            'studio_name' => trim((string) ($location['studio_name'] ?? '')),
+            'address' => trim((string) ($location['address'] ?? '')),
+            'google_maps_url' => trim((string) ($location['google_maps_url'] ?? '')),
+            'waze_url' => trim((string) ($location['waze_url'] ?? '')),
             'whatsapp_phone' => $phone,
             'whatsapp_message' => $message,
-            'google_maps_label' => trim((string) ($visitStudio['google_maps_label'] ?? $defaults['google_maps_label'])),
-            'waze_label' => trim((string) ($visitStudio['waze_label'] ?? $defaults['waze_label'])),
-            'whatsapp_label' => trim((string) ($visitStudio['whatsapp_label'] ?? $defaults['whatsapp_label'])),
-            'opening_hours_heading' => trim((string) ($visitStudio['opening_hours_heading'] ?? $defaults['opening_hours_heading'])),
+            'google_maps_label' => trim((string) ($location['google_maps_label'] ?? $defaults['google_maps_label'])),
+            'waze_label' => trim((string) ($location['waze_label'] ?? $defaults['waze_label'])),
+            'whatsapp_label' => trim((string) ($location['whatsapp_label'] ?? $defaults['whatsapp_label'])),
+            'opening_hours_heading' => trim((string) ($location['opening_hours_heading'] ?? $defaults['opening_hours_heading'])),
             'opening_hours' => array_values($openingHours),
-            'bottom_label' => trim((string) ($visitStudio['bottom_label'] ?? '')),
+            'bottom_label' => $bottomLabel,
             'column_order' => $columnOrder,
         ];
     }

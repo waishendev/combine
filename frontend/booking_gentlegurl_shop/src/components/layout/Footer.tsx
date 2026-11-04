@@ -74,7 +74,7 @@ export function Footer({ footer }: { footer?: HomepageFooter | null }) {
 
   return (
     <footer className="bg-[var(--background)] text-[var(--foreground)]">
-      <div className="mx-auto w-full max-w-6xl px-6 pt-14">
+      <div className="mx-auto w-full max-w-6xl px-6 pt-8 sm:pt-10">
         {/* Top */}
         <div className="grid gap-12 md:grid-cols-12">
           {/* Brand */}
