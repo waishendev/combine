@@ -587,9 +587,9 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
             <Link href="/tracking" className="whitespace-nowrap rounded-lg px-2.5 py-2 font-medium transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]">
               Tracking
             </Link>
-            <Link href="/reviews" className="whitespace-nowrap rounded-lg px-2.5 py-2 font-medium transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]">
+            {/* <Link href="/reviews" className="whitespace-nowrap rounded-lg px-2.5 py-2 font-medium transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]">
               Store Reviews
-            </Link>
+            </Link> */}
           </nav>
         </div>
 
@@ -1112,13 +1112,13 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                 Tracking
               </Link>
 
-              <Link
+              {/* <Link
                 href="/reviews"
                 className="flex min-h-[48px] touch-manipulation items-center rounded-xl px-4 py-3 text-base font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)] active:bg-[var(--muted)]/70"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Store Reviews
-              </Link>
+              </Link> */}
             </nav>
             </div>
           </div>

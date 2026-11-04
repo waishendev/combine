@@ -240,9 +240,9 @@ export default function PreviewHeader({ mode }: PreviewHeaderProps) {
             <a href="#" className="transition-colors hover:text-[var(--accent-strong)]">
               Tracking
             </a>
-            <a href="#" className="transition-colors hover:text-[var(--accent-strong)]">
+            {/* <a href="#" className="transition-colors hover:text-[var(--accent-strong)]">
               Store Reviews
-            </a>
+            </a> */}
           </nav>
         </div>
 

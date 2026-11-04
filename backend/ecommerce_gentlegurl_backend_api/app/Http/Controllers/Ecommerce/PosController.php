@@ -6087,6 +6087,11 @@ class PosController extends Controller
 
         $exact = mb_strtolower($query);
 
+        // Name search is product-centric so zero-variant items (e.g. gift cards) are findable.
+        if (! $isBarcodeSearch) {
+            return $this->respond($this->searchPosProductsByName($branch, $query, $exact, $page, $perPage, $categoryId));
+        }
+
         $variants = ProductVariant::query()
             ->with(['product', 'product.images', 'bundleItems.componentVariant'])
             ->where('is_active', true)
@@ -6096,7 +6101,7 @@ class PosController extends Controller
             ->when($categoryId > 0, function ($builder) use ($categoryId) {
                 $builder->whereHas('product.categories', fn ($categoryQuery) => $categoryQuery->where('categories.id', $categoryId));
             })
-            ->where(function ($builder) use ($query, $exact, $isBarcodeSearch) {
+            ->where(function ($builder) use ($query, $exact) {
                 $builder
                     ->where('product_variants.barcode', $query)
                     ->orWhereRaw('LOWER(product_variants.barcode) = ?', [$exact])
@@ -6104,7 +6109,7 @@ class PosController extends Controller
                     ->orWhere('product_variants.sku', $query)
                     ->orWhereRaw('LOWER(product_variants.sku) = ?', [$exact])
                     ->orWhere('product_variants.sku', 'like', "%{$query}%")
-                    ->orWhereHas('product', function ($productQuery) use ($query, $exact, $isBarcodeSearch) {
+                    ->orWhereHas('product', function ($productQuery) use ($query, $exact) {
                         $productQuery
                             ->where('products.barcode', $query)
                             ->orWhereRaw('LOWER(products.barcode) = ?', [$exact])
@@ -6112,10 +6117,6 @@ class PosController extends Controller
                             ->orWhere('products.sku', $query)
                             ->orWhereRaw('LOWER(products.sku) = ?', [$exact])
                             ->orWhere('products.sku', 'like', "%{$query}%");
-
-                        if (! $isBarcodeSearch) {
-                            $productQuery->orWhere('products.name', 'like', "%{$query}%");
-                        }
                     });
             })
             ->orderByRaw('CASE WHEN product_variants.barcode = ? THEN 0 ELSE 1 END', [$query])
@@ -6200,6 +6201,131 @@ class PosController extends Controller
             'per_page' => $variants->perPage(),
             'total' => $variants->total(),
         ]);
+    }
+
+    /**
+     * POS name search across product (+ variant) fields, including products with zero variants.
+     *
+     * @return array{data: \Illuminate\Support\Collection<int, array<string, mixed>>, current_page: int, last_page: int, per_page: int, total: int}
+     */
+    protected function searchPosProductsByName($branch, string $query, string $exact, int $page, int $perPage, int $categoryId): array
+    {
+        $products = Product::query()
+            ->posEligibleAtBranch((int) $branch->id)
+            ->when($categoryId > 0, fn ($builder) => $builder->whereHas('categories', fn ($categories) => $categories->whereKey($categoryId)))
+            ->where(function ($search) use ($query, $exact) {
+                $search
+                    ->where('products.name', 'like', "%{$query}%")
+                    ->orWhere('products.cn_name', 'like', "%{$query}%")
+                    ->orWhere('products.sku', 'like', "%{$query}%")
+                    ->orWhere('products.barcode', 'like', "%{$query}%")
+                    ->orWhereRaw('LOWER(products.sku) = ?', [$exact])
+                    ->orWhereRaw('LOWER(products.barcode) = ?', [$exact])
+                    ->orWhereHas('variants', function ($variantQuery) use ($query, $exact) {
+                        $variantQuery
+                            ->where('product_variants.is_active', true)
+                            ->where(function ($inner) use ($query, $exact) {
+                                $inner
+                                    ->where('product_variants.title', 'like', "%{$query}%")
+                                    ->orWhere('product_variants.cn_name', 'like', "%{$query}%")
+                                    ->orWhere('product_variants.sku', 'like', "%{$query}%")
+                                    ->orWhere('product_variants.barcode', 'like', "%{$query}%")
+                                    ->orWhereRaw('LOWER(product_variants.sku) = ?', [$exact])
+                                    ->orWhereRaw('LOWER(product_variants.barcode) = ?', [$exact]);
+                            });
+                    });
+            })
+            ->with([
+                'images',
+                'variants' => fn ($variants) => $variants->where('is_active', true)->with('bundleItems.componentVariant')->orderBy('sort_order')->orderBy('id'),
+                'branchInventories' => fn ($inventory) => $inventory->where('store_location_id', $branch->id),
+            ])
+            ->orderByRaw('CASE WHEN LOWER(products.name) = ? THEN 0 ELSE 1 END', [$exact])
+            ->orderByRaw('CASE WHEN products.name LIKE ? THEN 0 ELSE 1 END', [$query.'%'])
+            ->orderBy('name')
+            ->orderBy('id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $bundleVariants = collect($products->items())
+            ->flatMap(fn (Product $product) => $product->variants->where('is_bundle', true))
+            ->values();
+        $componentVariantIds = $bundleVariants
+            ->flatMap(fn (ProductVariant $variant) => $variant->bundleItems->pluck('component_variant_id'))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        $componentQtyById = $componentVariantIds === []
+            ? []
+            : StoreLocationProductInventory::query()
+                ->where('store_location_id', (int) $branch->id)
+                ->whereIn('product_variant_id', $componentVariantIds)
+                ->get()
+                ->mapWithKeys(fn ($row) => [(int) $row->product_variant_id => (int) $row->quantity])
+                ->all();
+
+        $data = collect($products->items())->map(function (Product $product) use ($componentQtyById) {
+            $inventory = $product->branchInventories->keyBy(
+                fn ($row) => $row->product_variant_id === null ? 'product' : 'variant:'.$row->product_variant_id
+            );
+            $pricing = ProductPricing::build($product, null);
+            $activeVariants = $product->variants->values();
+            $defaultVariant = $activeVariants->first();
+
+            $variants = $activeVariants->map(function (ProductVariant $variant) use ($product, $inventory, $componentQtyById) {
+                if ($variant->is_bundle) {
+                    $variant->applyBranchComponentStockQuantities($componentQtyById);
+                }
+                $variantPricing = ProductPricing::build($product, $variant);
+                $stock = $variant->is_bundle
+                    ? $variant->derivedAvailableQty()
+                    : (int) ($inventory->get('variant:'.$variant->id)?->quantity ?? 0);
+
+                return [
+                    'id' => (int) $variant->id,
+                    'name' => (string) $variant->title,
+                    'title' => (string) $variant->title,
+                    'cn_name' => $variant->cn_name,
+                    'sku' => (string) ($variant->sku ?? ''),
+                    'barcode' => $variant->barcode,
+                    'price' => (float) ($variantPricing['effective_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
+                    'sale_price' => $variant->sale_price,
+                    'image_url' => $variant->image_url ?? $product->cover_image_url,
+                    'is_active' => (bool) $variant->is_active,
+                    'is_bundle' => (bool) $variant->is_bundle,
+                    'track_stock' => (bool) $variant->track_stock,
+                    'stock' => $stock,
+                    'derived_available_qty' => $variant->is_bundle ? $variant->derivedAvailableQty() : null,
+                ];
+            })->values();
+
+            return [
+                'id' => (int) $product->id,
+                'product_id' => (int) $product->id,
+                'name' => (string) $product->name,
+                'cn_name' => $product->cn_name,
+                'sku' => (string) ($product->sku ?? ''),
+                'barcode' => $product->barcode,
+                'price' => (float) ($pricing['effective_price'] ?? $product->sale_price ?? $product->price ?? 0),
+                'thumbnail_url' => $product->cover_image_url,
+                'cover_image_url' => $product->cover_image_url,
+                'is_staff_free' => (bool) ($product->is_staff_free ?? false),
+                'track_stock' => (bool) $product->track_stock,
+                'stock' => (int) ($inventory->get('product')?->quantity ?? 0),
+                'variants_count' => $variants->count(),
+                'default_variant_id' => $defaultVariant?->id,
+                'variants' => $variants,
+            ];
+        })->values();
+
+        return [
+            'data' => $data,
+            'current_page' => $products->currentPage(),
+            'last_page' => $products->lastPage(),
+            'per_page' => $products->perPage(),
+            'total' => $products->total(),
+        ];
     }
 
     public function productCatalog(Request $request)

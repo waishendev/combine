@@ -1723,7 +1723,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [selectedBranchId])
 
   const [productQuery, setProductQuery] = useState('')
-  const [debouncedSkuQuery, setDebouncedSkuQuery] = useState('')
+  /** Committed product search keyword (debounced or Search/Enter). Empty = catalog browse. */
+  const [debouncedProductQuery, setDebouncedProductQuery] = useState('')
   const [productSearchMode, setProductSearchMode] = useState<ProductSearchMode>('name')
   const [products, setProducts] = useState<ProductOption[]>([])
   const [productPage, setProductPage] = useState(1)
@@ -2134,15 +2135,18 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     return new Date(start.getTime() + durationMin * 60 * 1000).toISOString()
   }, [getSettlementDurationMin])
 
-  const normalizedProductQuery = useMemo(() => {
-    const source = productSearchMode === 'barcode' ? debouncedSkuQuery : productQuery
-    return source.trim().toLowerCase()
-  }, [debouncedSkuQuery, productQuery, productSearchMode])
+  const normalizedProductQuery = useMemo(
+    () => debouncedProductQuery.trim().toLowerCase(),
+    [debouncedProductQuery],
+  )
   const normalizeSkuSearchValue = useCallback((value: string | null | undefined) => value?.trim().toLowerCase() ?? '', [])
   const effectiveServerProductQuery = useMemo(
-    () => (productSearchMode === 'barcode' ? debouncedSkuQuery.trim() : ''),
-    [debouncedSkuQuery, productSearchMode],
+    () => debouncedProductQuery.trim(),
+    [debouncedProductQuery],
   )
+  const commitProductSearch = useCallback(() => {
+    setDebouncedProductQuery(productQuery)
+  }, [productQuery])
   const findMatchedVariantBarcode = useCallback((item: ProductOption, keyword: string) => {
     if (!keyword) return null
 
@@ -2157,12 +2161,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     return null
   }, [normalizeSkuSearchValue])
   const visibleProductHits = useMemo<ProductSearchHit[]>(() => {
+    // Server already filtered when effectiveServerProductQuery is non-empty.
+    // Client only enriches matched variant highlight for the grid card.
     if (!normalizedProductQuery) {
       return products.map((product) => ({ product }))
     }
 
     if (productSearchMode === 'name') {
-      return products.flatMap((product) => {
+      return products.map((product) => {
         const productName = product.name?.toLowerCase() ?? ''
         const productCnName = product.cn_name?.toLowerCase() ?? ''
 
@@ -2170,7 +2176,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           productName.includes(normalizedProductQuery) ||
           productCnName.includes(normalizedProductQuery)
         ) {
-          return [{ product }]
+          return { product }
         }
 
         const matchedVariant = (product.variants ?? []).find((variant) => {
@@ -2183,14 +2189,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
           )
         })
 
-        if (!matchedVariant) return []
+        if (!matchedVariant) {
+          return { product }
+        }
 
-        return [{
+        return {
           product,
           matchedVariantId: matchedVariant.id,
           matchedVariantSku: matchedVariant.sku,
           matchedVariantName: matchedVariant.name,
-        }]
+        }
       })
     }
 
@@ -3315,7 +3323,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     options?: FetchProductOptions & { categoryId?: number | null },
   ) => {
     if (!selectedBranchId) return
-    const requestKey = `${selectedBranchId}:${page}:${keyword.trim()}:${options?.categoryId ?? ''}:${append ? 'append' : 'replace'}`
+    const requestKey = `${selectedBranchId}:${productSearchMode}:${page}:${keyword.trim()}:${options?.categoryId ?? ''}:${append ? 'append' : 'replace'}`
     if (productRequestInFlightKeyRef.current === requestKey) return
     productRequestAbortControllerRef.current?.abort()
     const controller = new AbortController()
@@ -3361,6 +3369,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         }
         const paged = extractPaged<ProductOption>(json)
         mapped = paged.data.map((item) => {
+          // Name search returns product-shaped rows (incl. zero-variant gift cards).
+          // Barcode search still returns variant-centric rows.
+          if (productSearchMode === 'name') {
+            const normalized = normalizeProductFromApi(item as unknown as ProductApiItem)
+            if (normalized) return normalized
+          }
+
           const resolvedProductId = Number(item.product_id)
           const productImages = Array.isArray(item.images) ? item.images : undefined
           const coverImageUrl = resolvePosCatalogCoverImageUrl({
@@ -6349,21 +6364,23 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [cart, cartItems.length, cartServiceItems.length, cartPackageItems.length, cartAppointmentSettlementItems.length])
 
   useEffect(() => {
-    if (productSearchMode !== 'barcode') {
-      setDebouncedSkuQuery('')
+    // Clear immediately so the grid returns to catalog browse without waiting.
+    if (productQuery.trim() === '') {
+      setDebouncedProductQuery('')
       return
     }
 
+    const delayMs = productSearchMode === 'barcode' ? 180 : 400
     const handle = window.setTimeout(() => {
-      setDebouncedSkuQuery(productQuery)
-    }, 180)
+      setDebouncedProductQuery(productQuery)
+    }, delayMs)
 
     return () => window.clearTimeout(handle)
   }, [productQuery, productSearchMode])
 
   useEffect(() => {
     void fetchProductPage(1, effectiveServerProductQuery, false, { categoryId: selectedCategoryId })
-  }, [effectiveServerProductQuery, fetchProductPage, selectedCategoryId])
+  }, [effectiveServerProductQuery, fetchProductPage, productSearchMode, selectedCategoryId])
 
   useEffect(() => {
     const previousCategoryId = Number(previousCategoryIdRef.current)
@@ -9037,13 +9054,19 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   </button>
                 </div>
 
-                <div className="relative">
+                <div className="relative min-w-0">
                   <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <input
                     value={productQuery}
                     onChange={(e) => setProductQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        commitProductSearch()
+                      }
+                    }}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                     placeholder={
                       productSearchMode === 'name'
