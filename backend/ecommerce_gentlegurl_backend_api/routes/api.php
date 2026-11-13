@@ -1777,6 +1777,14 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.schedules.update');
     Route::post('/off-days/{id}/cancel', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'cancelOffDay'])
         ->middleware('permission:booking.schedules.update');
+
+    // Leave Calendar Details Edit / Cancel / sync Off Day to another Branch (Admin + infra + superAdmin)
+    Route::post('/leave-calendar/off-days', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'storeOffDay'])
+        ->middleware('permission:booking.leave.calendar.manage');
+    Route::put('/leave-calendar/off-days/{id}', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'updateOffDay'])
+        ->middleware('permission:booking.leave.calendar.manage');
+    Route::post('/leave-calendar/off-days/{id}/cancel', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'cancelOffDay'])
+        ->middleware('permission:booking.leave.calendar.manage');
     Route::get('/leave-balances', [\App\Http\Controllers\Admin\Booking\LeaveBalanceController::class, 'index'])
         ->middleware('permission:booking.schedules.view');
     Route::put('/leave-balances/{staffId}', [\App\Http\Controllers\Admin\Booking\LeaveBalanceController::class, 'upsert'])

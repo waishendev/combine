@@ -424,9 +424,12 @@ function LeaveCalendarErrorBanner({ message }: { message: string }) {
 
 export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLeaveCalendarPageProps) {
   const { selectedBranchId, isAllBranches } = useBranch()
-  const canUpdate = permissions.includes('booking.schedules.update')
-  /** Off Days / By Weekday / By Year — not for branch Admin. */
+  /** Leave Calendar Details Edit / Cancel / sync Off Day to another Branch. */
+  const canManageLeaveCalendar = permissions.includes('booking.leave.calendar.manage')
+  /** Off Days / By Weekday / By Year — infra / SuperAdmin only. */
   const canManageOffDayTools = permissions.includes('booking.off_day_generations.view')
+  const canUpdate = canManageLeaveCalendar
+  const leaveCalendarOffDayBase = '/api/proxy/admin/booking/leave-calendar/off-days'
   const now = new Date()
   const [month, setMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
   const [staffFilter, setStaffFilter] = useState('')
@@ -753,9 +756,11 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     }
     const existingIds = [...existingByBranch.keys()]
 
-    // Concrete Branch tab: never transfer / add / remove other Branches — dates only.
+    // Multi-branch tick sync (add/remove Branch coverage) for users with leave calendar manage.
+    const canSyncBranches = isAllBranches && canManageLeaveCalendar && editingGroup.leave_type === 'off_day'
+
     let selectedBranchIds: number[]
-    if (!isAllBranches) {
+    if (!isAllBranches || !canManageLeaveCalendar) {
       selectedBranchIds = existingIds.length > 0
         ? existingIds
         : (selectedBranchId !== null ? [selectedBranchId] : [])
@@ -767,15 +772,15 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     }
 
     if (selectedBranchIds.length === 0) {
-      setError(isAllBranches ? 'Select at least one Branch.' : 'No Branch on this leave record.')
+      setError(canSyncBranches ? 'Select at least one Branch.' : 'No Branch on this leave record.')
       return
     }
 
     const toKeep = selectedBranchIds.filter((id) => existingByBranch.has(id))
-    const toAdd = isAllBranches && editingGroup.leave_type === 'off_day'
+    const toAdd = canSyncBranches
       ? selectedBranchIds.filter((id) => !existingByBranch.has(id))
       : []
-    const toRemove = isAllBranches && editingGroup.leave_type === 'off_day'
+    const toRemove = canSyncBranches
       ? existingIds.filter((id) => !selectedBranchIds.includes(id))
       : []
 
@@ -785,7 +790,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       for (const branchId of toKeep) {
         const item = existingByBranch.get(branchId)
         if (!item) continue
-        const res = await fetch(`/api/proxy/admin/booking/off-days/${item.id}`, {
+        const res = await fetch(`${leaveCalendarOffDayBase}/${item.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -802,7 +807,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       }
 
       for (const branchId of toAdd) {
-        const res = await fetch('/api/proxy/admin/booking/off-days', {
+        const res = await fetch(leaveCalendarOffDayBase, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -822,7 +827,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       for (const branchId of toRemove) {
         const item = existingByBranch.get(branchId)
         if (!item) continue
-        const res = await fetch(`/api/proxy/admin/booking/off-days/${item.id}/cancel`, {
+        const res = await fetch(`${leaveCalendarOffDayBase}/${item.id}/cancel`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
@@ -868,7 +873,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     try {
       const errors: string[] = []
       for (const target of cancelTargets) {
-        const res = await fetch(`/api/proxy/admin/booking/off-days/${target.id}/cancel`, {
+        const res = await fetch(`${leaveCalendarOffDayBase}/${target.id}/cancel`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
@@ -1578,9 +1583,9 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                           </>
                         ) : (
                           <p className="mt-1 text-xs text-slate-500">
-                            {isAllBranches && group.leave_type === 'off_day'
+                            {isAllBranches && canManageLeaveCalendar && group.leave_type === 'off_day'
                               ? 'Change dates and tick the Branches this Off Day should cover. Untick to remove from a Branch.'
-                              : 'Update the date/reason for this Branch only. Switch to All Branches to move or cover other Branches.'}
+                              : 'Update the date/reason for this leave only.'}
                           </p>
                         )}
                       </div>
@@ -1601,7 +1606,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                       <div className="mt-4 space-y-3">
                         {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
-                        {isAllBranches && group.leave_type === 'off_day' ? (
+                        {isAllBranches && canManageLeaveCalendar && group.leave_type === 'off_day' ? (
                           <MultiBranchCheckboxField
                             branches={staffBranches}
                             values={editOffDayForm.store_location_ids}
@@ -1622,11 +1627,9 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                                 </span>
                               ))}
                             </div>
-                            {!isAllBranches ? (
-                              <p className="mt-1 text-[11px] text-slate-500">
-                                Branch cannot be changed here. Open All Branches to transfer or cover other Branches.
-                              </p>
-                            ) : null}
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Branch cannot be changed here. Open All Branches to transfer or cover other Branches.
+                            </p>
                           </div>
                         )}
 
