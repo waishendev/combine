@@ -237,6 +237,12 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
             requiredPermission: 'ecommerce.reports.sales.view',
           },
           {
+            key: 'monthly-services-report',
+            label: 'Monthly Services Report',
+            href: '/reports/monthly-services',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
             key: 'product-profit-report',
             label: 'Product Profit Report',
             href: '/reports/product-profit',

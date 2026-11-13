@@ -70,6 +70,7 @@ use App\Http\Controllers\Ecommerce\Reports\MyStaffSalesReportController;
 use App\Http\Controllers\Ecommerce\Reports\PosSummaryReportController;
 use App\Http\Controllers\Ecommerce\Reports\SalesChannelReportController;
 use App\Http\Controllers\Ecommerce\Reports\WishlistReportController;
+use App\Http\Controllers\Ecommerce\Reports\MonthlyServicesReportController;
 use App\Http\Controllers\Ecommerce\Reports\ProductProfitReportController;
 use App\Http\Controllers\Ecommerce\Reports\ProfitLossReportController;
 use App\Http\Controllers\Ecommerce\Reports\CustomerSalesDomainReportController;
@@ -1555,6 +1556,9 @@ $protectedRoutes = function () {
             Route::get('/wishlist/products/{product}/inventory-detail', [WishlistReportController::class, 'inventoryDetail'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
             // END NEW ENHANCEMENT
+
+            Route::get('/monthly-services', [MonthlyServicesReportController::class, 'index'])
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             // NEW ENHANCEMENT — wishlist-product-profit-query-v1
             Route::get('/product-profit', [ProductProfitReportController::class, 'index'])
