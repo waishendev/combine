@@ -359,7 +359,7 @@ export default function PosCashShiftGate({
       return
     }
     if (!canUseAtm(poolBalances, atm)) {
-      setError('ATM amount cannot be used when Total Withdraw pool is empty or exceeds the pool balance.')
+      setError('Withdraw Pool (−) cannot be used when Total Withdraw pool is empty or exceeds the pool balance.')
       return
     }
 
@@ -417,7 +417,7 @@ export default function PosCashShiftGate({
       return
     }
     if (refillCash > poolBalances.total_initial_cash) {
-      setError('Refill cash cannot exceed the Total Initial Cash pool balance.')
+      setError('Initial Pool (−) cannot exceed the Total Initial Cash pool balance.')
       return
     }
 
@@ -603,22 +603,22 @@ export default function PosCashShiftGate({
                 {amountInput(openingAmount, setOpeningAmount, '0.00', opening)}
               </label>
               <label className="block text-sm font-semibold text-gray-700">
-                Refill Cash (Packet)
+                Initial Pool (+)
                 {amountInput(openingRefillPacket, setOpeningRefillPacket, 'Optional', opening)}
               </label>
               <label className="block text-sm font-semibold text-gray-700">
-                ATM
+                Withdraw Pool (−)
                 {amountInput(openingAtm, setOpeningAtm, atmInputDisabled ? 'Withdraw pool empty' : 'Optional', opening || atmInputDisabled)}
               </label>
             </div>
             {atmInputDisabled ? (
               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                ATM is disabled because Total Withdraw pool is empty. Close a shift with Withdraw first.
+                Withdraw Pool (−) is disabled because Total Withdraw pool is empty. Close a shift with Withdraw Pool (+) first.
               </p>
             ) : null}
             {openAtmInvalid ? (
               <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                ATM amount cannot exceed the current Total Withdraw pool ({currency(poolBalances.total_withdraw)}).
+                Withdraw Pool (−) cannot exceed the current Total Withdraw pool ({currency(poolBalances.total_withdraw)}).
               </p>
             ) : null}
             <div className="flex gap-2">
@@ -686,17 +686,17 @@ export default function PosCashShiftGate({
                 {amountInput(closingAmountInput, setClosingAmountInput, '0.00', closing)}
               </label>
               <label className="block text-sm font-semibold text-gray-700">
-                Withdraw
+                Withdraw Pool (+)
                 {amountInput(closingWithdraw, setClosingWithdraw, 'Optional', closing)}
               </label>
               <label className="block text-sm font-semibold text-gray-700">
-                Refill Cash
+                Initial Pool (−)
                 {amountInput(closingRefillCash, setClosingRefillCash, 'Optional', closing)}
               </label>
             </div>
             {closeRefillCashInvalid ? (
               <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                Refill cash cannot exceed the current Total Initial Cash pool ({currency(poolBalances.total_initial_cash)}).
+                Initial Pool (−) cannot exceed the current Total Initial Cash pool ({currency(poolBalances.total_initial_cash)}).
               </p>
             ) : null}
             <label className="block text-sm font-semibold text-gray-700 md:col-span-2">
