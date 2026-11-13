@@ -218,9 +218,9 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-3">
-        <label htmlFor="wishlist-page-size" className="text-sm text-gray-700">
-          Show
+      <div className="flex items-center justify-end gap-2">
+        <label htmlFor="wishlist-page-size" className="text-sm text-slate-600">
+          Rows
         </label>
         <select
           id="wishlist-page-size"
@@ -229,7 +229,7 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
             setPerPage(Number(e.target.value))
             setPage(1)
           }}
-          className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+          className="h-9 min-w-[4.5rem] rounded-lg border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
           disabled={loading}
         >
           {[15, 30, 50, 100].map((size) => (
@@ -242,79 +242,136 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 text-left">Product</th>
-                <th className="px-4 py-3 text-left">SKU</th>
-                <th className="px-4 py-3 text-left">Category</th>
-                <th className="px-4 py-3 text-right">Customer Wishlist</th>
-                <th className="px-4 py-3 text-right">Guest Wishlist</th>
-                <th className="px-4 py-3 text-right">Total Wishlist</th>
-                <th className="px-4 py-3 text-right">Stock</th>
-                <th className="px-4 py-3 text-left">Last Wishlisted</th>
-                <th className="px-4 py-3 text-center">Action</th>
+          <table className="min-w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-blue-100 bg-blue-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-blue-900">
+                <th className="px-4 py-3.5 text-left">Product</th>
+                <th className="px-4 py-3.5 text-left">SKU</th>
+                <th className="px-4 py-3.5 text-left">Category</th>
+                <th className="px-4 py-3.5 text-right">Customer Wishlist</th>
+                <th className="px-4 py-3.5 text-right">Guest Wishlist</th>
+                <th className="px-4 py-3.5 text-right">Total Wishlist</th>
+                <th className="px-4 py-3.5 text-right">Stock</th>
+                <th className="px-4 py-3.5 text-left">Last Wishlisted</th>
+                <th className="px-4 py-3.5 text-center">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>Loading wishlist report...</td></tr>
+                <tr>
+                  <td className="px-4 py-16 text-center text-slate-500" colSpan={9}>
+                    <div className="inline-flex flex-col items-center gap-2">
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+                      <span className="text-sm">Loading wishlist…</span>
+                    </div>
+                  </td>
+                </tr>
               ) : error ? (
-                <tr><td className="px-4 py-6 text-center text-red-600" colSpan={9}>{error}</td></tr>
+                <tr>
+                  <td className="bg-rose-50 px-4 py-10 text-center" colSpan={9}>
+                    <div className="mx-auto max-w-md text-sm text-rose-700">{error}</div>
+                  </td>
+                </tr>
               ) : rows.length === 0 ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>No wishlist data found.</td></tr>
+                <tr>
+                  <td className="bg-slate-50 px-4 py-16 text-center" colSpan={9}>
+                    <p className="text-base font-medium tracking-tight text-slate-700">No wishlist data found</p>
+                    <p className="mt-1.5 text-xs tracking-wide text-slate-400">Try another date range or search</p>
+                  </td>
+                </tr>
               ) : (
-                rows.map((row) => (
-                  <tr
-                    className={`border-t ${row.stock_status === 'out_of_stock' && row.total_wishlist_count >= 3 ? 'bg-rose-50/80' : ''}`}
-                    key={row.product_id}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex min-w-[260px] items-center gap-3">
-                        {row.image_url ? (
-                          <img src={resolveImageUrl(row.image_url)} alt={row.product_name} className="h-10 w-10 rounded object-cover border" />
-                        ) : (
-                          <div className="h-10 w-10 rounded border bg-gray-100" />
-                        )}
-                        <div>
+                rows.map((row, index) => {
+                  const demandHot = row.stock_status === 'out_of_stock' && row.total_wishlist_count >= 3
+                  const zebra = demandHot ? 'bg-rose-50/80' : index % 2 === 0 ? 'bg-slate-50' : 'bg-white'
+                  return (
+                    <tr key={row.product_id} className="border-b border-slate-100 last:border-b-0">
+                      <td className={`px-4 py-3.5 ${zebra}`}>
+                        <div className="flex min-w-[260px] items-center gap-3">
+                          {row.image_url ? (
+                            <img
+                              src={resolveImageUrl(row.image_url)}
+                              alt={row.product_name}
+                              className="h-10 w-10 rounded-lg border border-slate-200 object-cover"
+                            />
+                          ) : (
+                            <div className="h-10 w-10 rounded-lg border border-slate-200 bg-slate-100" />
+                          )}
                           <NameStack
                             name={row.product_name}
                             cnName={row.product_cn_name}
-                            primaryClassName="font-medium text-slate-900"
+                            primaryClassName="font-medium text-slate-800"
                             secondaryClassName="mt-0.5 text-xs text-slate-500"
                           />
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">{row.sku || '-'}</td>
-                    <td className="px-4 py-3">{row.category_name || '-'}</td>
-                    <td className="px-4 py-3 text-right">{row.customer_wishlist_count}</td>
-                    <td className="px-4 py-3 text-right">{row.guest_wishlist_count}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{row.total_wishlist_count}</td>
-                    <td className="px-4 py-3 text-right">
-                      <StockBadge row={row} />
-                    </td>
-                    <td className="px-4 py-3">{row.last_wishlisted_at || '-'}</td>
-                    <td className="px-4 py-3 text-center">
-                      {row.has_variants ? (
-                        <button type="button" onClick={() => void openVariantDetail(row)} className="inline-flex rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50 hover:text-blue-600" aria-label={`View variant stock for ${row.product_name}`} title="View variant stock">
-                          <EyeIcon />
-                        </button>
-                      ) : <span className="text-slate-300">—</span>}
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className={`px-4 py-3.5 tabular-nums text-slate-600 ${zebra}`}>{row.sku || '—'}</td>
+                      <td className={`px-4 py-3.5 text-slate-600 ${zebra}`}>{row.category_name || '—'}</td>
+                      <td className={`px-4 py-3.5 text-right tabular-nums text-slate-800 ${zebra}`}>
+                        {row.customer_wishlist_count}
+                      </td>
+                      <td className={`px-4 py-3.5 text-right tabular-nums text-slate-800 ${zebra}`}>
+                        {row.guest_wishlist_count}
+                      </td>
+                      <td className={`px-4 py-3.5 text-right font-semibold tabular-nums text-slate-900 ${zebra}`}>
+                        {row.total_wishlist_count}
+                      </td>
+                      <td className={`px-4 py-3.5 text-right ${zebra}`}>
+                        <StockBadge row={row} />
+                      </td>
+                      <td className={`px-4 py-3.5 whitespace-nowrap text-slate-600 ${zebra}`}>
+                        {row.last_wishlisted_at || '—'}
+                      </td>
+                      <td className={`px-4 py-3.5 text-center ${zebra}`}>
+                        {row.has_variants ? (
+                          <button
+                            type="button"
+                            onClick={() => void openVariantDetail(row)}
+                            className="inline-flex rounded-lg border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            aria-label={`View variant stock for ${row.product_name}`}
+                            title="View variant stock"
+                          >
+                            <EyeIcon />
+                          </button>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-          <div className="text-slate-600">Showing {startItem} - {endItem} of {total}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3.5 text-sm">
+          <div className="text-slate-500">
+            Showing <span className="font-semibold text-slate-800">{startItem}</span>
+            {' – '}
+            <span className="font-semibold text-slate-800">{endItem}</span>
+            {' of '}
+            <span className="font-semibold text-slate-800">{total}</span>
+          </div>
           <div className="flex items-center gap-2">
-            <button className="rounded-md border px-3 py-1 disabled:opacity-50" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
-            <span className="text-slate-700">Page {page} / {lastPage}</span>
-            <button className="rounded-md border px-3 py-1 disabled:opacity-50" disabled={page >= lastPage || loading} onClick={() => setPage((p) => Math.min(lastPage, p + 1))}>Next</button>
+            <button
+              type="button"
+              className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Prev
+            </button>
+            <span className="min-w-[4.75rem] text-center text-slate-600">
+              {page} / {lastPage}
+            </span>
+            <button
+              type="button"
+              className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={page >= lastPage || loading}
+              onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>

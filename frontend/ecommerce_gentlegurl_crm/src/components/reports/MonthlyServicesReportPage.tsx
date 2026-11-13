@@ -46,17 +46,6 @@ type MonthlyServicesResponse = {
   }
 }
 
-const filterSelectClass =
-  'h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100'
-const filterYearSelectClass = `${filterSelectClass} w-[5.5rem]`
-const filterMonthSelectClass = `${filterSelectClass} w-[7rem]`
-const filterBoxClass =
-  'inline-flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm'
-const filterButtonPrimaryClass =
-  'h-9 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700'
-const filterButtonSecondaryClass =
-  'h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50'
-
 function currentYear() {
   return new Date().getFullYear()
 }
@@ -193,13 +182,19 @@ export default function MonthlyServicesReportPage({
   }, [summary])
 
   const pageTotals = useMemo(() => {
+    const afterVoid = rows.reduce((sum, row) => sum + row.amount, 0)
+    const voidAmount = rows.reduce((sum, row) => sum + row.void_amount, 0)
     return {
       times: rows.reduce((sum, row) => sum + row.times, 0),
-      voidTimes: rows.reduce((sum, row) => sum + row.void_times, 0),
-      amount: rows.reduce((sum, row) => sum + row.amount, 0),
-      voidAmount: rows.reduce((sum, row) => sum + row.void_amount, 0),
+      totalAmount: afterVoid + voidAmount,
+      amountAfterVoid: afterVoid,
     }
   }, [rows])
+
+  const grandTotalAmount = useMemo(() => {
+    if (!summary) return 0
+    return summary.net_amount + summary.total_void_amount
+  }, [summary])
 
   const startItem = useMemo(() => (total === 0 ? 0 : (page - 1) * perPage + 1), [page, perPage, total])
   const endItem = useMemo(() => Math.min(page * perPage, total), [page, perPage, total])
@@ -232,7 +227,6 @@ export default function MonthlyServicesReportPage({
       {summary && topCard ? (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Total Services Booked" value={fmtInt(summary.total_services_booked)} accent="blue" />
-          <SummaryCard label="Total Amount After Void" value={fmtRm(summary.net_amount)} accent="indigo" />
           <SummaryCard
             label={topCard.label}
             value={topCard.primary}
@@ -242,75 +236,79 @@ export default function MonthlyServicesReportPage({
             onView={topCard.showView ? () => setShowTiedServices(true) : undefined}
             viewLabel="View tied services"
           />
-          <SummaryCard
-            label="Void + Refunded Amount"
-            value={fmtRm(summary.void_plus_refund_amount)}
-            secondary={
-              summary.total_refund_amount > 0 || summary.total_void_amount > 0
-                ? `Void ${fmtRm(summary.total_void_amount)} · Refund ${fmtRm(summary.total_refund_amount)}`
-                : undefined
-            }
-            accent="rose"
-          />
+          <SummaryCard label="Total Amount" value={fmtRm(grandTotalAmount)} accent="indigo" />
+          <SummaryCard label="Total Amount After Void" value={fmtRm(summary.net_amount)} accent="rose" />
         </div>
       ) : null}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className={filterBoxClass}>
-            <div>
-              <label className="text-xs text-gray-500">Year</label>
-              <select className={`${filterYearSelectClass} mt-1 block`} value={year} onChange={(e) => setYear(Number(e.target.value))}>
-                {yearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Month From</label>
-              <select
-                className={`${filterMonthSelectClass} mt-1 block`}
-                value={monthFrom}
-                onChange={(e) => setMonthFrom(Number(e.target.value))}
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                  <option key={m} value={m}>
-                    {monthShort(m)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Month To</label>
-              <select
-                className={`${filterMonthSelectClass} mt-1 block`}
-                value={monthTo}
-                onChange={(e) => setMonthTo(Number(e.target.value))}
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                  <option key={m} value={m}>
-                    {monthShort(m)}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-12">
+          <div className="md:col-span-2">
+            <label className="text-xs text-gray-500">Year</label>
+            <select
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="flex gap-2">
-            <button type="button" className={filterButtonPrimaryClass} onClick={applyFilters} disabled={loading}>
+          <div className="md:col-span-2">
+            <label className="text-xs text-gray-500">Month From</label>
+            <select
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              value={monthFrom}
+              onChange={(e) => setMonthFrom(Number(e.target.value))}
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>
+                  {monthShort(m)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs text-gray-500">Month To</label>
+            <select
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              value={monthTo}
+              onChange={(e) => setMonthTo(Number(e.target.value))}
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>
+                  {monthShort(m)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-2 md:col-span-6 md:justify-end">
+            <button
+              type="button"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              onClick={applyFilters}
+              disabled={loading}
+            >
               Apply
             </button>
-            <button type="button" className={filterButtonSecondaryClass} onClick={resetFilters} disabled={loading}>
+            <button
+              type="button"
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              onClick={resetFilters}
+              disabled={loading}
+            >
               Reset
             </button>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-3">
-        <label htmlFor="monthly-services-page-size" className="text-sm text-gray-700">
-          Show
+      <div className="flex items-center justify-end gap-2">
+        <label htmlFor="monthly-services-page-size" className="text-sm text-slate-600">
+          Rows
         </label>
         <select
           id="monthly-services-page-size"
@@ -319,7 +317,7 @@ export default function MonthlyServicesReportPage({
             setPerPage(Number(e.target.value))
             setPage(1)
           }}
-          className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+          className="h-9 min-w-[4.5rem] rounded-lg border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
           disabled={loading}
         >
           {[15, 30, 50, 100].map((size) => (
@@ -332,92 +330,122 @@ export default function MonthlyServicesReportPage({
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 text-left">Service</th>
-                <th className="px-4 py-3 text-right">Times</th>
-                <th className="px-4 py-3 text-right">Void</th>
-                <th className="px-4 py-3 text-right">Amount After Void</th>
-                <th className="px-4 py-3 text-right">Void Amount</th>
+          <table className="min-w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-blue-100 bg-blue-50 text-[11px] font-semibold uppercase tracking-[0.06em] text-blue-900">
+                <th className="px-4 py-3.5 text-left">Service</th>
+                <th className="px-4 py-3.5 text-right">Times</th>
+                <th className="px-4 py-3.5 text-right">Total Amount</th>
+                <th className="px-4 py-3.5 text-right">Amount After Void</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td className="px-4 py-6 text-center text-gray-500" colSpan={5}>
-                    Loading monthly services report...
+                  <td className="px-4 py-16 text-center text-slate-500" colSpan={4}>
+                    <div className="inline-flex flex-col items-center gap-2">
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+                      <span className="text-sm">Loading services…</span>
+                    </div>
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td className="px-4 py-6 text-center text-red-600" colSpan={5}>
-                    {error}
+                  <td className="bg-rose-50 px-4 py-10 text-center" colSpan={4}>
+                    <div className="mx-auto max-w-md text-sm text-rose-700">{error}</div>
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-6 text-center text-gray-500" colSpan={5}>
-                    No completed or voided services found for this period.
+                  <td className="bg-slate-50 px-4 py-16 text-center" colSpan={4}>
+                    <p className="text-base font-medium tracking-tight text-slate-700">No services in this period</p>
+                    <p className="mt-1.5 text-xs tracking-wide text-slate-400">
+                      Try another month range or branch
+                    </p>
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
-                  <tr className="border-t" key={row.booking_service_id}>
-                    <td className="px-4 py-3">
-                      <NameStack
-                        name={row.name}
-                        cnName={row.cn_name}
-                        primaryClassName="font-medium text-slate-900"
-                        secondaryClassName="mt-0.5 text-xs text-slate-500"
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold">{fmtInt(row.times)}</td>
-                    <td className="px-4 py-3 text-right">{fmtInt(row.void_times)}</td>
-                    <td className="px-4 py-3 text-right">{fmtRm(row.amount)}</td>
-                    <td className="px-4 py-3 text-right text-rose-700">{fmtRm(row.void_amount)}</td>
-                  </tr>
-                ))
+                rows.map((row, index) => {
+                  const zebra = index % 2 === 0 ? 'bg-slate-50' : 'bg-white'
+                  const totalAmount = row.amount + row.void_amount
+                  return (
+                    <tr key={row.booking_service_id} className="border-b border-slate-100 last:border-b-0">
+                      <td className={`px-4 py-3.5 ${zebra}`}>
+                        <NameStack
+                          name={row.name}
+                          cnName={row.cn_name}
+                          primaryClassName="font-medium text-slate-800"
+                          secondaryClassName="mt-0.5 text-xs text-slate-500"
+                        />
+                      </td>
+                      <td className={`px-4 py-3.5 text-right font-medium tabular-nums text-slate-800 ${zebra}`}>
+                        {fmtInt(row.times)}
+                      </td>
+                      <td className={`px-4 py-3.5 text-right font-semibold tabular-nums text-slate-900 ${zebra}`}>
+                        {fmtRm(totalAmount)}
+                      </td>
+                      <td className={`px-4 py-3.5 text-right font-semibold tabular-nums text-slate-900 ${zebra}`}>
+                        {fmtRm(row.amount)}
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
             {rows.length > 0 && summary ? (
               <tfoot>
-                <tr className="border-t bg-slate-50 font-semibold text-slate-800">
-                  <td className="px-4 py-3 text-left">Page Total</td>
-                  <td className="px-4 py-3 text-right">{fmtInt(pageTotals.times)}</td>
-                  <td className="px-4 py-3 text-right">{fmtInt(pageTotals.voidTimes)}</td>
-                  <td className="px-4 py-3 text-right">{fmtRm(pageTotals.amount)}</td>
-                  <td className="px-4 py-3 text-right text-rose-700">{fmtRm(pageTotals.voidAmount)}</td>
+                <tr className="border-t border-slate-200 bg-slate-100 text-[11px] font-bold uppercase tracking-[0.06em] text-slate-600">
+                  <td className="px-4 py-3.5 text-left">Page Total</td>
+                  <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                    {fmtInt(pageTotals.times)}
+                  </td>
+                  <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                    {fmtRm(pageTotals.totalAmount)}
+                  </td>
+                  <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                    {fmtRm(pageTotals.amountAfterVoid)}
+                  </td>
                 </tr>
-                <tr className="border-t bg-slate-100 font-semibold text-slate-900">
-                  <td className="px-4 py-3 text-left">All Total</td>
-                  <td className="px-4 py-3 text-right">{fmtInt(summary.total_services_booked)}</td>
-                  <td className="px-4 py-3 text-right">{fmtInt(summary.total_void_times)}</td>
-                  <td className="px-4 py-3 text-right">{fmtRm(summary.net_amount)}</td>
-                  <td className="px-4 py-3 text-right text-rose-700">{fmtRm(summary.total_void_amount)}</td>
+                <tr className="bg-blue-600 text-[11px] font-bold uppercase tracking-[0.06em] text-white">
+                  <td className="px-4 py-3.5 text-left">Grand Total</td>
+                  <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums">
+                    {fmtInt(summary.total_services_booked)}
+                  </td>
+                  <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums">
+                    {fmtRm(grandTotalAmount)}
+                  </td>
+                  <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums">
+                    {fmtRm(summary.net_amount)}
+                  </td>
                 </tr>
               </tfoot>
             ) : null}
           </table>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-          <div className="text-slate-600">
-            Showing {startItem} - {endItem} of {total}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3.5 text-sm">
+          <div className="text-slate-500">
+            Showing <span className="font-semibold text-slate-800">{startItem}</span>
+            {' – '}
+            <span className="font-semibold text-slate-800">{endItem}</span>
+            {' of '}
+            <span className="font-semibold text-slate-800">{total}</span>
           </div>
           <div className="flex items-center gap-2">
             <button
-              className="rounded-md border px-3 py-1 disabled:opacity-50"
+              type="button"
+              className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               disabled={page <= 1 || loading}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               Prev
             </button>
-            <span className="text-slate-700">
-              Page {page} / {lastPage}
+            <span className="min-w-[4.75rem] text-center text-slate-600">
+              {page} / {lastPage}
             </span>
             <button
-              className="rounded-md border px-3 py-1 disabled:opacity-50"
+              type="button"
+              className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               disabled={page >= lastPage || loading}
               onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
             >
