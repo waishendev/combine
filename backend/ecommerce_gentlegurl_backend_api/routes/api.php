@@ -1766,13 +1766,13 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::patch('/leave-requests/{id}/decision', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'decide'])
         ->middleware('permission:booking.schedules.update');
     Route::post('/off-days', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'storeOffDay'])
-        ->middleware('permission:booking.schedules.update');
+        ->middleware('permission:booking.off_day_generations.view');
     Route::post('/off-days/generate-from-weekly-schedule', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'generateOffDaysFromWeeklySchedule'])
-        ->middleware('permission:booking.schedules.update');
+        ->middleware('permission:booking.off_day_generations.view');
     Route::post('/off-days/generate-from-weekly-schedule-by-year', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'generateOffDaysFromWeeklyScheduleByYear'])
-        ->middleware('permission:booking.schedules.update');
+        ->middleware('permission:booking.off_day_generations.view');
     Route::post('/off-days/cancel-generated', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'cancelGeneratedOffDays'])
-        ->middleware('permission:booking.schedules.update');
+        ->middleware('permission:booking.off_day_generations.view');
     Route::put('/off-days/{id}', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'updateOffDay'])
         ->middleware('permission:booking.schedules.update');
     Route::post('/off-days/{id}/cancel', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'cancelOffDay'])
@@ -1780,9 +1780,9 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::get('/leave-balances', [\App\Http\Controllers\Admin\Booking\LeaveBalanceController::class, 'index'])
         ->middleware('permission:booking.schedules.view');
     Route::put('/leave-balances/{staffId}', [\App\Http\Controllers\Admin\Booking\LeaveBalanceController::class, 'upsert'])
-        ->middleware('permission:booking.schedules.update');
+        ->middleware('permission:booking.off_day_generations.view');
     Route::patch('/leave-balances/{staffId}/adjust', [\App\Http\Controllers\Admin\Booking\LeaveBalanceController::class, 'adjust'])
-        ->middleware('permission:booking.schedules.update');
+        ->middleware('permission:booking.off_day_generations.view');
     Route::get('/leave-logs', [\App\Http\Controllers\Admin\Booking\LeaveLogController::class, 'index'])
         ->middleware('permission:booking.leave.logs.view');
     Route::get('/off-day-generations', [\App\Http\Controllers\Admin\Booking\LeaveLogController::class, 'indexGenerations'])

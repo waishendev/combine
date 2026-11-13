@@ -17,6 +17,8 @@ export default async function Page() {
     redirect('/dashboard')
   }
 
+  const canAdjust = user.permissions.includes('booking.off_day_generations.view')
+
   return (
     <div className="crm-page-shell py-6 px-10">
       <div className="text-xs mb-4">
@@ -25,7 +27,7 @@ export default async function Page() {
         <Link href="/booking/leave-balances" className="text-blue-600 hover:underline">Leave Balances</Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Leave Balances</h2>
-      <BookingLeaveBalancesPage />
+      <BookingLeaveBalancesPage canAdjust={canAdjust} />
     </div>
   )
 }

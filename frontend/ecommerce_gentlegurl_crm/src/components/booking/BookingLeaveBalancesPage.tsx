@@ -62,7 +62,12 @@ const formatRemainEntitled = (remaining: number, entitled: number): string => {
   return `${formatDays(remaining)}/${formatDays(entitled)}`
 }
 
-export default function BookingLeaveBalancesPage() {
+type BookingLeaveBalancesPageProps = {
+  /** SuperAdmin / infra only — ADD / REDUCE entitlement. */
+  canAdjust?: boolean
+}
+
+export default function BookingLeaveBalancesPage({ canAdjust = false }: BookingLeaveBalancesPageProps) {
   const { selectedBranchId, isAllBranches } = useBranch()
   const [rows, setRows] = useState<StaffBalance[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -428,12 +433,14 @@ export default function BookingLeaveBalancesPage() {
                   {LEAVE_LABEL[t]}
                 </th>
               ))}
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Actions</th>
+              {canAdjust ? (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Actions</th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={1 + LEAVE_TYPES.length + 1 + (isAllBranches ? 1 : 0)} />
+              <TableLoadingRow colSpan={1 + LEAVE_TYPES.length + (canAdjust ? 1 : 0) + (isAllBranches ? 1 : 0)} />
             ) : pagedRows.length > 0 ? (
               pagedRows.map((row) => {
                 const byType = balanceByStaff.get(row.staff_id) ?? ({} as Record<LeaveType, LeaveItem>)
@@ -459,6 +466,7 @@ export default function BookingLeaveBalancesPage() {
                       )
                     })}
 
+                    {canAdjust ? (
                     <td className="px-4 py-2">
                       <div className="flex gap-2">
                         <button
@@ -481,11 +489,12 @@ export default function BookingLeaveBalancesPage() {
                         </button>
                       </div>
                     </td>
+                    ) : null}
                   </tr>
                 )
               })
             ) : (
-              <TableEmptyState colSpan={1 + LEAVE_TYPES.length + 1 + (isAllBranches ? 1 : 0)} message="No staff found." />
+              <TableEmptyState colSpan={1 + LEAVE_TYPES.length + (canAdjust ? 1 : 0) + (isAllBranches ? 1 : 0)} message="No staff found." />
             )}
           </tbody>
         </table>
@@ -499,7 +508,7 @@ export default function BookingLeaveBalancesPage() {
         disabled={loading}
       />
 
-      {isAdjustOpen && (
+      {canAdjust && isAdjustOpen && (
         <CrmFormModalShell
           title={adjustForm.mode === 'add' ? 'ADD' : 'REDUCE'}
           onClose={closeAdjustModal}

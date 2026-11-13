@@ -425,6 +425,8 @@ function LeaveCalendarErrorBanner({ message }: { message: string }) {
 export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLeaveCalendarPageProps) {
   const { selectedBranchId, isAllBranches } = useBranch()
   const canUpdate = permissions.includes('booking.schedules.update')
+  /** Off Days / By Weekday / By Year — not for branch Admin. */
+  const canManageOffDayTools = permissions.includes('booking.off_day_generations.view')
   const now = new Date()
   const [month, setMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
   const [staffFilter, setStaffFilter] = useState('')
@@ -1323,6 +1325,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
       <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <div className="flex flex-col gap-3">
+          {canManageOffDayTools ? (
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
             <button
               className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 py-2.5 text-sm font-medium text-white hover:bg-blue-600 sm:min-h-0"
@@ -1351,6 +1354,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
               By Year
             </button>
           </div>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
             <div>
