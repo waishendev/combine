@@ -344,6 +344,7 @@ class BookingLeaveService
         ?int $actorUserId,
         ?string $remark = null,
         ?int $ignoreOverlapRequestId = null,
+        ?int $newStoreLocationId = null,
     ): ?BookingLeaveRequest {
         if ($item->status !== 'approved') {
             return null;
@@ -351,25 +352,38 @@ class BookingLeaveService
 
         $dayType = (string) ($item->day_type ?: 'full_day');
         $ignoreId = $ignoreOverlapRequestId ?? (int) $item->id;
+        $currentBranchId = $item->store_location_id ? (int) $item->store_location_id : null;
+        $targetBranchId = $newStoreLocationId ?? $currentBranchId;
+        $branchChanged = $newStoreLocationId !== null && $currentBranchId !== $newStoreLocationId;
 
-        if ($this->hasOverlappingRequest((int) $item->staff_id, $startDate, $endDate, $dayType, $ignoreId, $item->store_location_id)) {
+        if ($branchChanged && (bool) ($item->date_change_pending ?? false)) {
             return null;
         }
 
+        if ($this->hasOverlappingRequest((int) $item->staff_id, $startDate, $endDate, $dayType, $ignoreId, $targetBranchId)) {
+            return null;
+        }
+
+        $item->loadMissing('approvedTimeoff');
         $before = $this->snapshotLeaveRequest($item);
         $days = $this->calculateRequestedDays($startDate, $endDate, $dayType);
-        [$startAt, $endAt] = $this->resolveTimeoffWindow((int) $item->staff_id, $startDate, $endDate, $dayType, $item->store_location_id ? (int) $item->store_location_id : null);
+        [$startAt, $endAt] = $this->resolveTimeoffWindow((int) $item->staff_id, $startDate, $endDate, $dayType, $targetBranchId);
 
         $timeoffReason = match ($item->leave_type) {
             'off_day' => sprintf('Off day #%d', $item->id),
             default => sprintf('Leave request #%d (%s %s)', $item->id, $item->leave_type, $dayType),
         };
 
+        if ($branchChanged) {
+            $item->store_location_id = $newStoreLocationId;
+        }
+
         if ($item->approvedTimeoff) {
             $item->approvedTimeoff->update([
                 'start_at' => $startAt,
                 'end_at' => $endAt,
                 'reason' => $timeoffReason,
+                'store_location_id' => $item->store_location_id,
             ]);
         } else {
             $timeoff = \App\Models\Booking\BookingStaffTimeoff::create([
@@ -390,17 +404,22 @@ class BookingLeaveService
         }
         $item->save();
 
+        $defaultRemark = $branchChanged
+            ? 'Leave Branch transferred.'
+            : 'Leave dates updated.';
+
         $this->logAction(
             (int) $item->staff_id,
             (int) $item->id,
             'updated',
             $before,
             $this->snapshotLeaveRequest($item->fresh()),
-            $remark ?? 'Leave dates updated.',
-            $actorUserId
+            $remark ?? $defaultRemark,
+            $actorUserId,
+            $item->store_location_id ? (int) $item->store_location_id : null
         );
 
-        return $item->fresh(['staff:id,name', 'reviewer:id,name', 'creationLog.creator:id,name']);
+        return $item->fresh(['staff:id,name', 'reviewer:id,name', 'creationLog.creator:id,name', 'storeLocation:id,name']);
     }
 
     public function hasPendingDateChangeRequest(int $sourceLeaveRequestId): bool
@@ -703,6 +722,7 @@ class BookingLeaveService
             'total_days' => (float) $item->days,
             'approved_timeoff_id' => $item->approved_timeoff_id,
             'source_leave_request_id' => $item->source_leave_request_id,
+            'store_location_id' => $item->store_location_id ? (int) $item->store_location_id : null,
         ];
     }
 

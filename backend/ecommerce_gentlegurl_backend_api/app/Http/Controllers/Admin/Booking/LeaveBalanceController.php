@@ -26,6 +26,7 @@ class LeaveBalanceController extends Controller
 
         $staffQuery = Staff::query()
             ->select(['staffs.id', 'staffs.name'])
+            ->where('staffs.is_active', true)
             ->whereHas('storeLocations', fn ($query) => $query->whereIn('store_locations.id', $accessibleBranchIds))
             ->with(['storeLocations' => fn ($query) => $query
                 ->select(['store_locations.id', 'store_locations.name'])

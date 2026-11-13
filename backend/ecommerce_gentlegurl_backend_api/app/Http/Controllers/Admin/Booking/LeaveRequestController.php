@@ -453,6 +453,7 @@ class LeaveRequestController extends Controller
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'reason' => ['nullable', 'string', 'max:255'],
             'remark' => ['nullable', 'string', 'max:1000'],
+            'store_location_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $item = BookingLeaveRequest::query()->findOrFail($id);
@@ -481,19 +482,50 @@ class LeaveRequestController extends Controller
             }
         }
 
-        $updated = DB::transaction(function () use ($item, $data, $request, $startDate, $endDate) {
+        $newBranchId = null;
+        $branchChanged = false;
+        if (array_key_exists('store_location_id', $data) && $data['store_location_id'] !== null) {
+            $newBranchId = $this->branches->resolveForCreation(
+                $request->user(),
+                (int) $item->staff_id,
+                $data['store_location_id']
+            );
+            $branchChanged = (int) ($item->store_location_id ?? 0) !== $newBranchId;
+        }
+
+        if ($branchChanged && (bool) ($item->date_change_pending ?? false)) {
+            return $this->respondError('Cannot transfer Branch while a date-change request is pending.', 422);
+        }
+
+        $updated = DB::transaction(function () use ($item, $data, $request, $startDate, $endDate, $newBranchId, $branchChanged) {
+            $remark = $data['remark'] ?? null;
+            if ($remark === null && $branchChanged) {
+                $remark = sprintf(
+                    'Leave Branch transferred from #%s to #%d.',
+                    $item->store_location_id ? (string) $item->store_location_id : 'unassigned',
+                    (int) $newBranchId
+                );
+            }
+
             return $this->leaveService->updateApprovedLeaveDates(
                 $item,
                 $startDate,
                 $endDate,
                 array_key_exists('reason', $data) ? ($data['reason'] ?? null) : $item->reason,
                 $request->user()?->id,
-                $data['remark'] ?? null
+                $remark,
+                null,
+                $newBranchId
             );
         });
 
         if (! $updated) {
-            return $this->respondError('There is already an overlapping leave/off-day request for the new date range.', 422);
+            return $this->respondError(
+                $branchChanged
+                    ? 'Cannot transfer: overlapping leave/off-day already exists on the target Branch, or a pending date-change blocks transfer.'
+                    : 'There is already an overlapping leave/off-day request for the new date range.',
+                422
+            );
         }
 
         return $this->respond($updated);

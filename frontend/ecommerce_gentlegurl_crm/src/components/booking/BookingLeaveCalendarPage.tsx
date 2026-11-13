@@ -43,14 +43,25 @@ type BookingLeaveCalendarPageProps = {
 type BranchOption = { id: number; name: string }
 type StaffOption = { staff_id: number; staff_name: string; store_locations: BranchOption[] }
 
-function AllBranchesCreationField({ branches, value, onChange, disabled = false }: {
+function MultiBranchCheckboxField({
+  branches,
+  values,
+  onChange,
+  disabled = false,
+  hint,
+}: {
   branches: BranchOption[]
-  value: string
-  onChange: (value: string) => void
+  values: number[]
+  onChange: (ids: number[]) => void
   disabled?: boolean
+  hint?: string
 }) {
   if (branches.length === 0) {
-    return <div className="md:col-span-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">This Staff has no eligible accessible Branch. Creation is unavailable.</div>
+    return (
+      <div className="md:col-span-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        This Staff has no eligible accessible Branch. Action is unavailable.
+      </div>
+    )
   }
   if (branches.length === 1) {
     return (
@@ -62,13 +73,89 @@ function AllBranchesCreationField({ branches, value, onChange, disabled = false 
   }
   return (
     <div className="md:col-span-2">
-      <label className="mb-1 block text-sm font-medium text-gray-700">Branch <span className="text-rose-600">*</span></label>
-      <select className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} required>
-        <option value="">Select Branch</option>
-        {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-      </select>
+      <label className="mb-1 block text-sm font-medium text-gray-700">
+        Branches <span className="text-rose-600">*</span>
+      </label>
+      <div className="space-y-2 rounded-md border border-slate-200 bg-white px-3 py-2">
+        {branches.map((branch) => {
+          const checked = values.includes(branch.id)
+          return (
+            <label key={branch.id} className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                checked={checked}
+                disabled={disabled}
+                onChange={() => {
+                  if (checked) onChange(values.filter((id) => id !== branch.id))
+                  else onChange([...values, branch.id])
+                }}
+              />
+              <span>{branch.name}</span>
+            </label>
+          )
+        })}
+      </div>
+      <p className="mt-1 text-xs text-slate-500">
+        {hint ?? 'Only Branches you can access and this Staff is assigned to are listed. Leave balance stays shared.'}
+      </p>
     </div>
   )
+}
+
+type LeaveGroup = {
+  key: string
+  staff_id: number
+  leave_type: LeaveType
+  day_type: DayType
+  start_date: string
+  end_date: string
+  items: LeaveRow[]
+}
+
+function leaveGroupKey(item: LeaveRow): string {
+  const start = toBusinessDateKey(item.start_date) ?? item.start_date
+  const end = toBusinessDateKey(item.end_date) ?? item.end_date
+  return `${item.staff_id}|${item.leave_type}|${item.day_type}|${start}|${end}`
+}
+
+function buildLeaveGroups(items: LeaveRow[], mergeAcrossBranches: boolean): LeaveGroup[] {
+  if (!mergeAcrossBranches) {
+    return items.map((item) => ({
+      key: `id:${item.id}`,
+      staff_id: item.staff_id,
+      leave_type: item.leave_type,
+      day_type: item.day_type,
+      start_date: item.start_date,
+      end_date: item.end_date,
+      items: [item],
+    }))
+  }
+
+  const map = new Map<string, LeaveGroup>()
+  for (const item of items) {
+    const key = leaveGroupKey(item)
+    const existing = map.get(key)
+    if (existing) existing.items.push(item)
+    else {
+      map.set(key, {
+        key,
+        staff_id: item.staff_id,
+        leave_type: item.leave_type,
+        day_type: item.day_type,
+        start_date: item.start_date,
+        end_date: item.end_date,
+        items: [item],
+      })
+    }
+  }
+  return Array.from(map.values())
+}
+
+function branchIdsFromItems(items: LeaveRow[]): number[] {
+  return items
+    .map((item) => item.store_location_id)
+    .filter((id): id is number => typeof id === 'number' && id > 0)
 }
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
@@ -214,17 +301,32 @@ const readLogDate = (value: unknown, key: string): string | null => {
   return toBusinessDateKey(raw) ?? raw.slice(0, 10)
 }
 
+const readLogBranchId = (value: unknown): number | null => {
+  if (!value || typeof value !== 'object') return null
+  const raw = (value as Record<string, unknown>).store_location_id
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  if (typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw))) return Number(raw)
+  return null
+}
+
 const formatLogChange = (log: LeaveLogEntry): string => {
   const beforeStart = readLogDate(log.before_value, 'start_date')
   const beforeEnd = readLogDate(log.before_value, 'end_date')
   const afterStart = readLogDate(log.after_value, 'start_date')
   const afterEnd = readLogDate(log.after_value, 'end_date')
+  const beforeBranch = readLogBranchId(log.before_value)
+  const afterBranch = readLogBranchId(log.after_value)
 
+  const parts: string[] = []
   if (beforeStart && afterStart && (beforeStart !== afterStart || beforeEnd !== afterEnd)) {
     const beforeText = beforeStart === beforeEnd ? beforeStart : `${beforeStart} → ${beforeEnd}`
     const afterText = afterStart === afterEnd ? afterStart : `${afterStart} → ${afterEnd}`
-    return `${beforeText} → ${afterText}`
+    parts.push(`${beforeText} → ${afterText}`)
   }
+  if (beforeBranch !== afterBranch && (beforeBranch != null || afterBranch != null)) {
+    parts.push(`Branch #${beforeBranch ?? 'unassigned'} → #${afterBranch ?? 'unassigned'}`)
+  }
+  if (parts.length > 0) return parts.join(' · ')
 
   return log.remark ?? LOG_ACTION_LABEL[log.action_type] ?? log.action_type
 }
@@ -335,17 +437,17 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   const [isOffDayModalOpen, setIsOffDayModalOpen] = useState(false)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
   const [isGenerateYearModalOpen, setIsGenerateYearModalOpen] = useState(false)
-  const [cancelTarget, setCancelTarget] = useState<LeaveRow | null>(null)
-  const [offDayForm, setOffDayForm] = useState({ staff_id: '', store_location_id: '', start_date: '', end_date: '', reason: '' })
+  const [cancelTargets, setCancelTargets] = useState<LeaveRow[] | null>(null)
+  const [offDayForm, setOffDayForm] = useState({ staff_id: '', store_location_ids: [] as number[], start_date: '', end_date: '', reason: '' })
   const [generateForm, setGenerateForm] = useState({
     staff_id: '',
-    store_location_id: '',
+    store_location_ids: [] as number[],
     target_month: monthToTargetValue(now),
     days_of_week: [] as number[],
   })
   const [generateYearForm, setGenerateYearForm] = useState({
     staff_id: '',
-    store_location_id: '',
+    store_location_ids: [] as number[],
     target_year: String(now.getFullYear()),
     days_of_week: [] as number[],
   })
@@ -353,24 +455,25 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   const [isCreatingOffDay, setIsCreatingOffDay] = useState(false)
   const [generateSummary, setGenerateSummary] = useState<string | null>(null)
   const [pageToasts, setPageToasts] = useState<PageToast[]>([])
-  const [editingOffDay, setEditingOffDay] = useState<LeaveRow | null>(null)
-  const [editOffDayForm, setEditOffDayForm] = useState({ start_date: '', end_date: '', reason: '' })
-  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
+  const [editingGroup, setEditingGroup] = useState<LeaveGroup | null>(null)
+  const [editOffDayForm, setEditOffDayForm] = useState({ start_date: '', end_date: '', reason: '', store_location_ids: [] as number[] })
+  const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [logsByRequestId, setLogsByRequestId] = useState<Record<number, LeaveLogEntry[]>>({})
   const [logsLoadingId, setLogsLoadingId] = useState<number | null>(null)
   const [expandedLogsId, setExpandedLogsId] = useState<number | null>(null)
 
   const eligibleBranches = (staffId: string) => staffOptions.find((staff) => String(staff.staff_id) === staffId)?.store_locations ?? []
-  const initialBranch = (staffId: string) => {
+  const initialBranchIds = (staffId: string): number[] => {
     const branches = eligibleBranches(staffId)
-    return branches.length === 1 ? String(branches[0].id) : ''
+    return branches.length === 1 ? [branches[0].id] : []
   }
-  const concreteBranchId = (staffId: string, formBranchId: string): number | null => {
-    if (selectedBranchId !== null) return selectedBranchId
+  const resolveBranchIdsForSubmit = (staffId: string, formBranchIds: number[]): number[] | null => {
+    if (selectedBranchId !== null) return [selectedBranchId]
     const branches = eligibleBranches(staffId)
-    if (branches.length === 1) return branches[0].id
-    const selected = Number(formBranchId)
-    return branches.some((branch) => branch.id === selected) ? selected : null
+    if (branches.length === 1) return [branches[0].id]
+    const allowed = new Set(branches.map((branch) => branch.id))
+    const selected = formBranchIds.filter((id) => allowed.has(id))
+    return selected.length > 0 ? selected : null
   }
 
   const dismissPageToast = useCallback((id: string) => {
@@ -439,7 +542,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     setGenerateSummary(null)
     setGenerateForm({
       staff_id: staffFilter || '',
-      store_location_id: initialBranch(staffFilter || ''),
+      store_location_ids: initialBranchIds(staffFilter || ''),
       target_month: monthToTargetValue(month),
       days_of_week: [],
     })
@@ -451,7 +554,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     setGenerateSummary(null)
     setGenerateYearForm({
       staff_id: staffFilter || '',
-      store_location_id: initialBranch(staffFilter || ''),
+      store_location_ids: initialBranchIds(staffFilter || ''),
       target_year: String(month.getFullYear()),
       days_of_week: [],
     })
@@ -466,8 +569,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       setError('Please select staff and target month.')
       return
     }
-    const branchId = concreteBranchId(generateForm.staff_id, generateForm.store_location_id)
-    if (branchId === null) { setError('Select an eligible Branch before generating off days.'); return }
+    const branchIds = resolveBranchIdsForSubmit(generateForm.staff_id, generateForm.store_location_ids)
+    if (branchIds === null) { setError('Select at least one eligible Branch before generating off days.'); return }
 
     if (generateForm.days_of_week.length === 0) {
       setError('Please select at least one weekday.')
@@ -476,25 +579,39 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
     setIsGenerating(true)
     try {
-      const res = await fetch('/api/proxy/admin/booking/off-days/generate-from-weekly-schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          staff_id: Number(generateForm.staff_id),
-          store_location_id: branchId,
-          target_month: generateForm.target_month,
-          days_of_week: generateForm.days_of_week,
-        }),
-      })
-
-      const root = await res.json().catch(() => ({})) as { data?: GenerateOffDaysResponse; message?: string }
-      if (!res.ok) {
-        setError(root.message ?? 'Failed to generate off days.')
+      let created = 0
+      let skipped = 0
+      const errors: string[] = []
+      for (const branchId of branchIds) {
+        const res = await fetch('/api/proxy/admin/booking/off-days/generate-from-weekly-schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            staff_id: Number(generateForm.staff_id),
+            store_location_id: branchId,
+            target_month: generateForm.target_month,
+            days_of_week: generateForm.days_of_week,
+          }),
+        })
+        const root = await res.json().catch(() => ({})) as { data?: GenerateOffDaysResponse; message?: string }
+        if (!res.ok) {
+          errors.push(root.message ?? `Branch #${branchId} failed.`)
+          continue
+        }
+        created += Number(root.data?.created_count ?? 0)
+        skipped += Number(root.data?.skipped_count ?? 0)
+      }
+      if (errors.length > 0 && created === 0) {
+        setError(errors.join(' '))
         return
       }
-
-      const payload = root.data ?? {}
-      setGenerateSummary(formatGenerateSummary(payload))
+      setGenerateSummary(
+        [
+          formatGenerateSummary({ created_count: created, skipped_count: skipped }),
+          branchIds.length > 1 ? `Across ${branchIds.length} Branches.` : null,
+          errors.length > 0 ? `Some Branches failed: ${errors.join(' ')}` : null,
+        ].filter(Boolean).join(' '),
+      )
       await loadRows()
     } catch {
       setError('Failed to generate off days.')
@@ -511,8 +628,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       setError('Please select staff and target year.')
       return
     }
-    const branchId = concreteBranchId(generateYearForm.staff_id, generateYearForm.store_location_id)
-    if (branchId === null) { setError('Select an eligible Branch before generating off days.'); return }
+    const branchIds = resolveBranchIdsForSubmit(generateYearForm.staff_id, generateYearForm.store_location_ids)
+    if (branchIds === null) { setError('Select at least one eligible Branch before generating off days.'); return }
 
     if (generateYearForm.days_of_week.length === 0) {
       setError('Please select at least one weekday.')
@@ -521,25 +638,39 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
     setIsGenerating(true)
     try {
-      const res = await fetch('/api/proxy/admin/booking/off-days/generate-from-weekly-schedule-by-year', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          staff_id: Number(generateYearForm.staff_id),
-          store_location_id: branchId,
-          target_year: Number(generateYearForm.target_year),
-          days_of_week: generateYearForm.days_of_week,
-        }),
-      })
-
-      const root = await res.json().catch(() => ({})) as { data?: GenerateOffDaysResponse; message?: string }
-      if (!res.ok) {
-        setError(root.message ?? 'Failed to generate off days.')
+      let created = 0
+      let skipped = 0
+      const errors: string[] = []
+      for (const branchId of branchIds) {
+        const res = await fetch('/api/proxy/admin/booking/off-days/generate-from-weekly-schedule-by-year', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            staff_id: Number(generateYearForm.staff_id),
+            store_location_id: branchId,
+            target_year: Number(generateYearForm.target_year),
+            days_of_week: generateYearForm.days_of_week,
+          }),
+        })
+        const root = await res.json().catch(() => ({})) as { data?: GenerateOffDaysResponse; message?: string }
+        if (!res.ok) {
+          errors.push(root.message ?? `Branch #${branchId} failed.`)
+          continue
+        }
+        created += Number(root.data?.created_count ?? 0)
+        skipped += Number(root.data?.skipped_count ?? 0)
+      }
+      if (errors.length > 0 && created === 0) {
+        setError(errors.join(' '))
         return
       }
-
-      const payload = root.data ?? {}
-      setGenerateSummary(formatGenerateSummary(payload))
+      setGenerateSummary(
+        [
+          formatGenerateSummary({ created_count: created, skipped_count: skipped }),
+          branchIds.length > 1 ? `Across ${branchIds.length} Branches.` : null,
+          errors.length > 0 ? `Some Branches failed: ${errors.join(' ')}` : null,
+        ].filter(Boolean).join(' '),
+      )
       await loadRows()
     } catch {
       setError('Failed to generate off days.')
@@ -577,29 +708,33 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     }
   }
 
-  const openEditOffDay = (item: LeaveRow) => {
+  const openEditGroup = (group: LeaveGroup) => {
     setError(null)
-    setEditingOffDay(item)
-    const startKey = toBusinessDateKey(item.start_date) ?? ''
-    const endKey = toBusinessDateKey(item.end_date) ?? startKey
+    setEditingGroup(group)
+    const startKey = toBusinessDateKey(group.start_date) ?? ''
+    const endKey = toBusinessDateKey(group.end_date) ?? startKey
+    const existingBranchIds = branchIdsFromItems(group.items)
+    const staffBranches = eligibleBranches(String(group.staff_id))
+    const selectedIds = existingBranchIds.filter((id) => staffBranches.some((branch) => branch.id === id))
     setEditOffDayForm({
       start_date: startKey,
       end_date: endKey,
-      reason: item.reason ?? '',
+      reason: group.items.find((item) => item.reason)?.reason ?? '',
+      store_location_ids: selectedIds.length > 0 ? selectedIds : initialBranchIds(String(group.staff_id)),
     })
   }
 
-  const closeEditOffDay = () => {
+  const closeEditGroup = () => {
     setError(null)
-    setEditingOffDay(null)
+    setEditingGroup(null)
   }
 
-  const saveEditOffDay = async () => {
-    if (!editingOffDay) return
+  const saveEditGroup = async () => {
+    if (!editingGroup) return
     setError(null)
 
     const startDate = editOffDayForm.start_date
-    const endDate = isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date)
+    const endDate = isSingleDayRange(editingGroup.start_date, editingGroup.end_date)
       ? startDate
       : (editOffDayForm.end_date || startDate)
 
@@ -608,70 +743,150 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       return
     }
 
-    setActionLoadingId(editingOffDay.id)
+    const staffBranches = eligibleBranches(String(editingGroup.staff_id))
+    const allowed = new Set(staffBranches.map((branch) => branch.id))
+    const existingByBranch = new Map<number, LeaveRow>()
+    for (const item of editingGroup.items) {
+      if (item.store_location_id) existingByBranch.set(item.store_location_id, item)
+    }
+    const existingIds = [...existingByBranch.keys()]
+
+    // Concrete Branch tab: never transfer / add / remove other Branches — dates only.
+    let selectedBranchIds: number[]
+    if (!isAllBranches) {
+      selectedBranchIds = existingIds.length > 0
+        ? existingIds
+        : (selectedBranchId !== null ? [selectedBranchId] : [])
+    } else if (editingGroup.leave_type === 'off_day') {
+      selectedBranchIds = editOffDayForm.store_location_ids.filter((id) => allowed.has(id))
+      if (staffBranches.length === 1) selectedBranchIds = [staffBranches[0].id]
+    } else {
+      selectedBranchIds = existingIds
+    }
+
+    if (selectedBranchIds.length === 0) {
+      setError(isAllBranches ? 'Select at least one Branch.' : 'No Branch on this leave record.')
+      return
+    }
+
+    const toKeep = selectedBranchIds.filter((id) => existingByBranch.has(id))
+    const toAdd = isAllBranches && editingGroup.leave_type === 'off_day'
+      ? selectedBranchIds.filter((id) => !existingByBranch.has(id))
+      : []
+    const toRemove = isAllBranches && editingGroup.leave_type === 'off_day'
+      ? existingIds.filter((id) => !selectedBranchIds.includes(id))
+      : []
+
+    setActionLoadingKey(editingGroup.key)
+    const errors: string[] = []
     try {
-      const res = await fetch(`/api/proxy/admin/booking/off-days/${editingOffDay.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          start_date: startDate,
-          end_date: endDate,
-          reason: editOffDayForm.reason || null,
-        }),
-      })
-      const payload = await res.json().catch(() => ({})) as { message?: string }
-      if (!res.ok) {
-        setError(payload.message ?? `Failed to update ${LEAVE_LABEL[editingOffDay.leave_type]}.`)
+      for (const branchId of toKeep) {
+        const item = existingByBranch.get(branchId)
+        if (!item) continue
+        const res = await fetch(`/api/proxy/admin/booking/off-days/${item.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            start_date: startDate,
+            end_date: endDate,
+            reason: editOffDayForm.reason || null,
+            store_location_id: branchId,
+          }),
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({})) as { message?: string }
+          errors.push(payload.message ?? `Failed to update Branch #${branchId}.`)
+        }
+      }
+
+      for (const branchId of toAdd) {
+        const res = await fetch('/api/proxy/admin/booking/off-days', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            staff_id: editingGroup.staff_id,
+            store_location_id: branchId,
+            start_date: startDate,
+            end_date: endDate,
+            reason: editOffDayForm.reason || null,
+          }),
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({})) as { message?: string }
+          errors.push(payload.message ?? `Failed to add Branch #${branchId}.`)
+        }
+      }
+
+      for (const branchId of toRemove) {
+        const item = existingByBranch.get(branchId)
+        if (!item) continue
+        const res = await fetch(`/api/proxy/admin/booking/off-days/${item.id}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({})) as { message?: string }
+          errors.push(payload.message ?? `Failed to remove Branch #${branchId}.`)
+        }
+      }
+
+      if (errors.length > 0) {
+        setError(errors.join(' '))
+        await loadRows()
         return
       }
 
-      closeEditOffDay()
+      const names = selectedBranchIds
+        .map((id) => staffBranches.find((branch) => branch.id === id)?.name ?? `Branch #${id}`)
+        .join(', ')
+      closeEditGroup()
       setExpandedLogsId(null)
-      setLogsByRequestId((prev) => {
-        const next = { ...prev }
-        delete next[editingOffDay.id]
-        return next
-      })
       await loadRows()
+      pushPageToast(
+        'Leave updated',
+        `${LEAVE_LABEL[editingGroup.leave_type]} · ${formatDateRange(startDate, endDate)} · ${names}`,
+      )
     } finally {
-      setActionLoadingId(null)
+      setActionLoadingKey(null)
     }
   }
 
   const closeCancelOffDay = () => {
-    if (actionLoadingId != null) return
-    setCancelTarget(null)
+    if (actionLoadingKey != null) return
+    setCancelTargets(null)
     setError(null)
   }
 
   const confirmCancelOffDay = async () => {
-    if (!cancelTarget) return
+    if (!cancelTargets || cancelTargets.length === 0) return
 
     setError(null)
-    setActionLoadingId(cancelTarget.id)
+    setActionLoadingKey('cancel:group')
     try {
-      const res = await fetch(`/api/proxy/admin/booking/off-days/${cancelTarget.id}/cancel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      const payload = await res.json().catch(() => ({})) as { message?: string }
-      if (!res.ok) {
-        setError(payload.message ?? 'Failed to cancel off day.')
+      const errors: string[] = []
+      for (const target of cancelTargets) {
+        const res = await fetch(`/api/proxy/admin/booking/off-days/${target.id}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({})) as { message?: string }
+          errors.push(payload.message ?? `Failed to cancel #${target.id}.`)
+        }
+      }
+      if (errors.length > 0) {
+        setError(errors.join(' '))
+        await loadRows()
         return
       }
 
-      const cancelledId = cancelTarget.id
-      setCancelTarget(null)
+      setCancelTargets(null)
       setExpandedLogsId(null)
-      setLogsByRequestId((prev) => {
-        const next = { ...prev }
-        delete next[cancelledId]
-        return next
-      })
       await loadRows()
     } finally {
-      setActionLoadingId(null)
+      setActionLoadingKey(null)
     }
   }
 
@@ -681,34 +896,46 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       setError('Please complete staff and date fields for Off Day.')
       return
     }
-    const branchId = concreteBranchId(offDayForm.staff_id, offDayForm.store_location_id)
-    if (branchId === null) { setError('Select an eligible Branch before creating the Off Day.'); return }
+    const branchIds = resolveBranchIdsForSubmit(offDayForm.staff_id, offDayForm.store_location_ids)
+    if (branchIds === null) { setError('Select at least one eligible Branch before creating the Off Day.'); return }
 
     const staffName = staffOptions.find((row) => String(row.staff_id) === offDayForm.staff_id)?.staff_name ?? 'Staff'
     const dateRange = formatDateRange(offDayForm.start_date, offDayForm.end_date)
 
     setIsCreatingOffDay(true)
     try {
-      const res = await fetch('/api/proxy/admin/booking/off-days', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          staff_id: Number(offDayForm.staff_id),
-          store_location_id: branchId,
-          start_date: offDayForm.start_date,
-          end_date: offDayForm.end_date,
-          reason: offDayForm.reason || null,
-        }),
-      })
+      const errors: string[] = []
+      let created = 0
+      for (const branchId of branchIds) {
+        const res = await fetch('/api/proxy/admin/booking/off-days', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            staff_id: Number(offDayForm.staff_id),
+            store_location_id: branchId,
+            start_date: offDayForm.start_date,
+            end_date: offDayForm.end_date,
+            reason: offDayForm.reason || null,
+          }),
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({})) as { message?: string }
+          errors.push(payload.message ?? `Branch #${branchId} failed.`)
+          continue
+        }
+        created += 1
+      }
 
-      if (!res.ok) {
-        const payload = await res.json().catch(() => ({})) as { message?: string }
-        setError(payload.message ?? 'Failed to create off day.')
+      if (created === 0) {
+        setError(errors.join(' ') || 'Failed to create off day.')
         return
       }
 
-      pushPageToast('Off day created', `${staffName} · ${dateRange}`)
-      setOffDayForm({ staff_id: '', store_location_id: '', start_date: '', end_date: '', reason: '' })
+      pushPageToast(
+        'Off day created',
+        `${staffName} · ${dateRange}${branchIds.length > 1 ? ` · ${created} Branch(es)` : ''}${errors.length ? ` (${errors.length} failed)` : ''}`,
+      )
+      setOffDayForm({ staff_id: '', store_location_ids: [], start_date: '', end_date: '', reason: '' })
       setIsOffDayModalOpen(false)
       await loadRows()
     } finally {
@@ -718,12 +945,13 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
   useEffect(() => {
     void loadStaffOptions()
-    closeEditOffDay()
+    closeEditGroup()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranchId])
 
   useEffect(() => {
     setSelectedDate(null)
+    closeEditGroup()
     void loadRows()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, staffFilter, leaveTypeFilter, selectedBranchId])
@@ -760,6 +988,10 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   }, [rows])
 
   const selectedItems = selectedDate ? (leaveByDate.get(selectedDate) ?? []) : []
+  const selectedGroups = useMemo(
+    () => buildLeaveGroups(selectedItems, isAllBranches),
+    [selectedItems, isAllBranches],
+  )
 
   return (
     <div className="space-y-4">
@@ -809,7 +1041,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 type="button"
                 className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
                 onClick={createOffDay}
-                disabled={isCreatingOffDay || (isAllBranches && concreteBranchId(offDayForm.staff_id, offDayForm.store_location_id) === null)}
+                disabled={isCreatingOffDay || (isAllBranches && resolveBranchIdsForSubmit(offDayForm.staff_id, offDayForm.store_location_ids) === null)}
               >
                 {isCreatingOffDay ? 'Creating…' : 'Create'}
               </button>
@@ -829,7 +1061,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   value={offDayForm.staff_id}
-                  onChange={(e) => setOffDayForm((prev) => ({ ...prev, staff_id: e.target.value, store_location_id: initialBranch(e.target.value) }))}
+                  onChange={(e) => setOffDayForm((prev) => ({ ...prev, staff_id: e.target.value, store_location_ids: initialBranchIds(e.target.value) }))}
                 >
                   <option value="">Select Staff</option>
                   {staffOptions.map((row) => (
@@ -841,7 +1073,12 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
               </div>
 
               {isAllBranches && offDayForm.staff_id && (
-                <AllBranchesCreationField branches={eligibleBranches(offDayForm.staff_id)} value={offDayForm.store_location_id} onChange={(store_location_id) => setOffDayForm((prev) => ({ ...prev, store_location_id }))} disabled={isCreatingOffDay} />
+                <MultiBranchCheckboxField
+                  branches={eligibleBranches(offDayForm.staff_id)}
+                  values={offDayForm.store_location_ids}
+                  onChange={(store_location_ids) => setOffDayForm((prev) => ({ ...prev, store_location_ids }))}
+                  disabled={isCreatingOffDay}
+                />
               )}
 
               <div>
@@ -899,7 +1136,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                   type="button"
                   className="px-4 py-2 text-sm text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
                   onClick={generateOffDaysFromWeeklySchedule}
-                  disabled={isGenerating || (isAllBranches && concreteBranchId(generateForm.staff_id, generateForm.store_location_id) === null)}
+                  disabled={isGenerating || (isAllBranches && resolveBranchIdsForSubmit(generateForm.staff_id, generateForm.store_location_ids) === null)}
                 >
                   {isGenerating ? 'Generating…' : 'Generate'}
                 </button>
@@ -933,7 +1170,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   value={generateForm.staff_id}
-                  onChange={(e) => setGenerateForm((prev) => ({ ...prev, staff_id: e.target.value, store_location_id: initialBranch(e.target.value) }))}
+                  onChange={(e) => setGenerateForm((prev) => ({ ...prev, staff_id: e.target.value, store_location_ids: initialBranchIds(e.target.value) }))}
                   disabled={isGenerating}
                 >
                   <option value="">Select Staff</option>
@@ -946,7 +1183,12 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
               </div>
 
               {isAllBranches && generateForm.staff_id && (
-                <AllBranchesCreationField branches={eligibleBranches(generateForm.staff_id)} value={generateForm.store_location_id} onChange={(store_location_id) => setGenerateForm((prev) => ({ ...prev, store_location_id }))} disabled={isGenerating} />
+                <MultiBranchCheckboxField
+                  branches={eligibleBranches(generateForm.staff_id)}
+                  values={generateForm.store_location_ids}
+                  onChange={(store_location_ids) => setGenerateForm((prev) => ({ ...prev, store_location_ids }))}
+                  disabled={isGenerating}
+                />
               )}
 
               <div className="md:col-span-2">
@@ -996,7 +1238,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                   type="button"
                   className="px-4 py-2 text-sm text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
                   onClick={generateOffDaysFromYearSchedule}
-                  disabled={isGenerating || (isAllBranches && concreteBranchId(generateYearForm.staff_id, generateYearForm.store_location_id) === null)}
+                  disabled={isGenerating || (isAllBranches && resolveBranchIdsForSubmit(generateYearForm.staff_id, generateYearForm.store_location_ids) === null)}
                 >
                   {isGenerating ? 'Generating…' : 'Generate'}
                 </button>
@@ -1030,7 +1272,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   value={generateYearForm.staff_id}
-                  onChange={(e) => setGenerateYearForm((prev) => ({ ...prev, staff_id: e.target.value, store_location_id: initialBranch(e.target.value) }))}
+                  onChange={(e) => setGenerateYearForm((prev) => ({ ...prev, staff_id: e.target.value, store_location_ids: initialBranchIds(e.target.value) }))}
                   disabled={isGenerating}
                 >
                   <option value="">Select Staff</option>
@@ -1043,7 +1285,12 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
               </div>
 
               {isAllBranches && generateYearForm.staff_id && (
-                <AllBranchesCreationField branches={eligibleBranches(generateYearForm.staff_id)} value={generateYearForm.store_location_id} onChange={(store_location_id) => setGenerateYearForm((prev) => ({ ...prev, store_location_id }))} disabled={isGenerating} />
+                <MultiBranchCheckboxField
+                  branches={eligibleBranches(generateYearForm.staff_id)}
+                  values={generateYearForm.store_location_ids}
+                  onChange={(store_location_ids) => setGenerateYearForm((prev) => ({ ...prev, store_location_ids }))}
+                  disabled={isGenerating}
+                />
               )}
 
               <div className="md:col-span-2">
@@ -1186,7 +1433,10 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
               <button
                 key={key}
                 type="button"
-                onClick={() => setSelectedDate(key)}
+                onClick={() => {
+                  if (editingGroup) closeEditGroup()
+                  setSelectedDate(key)
+                }}
                 className={`min-h-[5.25rem] overflow-hidden rounded-sm border p-0.5 text-left transition active:scale-[0.98] sm:min-h-28 sm:rounded sm:p-1 ${
                   isSelected
                     ? 'border-blue-400 bg-blue-50/80 ring-2 ring-blue-300'
@@ -1263,98 +1513,239 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
             <h4 className="text-base font-semibold sm:text-lg">Details · {selectedDate}</h4>
           </div>
 
-          {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+          {error && !editingGroup ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
 
           <div className="mt-3 space-y-3 text-sm">
-            {selectedItems.length === 0 && <p className="text-slate-500">No leave records on this date.</p>}
-            {selectedItems.map((item) => {
-              const logs = logsByRequestId[item.id] ?? []
-              const showLogs = expandedLogsId === item.id
-              const canEdit = canEditApprovedLeave(item, canUpdate)
-              const canCancel = canCancelOffDay(item, canUpdate)
+            {selectedGroups.length === 0 && <p className="text-slate-500">No leave records on this date.</p>}
+            {selectedGroups.map((group) => {
+              const primary = group.items[0]
+              const logs = logsByRequestId[primary.id] ?? []
+              const showLogs = expandedLogsId === primary.id
+              const canEdit = group.items.some((item) => canEditApprovedLeave(item, canUpdate))
+              const canCancel = group.items.some((item) => canCancelOffDay(item, canUpdate))
               const manageable = canEdit || canCancel
-              const isLoading = actionLoadingId === item.id
+              const isLoading = actionLoadingKey === group.key
+              const isEditing = editingGroup?.key === group.key
+              const staffBranches = eligibleBranches(String(group.staff_id))
+              const branchNames = group.items
+                .map((item) => item.store_location?.name ?? (item.store_location_id ? 'Unknown Branch' : 'Unassigned'))
+                .filter((name, index, arr) => arr.indexOf(name) === index)
 
               return (
                 <div
-                  key={`detail-${item.id}-${item.staff_id}`}
+                  key={group.key}
                   className={`overflow-hidden rounded-lg border ${
-                    manageable ? 'border-slate-200 bg-white shadow-sm' : 'border-slate-200 bg-white'
+                    isEditing
+                      ? 'border-blue-300 bg-white shadow-md ring-1 ring-blue-200'
+                      : manageable
+                        ? 'border-slate-200 bg-white shadow-sm'
+                        : 'border-slate-200 bg-white'
                   }`}
                 >
                   <div className="p-3 sm:p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="text-base font-semibold text-slate-900">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
-                        {isAllBranches && <div className="mt-1 text-xs font-medium text-slate-700"><span className="text-slate-500">Branch</span> {item.store_location?.name ?? (item.store_location_id ? 'Unknown Branch' : 'Unassigned')}</div>}
-                        <div className="mt-1 text-xs text-slate-500">
-                          {formatDateRange(item.start_date, item.end_date)}
-                          {isSingleDayRange(item.start_date, item.end_date) ? ` · ${formatWeekdayLabel(item.start_date)}` : ''}
+                        <div className="text-base font-semibold text-slate-900">
+                          {primary.staff?.name ?? `Staff #${group.staff_id}`}
                         </div>
-                        <div className="mt-1 text-xs text-slate-600">
-                          <span className="font-medium text-slate-500">Created by</span> {resolveCreatedBy(item)}
-                        </div>
+                        {!isEditing ? (
+                          <>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[11px] font-medium text-slate-500">
+                                {branchNames.length > 1 ? 'Branches' : 'Branch'}
+                              </span>
+                              {branchNames.map((name) => (
+                                <span
+                                  key={name}
+                                  className="inline-flex max-w-full items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700"
+                                  title={name}
+                                >
+                                  <span className="truncate">{name}</span>
+                                </span>
+                              ))}
+                            </div>
+                            <div className="mt-1.5 text-xs text-slate-500">
+                              {formatDateRange(group.start_date, group.end_date)}
+                              {isSingleDayRange(group.start_date, group.end_date) ? ` · ${formatWeekdayLabel(group.start_date)}` : ''}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-600">
+                              <span className="font-medium text-slate-500">Created by</span> {resolveCreatedBy(primary)}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {isAllBranches && group.leave_type === 'off_day'
+                              ? 'Change dates and tick the Branches this Off Day should cover. Untick to remove from a Branch.'
+                              : 'Update the date/reason for this Branch only. Switch to All Branches to move or cover other Branches.'}
+                          </p>
+                        )}
                       </div>
-                      <span className={`inline-flex w-fit shrink-0 items-center rounded-full px-3 py-1 text-xs font-medium ${LEAVE_CLASS[item.leave_type]}`}>
-                        {LEAVE_LABEL[item.leave_type]}
-                        {item.day_type !== 'full_day' ? ` · ${DAY_TYPE_LABEL[item.day_type]}` : ''}
+                      <span className={`inline-flex w-fit shrink-0 items-center rounded-full px-3 py-1 text-xs font-medium ${LEAVE_CLASS[group.leave_type]}`}>
+                        {LEAVE_LABEL[group.leave_type]}
+                        {group.day_type !== 'full_day' ? ` · ${DAY_TYPE_LABEL[group.day_type]}` : ''}
                       </span>
                     </div>
 
-                    {item.reason && (
+                    {!isEditing && primary.reason ? (
                       <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
                         <span className="font-medium text-slate-500">Reason</span>
-                        <div className="mt-0.5">{item.reason}</div>
+                        <div className="mt-0.5">{primary.reason}</div>
                       </div>
-                    )}
+                    ) : null}
+
+                    {isEditing ? (
+                      <div className="mt-4 space-y-3">
+                        {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+
+                        {isAllBranches && group.leave_type === 'off_day' ? (
+                          <MultiBranchCheckboxField
+                            branches={staffBranches}
+                            values={editOffDayForm.store_location_ids}
+                            onChange={(store_location_ids) => setEditOffDayForm((prev) => ({ ...prev, store_location_ids }))}
+                            disabled={isLoading}
+                            hint="Tick Branches to keep/add. Untick an existing Branch to cancel that Off Day only."
+                          />
+                        ) : (
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-600">Branch</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(branchNames.length > 0 ? branchNames : [staffBranches[0]?.name ?? '—']).map((name) => (
+                                <span
+                                  key={name}
+                                  className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700"
+                                >
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                            {!isAllBranches ? (
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                Branch cannot be changed here. Open All Branches to transfer or cover other Branches.
+                              </p>
+                            ) : null}
+                          </div>
+                        )}
+
+                        {isSingleDayRange(group.start_date, group.end_date) ? (
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-600">Date</label>
+                            <input
+                              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                              type="date"
+                              value={editOffDayForm.start_date}
+                              onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value, end_date: e.target.value }))}
+                              disabled={isLoading}
+                            />
+                            {editOffDayForm.start_date ? (
+                              <p className="mt-1 text-[11px] text-slate-500">Weekday: {formatWeekdayLabel(editOffDayForm.start_date)}</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-slate-600">Start date</label>
+                              <input
+                                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                                type="date"
+                                value={editOffDayForm.start_date}
+                                onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                                disabled={isLoading}
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-slate-600">End date</label>
+                              <input
+                                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                                type="date"
+                                value={editOffDayForm.end_date}
+                                onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))}
+                                disabled={isLoading}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">Reason (optional)</label>
+                          <input
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            value={editOffDayForm.reason}
+                            onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, reason: e.target.value }))}
+                            disabled={isLoading}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
-                  {manageable && (
+                  {(manageable || isEditing) && (
                     <>
                       <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/80 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4 sm:py-2.5">
                         <button
                           type="button"
                           className="inline-flex min-h-[44px] items-center justify-center gap-1.5 text-xs font-medium text-slate-600 transition hover:text-slate-900 sm:min-h-0 sm:justify-start"
-                          onClick={() => void toggleOffDayLogs(item.id)}
+                          onClick={() => void toggleOffDayLogs(primary.id)}
+                          disabled={isEditing && isLoading}
                         >
                           <i className={`fa-solid ${showLogs ? 'fa-chevron-up' : 'fa-clock-rotate-left'} text-[11px]`} />
                           {showLogs ? 'Hide activity log' : 'Activity log'}
                         </button>
 
-                        <div className={`grid gap-2 sm:flex sm:items-center ${canEdit && canCancel ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                          {canEdit ? (
+                        {isEditing ? (
+                          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                             <button
                               type="button"
-                              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => openEditOffDay(item)}
+                              className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-3.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+                              onClick={closeEditGroup}
                               disabled={isLoading}
-                              title={`Edit ${LEAVE_LABEL[item.leave_type]}`}
                             >
-                              <i className="fa-solid fa-pen-to-square text-[11px]" />
-                              Edit
+                              Discard
                             </button>
-                          ) : null}
-                          {canCancel ? (
                             <button
                               type="button"
-                              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-3.5 text-xs font-medium text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => {
-                                setError(null)
-                                setCancelTarget(item)
-                              }}
+                              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                              onClick={() => void saveEditGroup()}
                               disabled={isLoading}
-                              title="Cancel off day"
                             >
-                              <i className="fa-solid fa-ban text-[11px]" />
-                              {isLoading ? 'Working…' : 'Cancel'}
+                              {isLoading ? 'Saving…' : 'Save'}
                             </button>
-                          ) : null}
-                        </div>
+                          </div>
+                        ) : (
+                          <div className={`grid gap-2 sm:flex sm:items-center ${canEdit && canCancel ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                            {canEdit ? (
+                              <button
+                                type="button"
+                                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => openEditGroup(group)}
+                                disabled={isLoading || editingGroup != null}
+                                title={`Edit ${LEAVE_LABEL[group.leave_type]}`}
+                              >
+                                <i className="fa-solid fa-pen-to-square text-[11px]" />
+                                Edit
+                              </button>
+                            ) : null}
+                            {canCancel ? (
+                              <button
+                                type="button"
+                                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-3.5 text-xs font-medium text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => {
+                                  setError(null)
+                                  setCancelTargets(group.items.filter((item) => canCancelOffDay(item, canUpdate)))
+                                }}
+                                disabled={isLoading || editingGroup != null}
+                                title="Cancel off day"
+                              >
+                                <i className="fa-solid fa-ban text-[11px]" />
+                                {isLoading ? 'Working…' : 'Cancel'}
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
                       </div>
 
                       {showLogs && (
                         <div className="space-y-2 border-t border-slate-100 bg-slate-50/50 px-4 py-3">
-                          {logsLoadingId === item.id && <p className="text-xs text-slate-500">Loading logs…</p>}
+                          {logsLoadingId === primary.id && <p className="text-xs text-slate-500">Loading logs…</p>}
                           {!logsLoadingId && logs.length === 0 && <p className="text-xs text-slate-500">No activity yet.</p>}
                           {logs.map((log) => (
                             <div key={log.id} className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700 shadow-sm">
@@ -1387,18 +1778,18 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         </div>
       )}
 
-      {cancelTarget && (
+      {cancelTargets && cancelTargets.length > 0 && (
         <CrmFormModalShell
           title="Cancel Off Day"
           onClose={closeCancelOffDay}
-          closeDisabled={actionLoadingId === cancelTarget.id}
+          closeDisabled={actionLoadingKey === 'cancel:group'}
           footer={
             <>
               <button
                 type="button"
                 className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 disabled:opacity-50"
                 onClick={closeCancelOffDay}
-                disabled={actionLoadingId === cancelTarget.id}
+                disabled={actionLoadingKey === 'cancel:group'}
               >
                 Keep
               </button>
@@ -1406,9 +1797,9 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 type="button"
                 className="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
                 onClick={() => void confirmCancelOffDay()}
-                disabled={actionLoadingId === cancelTarget.id}
+                disabled={actionLoadingKey === 'cancel:group'}
               >
-                {actionLoadingId === cancelTarget.id ? 'Cancelling…' : 'Confirm Cancel'}
+                {actionLoadingKey === 'cancel:group' ? 'Cancelling…' : 'Confirm Cancel'}
               </button>
             </>
           }
@@ -1417,19 +1808,22 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
             <p>
               Cancel off day for{' '}
               <span className="font-semibold text-slate-900">
-                {cancelTarget.staff?.name ?? `Staff #${cancelTarget.staff_id}`}
+                {cancelTargets[0].staff?.name ?? `Staff #${cancelTargets[0].staff_id}`}
               </span>
+              {cancelTargets.length > 1 ? ` on ${cancelTargets.length} Branches` : ''}
               ?
             </p>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
               <div>
                 <span className="font-medium text-slate-500">Date</span>{' '}
-                {formatDateRange(cancelTarget.start_date, cancelTarget.end_date)}
+                {formatDateRange(cancelTargets[0].start_date, cancelTargets[0].end_date)}
               </div>
               {isAllBranches ? (
                 <div className="mt-1">
-                  <span className="font-medium text-slate-500">Branch</span>{' '}
-                  {cancelTarget.store_location?.name ?? (cancelTarget.store_location_id ? 'Unknown Branch' : 'Unassigned')}
+                  <span className="font-medium text-slate-500">Branches</span>{' '}
+                  {cancelTargets
+                    .map((item) => item.store_location?.name ?? (item.store_location_id ? 'Unknown Branch' : 'Unassigned'))
+                    .join(' · ')}
                 </div>
               ) : null}
             </div>
@@ -1439,100 +1833,6 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         </CrmFormModalShell>
       )}
 
-      {editingOffDay && (
-        <CrmFormModalShell
-          title={`Edit ${LEAVE_LABEL[editingOffDay.leave_type]}`}
-          onClose={closeEditOffDay}
-          closeDisabled={actionLoadingId === editingOffDay.id}
-          footer={
-            <>
-              <button
-                type="button"
-                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
-                onClick={closeEditOffDay}
-                disabled={actionLoadingId === editingOffDay.id}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-                onClick={() => void saveEditOffDay()}
-                disabled={actionLoadingId === editingOffDay.id}
-              >
-                {actionLoadingId === editingOffDay.id ? 'Saving…' : 'Save'}
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-3 p-5">
-            <p className="text-xs text-slate-500">
-              {editingOffDay.leave_type === 'off_day'
-                ? 'Move this off day to another date. Pick a new date to change the weekday (e.g. Thursday → Tuesday).'
-                : `Change the date range for this ${LEAVE_LABEL[editingOffDay.leave_type]}. Day type stays the same.`}
-            </p>
-
-            {error && <p className="text-sm text-rose-600">{error}</p>}
-
-            <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-              <div className="font-medium text-slate-900">{editingOffDay.staff?.name ?? `Staff #${editingOffDay.staff_id}`}</div>
-              <div className="mt-1 text-xs text-slate-600">
-                Current: {formatDateRange(editingOffDay.start_date, editingOffDay.end_date)}
-                {isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date)
-                  ? ` (${formatWeekdayLabel(editingOffDay.start_date)})`
-                  : ''}
-              </div>
-            </div>
-
-            {isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date) ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">New date</label>
-                <input
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  type="date"
-                  value={editOffDayForm.start_date}
-                  onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value, end_date: e.target.value }))}
-                />
-                {editOffDayForm.start_date && (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Weekday: {formatWeekdayLabel(editOffDayForm.start_date)}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">New start date</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    type="date"
-                    value={editOffDayForm.start_date}
-                    onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">New end date</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    type="date"
-                    value={editOffDayForm.end_date}
-                    onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
-              <input
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                value={editOffDayForm.reason}
-                onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, reason: e.target.value }))}
-              />
-            </div>
-          </div>
-        </CrmFormModalShell>
-      )}
     </div>
   )
 }
