@@ -315,7 +315,11 @@ export default function StaffTable({ permissions }: StaffTableProps) {
   }
 
   const handleBadgeRemove = (field: keyof StaffFilterValues) => {
-    const next = { ...filters, [field]: '' }
+    const next = {
+      ...filters,
+      // Status default is Active; All stays available only via Filter modal.
+      [field]: field === 'isActive' ? 'active' : '',
+    } as StaffFilterValues
     setFilters(next)
     setInputs(next)
     setCurrentPage(1)
@@ -505,6 +509,26 @@ export default function StaffTable({ permissions }: StaffTableProps) {
             <i className="fa-solid fa-filter" />
             {t('common.filter')}
           </button>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <span className="whitespace-nowrap">{t('common.status')}</span>
+            <select
+              value={filters.isActive === 'inactive' ? 'inactive' : 'active'}
+              disabled={loading}
+              onChange={(e) => {
+                const nextIsActive = e.target.value as 'active' | 'inactive'
+                const next = { ...filters, isActive: nextIsActive }
+                setFilters(next)
+                setInputs(next)
+                setCurrentPage(1)
+              }}
+              className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:opacity-50"
+              aria-label={t('common.status')}
+            >
+              <option value="active">{t('common.active')}</option>
+              <option value="inactive">{t('common.inactive')}</option>
+            </select>
+          </label>
         </div>
 
         <div className="flex items-center gap-3">

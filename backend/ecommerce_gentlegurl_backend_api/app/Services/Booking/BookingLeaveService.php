@@ -292,9 +292,10 @@ class BookingLeaveService
         ];
     }
 
-    public function cancelApprovedOffDay(BookingLeaveRequest $item, ?int $actorUserId, ?string $remark = null): bool
+    public function cancelApprovedLeave(BookingLeaveRequest $item, ?int $actorUserId, ?string $remark = null): bool
     {
-        if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
+        $cancellableTypes = ['off_day', 'annual', 'mc', 'emergency', 'unpaid'];
+        if ($item->status !== 'approved' || ! in_array((string) $item->leave_type, $cancellableTypes, true)) {
             return false;
         }
 
@@ -308,17 +309,26 @@ class BookingLeaveService
         $item->approved_timeoff_id = null;
         $item->save();
 
+        $defaultRemark = $item->leave_type === 'off_day'
+            ? 'Off day cancelled by admin.'
+            : 'Leave cancelled by admin.';
+
         $this->logAction(
             (int) $item->staff_id,
             (int) $item->id,
             'cancelled',
             $before,
             $this->snapshotOffDay($item->fresh()),
-            $remark ?? 'Off day cancelled by admin.',
+            $remark ?? $defaultRemark,
             $actorUserId
         );
 
         return true;
+    }
+
+    public function cancelApprovedOffDay(BookingLeaveRequest $item, ?int $actorUserId, ?string $remark = null): bool
+    {
+        return $this->cancelApprovedLeave($item, $actorUserId, $remark);
     }
 
     public function updateApprovedOffDay(

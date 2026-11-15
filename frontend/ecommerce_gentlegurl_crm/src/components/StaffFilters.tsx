@@ -12,7 +12,8 @@ export const staffFiltersFormId = 'staff-filters-form'
 
 export const emptyStaffFilters: StaffFilterValues = {
   search: '',
-  isActive: '',
+  // Default list view: Active only. Use Filter → All / Inactive to widen.
+  isActive: 'active',
 }
 
 interface StaffFiltersProps {

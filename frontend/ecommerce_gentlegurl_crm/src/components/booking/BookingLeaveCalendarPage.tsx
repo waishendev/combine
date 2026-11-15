@@ -19,7 +19,7 @@ type LeaveRow = {
   end_date: string
   reason: string | null
   status?: string
-  staff?: { id: number; name: string }
+  staff?: { id: number; name: string; is_active?: boolean }
   reviewer?: UserRef | null
   creation_log?: { creator?: UserRef | null } | null
   store_location_id?: number | null
@@ -334,8 +334,28 @@ const formatLogChange = (log: LeaveLogEntry): string => {
 const canEditApprovedLeave = (item: LeaveRow, canUpdate: boolean): boolean =>
   canUpdate && (item.status ?? 'approved') === 'approved' && ['off_day', 'annual', 'mc', 'emergency', 'unpaid'].includes(item.leave_type)
 
-const canCancelOffDay = (item: LeaveRow, canUpdate: boolean): boolean =>
-  canUpdate && item.leave_type === 'off_day' && (item.status ?? 'approved') === 'approved'
+/** Leave start date is today or earlier (local calendar day). */
+const leaveStartsOnOrBeforeToday = (item: LeaveRow, todayKey: string): boolean => {
+  const startKey = (item.start_date || '').slice(0, 10)
+  return Boolean(startKey) && startKey <= todayKey
+}
+
+const canCancelApprovedLeave = (
+  item: LeaveRow,
+  canUpdate: boolean,
+  canCancelPast: boolean,
+  todayKey: string,
+): boolean => {
+  if (
+    !canUpdate ||
+    (item.status ?? 'approved') !== 'approved' ||
+    !['off_day', 'annual', 'mc', 'emergency', 'unpaid'].includes(item.leave_type)
+  ) {
+    return false
+  }
+  if (leaveStartsOnOrBeforeToday(item, todayKey) && !canCancelPast) return false
+  return true
+}
 
 const monthToTargetValue = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
@@ -426,6 +446,8 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   const { selectedBranchId, isAllBranches } = useBranch()
   /** Leave Calendar Details Edit / Cancel / sync Off Day to another Branch. */
   const canManageLeaveCalendar = permissions.includes('booking.leave.calendar.manage')
+  /** Cancel leave that starts today or earlier — infra / SuperAdmin only. */
+  const canCancelPastLeave = permissions.includes('booking.leave.calendar.cancel-past')
   /** Off Days / By Weekday / By Year — infra / SuperAdmin only. */
   const canManageOffDayTools = permissions.includes('booking.off_day_generations.view')
   const canUpdate = canManageLeaveCalendar
@@ -977,9 +999,21 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     return cells
   }, [month])
 
+  const todayKey = useMemo(() => formatDate(new Date()), [])
+
+  const activeStaffIds = useMemo(
+    () => new Set(staffOptions.map((staff) => staff.staff_id)),
+    [staffOptions],
+  )
+
   const leaveByDate = useMemo(() => {
     const map = new Map<string, LeaveRow[]>()
     rows.forEach((row) => {
+      // Prefer active staff list from leave-balances; also drop inactive when staff payload says so.
+      const staffActiveFlag = (row.staff as { is_active?: boolean } | undefined)?.is_active
+      if (staffActiveFlag === false) return
+      if (activeStaffIds.size > 0 && !activeStaffIds.has(row.staff_id)) return
+
       const start = parseYmdLocal(row.start_date)
       const end = parseYmdLocal(row.end_date)
       if (!start || !end) return
@@ -992,7 +1026,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       }
     })
     return map
-  }, [rows])
+  }, [activeStaffIds, rows])
 
   const selectedItems = selectedDate ? (leaveByDate.get(selectedDate) ?? []) : []
   const selectedGroups = useMemo(
@@ -1437,6 +1471,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
             const key = formatDate(cell.date)
             const items = leaveByDate.get(key) ?? []
             const isSelected = selectedDate === key
+            const isToday = key === todayKey
 
             return (
               <button
@@ -1449,11 +1484,24 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 className={`min-h-[5.25rem] overflow-hidden rounded-sm border p-0.5 text-left transition active:scale-[0.98] sm:min-h-28 sm:rounded sm:p-1 ${
                   isSelected
                     ? 'border-blue-400 bg-blue-50/80 ring-2 ring-blue-300'
-                    : 'border-slate-200 hover:bg-slate-50'
+                    : isToday
+                      ? 'border-sky-500 bg-sky-50/70 ring-2 ring-sky-300'
+                      : 'border-slate-200 hover:bg-slate-50'
                 }`}
               >
-                <div className={`text-[11px] font-bold sm:text-xs ${isSelected ? 'text-blue-800' : 'text-slate-700'}`}>
-                  {cell.date.getDate()}
+                <div className="flex items-center justify-between gap-1">
+                  <div
+                    className={`text-[11px] font-bold sm:text-xs ${
+                      isSelected ? 'text-blue-800' : isToday ? 'text-sky-800' : 'text-slate-700'
+                    }`}
+                  >
+                    {cell.date.getDate()}
+                  </div>
+                  {isToday ? (
+                    <span className="rounded bg-sky-600 px-1 py-px text-[8px] font-bold uppercase tracking-wide text-white sm:text-[9px]">
+                      Today
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="mt-0.5 space-y-0.5 sm:hidden">
@@ -1531,7 +1579,9 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
               const logs = logsByRequestId[primary.id] ?? []
               const showLogs = expandedLogsId === primary.id
               const canEdit = group.items.some((item) => canEditApprovedLeave(item, canUpdate))
-              const canCancel = group.items.some((item) => canCancelOffDay(item, canUpdate))
+              const canCancel = group.items.some((item) =>
+                canCancelApprovedLeave(item, canUpdate, canCancelPastLeave, todayKey),
+              )
               const manageable = canEdit || canCancel
               const isLoading = actionLoadingKey === group.key
               const isEditing = editingGroup?.key === group.key
@@ -1737,10 +1787,14 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                                 className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-3.5 text-xs font-medium text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 onClick={() => {
                                   setError(null)
-                                  setCancelTargets(group.items.filter((item) => canCancelOffDay(item, canUpdate)))
+                                  setCancelTargets(
+                                    group.items.filter((item) =>
+                                      canCancelApprovedLeave(item, canUpdate, canCancelPastLeave, todayKey),
+                                    ),
+                                  )
                                 }}
                                 disabled={isLoading || editingGroup != null}
-                                title="Cancel off day"
+                                title={`Cancel ${LEAVE_LABEL[group.leave_type]}`}
                               >
                                 <i className="fa-solid fa-ban text-[11px]" />
                                 {isLoading ? 'Working…' : 'Cancel'}
@@ -1787,7 +1841,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
       {cancelTargets && cancelTargets.length > 0 && (
         <CrmFormModalShell
-          title="Cancel Off Day"
+          title={`Cancel ${LEAVE_LABEL[cancelTargets[0].leave_type]}`}
           onClose={closeCancelOffDay}
           closeDisabled={actionLoadingKey === 'cancel:group'}
           footer={
@@ -1813,7 +1867,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         >
           <div className="space-y-3 px-4 py-4 text-sm text-slate-700">
             <p>
-              Cancel off day for{' '}
+              Cancel {LEAVE_LABEL[cancelTargets[0].leave_type]} for{' '}
               <span className="font-semibold text-slate-900">
                 {cancelTargets[0].staff?.name ?? `Staff #${cancelTargets[0].staff_id}`}
               </span>
@@ -1834,7 +1888,13 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                 </div>
               ) : null}
             </div>
-            <p className="text-xs text-slate-500">This removes the approved off day from the leave calendar.</p>
+            <p className="text-xs text-slate-500">
+              This removes the approved leave from the calendar
+              {['annual', 'mc', 'emergency'].includes(cancelTargets[0].leave_type)
+                ? ' and returns the days to leave balance'
+                : ''}
+              .
+            </p>
             {error ? <LeaveCalendarErrorBanner message={error} /> : null}
           </div>
         </CrmFormModalShell>

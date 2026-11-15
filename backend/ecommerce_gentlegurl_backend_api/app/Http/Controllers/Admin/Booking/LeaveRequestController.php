@@ -21,13 +21,16 @@ class LeaveRequestController extends Controller
     public function index(Request $request)
     {
         $query = BookingLeaveRequest::query()->with([
-            'staff:id,name',
+            'staff:id,name,is_active',
             'storeLocation:id,name',
             'reviewer:id,name',
             'creationLog.creator:id,name',
             'sourceLeaveRequest:id,leave_type,start_date,end_date,status,day_type,days,reason',
         ]);
         $this->branches->scopeVisible($query, $request->user(), $request->input('store_location_id'));
+
+        // Leave Calendar / lists should not surface inactive Staff.
+        $query->whereHas('staff', fn ($staff) => $staff->where('is_active', true));
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->input('status'));
@@ -540,17 +543,35 @@ class LeaveRequestController extends Controller
         $item = BookingLeaveRequest::query()->findOrFail($id);
         $this->branches->authorizeRecord($request->user(), $item);
 
-        if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
-            return $this->respondError('Only approved off days can be cancelled.', 422);
+        $cancellableTypes = ['off_day', 'annual', 'mc', 'emergency', 'unpaid'];
+        if ($item->status !== 'approved' || ! in_array((string) $item->leave_type, $cancellableTypes, true)) {
+            return $this->respondError('Only approved leave / off days can be cancelled.', 422);
         }
 
-        DB::transaction(function () use ($item, $data, $request) {
-            $this->leaveService->cancelApprovedOffDay(
+        // Same-day / past leave cancel is restricted (infra + superAdmin).
+        $startDate = Carbon::parse((string) $item->start_date)->startOfDay();
+        if ($startDate->lte(Carbon::today())) {
+            $permissionSlugs = $request->user()?->getAllPermissions() ?? collect();
+            if (! $permissionSlugs->contains('booking.leave.calendar.cancel-past')) {
+                return $this->respondError(
+                    'Cancelling leave that starts today or earlier requires Leave Calendar Cancel Past / Same Day permission.',
+                    403
+                );
+            }
+        }
+
+        $ok = false;
+        DB::transaction(function () use ($item, $data, $request, &$ok) {
+            $ok = $this->leaveService->cancelApprovedLeave(
                 $item,
                 $request->user()?->id,
                 $data['remark'] ?? null
             );
         });
+
+        if (! $ok) {
+            return $this->respondError('Unable to cancel this leave record.', 422);
+        }
 
         return $this->respond($item->fresh(['staff:id,name', 'reviewer:id,name', 'creationLog.creator:id,name']));
     }
