@@ -15,6 +15,7 @@ use App\Listeners\LogMailSending;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -32,6 +33,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Broadcast::routes(['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum', 'print.device:print-device:connect']]);
+        require base_path('routes/channels.php');
         // 监听邮件发送事件
         Event::listen(MessageSending::class, LogMailSending::class);
         Event::listen(MessageSent::class, LogMailSent::class);

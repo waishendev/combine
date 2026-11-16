@@ -41,6 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // 自己的中间件 alias
         $middleware->alias([
             'permission' => \App\Http\Middleware\CheckPermission::class,
+            'print.device' => \App\Http\Middleware\EnsurePrintDevice::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
