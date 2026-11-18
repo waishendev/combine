@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { lookupOrder, uploadPaymentSlip, OrderLookupResponse } from "@/lib/apiClient";
+import { lookupOrder, payOrder, uploadPaymentSlip, OrderLookupResponse } from "@/lib/apiClient";
 import { bankQrImageStandardClass, BANK_QR_IMAGE_HEIGHT, BANK_QR_IMAGE_WIDTH } from "@/lib/bankQrImage";
 import { useCart } from "@/contexts/CartContext";
 import SlipUploadSuccessModal from "@/components/orders/SlipUploadSuccessModal";
+import { formatOrderPaymentMethod } from "@/lib/orderPaymentDisplay";
 
 type Props = {
   orderNo: string;
@@ -24,6 +25,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   const [note, setNote] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isContinuingPayment, setIsContinuingPayment] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const { reloadCart } = useCart();
@@ -91,21 +93,60 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     }
   };
 
-  const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
-  const isBillplzPayment = (paymentMethod ?? order?.payment_method)?.startsWith("billplz");
-  const paymentProvider = order?.payment_provider ?? (isBillplzPayment ? "billplz" : "manual");
+  // Prefer API truth over URL query params — stale ?payment_method=manual_transfer can mis-render Billplz orders.
+  const resolvedPaymentMethod = order?.payment_method || paymentMethod || null;
+  const isManualTransfer = resolvedPaymentMethod === "manual_transfer";
+  const isBillplzPayment = Boolean(resolvedPaymentMethod?.startsWith("billplz_"))
+    || String(order?.payment_provider ?? "").toLowerCase().includes("billplz");
   const statusKey = String(order?.status ?? "").toLowerCase();
   const paymentStatusKey = String(order?.payment_status ?? "").toLowerCase();
   const isPaid = paymentStatusKey === "paid";
   const isCompleted = statusKey === "completed";
-  const isCancelled = statusKey === "cancelled";
+  const isCancelled = ["cancelled", "expired", "voided"].includes(statusKey);
   const isPaymentProofRejected = statusKey === "reject_payment_proof";
   const canUploadPaymentSlip =
     isManualTransfer &&
     !isCancelled &&
     !isPaid &&
     !isCompleted;
+  const canContinueBillplz =
+    isBillplzPayment &&
+    !isCancelled &&
+    !isPaid &&
+    !isCompleted &&
+    statusKey === "pending" &&
+    paymentStatusKey === "unpaid";
   const showUploadReminderHeading = canUploadPaymentSlip && Boolean(order);
+
+  const handleContinueBillplz = async () => {
+    if (!order) return;
+    setUploadError(null);
+    if (order.payment_url) {
+      window.location.href = order.payment_url;
+      return;
+    }
+
+    setIsContinuingPayment(true);
+    try {
+      const response = await payOrder(order.order_id);
+      if (response.redirect_url) {
+        window.location.href = response.redirect_url;
+        return;
+      }
+      setUploadError("Unable to continue online payment.");
+    } catch (err: unknown) {
+      const message =
+        typeof err === "object" && err && "data" in (err as never)
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((err as any).data?.message as string | undefined) ?? "Unable to continue online payment."
+          : err instanceof Error
+            ? err.message
+            : "Unable to continue online payment.";
+      setUploadError(message);
+    } finally {
+      setIsContinuingPayment(false);
+    }
+  };
 
   const handleUpload = async () => {
     if (!order || !selectedFile) return;
@@ -242,7 +283,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Payment Method</span>
                 <span className="font-medium">
-                  {paymentProvider === "billplz" ? "Billplz" : "Manual Transfer"}
+                  {formatOrderPaymentMethod(resolvedPaymentMethod)}
                 </span>
               </div>
               {isManualTransfer && !isCancelled && (isPaid || isCompleted) ? (
@@ -252,21 +293,23 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               ) : null}
             </div>
 
-            {/* {!isPaid && (
-              <div className="mt-3 flex flex-col gap-2 rounded-md bg-[var(--muted)]/40 p-3 text-xs text-[var(--foreground)]/80 sm:flex-row sm:items-center sm:justify-between">
-                <p>
-                  Payment is still processing{isBillplzPayment ? " • Billplz may take a few seconds to confirm." : "."}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void loadOrder()}
-                  className="w-full rounded bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[var(--accent-strong)] sm:w-auto"
-                >
-                  Refresh Status
-                </button>
-              </div>
-            )} */}
-          </div>
+          {canContinueBillplz ? (
+            <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
+              <p className="font-medium">Complete online payment</p>
+              <p className="mt-2 text-xs text-[var(--foreground)]/80">
+                This order uses Billplz. Continue to the payment page to finish checkout.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleContinueBillplz()}
+                disabled={isContinuingPayment}
+                className="mt-4 w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isContinuingPayment ? "Redirecting..." : "Continue to Billplz"}
+              </button>
+              {uploadError ? <p className="mt-2 text-xs text-[color:var(--status-error)]">{uploadError}</p> : null}
+            </div>
+          ) : null}
 
           {canUploadPaymentSlip ? (
             <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
@@ -346,11 +389,16 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
             </div>
           ) : null}
 
-          {!isManualTransfer && (
+          {isBillplzPayment && !canContinueBillplz && !isPaid && !isCancelled ? (
             <p className="text-center text-sm text-[var(--foreground)]/80">
               If you completed the online payment, you will receive an email confirmation shortly.
             </p>
-          )}
+          ) : null}
+          {!isManualTransfer && !isBillplzPayment ? (
+            <p className="text-center text-sm text-[var(--foreground)]/80">
+              If you completed the online payment, you will receive an email confirmation shortly.
+            </p>
+          ) : null}
         </div>
       )}
 
