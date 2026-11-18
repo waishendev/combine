@@ -10,6 +10,8 @@ use App\Models\BankAccount;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPayment;
+use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\PaymentGateway;
 use App\Services\SettingService;
 use App\Services\Payments\BillplzConfigResolver;
@@ -232,18 +234,22 @@ class PaymentController extends Controller
             ->where('booking_id', $booking->id)
             ->latest('id')
             ->first();
+        $checkoutOrder = $this->resolveDepositCheckoutOrder((int) $booking->id);
+        $resolved = $this->resolvePublicBookingPaymentContext($booking, $payment, $checkoutOrder);
 
         return $this->respond([
             'order_id' => (int) $booking->id,
             'order_no' => (string) $booking->booking_code,
             'grand_total' => (float) $booking->deposit_amount,
-            'payment_method' => (string) data_get($payment?->raw_response, 'payment_method', 'manual_transfer'),
-            'payment_provider' => strtolower((string) ($payment?->provider ?? 'manual')),
-            'payment_reference' => (string) ($payment?->ref ?? ''),
-            'payment_url' => data_get($payment?->raw_response, 'payment_url'),
+            'payment_method' => $resolved['payment_method'],
+            'payment_provider' => $resolved['payment_provider'],
+            'payment_reference' => $resolved['payment_reference'],
+            'payment_url' => $resolved['payment_url'],
+            'checkout_order_id' => $resolved['checkout_order_id'],
+            'checkout_order_no' => $resolved['checkout_order_no'],
             'payment_status' => strtolower((string) ($booking->payment_status ?? 'UNPAID')),
             'status' => strtolower((string) ($booking->status ?? 'HOLD')),
-            'bank_account' => data_get($payment?->raw_response, 'bank_account'),
+            'bank_account' => $resolved['bank_account'],
             'uploads' => array_values(array_filter([
                 data_get($payment?->raw_response, 'manual_slip_url') ? [
                     'id' => (int) ($payment?->id ?? 0),
@@ -273,9 +279,20 @@ class PaymentController extends Controller
             return $this->respondError('Booking not found.', 404);
         }
 
+        if (! in_array((string) $booking->status, ['HOLD', 'CONFIRMED'], true)) {
+            return $this->respondError('This booking is no longer awaiting payment.', 422);
+        }
+
         $payment = BookingPayment::query()->where('booking_id', $booking->id)->latest('id')->first();
-        if (! $payment) {
-            return $this->respondError('Payment record not found.', 404);
+        $checkoutOrder = $this->resolveDepositCheckoutOrder((int) $booking->id);
+        $paymentMethod = $this->resolveManualUploadPaymentMethod($payment, $checkoutOrder);
+
+        if ($paymentMethod !== null && $paymentMethod !== 'manual_transfer') {
+            return $this->respondError('Manual slip upload is only available for manual bank transfer. Please continue with online payment instead.', 422);
+        }
+
+        if (! $payment || $paymentMethod !== 'manual_transfer') {
+            return $this->respondError('Payment record not found for manual transfer.', 404);
         }
 
         $path = $validated['slip']->store('booking-payment-slips', 'public');
@@ -343,9 +360,20 @@ class PaymentController extends Controller
             'slip' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
         ]);
 
+        if (! in_array((string) $booking->status, ['HOLD', 'CONFIRMED'], true)) {
+            return $this->respondError('This booking is no longer awaiting payment.', 422);
+        }
+
         $payment = BookingPayment::query()->where('booking_id', $booking->id)->latest('id')->first();
-        if (! $payment) {
-            return $this->respondError('Payment record not found.', 404);
+        $checkoutOrder = $this->resolveDepositCheckoutOrder((int) $booking->id);
+        $paymentMethod = $this->resolveManualUploadPaymentMethod($payment, $checkoutOrder);
+
+        if ($paymentMethod !== null && $paymentMethod !== 'manual_transfer') {
+            return $this->respondError('Manual slip upload is only available for manual bank transfer. Please continue with online payment instead.', 422);
+        }
+
+        if (! $payment || $paymentMethod !== 'manual_transfer') {
+            return $this->respondError('Payment record not found for manual transfer.', 404);
         }
 
         $path = $validated['slip']->store('booking-payment-slips', 'public');
@@ -755,6 +783,98 @@ class PaymentController extends Controller
             'logo_url' => $bankAccount->logo_url,
             'qr_image_url' => $bankAccount->qr_image_url,
             'instructions' => $bankAccount->instructions,
+        ];
+    }
+
+    private function resolveDepositCheckoutOrder(int $bookingId): ?Order
+    {
+        if ($bookingId <= 0) {
+            return null;
+        }
+
+        $item = OrderItem::query()
+            ->with('order')
+            ->where('line_type', 'booking_deposit')
+            ->where('booking_id', $bookingId)
+            ->latest('id')
+            ->first();
+
+        return $item?->order;
+    }
+
+    private function resolveManualUploadPaymentMethod(?BookingPayment $payment, ?Order $checkoutOrder): ?string
+    {
+        $fromPayment = data_get($payment?->raw_response, 'payment_method');
+        if (is_string($fromPayment) && $fromPayment !== '') {
+            return $fromPayment;
+        }
+
+        if ($payment && strtoupper((string) $payment->provider) === 'MANUAL_TRANSFER') {
+            return 'manual_transfer';
+        }
+
+        $fromOrder = $checkoutOrder?->payment_method;
+        if (is_string($fromOrder) && $fromOrder !== '') {
+            return $fromOrder;
+        }
+
+        return null;
+    }
+
+    /**
+     * Cart checkout stores Billplz/manual payment on the linked Order, while older
+     * single-booking pay flows use booking_payments. Never invent manual_transfer.
+     *
+     * @return array{
+     *   payment_method: string|null,
+     *   payment_provider: string|null,
+     *   payment_reference: string,
+     *   payment_url: string|null,
+     *   checkout_order_id: int|null,
+     *   checkout_order_no: string|null,
+     *   bank_account: mixed
+     * }
+     */
+    private function resolvePublicBookingPaymentContext(Booking $booking, ?BookingPayment $payment, ?Order $checkoutOrder): array
+    {
+        $fromPaymentMethod = data_get($payment?->raw_response, 'payment_method');
+        $fromOrderMethod = $checkoutOrder?->payment_method;
+
+        $paymentMethod = null;
+        if (is_string($fromPaymentMethod) && $fromPaymentMethod !== '') {
+            $paymentMethod = $fromPaymentMethod;
+        } elseif (is_string($fromOrderMethod) && $fromOrderMethod !== '') {
+            $paymentMethod = $fromOrderMethod;
+        }
+
+        $paymentProvider = null;
+        if ($payment?->provider) {
+            $paymentProvider = strtolower((string) $payment->provider);
+        } elseif ($checkoutOrder?->payment_provider) {
+            $paymentProvider = strtolower((string) $checkoutOrder->payment_provider);
+        } elseif (is_string($paymentMethod) && str_starts_with($paymentMethod, 'billplz_')) {
+            $paymentProvider = 'billplz';
+        } elseif ($paymentMethod === 'manual_transfer') {
+            $paymentProvider = 'manual';
+        }
+
+        $paymentUrl = data_get($payment?->raw_response, 'payment_url');
+        if (! is_string($paymentUrl) || $paymentUrl === '') {
+            $paymentUrl = is_string($checkoutOrder?->payment_url) && $checkoutOrder->payment_url !== ''
+                ? $checkoutOrder->payment_url
+                : null;
+        }
+
+        $paymentReference = (string) ($payment?->ref ?? $checkoutOrder?->payment_reference ?? '');
+
+        return [
+            'payment_method' => $paymentMethod,
+            'payment_provider' => $paymentProvider,
+            'payment_reference' => $paymentReference,
+            'payment_url' => $paymentUrl,
+            'checkout_order_id' => $checkoutOrder?->id ? (int) $checkoutOrder->id : null,
+            'checkout_order_no' => $checkoutOrder?->order_number ? (string) $checkoutOrder->order_number : null,
+            'bank_account' => data_get($payment?->raw_response, 'bank_account'),
         ];
     }
 }

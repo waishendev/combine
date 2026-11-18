@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { lookupBookingOrder, lookupPublicOrder, uploadBookingOrderSlip, uploadPublicOrderSlip, type BookingOrderLookupResponse } from "@/lib/apiClient";
+import { lookupBookingOrder, lookupPublicOrder, payPublicOrder, uploadBookingOrderSlip, uploadPublicOrderSlip, type BookingOrderLookupResponse } from "@/lib/apiClient";
 import { bankQrImageStandardClass, BANK_QR_IMAGE_HEIGHT, BANK_QR_IMAGE_WIDTH } from "@/lib/bankQrImage";
 import SlipUploadSuccessModal from "@/components/orders/SlipUploadSuccessModal";
 
@@ -12,6 +12,19 @@ type Props = {
   orderId?: number | null;
   paymentMethod?: string | null;
 };
+
+function paymentMethodLabel(method?: string | null, provider?: string | null) {
+  const normalized = String(method ?? "").toLowerCase();
+  if (normalized.startsWith("billplz_") || String(provider ?? "").toLowerCase().includes("billplz")) {
+    if (normalized.includes("credit_card") || normalized.includes("card")) return "Credit Card (Billplz)";
+    if (normalized.includes("online_banking") || normalized.includes("fpx")) return "Online Banking (Billplz)";
+    return "Billplz";
+  }
+  if (normalized === "manual_transfer") return "Manual Transfer";
+  if (normalized === "customer_balance") return "Customer Balance";
+  if (normalized === "no_payment_required") return "No payment required";
+  return method || provider || "—";
+}
 
 export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Props) {
   const [order, setOrder] = useState<BookingOrderLookupResponse | null>(null);
@@ -24,6 +37,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   const [note, setNote] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isContinuingPayment, setIsContinuingPayment] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -32,12 +46,23 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     setError(null);
     try {
       let data: BookingOrderLookupResponse;
+      const looksLikeShopOrderNo = Boolean(orderNo && /^ORD/i.test(orderNo));
       try {
-        data = await lookupBookingOrder(orderNo, orderId ?? undefined);
-        setLookupSource("booking");
+        if (looksLikeShopOrderNo) {
+          data = await lookupPublicOrder(orderNo, orderId ?? undefined);
+          setLookupSource("order");
+        } else {
+          data = await lookupBookingOrder(orderNo, orderId ?? undefined);
+          setLookupSource("booking");
+        }
       } catch {
-        data = await lookupPublicOrder(orderNo, orderId ?? undefined);
-        setLookupSource("order");
+        if (looksLikeShopOrderNo) {
+          data = await lookupBookingOrder(orderNo, orderId ?? undefined);
+          setLookupSource("booking");
+        } else {
+          data = await lookupPublicOrder(orderNo, orderId ?? undefined);
+          setLookupSource("order");
+        }
       }
       setOrder(data);
     } catch (err: unknown) {
@@ -91,11 +116,15 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     }
   };
 
-  const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
+  // Prefer API truth over URL query params — stale ?payment_method=manual_transfer caused Billplz bookings to show Upload Slip.
+  const resolvedPaymentMethod = order?.payment_method || paymentMethod || null;
+  const isManualTransfer = resolvedPaymentMethod === "manual_transfer";
+  const isBillplzPayment = Boolean(resolvedPaymentMethod?.startsWith("billplz_"))
+    || String(order?.payment_provider ?? "").toLowerCase().includes("billplz");
   const isZeroAmountOrder = Number(order?.grand_total ?? 0) <= 0;
   const paymentStatusKey = String(order?.payment_status ?? "").toLowerCase();
   const statusKey = String(order?.status ?? "").toLowerCase();
-  const isCancelled = statusKey === "cancelled";
+  const isCancelled = ["cancelled", "expired", "voided"].includes(statusKey);
   const isPaid = paymentStatusKey === "paid";
   const isCompleted = statusKey === "completed";
   const isPaymentProofRejected = statusKey === "reject_payment_proof";
@@ -105,10 +134,17 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     !isCancelled &&
     !isPaid &&
     !isCompleted;
+  const canContinueBillplz =
+    isBillplzPayment &&
+    !isZeroAmountOrder &&
+    !isCancelled &&
+    !isPaid &&
+    !isCompleted &&
+    (Boolean(order?.payment_url) || Number(order?.checkout_order_id ?? 0) > 0 || lookupSource === "order");
   const showUploadReminderHeading = canUploadPaymentSlip && Boolean(order);
 
   const displayStatus = isCancelled
-    ? "Cancelled"
+    ? (statusKey === "expired" ? "Expired" : "Cancelled")
     : isPaymentProofRejected
       ? "Payment Proof Rejected"
       : isPaid && (statusKey === "confirmed" || statusKey === "hold")
@@ -123,6 +159,36 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
         ? "border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[color:var(--status-warning-text)]"
         : "border-transparent bg-[var(--muted)]/60 text-[var(--foreground)]/70";
 
+  const handleContinueBillplz = async () => {
+    if (!order) return;
+    setUploadError(null);
+    if (order.payment_url) {
+      window.location.href = order.payment_url;
+      return;
+    }
+
+    const checkoutOrderId = Number(order.checkout_order_id ?? (lookupSource === "order" ? order.order_id : 0));
+    if (!(checkoutOrderId > 0)) {
+      setUploadError("Online payment link is unavailable. Please open My Transactions or place a new booking.");
+      return;
+    }
+
+    setIsContinuingPayment(true);
+    try {
+      const method =
+        resolvedPaymentMethod === "billplz_fpx" || resolvedPaymentMethod === "billplz_online_banking"
+          ? "billplz_online_banking"
+          : resolvedPaymentMethod === "billplz_card" || resolvedPaymentMethod === "billplz_credit_card"
+            ? "billplz_credit_card"
+            : undefined;
+      const response = await payPublicOrder(checkoutOrderId, method ? { payment_method: method } : undefined);
+      window.location.href = response.redirect_url;
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : "Unable to continue online payment.");
+    } finally {
+      setIsContinuingPayment(false);
+    }
+  };
 
   const handleUpload = async () => {
     if (!order || !selectedFile) return;
@@ -208,7 +274,9 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Payment Method</span>
                 <span className="font-medium">
-                  {isZeroAmountOrder ? "No payment required" : (order.payment_provider || "").includes("billplz") ? "Billplz" : "Manual Transfer"}
+                  {isZeroAmountOrder
+                    ? "No payment required"
+                    : paymentMethodLabel(resolvedPaymentMethod, order.payment_provider)}
                 </span>
               </div>
               {isManualTransfer && !isZeroAmountOrder && !isCancelled && (isPaid || isCompleted) ? (
@@ -235,6 +303,24 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               This booking is confirmed. No payment was required.
             </p>
           ) : null} */}
+
+          {canContinueBillplz ? (
+            <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
+              <p className="font-medium">Complete online payment</p>
+              <p className="mt-2 text-xs text-[var(--foreground)]/80">
+                This booking uses Billplz. Continue to the payment page to finish your deposit.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleContinueBillplz()}
+                disabled={isContinuingPayment}
+                className="mt-4 w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isContinuingPayment ? "Redirecting..." : "Continue to Billplz"}
+              </button>
+              {uploadError ? <p className="mt-2 text-xs text-[color:var(--status-error)]">{uploadError}</p> : null}
+            </div>
+          ) : null}
 
           {canUploadPaymentSlip ? (
             <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
@@ -307,7 +393,12 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
             </div>
           ) : null}
 
-          {!isManualTransfer && !isZeroAmountOrder && (
+          {!isManualTransfer && !isBillplzPayment && !isZeroAmountOrder && (
+            <p className="text-center text-sm text-[var(--foreground)]/80">
+              If you completed the online payment, you will receive an email confirmation shortly.
+            </p>
+          )}
+          {isBillplzPayment && !canContinueBillplz && !isPaid && !isCancelled && !isZeroAmountOrder && (
             <p className="text-center text-sm text-[var(--foreground)]/80">
               If you completed the online payment, you will receive an email confirmation shortly.
             </p>

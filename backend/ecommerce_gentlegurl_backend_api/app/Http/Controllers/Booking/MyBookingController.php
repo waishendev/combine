@@ -95,7 +95,7 @@ class MyBookingController extends Controller
         $depositOrderItemByBooking = $bookingIds === []
             ? collect()
             : OrderItem::query()
-                ->with('order:id,order_number')
+                ->with('order:id,order_number,payment_method,payment_status,status,payment_url,payment_provider,billplz_gateway_option_id')
                 ->where('line_type', 'booking_deposit')
                 ->whereIn('booking_id', $bookingIds)
                 ->orderByDesc('id')
@@ -207,26 +207,48 @@ class MyBookingController extends Controller
                     'caption' => $photo->caption,
                     'created_at' => $photo->created_at?->toIso8601String(),
                 ])->values(),
-                'latest_payment' => (function () use ($latestPaymentsByBooking, $booking) {
+                'latest_payment' => (function () use ($latestPaymentsByBooking, $depositOrderItem, $booking) {
                     $payment = $latestPaymentsByBooking->get($booking->id);
-                    if (! $payment) {
+                    if ($payment) {
+                        return [
+                            'id' => (int) $payment->id,
+                            'status' => (string) $payment->status,
+                            'provider' => (string) $payment->provider,
+                            'payment_method' => data_get($payment->raw_response, 'payment_method'),
+                            'payment_url' => data_get($payment->raw_response, 'payment_url'),
+                            'manual_status' => data_get($payment->raw_response, 'payment_status'),
+                            'manual_slip_url' => data_get($payment->raw_response, 'manual_slip_url'),
+                        ];
+                    }
+
+                    // Cart checkout records payment on the linked Order, not booking_payments.
+                    $order = $depositOrderItem?->order;
+                    if (! $order || ! filled($order->payment_method)) {
                         return null;
                     }
 
                     return [
-                        'id' => (int) $payment->id,
-                        'status' => (string) $payment->status,
-                        'provider' => (string) $payment->provider,
-                        'payment_method' => data_get($payment->raw_response, 'payment_method'),
-                        'payment_url' => data_get($payment->raw_response, 'payment_url'),
-                        'manual_status' => data_get($payment->raw_response, 'payment_status'),
-                        'manual_slip_url' => data_get($payment->raw_response, 'manual_slip_url'),
+                        'id' => 0,
+                        'status' => strtolower((string) ($order->payment_status ?? 'unpaid')) === 'paid' ? 'PAID' : 'PENDING',
+                        'provider' => (string) ($order->payment_provider ?: (str_starts_with((string) $order->payment_method, 'billplz_') ? 'billplz' : 'manual')),
+                        'payment_method' => (string) $order->payment_method,
+                        'payment_url' => $order->payment_url ? (string) $order->payment_url : null,
+                        'manual_status' => null,
+                        'manual_slip_url' => null,
                     ];
                 })(),
                 'paid_via_order' => $depositOrderItem?->order ? [
                     'order_id' => (int) $depositOrderItem->order->id,
                     'order_number' => (string) $depositOrderItem->order->order_number,
                     'deposit_order_item_id' => (int) $depositOrderItem->id,
+                    'payment_method' => (string) ($depositOrderItem->order->payment_method ?? ''),
+                    'payment_status' => (string) ($depositOrderItem->order->payment_status ?? ''),
+                    'status' => (string) ($depositOrderItem->order->status ?? ''),
+                    'payment_url' => $depositOrderItem->order->payment_url ? (string) $depositOrderItem->order->payment_url : null,
+                    'payment_provider' => $depositOrderItem->order->payment_provider ? (string) $depositOrderItem->order->payment_provider : null,
+                    'billplz_gateway_option_id' => $depositOrderItem->order->billplz_gateway_option_id
+                        ? (int) $depositOrderItem->order->billplz_gateway_option_id
+                        : null,
                 ] : null,
                 'receipts' => $receiptRows,
                 'refunds' => $refundRows,

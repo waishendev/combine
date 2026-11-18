@@ -297,6 +297,12 @@ export type BookingRecord = {
     order_id: number;
     order_number: string;
     deposit_order_item_id: number;
+    payment_method?: string | null;
+    payment_status?: string | null;
+    status?: string | null;
+    payment_url?: string | null;
+    payment_provider?: string | null;
+    billplz_gateway_option_id?: number | null;
   } | null;
   receipts?: Array<{
     order_id: number;

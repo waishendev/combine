@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getMyBookings, payBooking } from "@/lib/apiClient";
+import { getMyBookings } from "@/lib/apiClient";
 import { BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingTime } from "@/lib/bookingTime";
 import { storedAddonQuantity } from "@/lib/bookingAddonDisplay";
+import { continueBookingPayment } from "@/lib/continueBookingPayment";
 import {
   getBookingBalanceDueDisplay,
   getBookingPackageCoveredDisplay,
@@ -114,45 +115,23 @@ export default function MyBookingsPage() {
   }, [user]);
 
   const handlePayNow = async (booking: BookingRecord) => {
-    const method = booking.latest_payment?.payment_method || "manual_transfer";
-    if (method === "manual_transfer") {
+    setError(null);
+    const result = await continueBookingPayment(booking);
+    if (result.kind === "redirect") {
+      window.location.href = result.url;
+      return;
+    }
+    if (result.kind === "manual_transfer") {
       const nextParams = new URLSearchParams({
-        order_id: String(booking.id),
-        payment_method: method,
-        provider: String(booking.latest_payment?.provider || "manual"),
+        order_id: String(result.orderId),
+        order_no: result.orderNo,
+        payment_method: "manual_transfer",
+        provider: result.provider,
       });
-      if (booking.booking_code) {
-        nextParams.set("order_no", booking.booking_code);
-      }
       router.push(`/payment-result?${nextParams.toString()}`);
       return;
     }
-
-    try {
-      const normalizedMethod =
-        method === "billplz_fpx"
-          ? "billplz_online_banking"
-          : method === "billplz_card"
-            ? "billplz_credit_card"
-            : method;
-      const resp = await payBooking(booking.id, { payment_method: normalizedMethod as "billplz_online_banking" | "billplz_credit_card" | "manual_transfer" });
-      const redirectUrl = resp?.data?.payment_url || booking.latest_payment?.payment_url;
-      if (redirectUrl) {
-        window.location.href = redirectUrl;
-      } else {
-        const nextParams = new URLSearchParams({
-          order_id: String(resp?.data?.order_id ?? booking.id),
-          payment_method: String(resp?.data?.payment_method ?? method),
-          provider: String(resp?.data?.provider ?? booking.latest_payment?.provider ?? "billplz"),
-        });
-        if (resp?.data?.order_no || booking.booking_code) {
-          nextParams.set("order_no", String(resp?.data?.order_no || booking.booking_code));
-        }
-        router.push(`/payment-result?${nextParams.toString()}`);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to continue payment.");
-    }
+    setError(result.message);
   };
 
   return (
