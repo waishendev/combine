@@ -292,6 +292,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                 </p>
               ) : null}
             </div>
+          </div>
 
           {canContinueBillplz ? (
             <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
