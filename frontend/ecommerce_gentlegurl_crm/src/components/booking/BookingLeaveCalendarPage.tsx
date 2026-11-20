@@ -334,10 +334,10 @@ const formatLogChange = (log: LeaveLogEntry): string => {
 const canEditApprovedLeave = (item: LeaveRow, canUpdate: boolean): boolean =>
   canUpdate && (item.status ?? 'approved') === 'approved' && ['off_day', 'annual', 'mc', 'emergency', 'unpaid'].includes(item.leave_type)
 
-/** Leave start date is today or earlier (local calendar day). */
-const leaveStartsOnOrBeforeToday = (item: LeaveRow, todayKey: string): boolean => {
+/** Leave start date is before today (local calendar day). Same-day leave remains cancellable. */
+const leaveStartsBeforeToday = (item: LeaveRow, todayKey: string): boolean => {
   const startKey = (item.start_date || '').slice(0, 10)
-  return Boolean(startKey) && startKey <= todayKey
+  return Boolean(startKey) && startKey < todayKey
 }
 
 const canCancelApprovedLeave = (
@@ -353,7 +353,7 @@ const canCancelApprovedLeave = (
   ) {
     return false
   }
-  if (leaveStartsOnOrBeforeToday(item, todayKey) && !canCancelPast) return false
+  if (leaveStartsBeforeToday(item, todayKey) && !canCancelPast) return false
   return true
 }
 
@@ -446,7 +446,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   const { selectedBranchId, isAllBranches } = useBranch()
   /** Leave Calendar Details Edit / Cancel / sync Off Day to another Branch. */
   const canManageLeaveCalendar = permissions.includes('booking.leave.calendar.manage')
-  /** Cancel leave that starts today or earlier — infra / SuperAdmin only. */
+  /** Cancel leave that started before today — infra / SuperAdmin only. Same-day uses normal manage permission. */
   const canCancelPastLeave = permissions.includes('booking.leave.calendar.cancel-past')
   /** Off Days / By Weekday / By Year — infra / SuperAdmin only. */
   const canManageOffDayTools = permissions.includes('booking.off_day_generations.view')

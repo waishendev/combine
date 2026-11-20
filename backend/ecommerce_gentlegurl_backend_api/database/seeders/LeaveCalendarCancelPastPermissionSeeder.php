@@ -8,7 +8,8 @@ use App\Models\Role;
 use Illuminate\Database\Seeder;
 
 /**
- * Cancel Leave Calendar leave that starts today or earlier.
+ * Cancel Leave Calendar leave that started before today.
+ * Same-day leave cancel uses normal Leave Calendar manage permission.
  *
  * Production:
  *   php artisan db:seed --class=LeaveCalendarCancelPastPermissionSeeder
@@ -29,8 +30,8 @@ class LeaveCalendarCancelPastPermissionSeeder extends Seeder
         $permission = Permission::updateOrCreate(
             ['slug' => self::PERMISSION_SLUG],
             [
-                'name' => 'Leave Calendar Cancel Past / Same Day',
-                'description' => 'Cancel approved leave on Leave Calendar when the leave start date is today or earlier. Future-start leave can still be cancelled with Leave Calendar Manage.',
+                'name' => 'Leave Calendar Cancel Past',
+                'description' => 'Cancel approved leave on Leave Calendar when the leave start date is before today. Same-day and future-start leave can be cancelled with Leave Calendar Manage.',
                 'group_id' => $group->id,
             ]
         );

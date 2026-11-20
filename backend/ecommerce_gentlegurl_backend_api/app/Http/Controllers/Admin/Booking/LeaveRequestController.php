@@ -548,13 +548,14 @@ class LeaveRequestController extends Controller
             return $this->respondError('Only approved leave / off days can be cancelled.', 422);
         }
 
-        // Same-day / past leave cancel is restricted (infra + superAdmin).
+        // Past leave cancel (start before today) is restricted (infra + superAdmin).
+        // Same-day leave can be cancelled with normal Leave Calendar manage permission.
         $startDate = Carbon::parse((string) $item->start_date)->startOfDay();
-        if ($startDate->lte(Carbon::today())) {
+        if ($startDate->lt(Carbon::today())) {
             $permissionSlugs = $request->user()?->getAllPermissions() ?? collect();
             if (! $permissionSlugs->contains('booking.leave.calendar.cancel-past')) {
                 return $this->respondError(
-                    'Cancelling leave that starts today or earlier requires Leave Calendar Cancel Past / Same Day permission.',
+                    'Cancelling leave that started before today requires Leave Calendar Cancel Past permission.',
                     403
                 );
             }
